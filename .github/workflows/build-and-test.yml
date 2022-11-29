@@ -1,0 +1,27 @@
+
+name: build and test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  runhaskell:
+    name: build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: haskell/actions/setup@v2
+        with:
+          ghc-version: '9.2.4'
+
+      # TODO install ormolu and check all source files here
+
+      - name: Build
+        run: cabal build all
+
+      - name: Tests
+        run: cabal test all
