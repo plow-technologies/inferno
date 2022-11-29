@@ -1,0 +1,14 @@
+fun inputS inputMinS inputMaxS scaleMinS scaleMaxS ->
+  let latestOrZero = fun x -> case latestValue x {
+      of one v -> v
+      of empty -> 0
+    } in
+  let input = latestOrZero inputS in
+  let inputMin = latestOrZero inputMinS in
+  let inputMax = latestOrZero inputMaxS in
+  let scaleMin = latestOrZero scaleMinS in
+  let scaleMax = latestOrZero scaleMaxS in
+
+  if (inputMax-inputMin)*(input-inputMin)+scaleMin == 0
+    then 0
+    else ((scaleMax-scaleMin)/(inputMax-inputMin)*(input-inputMin)+scaleMin)

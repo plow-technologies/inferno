@@ -1,0 +1,9 @@
+fun inputs -> 
+
+let 
+  inputValues = [latestValue i | i <- inputs]
+in
+  case allOnes inputValues {
+    of one xs -> one (sumArray xs) / (length xs)
+    of empty -> empty
+  }

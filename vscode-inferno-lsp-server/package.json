@@ -1,0 +1,76 @@
+{
+	"name": "vscode-inferno-lsp-server",
+	"displayName": "Inferno LSP Server",
+	"description": "An LSP protocol implementation for the Inferno programming language",
+	"version": "0.0.1",
+	"publisher": "plowtech",
+	"license": "MIT",
+	"preview": true,
+	"engines": {
+		"vscode": "^1.30.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"keywords": [
+		"inferno",
+		"lsp",
+		"language server"
+	],
+	"activationEvents": [
+		"onLanguage:inferno"
+	],
+	"homepage": "https://github.com/plow-technologies/all",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/plow-technologies/all.git"
+	},
+	"main": "./out/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "inferno",
+				"extensions": [
+					".inferno"
+				]
+			}
+		],
+		"configuration": {
+			"type": "object",
+			"title": "Inferno LSP",
+			"properties": {
+				"vscode-inferno-lsp-server.executable": {
+					"scope": "window",
+					"type": "string",
+					"default": "",
+					"markdownDescription": "Path to the `inferno-lsp-server` executable"
+				},
+				"vscode-inferno-lsp-server.trace.server": {
+					"scope": "window",
+					"type": "string",
+					"enum": [
+						"off",
+						"messages",
+						"verbose"
+					],
+					"default": "off",
+					"description": "Traces the communication between VS Code and the language server."
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"package": "vsce package"
+	},
+	"dependencies": {
+		"vscode-languageclient": "~5.1.1"
+	},
+	"devDependencies": {
+		"@types/node": "^8.10.25",
+		"tslint": "^5.8.0",
+		"typescript": "^3.1.4",
+		"vscode": "^1.1.34"
+	}
+}

@@ -1,0 +1,20 @@
+{
+    "samples": [
+        {
+            "tag": "TWord64"
+        },
+        {
+            "tag": "TWord64"
+        },
+        {
+            "tag": "TWord64"
+        },
+        {
+            "tag": "TWord64"
+        },
+        {
+            "tag": "TWord64"
+        }
+    ],
+    "seed": 357950783
+}

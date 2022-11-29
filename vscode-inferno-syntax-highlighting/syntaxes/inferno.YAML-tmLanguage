@@ -1,0 +1,135 @@
+# [PackageDev] target_format: plist, ext: tmLanguage
+name: Inferno
+scopeName: source.inferno
+fileTypes: [inferno]
+uuid: f110fd13-9991-4b6f-b92b-9249561a6250
+
+monarchVariables:
+  typeScope: 'type'
+  numberScope: 'number'
+  commentBlockScope: 'comment'
+  stringDoubleQuoteScope: 'string'
+  stringDoubleQuoteBegin: 'string.quote'
+  stringDoubleQuoteEnd: 'string.quote'
+  infixOpScope: 'infixop'
+  typeVariableScope: 'type.variable'
+  enumScope: 'enum'
+
+tmlVariables:
+  typeScope: 'entity.name.type.inferno'
+  numberScope: 'constant.numeric.inferno'
+  commentBlockScope: 'comment.block.inferno'
+  stringDoubleQuoteScope: 'string.quoted.double.inferno'
+  stringDoubleQuoteBegin: 'punctuation.definition.string.begin.inferno'
+  stringDoubleQuoteEnd: 'punctuation.definition.string.end.inferno'
+  infixOpScope: 'keyword.operator.inferno'
+  typeVariableScope: 'variable.parameter.type.inferno'
+  enumScope: 'entity.name.type.enum.inferno'
+patterns:
+# - include: "#decDec"
+- include: "#strings"
+- include: "#istrings"
+- include: "#number"
+- include: "#comment"
+- include: "#commentSingle"
+- include: "#const"
+- include: "#keywords"
+- include: "#typeVar"
+- include: "#enum"
+
+repository:
+  root:
+    patterns:
+    - include: "#strings"
+    - include: "#istrings"
+    - include: "#number"
+    - include: "#comment"
+    - include: "#commentSingle"
+    - include: "#const"
+    - include: "#keywords"
+    - include: "#typeVar"
+    - include: "#enum"
+
+  number:
+    patterns:
+    - name: '{{numberScope}}'
+      match: "(?:0w(?:\\d+|x[0-9a-fA-F]+)|~?0x[0-9a-fA-F]+|~?\\d+(?:\\.\\d+)?(?:[eE]~?\\d+)?)"
+  keywords:
+    patterns:
+    - name: keyword.control.inferno
+      match: "\\b(if|then|else|case|of)\\b"
+    - name: keyword.other.inferno
+      match: "\\b(fun|let|in|one|empty|assert|open|module|enum)\\b"
+  strings:
+    patterns:
+    - name: '{{stringDoubleQuoteScope}}'
+      begin: "\""
+      beginCaptures:
+        '0': { name: '{{stringDoubleQuoteBegin}}' }
+      end: "\""
+      endCaptures:
+        '0': { name: '{{stringDoubleQuoteEnd}}' }
+      patterns:
+      - include: '#string-character-escape'
+      - name: '{{stringDoubleQuoteScope}}'
+        match: '.'
+
+  string-character-escape:
+    patterns:
+    - name: constant.character.escape.inferno
+      match: \\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\{[0-9A-Fa-f]+\}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.|$)
+
+  istrings:
+    patterns:
+    - begin: "`"
+      beginCaptures:
+        '0': { name: '{{stringDoubleQuoteBegin}}' }
+      end: "`"
+      endCaptures:
+        '0': { name: '{{stringDoubleQuoteEnd}}' }
+      patterns:
+      - include: '#string-character-escape'
+      - name: 'delimiter'
+        begin: \$\{
+        beginCaptures:
+          '0': { name: 'delimiter.bracket' }
+        end: "}"
+        endCaptures:
+          '0': { name: 'delimiter.bracket' }
+        patterns:
+        - include: '#root'
+      - name: '{{stringDoubleQuoteScope}}'
+        match: '.'
+
+  comment:
+    patterns:
+    - name: '{{commentBlockScope}}'
+      begin: "\\/\\*"
+      beginCaptures:
+        '0': { name: '{{commentBlockScope}}' }
+      end: "\\*\\/"
+      endCaptures:
+        '0': { name: '{{commentBlockScope}}' }
+      # patterns:
+      # - include: "#comment"
+  const:
+    patterns:
+    - name: '{{typeScope}}'
+      match: "\\b(time(?:Diff)?|int|double|word(16|32|64)|text|array of|option of|series of)\\b"
+    - name: '{{infixOpScope}}'
+      match: '[=<>@^&+\-*/$%|][|!$%&*+./:<=>?@^~-]*'
+
+    # - name: '{{infixOpScope}}'
+    #   match: "\\b(andalso|div|mod|\\+|-|\\*|\\\\|\\^|::|\\!|:=|@|~|abs|<|>|<=|>=|#|before|ignore|o)\\b"
+  typeVar:
+    patterns:
+    - name: '{{typeVariableScope}}'
+      match: "''?[a-fA-F]+"
+  commentSingle:
+    patterns:
+    - name: comment.inferno
+      match: "(//.*)"
+  enum:
+    patterns:
+    - name: '{{enumScope}}'
+      match: '#[a-zA-Z_$][\w$]*'

@@ -1,0 +1,25 @@
+{
+    "samples": [
+        {
+            "contents": -21,
+            "tag": "TVar"
+        },
+        {
+            "contents": -20,
+            "tag": "TVar"
+        },
+        {
+            "contents": -6,
+            "tag": "TVar"
+        },
+        {
+            "contents": 29,
+            "tag": "TVar"
+        },
+        {
+            "contents": 21,
+            "tag": "TVar"
+        }
+    ],
+    "seed": 2045224457
+}

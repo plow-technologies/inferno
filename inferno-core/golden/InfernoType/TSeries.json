@@ -1,0 +1,73 @@
+{
+    "samples": [
+        {
+            "contents": {
+                "contents": [
+                    {
+                        "contents": [
+                            {
+                                "contents": -23,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TTime"
+                                },
+                                "tag": "TBase"
+                            }
+                        ],
+                        "tag": "TArr"
+                    },
+                    {
+                        "contents": [
+                            {
+                                "contents": {
+                                    "tag": "TTimeDiff"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TNil"
+                                },
+                                "tag": "TTuple"
+                            }
+                        ],
+                        "tag": "TArr"
+                    }
+                ],
+                "tag": "TArr"
+            },
+            "tag": "TSeries"
+        },
+        {
+            "contents": {
+                "contents": 12,
+                "tag": "TVar"
+            },
+            "tag": "TSeries"
+        },
+        {
+            "contents": {
+                "contents": 30,
+                "tag": "TVar"
+            },
+            "tag": "TSeries"
+        },
+        {
+            "contents": {
+                "contents": -17,
+                "tag": "TVar"
+            },
+            "tag": "TSeries"
+        },
+        {
+            "contents": {
+                "contents": -13,
+                "tag": "TVar"
+            },
+            "tag": "TSeries"
+        }
+    ],
+    "seed": -570853263
+}

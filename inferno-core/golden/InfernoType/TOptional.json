@@ -1,0 +1,64 @@
+{
+    "samples": [
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TNil"
+                },
+                "tag": "TTuple"
+            },
+            "tag": "TOptional"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TInt"
+                },
+                "tag": "TBase"
+            },
+            "tag": "TOptional"
+        },
+        {
+            "contents": {
+                "contents": [
+                    {
+                        "contents": {
+                            "tag": "TDouble"
+                        },
+                        "tag": "TBase"
+                    },
+                    {
+                        "contents": {
+                            "tag": "TNil"
+                        },
+                        "tag": "TTuple"
+                    }
+                ],
+                "tag": "TArr"
+            },
+            "tag": "TOptional"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TNil"
+                },
+                "tag": "TTuple"
+            },
+            "tag": "TOptional"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "contents": {
+                        "tag": "TNil"
+                    },
+                    "tag": "TTuple"
+                },
+                "tag": "TArray"
+            },
+            "tag": "TOptional"
+        }
+    ],
+    "seed": -1505057936
+}

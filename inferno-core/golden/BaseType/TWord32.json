@@ -1,0 +1,20 @@
+{
+    "samples": [
+        {
+            "tag": "TWord32"
+        },
+        {
+            "tag": "TWord32"
+        },
+        {
+            "tag": "TWord32"
+        },
+        {
+            "tag": "TWord32"
+        },
+        {
+            "tag": "TWord32"
+        }
+    ],
+    "seed": -789157068
+}

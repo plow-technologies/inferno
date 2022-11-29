@@ -1,0 +1,11 @@
+packages:
+  ./inferno-core
+  ./inferno-types
+  ./inferno-lsp
+  ./inferno-vc
+
+source-repository-package
+    type: git
+    location: https://github.com/plow-technologies/special-keys.git
+    tag: 3c27daf803ba2a13cb105fbaf84b2eee91a5f4be
+    --sha256: 07v8hizx0hq3bs609al5vwa4jai16fpl75pm1nz6i2h7v4m3f162

@@ -1,0 +1,612 @@
+{
+    "samples": [
+        {
+            "contents": [
+                "Vemhvr4o5_tIdQRmn9nsZbWycxxp5MOxiAG1uvIce88=",
+                [
+                    [
+                        {
+                            "contents": "ynzwugo1x8z0bh77vgec6v",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "i",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "qylo13x3",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "e7aar74ywzk_ip4z0_",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "l3amv0bey",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "hvvgksh01gnvtcm",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "u3ejf9whme06ip2jrd1x",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "gb51",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "obylfuv6l21yz_",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ]
+                ]
+            ],
+            "tag": "IncompatibleWithPred"
+        },
+        {
+            "contents": [
+                "WW6C0KGnysM7o7q02MOyFI8T3biae61FWXsF2YrJXto=",
+                [
+                    [
+                        {
+                            "contents": "gu15l3c5mpxwg0dxvx9ar1",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "m1acn4t8ai_f",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "jxwbh",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "f4735kinf2o8dk6y43wfftd_x6",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "d0coe0lhajs6ku6pg7ioipwgw1pbbl",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "qm_zjini3sh_u_r5lsmze7_v_x9famz",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "s4uv_jz98516dml0w14apc9kz0jvl",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "pmano",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "j",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "z0wfeqzocd_j2qupnduw3",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "ldir",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "zxc6gxy",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "q27prt_xmy_9frca6jl5iqpz3r1577q",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "j4_kscodauzb3qici4_",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "trbie5dzaet5eghe",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "ajsmq2xtjrlebn_k",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "f1mth0458_2m8rhr02qqmcg",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "k6bb0fim1d5uk19hzlb0knw",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "f3larufgryq_k3dgxtauh9o8l",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "b4iv1lo",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "woz3inbf8b8ofa",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "kk6q1wwvaowbmmjgxwi2_r84fm_hlq",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "i_o",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "krwe4ye7fkfxuxj",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ]
+                ]
+            ],
+            "tag": "IncompatibleWithPred"
+        },
+        {
+            "contents": [
+                "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=",
+                [
+                    [
+                        {
+                            "contents": "xiq9qfni1kih4p7gdk63q9dh2p",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "me4xlbpjus58uevedn1_",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "ugu",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "kxk_2tnqwq",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "c5ppspj61cn0k_owf_7maysddt7a",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "kmujhubxnueqwbrsdhwt",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "y_4ua7vn0pnp_00hy3z6qkddzv9",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "f7xe157k2gsk8wb",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "cteuwggq11wf4",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "v_mmlbokw75xi6i5f84wpo6yuv7a8u",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "lm6r_qgpk9ihupj5",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "yyrsabghvf2m3",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ]
+                ]
+            ],
+            "tag": "IncompatibleWithPred"
+        },
+        {
+            "contents": [
+                "8k7VxKA_dKiQzRRP3Op4XC1zixh761YS4wSFuc-JpeY=",
+                [
+                    [
+                        {
+                            "contents": "dsh15dem3yb5h0chw94zc6_",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "b35c4_ovosx5_imfjj1s0l_1pia1n47",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "j_t7u32irlwap3",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "nnssk412g14jptj0",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "ejo4icy58nnnut2_c63u193fvxp",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "n1tdq",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "nklpwezk_msuygwrulgywrz",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "izmz",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "ide",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "pwxt",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "tmqi8cf1et70kvkw363e5th3_e",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "s8y_bjvsti55",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "dwx4",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "b",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "sa540wcalqrfejv",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "jyiyqmyb7txn4c",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "q4czdkwfs_wgrv4e36qnk6ld",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "v85311qf8kga5xxfct2",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "tbmvjdemh_0",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "zuw",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "h6h1irqsr9k9xapbz7c0w6h610a2",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "hz3j76zubakxjh7du6",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "h_cp",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ]
+                ]
+            ],
+            "tag": "IncompatibleWithPred"
+        },
+        {
+            "contents": [
+                "KL8oVcslKub759ew8T432jm8OTtSEcaTKby0sTn6Y5s=",
+                [
+                    [
+                        {
+                            "contents": "hkp80nmbmq2dsyssjwu13ovh",
+                            "tag": "FunNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "dj6jhtwi_m8d151crsdz",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "eteifny4se",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "py1pmuf_r8zf",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "c3sck9qnudrph8r9n",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "hc6ppvk08_",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "mve83n20dhd7a",
+                            "tag": "TypeNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "kkgx5n",
+                            "tag": "TypeNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "u0l88lyzz",
+                            "tag": "ModuleNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "gxokjxonxckj077_u5360o",
+                            "tag": "ModuleNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "g43z_",
+                            "tag": "EnumNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ],
+                    [
+                        {
+                            "contents": "h4vdq21gzh8gn",
+                            "tag": "EnumNamespace"
+                        },
+                        "EnumConstructorsChanged"
+                    ],
+                    [
+                        {
+                            "contents": "u69o99ultq7p55_e",
+                            "tag": "FunNamespace"
+                        },
+                        "TypeSignatureChange"
+                    ]
+                ]
+            ],
+            "tag": "IncompatibleWithPred"
+        }
+    ],
+    "seed": 493107477
+}

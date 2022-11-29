@@ -1,0 +1,1308 @@
+{
+    "samples": [
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TTime"
+                },
+                "tag": "TBase"
+            },
+            "tag": "TArray"
+        },
+        {
+            "contents": {
+                "contents": 22,
+                "tag": "TVar"
+            },
+            "tag": "TArray"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TNil"
+                },
+                "tag": "TTuple"
+            },
+            "tag": "TArray"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "tag": "TNil"
+                },
+                "tag": "TTuple"
+            },
+            "tag": "TArray"
+        },
+        {
+            "contents": {
+                "contents": {
+                    "contents": [
+                        {
+                            "contents": -13,
+                            "tag": "TVar"
+                        },
+                        {
+                            "contents": [
+                                {
+                                    "contents": -9,
+                                    "tag": "TVar"
+                                },
+                                {
+                                    "contents": {
+                                        "contents": [
+                                            {
+                                                "contents": {
+                                                    "tag": "TText"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            {
+                                                "contents": -4,
+                                                "tag": "TVar"
+                                            },
+                                            [
+                                                {
+                                                    "contents": {
+                                                        "tag": "TResolution"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": -7,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": 19,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord16"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord64"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord32"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": 30,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": 10,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": 15,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TTime"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TTime"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord16"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TTime"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": 18,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord32"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": 27,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TText"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "contents": [
+                                                            "񱔥@󭡽HPIR^\u000cv8 ",
+                                                            [
+                                                                "bdz_",
+                                                                "iv2pegw_u",
+                                                                "iz54f98wskk5k3npgyqdfk",
+                                                                "qxpawd65o3gncw54plb14y3tx",
+                                                                "uxhl_j311to1umkx9m3ps9b1j26_wpn"
+                                                            ]
+                                                        ],
+                                                        "tag": "TEnum"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TText"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": -21,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "contents": [
+                                                            "\u0011",
+                                                            [
+                                                                "c1_ce4sji73ngdg6odrr2qkn9esy",
+                                                                "ef",
+                                                                "eg1ic85n9wsnyzn4q24hyi_3ohurqyq",
+                                                                "iaw",
+                                                                "lnvsi7ta4168c0koozsq0md1",
+                                                                "n4ki9zx9wnhpxzfsuwlr77wstwx4ss",
+                                                                "x3ta24xdkj4mmzlg5rsl13r2",
+                                                                "xk7",
+                                                                "zc1jopw773hy1xwh5gkeop5vea"
+                                                            ]
+                                                        ],
+                                                        "tag": "TEnum"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TWord16"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                {
+                                                    "contents": -4,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": 8,
+                                                    "tag": "TVar"
+                                                }
+                                            ]
+                                        ],
+                                        "tag": "TCons"
+                                    },
+                                    "tag": "TTuple"
+                                }
+                            ],
+                            "tag": "TArr"
+                        },
+                        [
+                            {
+                                "contents": -23,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": 25,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": -20,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": {
+                                    "contents": -26,
+                                    "tag": "TVar"
+                                },
+                                "tag": "TRep"
+                            },
+                            {
+                                "contents": {
+                                    "contents": [
+                                        "*",
+                                        [
+                                            "d_y",
+                                            "f4oinqfe0bsnidwrurpegu",
+                                            "jgbarwje8ao6zbgifj3x",
+                                            "rqv9m"
+                                        ]
+                                    ],
+                                    "tag": "TEnum"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": 18,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": -16,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": -14,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TTime"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TResolution"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": -1,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": -26,
+                                "tag": "TVar"
+                            },
+                            {
+                                "contents": {
+                                    "contents": [
+                                        {
+                                            "contents": {
+                                                "contents": {
+                                                    "tag": "TWord64"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            "tag": "TOptional"
+                                        },
+                                        {
+                                            "contents": {
+                                                "contents": 0,
+                                                "tag": "TVar"
+                                            },
+                                            "tag": "TSeries"
+                                        },
+                                        [
+                                            {
+                                                "contents": {
+                                                    "tag": "TWord32"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "tag": "TResolution"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": [
+                                                        {
+                                                            "contents": {
+                                                                "tag": "TWord32"
+                                                            },
+                                                            "tag": "TBase"
+                                                        },
+                                                        {
+                                                            "contents": -15,
+                                                            "tag": "TVar"
+                                                        },
+                                                        [
+                                                            {
+                                                                "contents": -11,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -20,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 29,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TResolution"
+                                                                },
+                                                                "tag": "TBase"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    "tag": "TCons"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "tag": "TWord16"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": 0,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TDouble"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": 20,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TWord32"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": {
+                                                        "tag": "TInt"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                "tag": "TSeries"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": {
+                                                            "contents": [
+                                                                "d\u00014\u001a󸴏2󯩇/ S{",
+                                                                [
+                                                                    "a6e4gkfyxn__hn_krbp82uo",
+                                                                    "ac5hnw6b7smugb717",
+                                                                    "b_f2m0rrl",
+                                                                    "bfmunx",
+                                                                    "c6nvak2v7bzmu0fvdv5x_0qjpk",
+                                                                    "d7qq2wip8",
+                                                                    "gajgcp0zmvzytq41fuximvmuv",
+                                                                    "gq6i9r0jk_29w5c0i8vxnu0",
+                                                                    "gt8f",
+                                                                    "hlu1x3rqi6b",
+                                                                    "j4xkou8zye06z7xa_k",
+                                                                    "m7g2wzzuxxoaj9o0w8anoxo",
+                                                                    "mn606tt",
+                                                                    "p7lku4ysa",
+                                                                    "qe6ku7ynxjr3b4za947nt7swpwgah10",
+                                                                    "rfd_mszskq1qptmcdnvism7",
+                                                                    "x0y1_0nl6zcc0lcari86zun1k",
+                                                                    "xrhzbx2seo5r",
+                                                                    "yajhq09i6ibxbs25y0z_9ohyzqeq_qo"
+                                                                ]
+                                                            ],
+                                                            "tag": "TEnum"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TTimeDiff"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": {
+                                                        "tag": "TWord16"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                "tag": "TRep"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": [
+                                                        {
+                                                            "contents": -24,
+                                                            "tag": "TVar"
+                                                        },
+                                                        {
+                                                            "contents": -8,
+                                                            "tag": "TVar"
+                                                        },
+                                                        [
+                                                            {
+                                                                "contents": 18,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 27,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TResolution"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -19,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TText"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 13,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "contents": [
+                                                                        "rv񺊃\u0017}Wf\u000b󝨏+\u001b򿇴o(K𵔭\u0008",
+                                                                        [
+                                                                            "bwctejrlshqqb",
+                                                                            "bzrwhm68r1",
+                                                                            "ce",
+                                                                            "e00u0vswv",
+                                                                            "e1nhz2wyot_xbp26",
+                                                                            "f71igt76chjc",
+                                                                            "hjyhtb9kuk20u5k7i007irc3decaw89",
+                                                                            "hmq",
+                                                                            "hxruhp0glhuzsouqtidlgdr4c",
+                                                                            "jyuo1thks888",
+                                                                            "ms8n",
+                                                                            "nnfk6fq4i26xqsqgg50vkw87e6s1rf",
+                                                                            "ojadhaa6z5o2ncfl5g_gwod9",
+                                                                            "q1f5lckjz9",
+                                                                            "sdfb5odylac3nbvnwrl29",
+                                                                            "sowe1o4js521jewgquhln",
+                                                                            "tjujuk",
+                                                                            "uyk6qokae6_x_7a3zy7mamjib_ao",
+                                                                            "v4nsze0kv1k",
+                                                                            "x8sys6lvqvm5k_a7str8",
+                                                                            "y",
+                                                                            "z3pfi"
+                                                                        ]
+                                                                    ],
+                                                                    "tag": "TEnum"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -9,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -16,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TDouble"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 0,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TResolution"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -4,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "contents": [
+                                                                        "򌻼򵭗\u001a򃢏\"򩄵(4HaM\u000bZg󻌷󞸏𳣏\u0010񡡝Z\u0003?e+f)򲗰O򠧶",
+                                                                        [
+                                                                            "c866phhelavk50ah",
+                                                                            "dzc2zvx3f_mhg9",
+                                                                            "hphij42vec65teayykc",
+                                                                            "j_bcd",
+                                                                            "kf",
+                                                                            "lrz0yfbp_eiux8iastdsrenywu3y02",
+                                                                            "m3oqpt9suy2",
+                                                                            "msukzxmcohnnu5n",
+                                                                            "pd9x1f8y9h9e2x1dulb4",
+                                                                            "qi88914wuxibgwg_mks1ifuisa3",
+                                                                            "qkmp1g01zjunzqx9_232crgy26y",
+                                                                            "s05ini89vazgagzw57268l5u_hm",
+                                                                            "s8hkmh9w7txtokig9y_sjm599uf7i",
+                                                                            "sk4j91a0v047l17tsp2o4gz707sp",
+                                                                            "t6unfrky9g",
+                                                                            "te30ji9354vpubt_5",
+                                                                            "tq5c98s_n81124g",
+                                                                            "tsktrw2qxuttpxob53t1r32",
+                                                                            "yv9xiio2uw65hwqsumgo_22fgwqwzaa"
+                                                                        ]
+                                                                    ],
+                                                                    "tag": "TEnum"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "contents": [
+                                                                        "1",
+                                                                        [
+                                                                            "ciuh",
+                                                                            "cupfa7ntt5_",
+                                                                            "f1g5rwbz",
+                                                                            "g7",
+                                                                            "gj4qmu6n8u5tvo5v7mu6510h8zl7aqk",
+                                                                            "gz4clwy53fxnb281kyl50dc9r_9",
+                                                                            "i1u20xoi4yuzkltmkzqmthla9015j",
+                                                                            "i3vioqrfpzx4zsxomvko6tharen",
+                                                                            "iwszxl63v9_40nel0716ylht",
+                                                                            "l1eh_31fypkyj_dhpclyq6",
+                                                                            "mnaz6mqqicxcmm",
+                                                                            "odkde0",
+                                                                            "qgb669ho",
+                                                                            "v6kewx4pd",
+                                                                            "w68zey8zw",
+                                                                            "wgmjq",
+                                                                            "xqhu9u898z4oci82a",
+                                                                            "xx6hbb87uxohzb1ipr",
+                                                                            "zij05ffv_lvwzc"
+                                                                        ]
+                                                                    ],
+                                                                    "tag": "TEnum"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -10,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 24,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord16"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTimeDiff"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TInt"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 21,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord16"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -4,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -25,
+                                                                "tag": "TVar"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    "tag": "TCons"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": -16,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "contents": [
+                                                                "\u000b\u0008H𬄢^\u000e\u0014u\u0002𤸄ul",
+                                                                [
+                                                                    "at1pc3x57dsy4ow9byimf",
+                                                                    "cc9tw0kd3shhinku00oq_ysi9",
+                                                                    "eyr7cf0",
+                                                                    "g8t",
+                                                                    "h_gu461",
+                                                                    "r_k92ix1evdnw4wa3knc1h4f8",
+                                                                    "rtan21zkzq7p97pqn2m",
+                                                                    "s6x6jsn2",
+                                                                    "sh19j9qmsojcb0q1ea3bhe75tk2",
+                                                                    "som_osq35kate0i7as8brua0",
+                                                                    "swzpk11cgq2wh_ih7",
+                                                                    "tvkp2929w3ps448a5",
+                                                                    "v8dn_nd8tw61t5_lxfd38",
+                                                                    "wkkpvze86wtnjjx3v5fpmcxho",
+                                                                    "zzi30drvr123dvw4"
+                                                                ]
+                                                            ],
+                                                            "tag": "TEnum"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "tag": "TNil"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TText"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TDouble"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": [
+                                                        {
+                                                            "contents": -7,
+                                                            "tag": "TVar"
+                                                        },
+                                                        {
+                                                            "contents": -4,
+                                                            "tag": "TVar"
+                                                        },
+                                                        [
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord64"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 27,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TResolution"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 9,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 30,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 9,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 23,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 26,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -18,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord16"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 29,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TDouble"
+                                                                },
+                                                                "tag": "TBase"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    "tag": "TCons"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": {
+                                                        "tag": "TTime"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                "tag": "TRep"
+                                            },
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TDouble"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TText"
+                                                        },
+                                                        "tag": "TBase"
+                                                    }
+                                                ],
+                                                "tag": "TArr"
+                                            },
+                                            {
+                                                "contents": -3,
+                                                "tag": "TVar"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": [
+                                                        {
+                                                            "contents": 17,
+                                                            "tag": "TVar"
+                                                        },
+                                                        {
+                                                            "contents": 19,
+                                                            "tag": "TVar"
+                                                        },
+                                                        [
+                                                            {
+                                                                "contents": -9,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -9,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord64"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTimeDiff"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -11,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -23,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TResolution"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -4,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": -10,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TDouble"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord64"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord64"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -15,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": 11,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTimeDiff"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TInt"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -18,
+                                                                "tag": "TVar"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    "tag": "TCons"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "tag": "TNil"
+                                                },
+                                                "tag": "TTuple"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": {
+                                                        "contents": [
+                                                            "GO",
+                                                            [
+                                                                "j7oaw7zzfsjr407n_8pu6ffc",
+                                                                "lrmzjll3uuewj6n",
+                                                                "s67rlope9a6q5jh7_qm8v"
+                                                            ]
+                                                        ],
+                                                        "tag": "TEnum"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                "tag": "TArray"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "tag": "TWord32"
+                                                },
+                                                "tag": "TBase"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "contents": [
+                                                        {
+                                                            "contents": 8,
+                                                            "tag": "TVar"
+                                                        },
+                                                        {
+                                                            "contents": 20,
+                                                            "tag": "TVar"
+                                                        },
+                                                        [
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TInt"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": 28,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "contents": [
+                                                                        "\u0012򫫾\u0019)!򓲀}𵶳󍫦G\u0007']AY󾵰{\u0014sD{o(\u0014𽁜\u001a򎍃Y",
+                                                                        [
+                                                                            "x6gsffrnkm0vesno"
+                                                                        ]
+                                                                    ],
+                                                                    "tag": "TEnum"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TDouble"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -15,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TInt"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TWord32"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -7,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TTime"
+                                                                },
+                                                                "tag": "TBase"
+                                                            },
+                                                            {
+                                                                "contents": -22,
+                                                                "tag": "TVar"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "tag": "TDouble"
+                                                                },
+                                                                "tag": "TBase"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    "tag": "TCons"
+                                                },
+                                                "tag": "TTuple"
+                                            }
+                                        ]
+                                    ],
+                                    "tag": "TCons"
+                                },
+                                "tag": "TTuple"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TTime"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": [
+                                    {
+                                        "contents": {
+                                            "tag": "TTimeDiff"
+                                        },
+                                        "tag": "TBase"
+                                    },
+                                    {
+                                        "contents": -24,
+                                        "tag": "TVar"
+                                    }
+                                ],
+                                "tag": "TArr"
+                            },
+                            {
+                                "contents": {
+                                    "tag": "TInt"
+                                },
+                                "tag": "TBase"
+                            },
+                            {
+                                "contents": {
+                                    "contents": {
+                                        "tag": "TText"
+                                    },
+                                    "tag": "TBase"
+                                },
+                                "tag": "TRep"
+                            },
+                            {
+                                "contents": [
+                                    {
+                                        "contents": 24,
+                                        "tag": "TVar"
+                                    },
+                                    {
+                                        "contents": {
+                                            "contents": [
+                                                {
+                                                    "contents": -20,
+                                                    "tag": "TVar"
+                                                },
+                                                {
+                                                    "contents": {
+                                                        "tag": "TTimeDiff"
+                                                    },
+                                                    "tag": "TBase"
+                                                },
+                                                [
+                                                    {
+                                                        "contents": -20,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": 5,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": 24,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TTime"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TWord32"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": 23,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TInt"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TTimeDiff"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": 23,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "contents": [
+                                                                "\r/񋢧\u0002Q\u0013|89jk",
+                                                                [
+                                                                    "bfnudtb",
+                                                                    "d30rng4_f_2",
+                                                                    "ermismta6xzhk4nmnk9i2u",
+                                                                    "iz9",
+                                                                    "k_hf3if",
+                                                                    "kzl5ipceeariiyuq33pr2u",
+                                                                    "lnlkn9q",
+                                                                    "mc_rzt8gx9zu",
+                                                                    "mte_qyvscefnw_ryo3p6o662b1hy",
+                                                                    "peettb8alt8ui835_l7ry7pf3gzkx2q",
+                                                                    "qomctmlm69stindmrx_vthxld3k0qz",
+                                                                    "u7rr",
+                                                                    "wdfil7i",
+                                                                    "wjjv",
+                                                                    "ya6g645a0yvplt8e9_3o970",
+                                                                    "ysvwepitdug39o2bty"
+                                                                ]
+                                                            ],
+                                                            "tag": "TEnum"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TWord32"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TTime"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": -25,
+                                                        "tag": "TVar"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TInt"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "tag": "TTime"
+                                                        },
+                                                        "tag": "TBase"
+                                                    },
+                                                    {
+                                                        "contents": 23,
+                                                        "tag": "TVar"
+                                                    }
+                                                ]
+                                            ],
+                                            "tag": "TCons"
+                                        },
+                                        "tag": "TTuple"
+                                    }
+                                ],
+                                "tag": "TArr"
+                            }
+                        ]
+                    ],
+                    "tag": "TCons"
+                },
+                "tag": "TTuple"
+            },
+            "tag": "TArray"
+        }
+    ],
+    "seed": 978287237
+}
