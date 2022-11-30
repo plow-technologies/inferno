@@ -119,6 +119,12 @@ $ cabal repl inferno-core
 
 Do note that building with Cabal directly outside of this Nix environment (that is, by installing the package set directly with a version of Cabal installed on your system) _will not work_.
 
+#### Formatting all sources
+
+To format all of the Nix and Haskell sources, run `nix fmt`. **Note**: this command assumes that certain executables are available on the `PATH`; please enter the development environment with `nix develop` before trying to run the formatter.
+
+To run a formatting check that will fail if any files are not formatted, run `nix build -L .#check.<SYSTEM>.formatting`.
+
 ## Golden Files
 
 The golden files for the exported frontend types currently live in `inferno-core/golden`. This will likely change as all the exported types should ideally be defined in `inferno-types`
