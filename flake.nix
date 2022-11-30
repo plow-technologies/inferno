@@ -187,7 +187,7 @@
               inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
             };
         in
-        packages // {
+        ps // {
           # Build all packages and checks
           default = pkgs.runCommand "check"
             {
