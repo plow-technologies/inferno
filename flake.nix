@@ -75,7 +75,6 @@
             packages = {
               # This takes forever to build
               ghc.components.library.doHaddock = false;
-              special-keys.patches = [ ./special-keys-semigroup.patch ];
             };
           }
         ];
