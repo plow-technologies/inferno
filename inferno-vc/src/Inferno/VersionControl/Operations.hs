@@ -11,8 +11,12 @@
 --
 -- * `<storePath>` stores the JSON serialised `VCMeta VCObject`s, where the filename is the cryptographic hash (`VCOBjectHash`) of the object's contents
 -- * `<storePath>/heads` is a set of current HEAD objects of the store, which can be seen as the roots of the VC tree
+-- * `<storePath>/heads` is a set of current HEAD objects of the store, which can be seen as the roots of the VC tree. Each filename is the hash of an object,
+--    and the file's contents are all the predecessors of this object, starting from the time it was created or cloned.
 -- * `<storePath>/to_head` is a map from every `VCOBjectHash` to its current HEAD, where the file name is the source hash and the contents of the file are the HEAD hash
 -- * `<storePath>/deps` is a map from every `VCOBjectHash` to its (transitive) dependencies, i.e. the file `<storePath>/deps/<hash>` describes the closure of `<hash>`
+-- * Deleting `VCMeta VCObject` - Delete is implemented as soft delete. Object is moved to a directory called `removed`. Object's preds are also removed.
+--   When an object is removed, its directory structure is preserved so you can undo it easily. i.e. `removed` directory has the same structure as `vc_store` directory.
 module Inferno.VersionControl.Operations where
 
 import Control.Monad (filterM, foldM, forM, forM_)
@@ -124,7 +128,7 @@ readVCObjectHashTxt fp = do
     decoded <- either (const $ throwError $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
     maybe (throwError $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
 
-storeVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCHashUpdate a, VCHashUpdate g, ToJSON a, ToJSON g) => VCMeta a g VCObject -> m VCObjectHash
+storeVCObject :: forall env err m a g. (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCHashUpdate a, VCHashUpdate g, ToJSON a, ToJSON g, FromJSON a, FromJSON g) => VCMeta a g VCObject -> m VCObjectHash
 storeVCObject obj@VCMeta {obj = ast, pred = p} = do
   VCStorePath storePath <- getTyped <$> ask
   -- if the new object has a direct predecessor (i.e. is not a clone or an initial commit)
@@ -156,8 +160,7 @@ storeVCObject obj@VCMeta {obj = ast, pred = p} = do
           -- we also include the new head pointing to itself
           preds <- readVCObjectHashTxt new_head_fp
           let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
-          forM_ (obj_h : preds) $ \pred_h ->
-            writeBS (storePath </> "to_head" </> show pred_h) obj_h_bs
+          forM_ (obj_h : preds) (\pred_h -> writeBS (storePath </> "to_head" </> show pred_h) obj_h_bs)
 
           pure obj_h
         else throwError $ TryingToAppendToNonHead pred_hash
@@ -165,10 +168,7 @@ storeVCObject obj@VCMeta {obj = ast, pred = p} = do
       obj_h <- writeHashedJSON storePath obj
       -- as there is no previous HEAD for this object, we simply create a new one
       let new_head_fp = storePath </> "heads" </> show obj_h
-      appendBS new_head_fp $ case p of
-        -- in case this is a clone of another object, we add its hash to the history
-        CloneOf clone_h -> BL.fromStrict $ vcObjectHashToByteString clone_h <> "\n"
-        _ -> mempty
+      appendBS new_head_fp mempty
 
       -- we again make sure to add a self reference link to the '<storePath>/to_head' map
       let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
@@ -331,22 +331,48 @@ fetchVCObjectHistory h = do
   (metas, removeds) <- foldM f ([], []) (head_h : preds)
   -- We like to know if the source of the clone still exists. We can do this by checking against the deleted hashes
   -- that we tracked above.
-  pure $ case removeds of
-    [] -> metas
+  case removeds of
+    [] ->
+      -- if it is a clone, we would like to prepend source of the cloned script as part of the history.
+      -- it is fine to only do this once since we only show the last source of the clone
+      -- i.e. original -> cloneof orignal = cloned -> cloneof cloned = cloned'
+      -- when viewing cloned' history, it will only show up to cloned.
+      case metas of
+        all'@(x : _) ->
+          case Inferno.VersionControl.Types.pred x of
+            CloneOf hsh' -> do
+              original <- fmap (const hsh') <$> fetchVCObject hsh'
+              -- 'nubBy' is needed for backward compatibility with current scripts. Clone scripts' head look like this,
+              --
+              -- x_0 (init)
+              -- x_1 (clone)
+              -- x_1_1
+              --
+              -- However, for new script (anything after this PR landed,https://github.com/plow-technologies/all/pull/9801),
+              -- clone scripts' head are stored like this,
+              --
+              -- x_1 (clone)
+              -- x_1_1
+              --
+              -- Note that it is missing the init object. When we fetch for histories, we look for pred of clone and add it to the history, but for existing scripts this means it adds init object twice
+              pure $ List.nubBy (\a b -> obj a == obj b) $ original : all'
+            _ -> pure all'
+        _ -> pure metas
     _ ->
-      fmap
-        ( \meta -> case Inferno.VersionControl.Types.pred meta of
-            CloneOf hsh'
-              | List.elem hsh' removeds ->
-                -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
-                -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
-                -- source that is still available and no longer available.
-                -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
-                -- See 'CloneOfRemoved' for details.
-                meta {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}
-            _ -> meta
-        )
-        metas
+      pure $
+        fmap
+          ( \meta -> case Inferno.VersionControl.Types.pred meta of
+              CloneOf hsh'
+                | List.elem hsh' removeds ->
+                    -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
+                    -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
+                    -- source that is still available and no longer available.
+                    -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
+                    -- See 'CloneOfRemoved' for details.
+                    meta {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}
+              _ -> meta
+          )
+          metas
 
 getAllHeads :: (VCStoreLogM env m, VCStoreEnvM env m) => m [VCObjectHash]
 getAllHeads = do

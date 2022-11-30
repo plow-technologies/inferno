@@ -86,9 +86,15 @@ deriving instance ToADTArbitrary VCIncompatReason
 data VCObjectPred
   = -- | Original script (root of the histories).
     Init
-  | CompatibleWithPred VCObjectHash
-  | IncompatibleWithPred VCObjectHash [(Namespace, VCIncompatReason)]
-  | MarkedBreakingWithPred VCObjectHash
+  | -- | Indicate whether a script could be automatically updated to a newer version, based on certain criteria,
+    -- such as if the types and parameter order hasn't changed, If these checks pass the script should be marked as CompatibleWithPred.
+    CompatibleWithPred VCObjectHash
+  | -- | Like 'CompatibleWithPread' but if we automatically detect that the script would definitely be breaking,
+    -- we should mark it as incompatible giving reason(s).
+    IncompatibleWithPred VCObjectHash [(Namespace, VCIncompatReason)]
+  | -- | MarkedBreakingWithPred should be used when the automatic detection declares the new script compatible,
+    -- but we know we don't want to let it update automatically because the logic has changed.
+    MarkedBreakingWithPred VCObjectHash
   | -- | Similar to 'Init' but this script is init'd by cloning the original script.
     CloneOf VCObjectHash
   | -- | CloneOfRemoved' is a "virtual" constructor to differentiate that the source of the script has been removed (but can
