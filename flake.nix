@@ -243,10 +243,11 @@
               buildInputs = [ pkgs.nixpkgs-fmt (ormoluFor defaultCompiler pkgs) ];
             }
             ''
-              set -euo pipefail
-              cp -r ${self}/* .
+              cp -r --no-preserve=mode --preserve=timestamps ${self}/* .
               chmod -R +rwx .
+              export HOME=$TMPDIR
               ${treefmt.legacyPackages.${system}.treefmt}/bin/treefmt --fail-on-change
+              touch $out
             '';
         }
         // flakes.${defaultCompiler}.checks
