@@ -9,7 +9,7 @@
     extra-trusted-public-keys = [
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
     ];
-    bash-prompt = "\\[\\e[0;37m\\](nix) \\[\\e[0;1;91m\\]inferno\\[\\e[0m\\] λ ";
+    bash-prompt = "\\[\\e[0;37m\\](\\[\\e[0m\\]nix) \\[\\e[0;1;91m\\]inferno \\[\\e[0m\\]\\w \\[\\e[0;1m\\]λ \\[\\e[0m\\]";
   };
 
   inputs = {
