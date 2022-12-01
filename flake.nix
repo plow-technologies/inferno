@@ -97,9 +97,6 @@
       # (which would happen if we just use `self.packages` directly in the overlay)
       infernoFor = compiler: pkgs: pkgs.haskell-nix.cabalProject {
         name = "inferno";
-        # TODO
-        # Perhaps we can support multiple compiler versions
-        # We should probably build with GHC 9.2.x at any rate
         compiler-nix-name = compiler;
         src = builtins.path {
           path = ./.;
