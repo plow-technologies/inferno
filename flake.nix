@@ -91,6 +91,10 @@
             )
         );
 
+      # This should be parameterized by the `pkgs` used to build the project. We
+      # want users who get packages from our `overlays.default` to be able to
+      # use their own `nixpkgs` without having to instantiate ours as well
+      # (which would happen if we just use `self.packages` directly in the overlay)
       infernoFor = compiler: pkgs: pkgs.haskell-nix.cabalProject {
         name = "inferno";
         # TODO
