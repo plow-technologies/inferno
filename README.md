@@ -93,6 +93,12 @@ inferno-core-test-inferno-tests> Configure flags:
 
 (Do note that `nix flake check`, a command which runs all `checks` among other things, will not work; see [here](https://github.com/NixOS/nix/issues/4265) for more information.)
 
+To run _all_ tests and build all packages, build `packages.<SYSTEM>.default`:
+
+```
+$ nix build -L
+```
+
 ##### Running apps
 
 To run an application directly via Nix, use `nix run .#<APP>`, e.g.
