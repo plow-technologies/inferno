@@ -77,6 +77,8 @@ On NixOS, add the user/group name to the list under [`nix.settings.trusted-users
 
 If you do not wish to add yourself as a trusted user, you will need to configure the binary caches [manually](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
 
+**Note**: Even after configuring IOG's binary caches, you will still need to build a large number of Haskell libraries as IOG does not cache these. Even if you are building dozens of Haskell libraries, this is not unusual.
+
 ### Building or working on the project
 
 Once you have completed the steps above, you can use the `nix` command to build or work on the project.
