@@ -54,7 +54,10 @@ Accepting these prompts will set the required configuration values for you. Mark
 
 If you would prefer to configure the binary caches manually, you can do so by following the instructions [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
 
-**Important**: If you do not enable the binary caches, you _will_ build GHC from source several times! If you find yourself building GHC despite having set the required configuration values (or allowed the flake to do so for you), something has gone wrong.
+**Important**: If you do not enable the binary caches, you _will_ build GHC from source several times! If you find yourself building GHC despite having set the required configuration values (or allowed the flake to do so for you), something has gone wrong:
+
+- If you set the cache values manually, make sure that you restarted the Nix daemon on non-NixOS systems
+- If you accepted the prompts from the flake, you may not have permissions to set these values. Either set them manually in your system-wide configuration or continue reading below
 
 **Important**: If you are on NixOS or otherwise using a multi-user Nix install, you **must** be a trusted user to set substituters. If you are not a trusted user, enabling the options prompted by the flake will have no effect (non-trusted users are disallowed from doing this).
 
