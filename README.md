@@ -50,11 +50,13 @@ do you want to permanently mark this value as trusted (y/N)? y
 
 ```
 
-If you see the prompts above, terminate the command and first add IOG's binary caches to your Nix configuration as described [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
+Accepting these prompts will set the required configuration values for you. Marking them as trusted will ensure that they are used for future `nix` invocations in this repository.
 
-**Important**: If you do not enable the binary caches, you _will_ build GHC from source several times!
+If you would prefer to configure the binary caches manually, you can do so by following the instructions [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
 
-**Note**: If you are on NixOS or otherwise using a multi-user Nix install, you **must** be a trusted user to set substituters. If you are not a trusted user, enabling the options prompted by the flake will have no effect (non-trusted users are disallowed from doing this). To make yourself a trusted user:
+**Important**: If you do not enable the binary caches, you _will_ build GHC from source several times! If you find yourself building GHC despite having set the required configuration values (or allowed the flake to do so for you), something has gone wrong.
+
+**Important**: If you are on NixOS or otherwise using a multi-user Nix install, you **must** be a trusted user to set substituters. If you are not a trusted user, enabling the options prompted by the flake will have no effect (non-trusted users are disallowed from doing this).
 
 On non-NixOS systems, add the following to the system-wide configuration (`/etc/nix/nix.conf`):
 
