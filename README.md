@@ -25,11 +25,11 @@ We currently only offer a Nix-based build system for building and developing `in
 
 If you don't have Nix installed, follow the directions [here](https://nixos.org/download.html). This repository uses flakes, an up-and-coming Nix feature, and we recommend installing v2.8 or greater for the best compatibility.
 
-2. Enable required flakes options
+2. Enable required flakes settings
 
 Certain features that flakes require are still marked as experimental and must be explicitly enabled.
 
-On non-NixOS systems, edit your `~/.config/nix/nix.conf` and add the following lines:
+On non-NixOS systems, edit `~/.config/nix/nix.conf` or `/etc/nix/nix.conf` and add the following lines:
 
 ```
 experimental-features = nix-command flakes
@@ -37,7 +37,7 @@ experimental-features = nix-command flakes
 
 On NixOS, you can add the same line to `nix.extraOptions` in your system configuration.
 
-3. Add/enable IOG's binary caches
+3. Set up IOG's binary caches
 
 This project uses IOG's `haskell.nix`; IOG provides binary caches which must be used in order to build this project. When you first run a `nix` command in this repository, you will be prompted to allow certain configuration values to be set:
 
@@ -53,6 +53,24 @@ do you want to permanently mark this value as trusted (y/N)? y
 If you see the prompts above, terminate the command and first add IOG's binary caches to your Nix configuration as described [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
 
 **Important**: If you do not enable the binary caches, you _will_ build GHC from source several times!
+
+**Note**: If you are on NixOS or otherwise using a multi-user Nix install, you **must** be a trusted user to set substituters. If you are not a trusted user, enabling the options prompted by the flake will have no effect (non-trusted users are disallowed from doing this). To make yourself a trusted user:
+
+On non-NixOS systems, add the following to the system-wide configuration (`/etc/nix/nix.conf`):
+
+```
+trusted-users = <username> root
+```
+
+You can also use a group name by prefixing it with `@`, e.g. to add all members of the `wheel` group:
+
+```
+trusted-users = @wheel root
+```
+
+On NixOS, add the user/group name to the list under [`nix.settings.trusted-users`](https://search.nixos.org/options?show=nix.settings.trusted-users).
+
+If you do not wish to add yourself as a trusted user, you will need to configure the binary caches [manually](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
 
 ### Building or working on the project
 
