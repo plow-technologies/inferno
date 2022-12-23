@@ -43,7 +43,7 @@ import Data.Bifunctor (bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, unzip4) -- intercalate
+import qualified Data.List as List
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
@@ -95,7 +95,7 @@ import Inferno.Types.Type
     Substitutable (..),
     TCScheme (..),
     TV,
-    TypeClass (TypeClass),
+    TypeClass (..),
     typeBool,
     typeDouble,
     typeInt,
@@ -381,7 +381,7 @@ inferTypeReps allTypeClasses (ForallTC tvs tyCls (ImplType _impl ty)) inputTys o
         Left errs -> Left errs
         Right subst ->
           let tyClsSubst = Set.map (apply subst) tyCls
-           in case find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tyClsSubst of
+           in case List.find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tyClsSubst of
                 Nothing -> pure []
                 Just rep@(TypeClass _ runtimeRepTys) ->
                   if Set.null $ ftv rep
@@ -548,7 +548,7 @@ infer expr =
           meta <- lookupEnv exprLoc (maybe (Right x) Left $ pinnedToMaybe mHash)
           let (tcs, t@(ImplType impl t'')) = ty meta
           attachTypeToPosition exprLoc meta
-          (expr', t') <- case find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tcs of
+          (expr', t') <- case List.find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tcs of
             Just (TypeClass _ runtimeRepTys) -> do
               implRepTyps <- forM runtimeRepTys $ \repTy -> do
                 i <- freshRaw
@@ -648,7 +648,7 @@ infer expr =
                 )
         ArrayComp p1 e p2 sels cond p3 -> do
           _ <- checkVariableOverlap $ NEList.toList sels
-          (sels', vars, is, css) <- unzip4 <$> go (NEList.toList sels) id
+          (sels', vars, is, css) <- List.unzip4 <$> go (NEList.toList sels) id
 
           (e', ImplType i_e t_e, c_e) <- foldr inEnv (infer e) vars
 
@@ -704,7 +704,7 @@ infer expr =
             checkVariableOverlap :: [(SourcePos, Ident, SourcePos, b, Maybe SourcePos)] -> Infer ()
             checkVariableOverlap = \case
               [] -> return ()
-              (loc, x, _, _e, _) : xs -> case find (\(_, x', _, _, _) -> x == x') xs of
+              (loc, x, _, _e, _) : xs -> case List.find (\(_, x', _, _, _) -> x == x') xs of
                 Just (loc', x', _, _, _) -> throwError [VarMultipleOccurrence x (elementPosition loc x) (elementPosition loc' x')]
                 Nothing -> checkVariableOverlap xs
         Lam p1 args p2 e -> do
@@ -960,7 +960,7 @@ infer expr =
           res <- forM (zip patVars $ map (\(_, _p, _, e'') -> e'') patExprs) $
             \(vars, e''') -> foldr inEnv (infer e''') $ map (\(Ident x, meta) -> (ExtIdent $ Right x, meta)) vars
 
-          let (es'', is_res, ts_res, cs_res) = unzip4 $ map (\(e'', ImplType i_r t_r, cs_r) -> (e'', i_r, t_r, cs_r)) res
+          let (es'', is_res, ts_res, cs_res) = List.unzip4 $ map (\(e'', ImplType i_r t_r, cs_r) -> (e'', i_r, t_r, cs_r)) res
               (isMerged, ics) = mergeImplicitMaps (blockPosition expr) (i_e : is_res)
               tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_e `Set.union` (Set.unions cs_res)
               patTysEqConstraints =
@@ -1158,10 +1158,16 @@ unifies err (TSeries t1) (TSeries t2) = unifies err t1 t2
 unifies err (TOptional t1) (TOptional t2) = unifies err t1 t2
 unifies err (TTuple ts1) (TTuple ts2)
   | length (tListToList ts1) == length (tListToList ts2) = unifyMany err (tListToList ts1) (tListToList ts2)
+  | List.null err =
+      let pos = initialPos ""
+          loc = (pos, pos)
+       in throwError [UnificationFail Set.empty (TTuple ts1) (TTuple ts2) loc]
   | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- (getLocFromErrs err)]
-unifies err _ _ =
-  -- trace "throwing in unifies " $
-  throwError err
+unifies [] t1 t2 =
+  let pos = initialPos ""
+      loc = (pos, pos)
+   in throwError [UnificationFail Set.empty t1 t2 loc]
+unifies err t1 t2 = throwError [UnificationFail (getTypeClassFromErrs err) t1 t2 loc | loc <- (getLocFromErrs err)]
 
 -- Unification solver
 solver :: Unifier -> Solve Subst
