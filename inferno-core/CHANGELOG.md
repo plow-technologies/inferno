@@ -1,4 +1,8 @@
 # Revision History for inferno-core
 
+
+## 0.1.0.1 -- 2022-12-1
+* [fix] Function 'year' and 'month' should truncate time properly.
+
 ## 0.1.0.0 -- 2022-11-28
 * Prepare for OSS release
