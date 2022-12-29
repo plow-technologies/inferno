@@ -20,8 +20,6 @@ import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.STM (atomically)
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
--- import qualified Data.Aeson as J
--- import           Data.Int (Int32)
 import qualified Data.ByteString as BS
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import qualified Data.ByteString.Lazy as BSL
@@ -66,9 +64,8 @@ import Lens.Micro (to, (^.))
 import Plow.Logging (IOTracer (..), traceWith)
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Prettyprinter (Pretty)
-import System.IO (BufferMode (NoBuffering), hFlush, hSetBuffering, hSetEncoding, stdin, stdout, utf8)
+import System.IO (BufferMode (NoBuffering), hFlush, hSetBuffering, hSetEncoding, stderr, stdin, stdout, utf8)
 
--- import           System.Exit
 
 -- This is the entry point for launching an LSP server, explicitly passing in handles for input and output
 -- the `getIdents` parameter is a handle for input parameters, only used by the frontend.
@@ -118,7 +115,7 @@ runInfernoLspServerWith tracer clientIn clientOut prelude getIdents validateInpu
     ioExcept (e :: E.IOException) = traceWith tracer (T.pack (show e)) >> return 1
     someExcept (e :: E.SomeException) = traceWith tracer (T.pack (show e)) >> return 1
 
-runInfernoLspServer :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> IO Int
+runInfernoLspServer :: forall c m. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> IO Int
 runInfernoLspServer prelude = do
   hSetBuffering stdin NoBuffering
   hSetEncoding stdin utf8
@@ -133,7 +130,7 @@ runInfernoLspServer prelude = do
         hFlush stdout
       getIdents = pure []
 
-  withAsyncHandleTracer stdout 100 $ \tracer -> do
+  withAsyncHandleTracer stderr 100 $ \tracer -> do
     let beforeParse _ = pure ()
         afterParse _ = pure
     runInfernoLspServerWith @m @c tracer clientIn clientOut prelude getIdents (const $ Right ()) beforeParse afterParse

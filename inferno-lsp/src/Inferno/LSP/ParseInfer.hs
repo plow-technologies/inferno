@@ -524,7 +524,7 @@ parseAndInfer prelude idents txt validateInput = do
               -- liftIO $ debugM "reactor.handle" $ "Infer error: " ++ show err
               return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
             Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap) -> do
-              liftIO $ print typSig
+              -- liftIO $ print typSig
               let possibleInputErrors = validateInputs typSig
               case find isLeft possibleInputErrors of
                 Just (Left err) -> do
