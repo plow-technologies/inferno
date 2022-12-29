@@ -20,10 +20,6 @@
     # preferable over nixpkgs' Haskell support
     haskell-nix.url = "github:input-output-hk/haskell.nix";
     npm-buildpackage.url = "github:serokell/nix-npm-buildpackage";
-    vscode-vsce = {
-      url = "github:microsoft/vscode-vsce/20378752b7931016bd43886184d623b157703639";
-      flake = false;
-    };
     flake-compat = {
       url = "github:edolstra/flake-compat";
       flake = false;
@@ -82,7 +78,8 @@
       # GHC versions
       flakesFor = pkgs: builtins.listToAttrs
         (
-          lib.lists.forEach [ defaultCompiler "ghc884" ]
+          # only GHC 8.10.7 or newer is supported on M1 Macs
+          lib.lists.forEach ([ defaultCompiler ] ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884")
             (compiler: lib.attrsets.nameValuePair
               compiler
               # TODO
@@ -111,7 +108,9 @@
             cabal = { };
             haskell-language-server = { };
           };
-          buildInputs = [ pkgs.nixpkgs-fmt (ormoluFor compiler pkgs) ];
+          buildInputs = [ 
+            pkgs.nixpkgs-fmt #(ormoluFor compiler pkgs) 
+          ];
         };
         modules = [
           {
@@ -129,24 +128,9 @@
 
       # Inferno's VSCode packages
       vsCodeInfernoFor = pkgs:
-        let
-          vsce = pkgs.buildYarnPackage {
-            src = inputs.vscode-vsce;
-            yarnBuild = ''
-              yarn
-              yarn run compile
-            '';
-            installPhase = ''
-              cp -Lr . $out
-              mkdir $out/bin
-              ln -s $out/out/vsce $out/bin/vsce
-            '';
-          };
-        in
         {
           vscode-inferno-syntax-highlighting = pkgs.buildNpmPackage {
             src = ./vscode-inferno-syntax-highlighting;
-            nativeBuildInputs = [ vsce ];
             npmBuild = ''
               npm run build-tm
               vsce package
@@ -160,7 +144,7 @@
           };
           vscode-inferno-lsp-server = pkgs.buildNpmPackage {
             src = ./vscode-inferno-lsp-server;
-            nativeBuildInputs = [ vsce pkgs.nodePackages.typescript ];
+            nativeBuildInputs = [ pkgs.nodePackages.typescript ];
             npmBuild = ''
               npm run package
             '';
