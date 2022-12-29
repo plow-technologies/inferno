@@ -253,6 +253,10 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "open Time in day (toTime (days 3 + hours 22)) == toTime (days 3)" vTrue
     shouldEvaluateTo "open Time in month (toTime (days 66)) == toTime (days 59)" vTrue
     shouldEvaluateTo "open Time in year (toTime (days 367))" $ VEpochTime (60 * 60 * 24 * 365)
+    -- December 1, 2022 1:18:10 AM to January 1, 2022 12:00:00 AM
+    shouldEvaluateTo "open Time in year (toTime (seconds 1669857490))" $ VEpochTime 1640995200
+    -- December 1, 2022 1:18:10 AM to December 1, 2022 12:00:00 AM
+    shouldEvaluateTo "open Time in month (toTime (seconds 1669857490))" $ VEpochTime 1669852800
     shouldEvaluateTo
       "open Time in let ?now = (toTime (seconds 66666)) in secondsBefore ?now 44 == ?now - (seconds 44)"
       vTrue
