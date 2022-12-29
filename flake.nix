@@ -108,9 +108,9 @@
             cabal = { };
             haskell-language-server = { };
           };
-          buildInputs = [ 
-            pkgs.nixpkgs-fmt #(ormoluFor compiler pkgs) 
-          ];
+          buildInputs = [ pkgs.nixpkgs-fmt ] ++ 
+            # ormolu build currently segfaults on the M1
+            lib.optional (pkgs.system != "aarch64-darwin") (ormoluFor compiler pkgs);
         };
         modules = [
           {
