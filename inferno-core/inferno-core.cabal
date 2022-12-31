@@ -116,3 +116,17 @@ test-suite inferno-tests
     , TupleSections
     , RecordWildCards
   ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+
+executable inferno
+  main-is: Main.hs
+  hs-source-dirs:
+      app
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , inferno-core
+    , inferno-types
+    , text
+    , mtl
+  default-language: Haskell2010
