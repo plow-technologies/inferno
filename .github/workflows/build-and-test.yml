@@ -7,12 +7,28 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   runhaskell:
     name: build and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - name: Cache Cabal package database and store
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+          key: cabal-1-${{ runner.os }}-ghc-${{ env.ghc_version }}-${{ hashFiles('hs-backend-booster.cabal') }}
+          restore-keys: |
+            cabal-1-${{ runner.os }}-ghc-${{ env.ghc_version }}-
+            cabal-1-${{ runner.os }}-ghc-
+            cabal-1-
 
       - uses: haskell/actions/setup@v2
         with:
