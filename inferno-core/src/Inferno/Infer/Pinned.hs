@@ -189,7 +189,8 @@ pinExpr m expr =
         Op e1 p1 _ meta modNm op e2 -> do
           hash <- lookupName exprPos modNm (OpNamespace op) m
           (\e1' e2' -> Op e1' p1 hash meta modNm op e2')
-            <$> pinExpr m e1 <*> pinExpr m e2
+            <$> pinExpr m e1
+            <*> pinExpr m e2
         PreOp loc _ meta modNm op e -> do
           hash <- lookupName exprPos modNm (FunNamespace op) m
           PreOp loc hash meta modNm op <$> pinExpr m e
@@ -200,7 +201,8 @@ pinExpr m expr =
           pure $ Tuple p1 es' p2
         Assert p1 cond p2 e ->
           (\cond' e' -> Assert p1 cond' p2 e')
-            <$> pinExpr m cond <*> pinExpr m e
+            <$> pinExpr m cond
+            <*> pinExpr m e
         Empty p -> pure $ Empty p
         One p e -> One p <$> pinExpr m e
         Case p1 e p2 patExprs p3 -> do

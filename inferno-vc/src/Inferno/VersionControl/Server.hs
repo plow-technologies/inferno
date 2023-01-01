@@ -129,7 +129,8 @@ runServerConfig _ _ serverConfig = do
     runSettings (setPort port $ setHost host settingsWithTimeout) $
       ungzipRequest $
         gzip def $
-          serve (Proxy :: Proxy (VersionControlAPI a g)) $ vcServer vcPath tracer
+          serve (Proxy :: Proxy (VersionControlAPI a g)) $
+            vcServer vcPath tracer
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g

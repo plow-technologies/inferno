@@ -183,13 +183,15 @@ mIdent :: Parser (SourcePos, Maybe Ident)
 mIdent = lexeme $ do
   startPos <- getSourcePos
   (startPos,) . Just . Ident <$> variable
-    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing)) <?> "a wildcard parameter '_'"
+    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing))
+    <?> "a wildcard parameter '_'"
 
 mExtIdent :: Parser (SourcePos, Maybe ExtIdent)
 mExtIdent = lexeme $ do
   startPos <- getSourcePos
   (startPos,) . Just . ExtIdent . Right <$> variable
-    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing)) <?> "a wildcard parameter '_'"
+    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing))
+    <?> "a wildcard parameter '_'"
 
 implicitVariable :: Parser Text
 implicitVariable = hidden $ char '?' *> (Text.cons <$> letterChar <*> takeWhileP Nothing isAlphaNumOrSeparator)
@@ -197,7 +199,8 @@ implicitVariable = hidden $ char '?' *> (Text.cons <$> letterChar <*> takeWhileP
 enumConstructor :: SomeParser r Ident
 enumConstructor =
   Ident
-    <$> (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator) <?> "an enum constructor\nfor example: #true, #false"
+    <$> (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
+    <?> "an enum constructor\nfor example: #true, #false"
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
 signedInteger :: Num a => Parser a
@@ -798,14 +801,16 @@ sigVariable =
                 (InfixOp _, _ns, i) -> [i]
                 _ -> []
             )
-            $ concat $ IntMap.elems opsTable
+            $ concat
+            $ IntMap.elems opsTable
         preOpList =
           concatMap
             ( \case
                 (PrefixOp, _ns, i) -> [i]
                 _ -> []
             )
-            $ concat $ IntMap.elems opsTable
+            $ concat
+            $ IntMap.elems opsTable
      in lexeme $
           (tryMany (\op -> char '(' *> (SigOpVar <$> string op) <* char ')') opList)
             <|> (tryMany (\op -> (SigVar <$> string op)) preOpList)

@@ -338,12 +338,12 @@ fetchVCObjectHistory h = do
         ( \meta -> case Inferno.VersionControl.Types.pred meta of
             CloneOf hsh'
               | List.elem hsh' removeds ->
-                -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
-                -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
-                -- source that is still available and no longer available.
-                -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
-                -- See 'CloneOfRemoved' for details.
-                meta {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}
+                  -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
+                  -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
+                  -- source that is still available and no longer available.
+                  -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
+                  -- See 'CloneOfRemoved' for details.
+                  meta {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}
             _ -> meta
         )
         metas

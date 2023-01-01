@@ -214,8 +214,8 @@ insertCommentIntoExpr comment expr = go' expr
                               then OpenModule p1 hash mn (importsGo' is) inPos e1
                               else OpenModule p1 hash mn is inPos $ go' e1
                           _ -> e
-                      ) :
-                      es
+                      )
+                        : es
 
 insertCommentsIntoExpr :: [Comment SourcePos] -> Expr hash SourcePos -> Expr hash SourcePos
 insertCommentsIntoExpr = flip (foldr insertCommentIntoExpr)

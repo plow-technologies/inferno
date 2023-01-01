@@ -196,7 +196,7 @@ exhaustive sigs pm = i sigs pm 1
       let sig = conNames $ col p
        in case isCompleteSignature enum_sigs sig of
             Complete -> go $ Set.toList sig
-            Incomplete somePat -> (somePat :) <$> i enum_sigs (defaultMatrix p) (n -1)
+            Incomplete somePat -> (somePat :) <$> i enum_sigs (defaultMatrix p) (n - 1)
       where
         go [] = Nothing
         go (ck : rest) =
