@@ -53,8 +53,8 @@ yearsFun = timeMultiplier 31536000
 hourFun, dayFun, monthFun, yearFun :: CTime -> CTime
 hourFun = mapEpochAsUTC $ \(UTCTime d diff) -> UTCTime d $ hourDiffTime diff
 dayFun = mapEpochAsUTC midnightUTCTime
-monthFun = mapEpochAsUTC $ mapUTCTimeDay truncateMonth
-yearFun = mapEpochAsUTC $ mapUTCTimeDay truncateYear
+monthFun = mapEpochAsUTC $ \utc -> mapUTCTimeDay truncateMonth $ midnightUTCTime utc
+yearFun = mapEpochAsUTC $ \utc -> mapUTCTimeDay truncateYear $ midnightUTCTime utc
 
 mapUTCTimeDay :: (Day -> Day) -> (UTCTime -> UTCTime)
 mapUTCTimeDay f (UTCTime d diff) = UTCTime (f d) diff

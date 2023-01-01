@@ -17,7 +17,144 @@ Specifically, the project comprises of:
 
 ## Dev Setup
 
-Install GHC 8.8.4 and cabal 3.2.0.0 via `ghcup`. The `cabal.project` and `hie.yaml` files should tell HLS how to build the packages contained in this repo. TODO elaborate
+We currently only offer a Nix-based build system for building and developing `inferno` packages. You can build the project components directly with Nix or enter a Nix-based development environment to build or work on the project with Cabal.
+
+### Nix prerequisites
+
+1. Install Nix v2.8 or greater
+
+If you don't have Nix installed, follow the directions [here](https://nixos.org/download.html). This repository uses flakes, an up-and-coming Nix feature, and we recommend installing v2.8 or greater for the best compatibility.
+
+2. Enable required flakes settings
+
+Certain features that flakes require are still marked as experimental and must be explicitly enabled.
+
+On non-NixOS systems, edit `~/.config/nix/nix.conf` or `/etc/nix/nix.conf` and add the following lines:
+
+```
+experimental-features = nix-command flakes
+```
+
+On NixOS, you can add the same line to `nix.extraOptions` in your system configuration.
+
+3. Set up IOG's binary caches
+
+This project uses IOG's `haskell.nix`; IOG provides binary caches which must be used in order to build this project. When you first run a `nix` command in this repository, you will be prompted to allow certain configuration values to be set:
+
+```
+$ nix develop
+do you want to allow configuration setting 'extra-substituters' to be set to 'https://cache.iog.io' (y/N)? y
+do you want to permanently mark this value as trusted (y/N)? y
+do you want to allow configuration setting 'extra-trusted-public-keys' to be set to 'hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=' (y/N)? y
+do you want to permanently mark this value as trusted (y/N)? y
+
+```
+
+Accepting these prompts will set the required configuration values for you. Marking them as trusted will ensure that they are used for future `nix` invocations in this repository.
+
+If you would prefer to configure the binary caches manually, you can do so by following the instructions [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
+
+**Important**: If you do not enable the binary caches, you _will_ build GHC from source several times! If you find yourself building GHC despite having set the required configuration values (or allowed the flake to do so for you), something has gone wrong:
+
+- If you set the cache values manually, make sure that you restarted the Nix daemon on non-NixOS systems
+- If you accepted the prompts from the flake, you may not have permissions to set these values. Either set them manually in your system-wide configuration or continue reading below
+
+**Important**: If you are on NixOS or otherwise using a multi-user Nix install, you **must** be a trusted user to set substituters. If you are not a trusted user, enabling the options prompted by the flake will have no effect (non-trusted users are disallowed from doing this).
+
+On non-NixOS systems, add the following to the system-wide configuration (`/etc/nix/nix.conf`):
+
+```
+trusted-users = <username> root
+```
+
+You can also use a group name by prefixing it with `@`, e.g. to add all members of the `wheel` group:
+
+```
+trusted-users = @wheel root
+```
+
+On NixOS, add the user/group name to the list under [`nix.settings.trusted-users`](https://search.nixos.org/options?show=nix.settings.trusted-users).
+
+If you do not wish to add yourself as a trusted user, you will need to configure the binary caches [manually](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
+
+**Note**: Even after configuring IOG's binary caches, you will still need to build a large number of Haskell libraries as IOG does not cache these. Even if you are building dozens of Haskell libraries, this is not unusual.
+
+### Building or working on the project
+
+Once you have completed the steps above, you can use the `nix` command to build or work on the project.
+
+#### Building/running components
+
+##### Executables
+
+Use `nix build .#<PACKAGE>` to build project components or executables. For example, to build `vscode-inferno-syntax-highlighting`, run the following:
+
+```
+$ nix build .#vscode-inferno-syntax-highlighting
+```
+
+This will create a symlink in `$PWD/result`:
+
+```
+$ ls -H ./result
+inferno.monarch.json  vscode-inferno-syntax-highlighting-0.0.1.vsix
+```
+
+`nix build` by itself will build all components and run all tests.
+
+##### Tests
+
+To run tests for a particular project component, you can use `nix build -L .#checks.<SYSTEM>.<TEST>` where `<SYSTEM>` corresponds to your platform and OS (e.g. `x86_64-linux`). All project tests are part of the `checks` flake output.
+
+```
+$ nix build -L .#checks.x86_64-linux.inferno-core:test:inferno-tests
+inferno-core-test-inferno-tests> unpacking sources
+inferno-core-test-inferno-tests> source root is inferno-src-root-inferno-core-test-inferno-tests-root
+inferno-core-test-inferno-tests> patching sources
+inferno-core-test-inferno-tests> configuring
+inferno-core-test-inferno-tests> Configure flags:
+# etc...
+```
+
+(Do note that `nix flake check`, a command which runs all `checks` among other things, will not work; see [here](https://github.com/NixOS/nix/issues/4265) for more information.)
+
+To run _all_ tests and build all packages, build `packages.<SYSTEM>.default`:
+
+```
+$ nix build -L
+```
+
+##### Running apps
+
+To run an application directly via Nix, use `nix run .#<APP>`, e.g.
+
+```
+$ nix run .#inferno-lsp-server
+```
+
+This is equivalent to the following:
+
+```
+$ nix build .#inferno-lsp-server
+$ ./result/bin/inferno-lsp-server
+```
+
+#### Entering a development environment
+
+To enter a development environment suitable for working on the `inferno` project itself, use `nix develop`. `cabal`, `haskell-language-server`, and other development tools will be available in the shell.
+
+```
+$ nix develop
+$ cabal repl inferno-core
+```
+
+Do note that building with Cabal directly outside of this Nix environment (that is, by installing the package set directly with a version of Cabal installed on your system) _will not work_.
+
+#### Formatting all sources
+
+To format all of the Nix and Haskell sources, run `nix fmt`. **Note**: this command assumes that certain executables are available on the `PATH`; please enter the development environment with `nix develop` before trying to run the formatter.
+
+To run a formatting check that will fail if any files are not formatted, run `nix build -L .#check.<SYSTEM>.formatting`.
 
 ## Golden Files
 

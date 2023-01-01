@@ -1,0 +1,11 @@
+[formatter.nix]
+command = "nixpkgs-fmt"
+includes = ["*.nix"]
+
+[formatter.haskell]
+command = "ormolu"
+options = [
+    "-o", "-XTypeApplications",
+    "--mode", "inplace",
+]
+includes = ["*.hs"]
