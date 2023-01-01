@@ -32,9 +32,8 @@ jobs:
           path: |
             ~/.cabal/packages
             ~/.cabal/store
-          key: cabal-1-${{ runner.os }}-ghc-${{ env.ghc_version }}-${{ hashFiles('hs-backend-booster.cabal') }}
+          key: cabal-1-${{ runner.os }}-ghc-${{ hashFiles('hs-backend-booster.cabal') }}
           restore-keys: |
-            cabal-1-${{ runner.os }}-ghc-${{ env.ghc_version }}-
             cabal-1-${{ runner.os }}-ghc-
             cabal-1-
 
