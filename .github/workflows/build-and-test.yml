@@ -37,9 +37,9 @@ jobs:
       - uses: mrkkrp/ormolu-action@v7
         with:
           pattern: |
-            */app/**/*.hs
-            */src/**/*.hs
-            */test/**/*.hs
+            inferno-*/app/**/*.hs
+            inferno-*/src/**/*.hs
+            inferno-*/test/**/*.hs
 
       - name: Build
         run: cabal build all
