@@ -35,6 +35,11 @@ jobs:
           ghc-version: '9.2.4'
 
       - uses: mrkkrp/ormolu-action@v7
+        with:
+          pattern: |
+            */app/**/*.hs
+            */src/**/*.hs
+            */test/**/*.hs
 
       - name: Build
         run: cabal build all
