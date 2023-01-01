@@ -18,7 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Cache Cabal package database and store
+      - name: Format with Ormolu
+        uses: mrkkrp/ormolu-action@v7
+        with:
+          pattern: |
+            inferno-*/app/**/*.hs
+            inferno-*/src/**/*.hs
+            inferno-*/test/**/*.hs
+
+      - name: Cache Cabal store
         uses: actions/cache@v3
         with:
           path: |
@@ -30,16 +38,10 @@ jobs:
             cabal-1-${{ runner.os }}-ghc-
             cabal-1-
 
-      - uses: haskell/actions/setup@v2
+      - name: Set up Cabal
+        uses: haskell/actions/setup@v2
         with:
           ghc-version: '9.2.4'
-
-      - uses: mrkkrp/ormolu-action@v7
-        with:
-          pattern: |
-            inferno-*/app/**/*.hs
-            inferno-*/src/**/*.hs
-            inferno-*/test/**/*.hs
 
       - name: Build
         run: cabal build all
