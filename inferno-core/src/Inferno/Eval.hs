@@ -218,46 +218,49 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
     matchAny v pats
     where
       matchAny v ((_, p, _, body) :| []) = case match v p of
-        Just nenv -> eval nenv body
+        Just nenv ->
+          -- (<>) is left biased so this will correctly override any shadowed vars from nenv onto env
+          eval (nenv <> env) body
         Nothing -> throwError $ RuntimeError $ "non-exhaustive patterns in case detected in " <> (Text.unpack $ renderPretty v)
       matchAny v ((_, p, _, body) :| (r : rs)) = case match v p of
-        Just nenv -> eval nenv body
+        Just nenv -> eval (nenv <> env) body
         Nothing -> matchAny v (r :| rs)
 
       match v p = case (v, p) of
-        (_, PVar _ (Just (Ident x))) -> Just $ (Map.insert (ExtIdent $ Right x) v localEnv, pinnedEnv)
-        (_, PVar _ Nothing) -> Just env
+        (_, PVar _ (Just (Ident x))) -> Just $ (Map.singleton (ExtIdent $ Right x) v, mempty)
+        (_, PVar _ Nothing) -> Just mempty
         (VEnum h1 _, PEnum _ (Just h2) _ _) ->
           if h1 == h2
-            then Just env
+            then Just mempty
             else Nothing
         (VInt i1, PLit _ (LInt i2)) ->
           if i1 == i2
-            then Just env
+            then Just mempty
             else Nothing
         (VDouble d1, PLit _ (LDouble d2)) ->
           if d1 == d2
-            then Just env
+            then Just mempty
             else Nothing
         (VText t1, PLit _ (LText t2)) ->
           if t1 == t2
-            then Just env
+            then Just mempty
             else Nothing
         (VWord64 h1, PLit _ (LHex h2)) ->
           if h1 == h2
-            then Just env
+            then Just mempty
             else Nothing
         (VOne v', POne _ p') -> match v' p'
-        (VEmpty, PEmpty _) -> Just env
+        (VEmpty, PEmpty _) -> Just mempty
         (VTuple vs, PTuple _ ps _) -> matchTuple vs $ tListToList ps
         _ -> Nothing
 
-      matchTuple [] [] = Just env
+      matchTuple [] [] = Just mempty
       matchTuple (v' : vs) ((p', _) : ps) = do
         env1 <- match v' p'
         env2 <- matchTuple vs ps
         -- since variables in patterns must be linear,
-        -- env1 and env2 should not overlap
+        -- env1 and env2 should not overlap, so it doesn't
+        -- matter which way around we combine
         return $ env1 <> env2
       matchTuple _ _ = Nothing
   CommentAbove _ e -> eval env e
