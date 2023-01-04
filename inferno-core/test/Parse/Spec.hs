@@ -106,12 +106,12 @@ instance Arbitrary a => Arbitrary (SomeIStr a) where
       goT :: Int -> Gen (IStr 'True a)
       goT = \case
         0 -> pure ISEmpty
-        n -> oneof [ISExpr <$> arbitrary <*> goT (n -1), ISExpr <$> arbitrary <*> goF (n -1)]
+        n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
 
       goF :: Int -> Gen (IStr 'False a)
       goF = \case
         0 -> ISStr <$> arbitrary <*> pure ISEmpty
-        n -> ISStr <$> arbitrary <*> goT (n -1)
+        n -> ISStr <$> arbitrary <*> goT (n - 1)
 
   shrink (SomeIStr ISEmpty) = []
   shrink (SomeIStr (ISStr s xs)) =
@@ -148,10 +148,11 @@ arbitrarySizedPat n =
       PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
       PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
       PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      (\xs -> PTuple () (tListFromList xs) ()) <$> do
-        k <- choose (0, n)
-        sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-        `suchThat` (\xs -> length xs /= 1)
+      (\xs -> PTuple () (tListFromList xs) ())
+        <$> do
+          k <- choose (0, n)
+          sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+          `suchThat` (\xs -> length xs /= 1)
     ]
 
 instance Arbitrary e => Arbitrary (NEList.NonEmpty e) where
@@ -169,13 +170,14 @@ instance Arbitrary (Expr () ()) where
         oneof
           [ Var () () LocalScope <$> arbitraryImplExpl,
             OpVar () () LocalScope . Ident
-              <$> ( oneof $
-                      concatMap
+              <$> ( oneof
+                      $ concatMap
                         ( \case
                             (InfixOp _, _, op) -> [pure op]
                             _ -> []
                         )
-                        $ concat $ IntMap.elems baseOpsTable
+                      $ concat
+                      $ IntMap.elems baseOpsTable
                   )
           ]
       arbitraryEnum = Enum () () LocalScope <$> arbitrary
@@ -188,7 +190,8 @@ instance Arbitrary (Expr () ()) where
 
       arbitraryLam n =
         (\vs e -> Lam () vs () e)
-          <$> arbitraryLamVars <*> (arbitrarySized $ n `div` 3)
+          <$> arbitraryLamVars
+          <*> (arbitrarySized $ n `div` 3)
         where
           -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
           arbitraryLamVars :: Gen (NEList.NonEmpty ((), Maybe ExtIdent))
@@ -198,7 +201,9 @@ instance Arbitrary (Expr () ()) where
 
       arbitraryLet n =
         (\v e1 e2 -> Let () () v () e1 () e2)
-          <$> arbitraryImplExpl <*> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3)
+          <$> arbitraryImplExpl
+          <*> (arbitrarySized $ n `div` 3)
+          <*> (arbitrarySized $ n `div` 3)
 
       arbitraryIString n =
         (\xs -> InterpolatedString () xs ())
@@ -211,8 +216,8 @@ instance Arbitrary (Expr () ()) where
             0 -> pure ISEmpty
             m ->
               oneof
-                [ ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goT (m -1),
-                  ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goF (m -1)
+                [ ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goT (m - 1),
+                  ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goF (m - 1)
                 ]
 
           goF :: Int -> Gen (IStr 'False ((), Expr () (), ()))
@@ -228,48 +233,51 @@ instance Arbitrary (Expr () ()) where
                 <$> ( (pack . getPrintableString <$> arbitrary)
                         `suchThat` (\x -> not (Text.null x) && Text.all (\c -> c /= '\\' && c /= '$' && c /= '`') x)
                     )
-                <*> goT (m -1)
+                <*> goT (m - 1)
 
       arbitraryIf n =
         (\c t f -> If () c () t () f)
-          <$> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3)
+          <$> (arbitrarySized $ n `div` 3)
+          <*> (arbitrarySized $ n `div` 3)
+          <*> (arbitrarySized $ n `div` 3)
 
       arbitraryAssert n =
         (\c e -> Assert () c () e)
-          <$> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3)
+          <$> (arbitrarySized $ n `div` 3)
+          <*> (arbitrarySized $ n `div` 3)
 
       arbitraryOp n =
         (\(prec, fix, op) e1 e2 -> Op e1 () () (prec, fix) LocalScope (Ident op) e2)
-          <$> ( oneof $
-                  map pure $
-                    concatMap
-                      ( \(prec, xs) ->
-                          concatMap
-                            ( \case
-                                (InfixOp fix, _, op) -> [(prec, fix, op)]
-                                _ -> []
-                            )
-                            xs
-                      )
-                      $ IntMap.toList baseOpsTable
+          <$> ( oneof
+                  $ map pure
+                  $ concatMap
+                    ( \(prec, xs) ->
+                        concatMap
+                          ( \case
+                              (InfixOp fix, _, op) -> [(prec, fix, op)]
+                              _ -> []
+                          )
+                          xs
+                    )
+                  $ IntMap.toList baseOpsTable
               )
           <*> (arbitrarySized $ n `div` 3)
           <*> (arbitrarySized $ n `div` 3)
 
       arbitraryPreOp n =
         (\(prec, op) e -> PreOp () () prec LocalScope (Ident op) e)
-          <$> ( oneof $
-                  map pure $
-                    concatMap
-                      ( \(prec, xs) ->
-                          concatMap
-                            ( \case
-                                (PrefixOp, _, op) -> [(prec, op)]
-                                _ -> []
-                            )
-                            xs
-                      )
-                      $ IntMap.toList baseOpsTable
+          <$> ( oneof
+                  $ map pure
+                  $ concatMap
+                    ( \(prec, xs) ->
+                        concatMap
+                          ( \case
+                              (PrefixOp, _, op) -> [(prec, op)]
+                              _ -> []
+                          )
+                          xs
+                    )
+                  $ IntMap.toList baseOpsTable
               )
           <*> (arbitrarySized $ n `div` 3)
 
@@ -280,7 +288,8 @@ instance Arbitrary (Expr () ()) where
             k <- choose (0, n)
             sequence
               [ (\i e -> ((), i, (), e))
-                  <$> arbitrarySizedPat (n `div` 3) <*> arbitrarySized (n `div` 3)
+                  <$> arbitrarySizedPat (n `div` 3)
+                  <*> arbitrarySized (n `div` 3)
                 | _ <- [1 .. k]
               ]
             `suchThat` (not . null)
@@ -335,8 +344,8 @@ normalizePat = ana $ \case
 normalizeExpr :: Expr h a -> Expr h a
 normalizeExpr = ana $ \case
   PreOp pos hsh prec LocalScope (Ident "-") e -> case normalizeExpr e of
-    Lit l' (LInt x) -> project $ Lit l' $ LInt $ - x
-    Lit l' (LDouble x) -> project $ Lit l' $ LDouble $ - x
+    Lit l' (LInt x) -> project $ Lit l' $ LInt $ -x
+    Lit l' (LDouble x) -> project $ Lit l' $ LDouble $ -x
     PreOp _ _ _ LocalScope (Ident "-") e' -> project $ e'
     e' -> project $ PreOp pos hsh prec LocalScope (Ident "-") e'
   Tuple p1 xs p2 -> project $ Tuple p1 (fmap (\(e, _) -> (normalizeExpr e, Nothing)) xs) p2
@@ -366,13 +375,15 @@ parsingTests = describe "pretty printing/parsing" $ do
     \(x :: Expr () ()) -> case parseExpr baseOpsTable builtinModulesOpsTable (renderPretty x) of
       Left err ->
         property False
-          <?> ( "Pretty: \n" <> (renderPretty x)
+          <?> ( "Pretty: \n"
+                  <> (renderPretty x)
                   <> "\nParse error:\n"
                   <> (pack $ prettyError $ fst $ NEList.head err)
               )
       Right (res, _comments) ->
         (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
-          <?> ( "Pretty: \n" <> (renderPretty x)
+          <?> ( "Pretty: \n"
+                  <> (renderPretty x)
                   <> "\nParsed: \n"
                   <> (toStrict $ pShow res)
                   <> "\nParsed pretty: \n"

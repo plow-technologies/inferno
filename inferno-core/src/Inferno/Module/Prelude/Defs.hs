@@ -193,7 +193,9 @@ sumFun ::
 sumFun =
   bimap (\x -> either ((+) x) ((+) x . fromIntegral)) $
     bimap (\i -> bimap ((+) $ fromIntegral i) ((+) i)) $
-      bimap (+) $ bimap (+) $ bimap (+) (+)
+      bimap (+) $
+        bimap (+) $
+          bimap (+) (+)
 
 divFun ::
   Either Double Int64 ->
@@ -231,7 +233,9 @@ subFun ::
 subFun =
   bimap (\x -> either ((-) x) ((-) x . fromIntegral)) $
     bimap (\i -> bimap ((-) $ fromIntegral i) ((-) i)) $
-      bimap (-) $ bimap (-) $ bimap (-) (-)
+      bimap (-) $
+        bimap (-) $
+          bimap (-) (-)
 
 recipFun :: Double -> Double
 recipFun = recip

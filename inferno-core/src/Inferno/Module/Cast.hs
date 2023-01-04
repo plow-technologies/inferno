@@ -53,7 +53,8 @@ couldNotCast :: forall c m a. (Pretty c, MonadError EvalError m, Typeable a) => 
 couldNotCast v =
   throwError $
     CastError $
-      "Could not cast value " <> (unpack $ renderPretty v)
+      "Could not cast value "
+        <> (unpack $ renderPretty v)
         <> " to "
         <> (show $ typeRep (Proxy :: Proxy a))
 

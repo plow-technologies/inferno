@@ -145,9 +145,9 @@ preludeNameToTypeMap moduleMap =
   let unqualifiedN2h = pinnedModuleNameToHash $ moduleMap Map.! "Base"
       n2h =
         Map.unions $
-          (Map.mapKeys (Nothing,) $ pinnedModuleNameToHash builtinModule) :
-          (Map.mapKeys (Nothing,) $ unqualifiedN2h) :
-            [Map.mapKeys (Just nm,) $ (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList $ moduleMap]
+          (Map.mapKeys (Nothing,) $ pinnedModuleNameToHash builtinModule)
+            : (Map.mapKeys (Nothing,) $ unqualifiedN2h)
+            : [Map.mapKeys (Just nm,) $ (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList $ moduleMap]
       h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems $ moduleMap]
    in Map.mapMaybe (\h -> Map.lookup h h2ty) n2h
 

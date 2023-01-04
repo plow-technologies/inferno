@@ -115,13 +115,13 @@ instance Pretty ImplType where
   pretty (ImplType impl ty)
     | Map.null impl = pretty ty
     | otherwise =
-      encloseSep
-        lbrace
-        rbrace
-        comma
-        (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
-        <+> "⇒"
-        <+> pretty ty
+        encloseSep
+          lbrace
+          rbrace
+          comma
+          (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
+          <+> "⇒"
+          <+> pretty ty
 
 instance Pretty Scheme where
   pretty (Forall _ implType) = pretty implType
@@ -150,15 +150,15 @@ instance Pretty TCScheme where
   pretty (ForallTC _ tcs (ImplType impl ty))
     | Map.null impl && null tcs = pretty ty
     | otherwise =
-      encloseSep
-        lbrace
-        rbrace
-        comma
-        ( (map (("requires" <+>) . pretty) $ Set.toList tcs)
-            ++ (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
-        )
-        <+> "⇒"
-        <+> pretty ty
+        encloseSep
+          lbrace
+          rbrace
+          comma
+          ( (map (("requires" <+>) . pretty) $ Set.toList tcs)
+              ++ (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
+          )
+          <+> "⇒"
+          <+> pretty ty
 
 newtype Subst = Subst (Map.Map TV InfernoType)
   deriving stock (Eq, Ord)

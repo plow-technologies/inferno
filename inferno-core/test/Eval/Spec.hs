@@ -340,7 +340,8 @@ evalTests = describe "evaluate" $
                     (liftIO $ runEvalIO trmEnv implEnv $ bimap pinnedToMaybe id expr) >>= \case
                       Left err ->
                         expectationFailure $
-                          "Failed eval with: " <> show err
+                          "Failed eval with: "
+                            <> show err
                             <> "\nType: "
                             <> show ty
                             <> "\nExpr: "

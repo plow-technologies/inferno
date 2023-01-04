@@ -122,7 +122,8 @@ buildPinnedQQModules modules =
                   inferEnv = Map.insert moduleName m $ alreadyBuiltModules
                   (pinnedExpr', sig') =
                     either (\err -> error $ "Could not infer the type of this expression: " <> show err) (\(e, typ, _) -> (e, typ)) $
-                      inferExpr inferEnv $ pinnedExpr
+                      inferExpr inferEnv $
+                        pinnedExpr
                   ns' = sigVarToNamespace name
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
                   mVal =

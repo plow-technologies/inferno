@@ -66,7 +66,6 @@ import Plow.Logging.Async (withAsyncHandleTracer)
 import Prettyprinter (Pretty)
 import System.IO (BufferMode (NoBuffering), hFlush, hSetBuffering, hSetEncoding, stderr, stdin, stdout, utf8)
 
-
 -- This is the entry point for launching an LSP server, explicitly passing in handles for input and output
 -- the `getIdents` parameter is a handle for input parameters, only used by the frontend.
 -- This is used in the script editor, where the user only specifies the body of the script in the editor

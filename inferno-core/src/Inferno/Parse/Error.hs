@@ -45,13 +45,14 @@ messageItemsPretty ::
 messageItemsPretty prefix ts
   | Set.null ts = ""
   | otherwise =
-    prefix <> (orList . NEList.fromList . Set.toAscList . Set.map pack) ts <> "\n"
+      prefix <> (orList . NEList.fromList . Set.toAscList . Set.map pack) ts <> "\n"
 
 showErrorFancy :: ShowErrorComponent e => ErrorFancy e -> String
 showErrorFancy = \case
   ErrorFail msg -> msg
   ErrorIndentation ord ref actual ->
-    "incorrect indentation (got " <> show (unPos actual)
+    "incorrect indentation (got "
+      <> show (unPos actual)
       <> ", should be "
       <> p
       <> show (unPos ref)
