@@ -23,7 +23,7 @@
 	"homepage": "https://github.com/plow-technologies/all",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/plow-technologies/all.git"
+		"url": "https://github.com/plow-technologies/inferno.git"
 	},
 	"main": "./out/extension.js",
 	"contributes": {
