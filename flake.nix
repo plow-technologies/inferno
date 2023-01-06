@@ -128,20 +128,22 @@
 
       # Inferno's VSCode packages
       vsCodeInfernoFor = pkgs:
-        {
-          vscode-inferno-syntax-highlighting = pkgs.buildNpmPackage {
-            src = ./vscode-inferno-syntax-highlighting;
-            npmBuild = ''
-              npm run build-tm
-              vsce package
-              npm run build-monarch
-            '';
-            installPhase = ''
-              mkdir $out
-              cp *.vsix $out
-              cp syntaxes/inferno.monarch.json $out
-            '';
-          };
+        let
+          modules = vscode-inferno-syntax-highlighting.passthru.nodeModules;
+          vscode-inferno-syntax-highlighting =
+            pkgs.buildNpmPackage {
+              src = ./vscode-inferno-syntax-highlighting;
+              npmBuild = ''
+                npm run build-tm
+                ${modules}/node_modules/@vscode/vsce/vsce package
+                npm run build-monarch
+              '';
+              installPhase = ''
+                mkdir $out
+                cp *.vsix $out
+                cp syntaxes/inferno.monarch.json $out
+              '';
+            };
           vscode-inferno-lsp-server = pkgs.buildNpmPackage {
             src = ./vscode-inferno-lsp-server;
             nativeBuildInputs = [ pkgs.nodePackages.typescript ];
@@ -150,6 +152,11 @@
             '';
             installPhase = "mkdir $out && cp *.vsix $out";
           };
+        in
+        {
+          inherit
+            vscode-inferno-syntax-highlighting
+            vscode-inferno-lsp-server;
         };
 
     in
