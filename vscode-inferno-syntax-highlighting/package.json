@@ -12,23 +12,24 @@
     "devDependencies": {
         "js-yaml": "^3.14.1",
         "plist": "^3.0.1",
-        "ts-node": "^10.2.0"
+        "ts-node": "^10.2.0",
+        "@vscode/vsce": "^2.15.0"
     },
     "engines": {
         "vscode": "^1.63.0"
     },
     "categories": [
-		"Programming Languages"
-	],
-	"keywords": [
-		"inferno",
-		"lsp",
-		"language server"
-	],
+        "Programming Languages"
+    ],
+    "keywords": [
+        "inferno",
+        "lsp",
+        "language server"
+    ],
     "repository": {
-		"type": "git",
-		"url": "https://github.com/plow-technologies/all.git"
-	},
+        "type": "git",
+        "url": "https://github.com/plow-technologies/inferno.git"
+    },
     "contributes": {
         "languages": [{
             "id": "inferno",
