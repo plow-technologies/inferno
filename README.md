@@ -150,6 +150,17 @@ $ cabal repl inferno-core
 
 Do note that building with Cabal directly outside of this Nix environment (that is, by installing the package set directly with a version of Cabal installed on your system) _will not work_.
 
+##### Developing frontend packages
+
+There are two flake packages that build VS Code extensions for Inferno, `vscode-inferno-syntax-highlighting` and `vscode-inferno-lsp-server`. Two identically named `devShells` correspond to these packages and can be entered to work on them. After entering the development environment, `cd` to the directory containing the sources for the extension; for example:
+
+```
+$ nix develop .#vscode-inferno-syntax-highlighting
+$ cd ./vscode-inferno-syntax-highlighting
+```
+
+`npm` and all of the JS dependencies are available in the shell. The `NODE_PATH` points to generated `node_modules` in the Nix store and the environment variable `NPM_CONFIG_PACKAGE_LOCK_ONLY` is enabled. This is to ensure that the same dependencies are used everywhere (i.e. in the flake's `packages` as well as the corresponding `devShells`). Accordingly, `npm install` will only update the `package-lock.json`. After modifying dependencies listed in the `package.json`, update the lockfile, exit the shell, and then re-enter it using `nix develop`.
+
 #### Formatting all sources
 
 To format all of the Nix and Haskell sources, run `nix fmt`. **Note**: this command assumes that certain executables are available on the `PATH`; please enter the development environment with `nix develop` before trying to run the formatter.

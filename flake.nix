@@ -184,6 +184,9 @@
 
           # To enter a development environment for a particular GHC version, use
           # the compiler name, e.g. `nix develop .#ghc8107`
+          #
+          # Both of the `vscode-inferno` packages have `devShells` of the same
+          # name, containing `nodejs` and NPM dependencies
           devShells =
             let
               mkNodeDevShell = pkg:
