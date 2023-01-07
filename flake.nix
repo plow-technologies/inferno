@@ -79,7 +79,11 @@
       flakesFor = pkgs: builtins.listToAttrs
         (
           # only GHC 8.10.7 or newer is supported on M1 Macs
-          lib.lists.forEach ([ defaultCompiler ] ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884")
+          lib.lists.forEach
+            (
+              [ defaultCompiler ]
+              ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884"
+            )
             (compiler: lib.attrsets.nameValuePair
               compiler
               # TODO
@@ -108,7 +112,7 @@
             cabal = { };
             haskell-language-server = { };
           };
-          buildInputs = [ pkgs.nixpkgs-fmt ] ++ 
+          buildInputs = [ pkgs.nixpkgs-fmt ] ++
             # ormolu build currently segfaults on the M1
             lib.optional (pkgs.system != "aarch64-darwin") (ormoluFor compiler pkgs);
         };
@@ -180,11 +184,39 @@
 
           # To enter a development environment for a particular GHC version, use
           # the compiler name, e.g. `nix develop .#ghc8107`
+          #
+          # Both of the `vscode-inferno` packages have `devShells` of the same
+          # name, containing `nodejs` and NPM dependencies
           devShells =
+            let
+              mkNodeDevShell = pkg:
+                let
+                  # We can grab the `nodeModules` from the existing packages
+                  # using the `passthru`s from `buildNpmPackage` and reuse them
+                  # in the `devShell` corresponding to that package
+                  inherit (self.packages.${system}.${pkg}.passthru) nodeModules;
+                in
+                pkgs.mkShell {
+                  packages = [ pkgs.nodejs ];
+                  shellHook = ''
+                    export NODE_PATH=${nodeModules}/node_modules
+                    # This is an executable so it should be added to the `PATH`
+                    export PATH=$PATH:$NODE_PATH/@vscode/vsce
+                    # Preventing `npm i` from creating a local `node_modules`
+                    # ensures that we will always have a single, consistent set
+                    # of NPM dependencies
+                    export NPM_CONFIG_PACKAGE_LOCK_ONLY=true
+                  '';
+                };
+            in
             lib.attrsets.mapAttrs'
               (compiler: v: lib.attrsets.nameValuePair compiler v.devShell)
               flakes
-            // { default = flakes.${defaultCompiler}.devShell; };
+            // {
+              default = flakes.${defaultCompiler}.devShell;
+              vscode-inferno-lsp-server = mkNodeDevShell "vscode-inferno-lsp-server";
+              vscode-inferno-syntax-highlighting = mkNodeDevShell "vscode-inferno-syntax-highlighting";
+            };
 
           packages =
             let
