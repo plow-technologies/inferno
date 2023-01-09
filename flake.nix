@@ -88,12 +88,16 @@
               compiler
               # TODO
               # Do we want to enable any `crossPlatforms` here?
-              ((infernoFor compiler pkgs { }).flake { })
+              ((infernoFor { inherit compiler pkgs; }).flake { })
             ) ++
           lib.lists.forEach [ defaultCompiler ]
             (compiler: lib.attrsets.nameValuePair
               (compiler + "-prof")
-              ((infernoFor compiler pkgs { profiling = true; ghcOptions = [ "-eventlog" ]; }).flake { })
+              ((infernoFor {
+                inherit compiler pkgs;
+                profiling = true;
+                ghcOptions = [ "-eventlog" ];
+              }).flake { })
             )
         );
 
@@ -101,41 +105,42 @@
       # want users who get packages from our `overlays.default` to be able to
       # use their own `nixpkgs` without having to instantiate ours as well
       # (which would happen if we just use `self.packages` directly in the overlay)
-      infernoFor = compiler: pkgs: { ghcOptions ? [ ], profiling ? false }: pkgs.haskell-nix.cabalProject {
-        name = "inferno";
-        compiler-nix-name = compiler;
-        src = builtins.path {
-          path = ./.;
-          filter = path: type:
-            builtins.any
-              (ext: baseNameOf path != ext)
-              [ ".nix" ".md" ];
-        };
-        shell = {
-          withHoogle = true;
-          tools = {
-            cabal = { };
-            haskell-language-server = { };
+      infernoFor = { compiler, pkgs, ghcOptions ? [ ], profiling ? false }:
+        pkgs.haskell-nix.cabalProject {
+          name = "inferno";
+          compiler-nix-name = compiler;
+          src = builtins.path {
+            path = ./.;
+            filter = path: type:
+              builtins.any
+                (ext: baseNameOf path != ext)
+                [ ".nix" ".md" ];
           };
-          buildInputs = [ pkgs.nixpkgs-fmt ] ++
-            # ormolu build currently segfaults on the M1
-            lib.optional (pkgs.system != "aarch64-darwin") (ormoluFor compiler pkgs);
-        };
-        modules = [
-          {
-            enableLibraryProfiling = profiling;
-            packages = {
-              # This takes forever to build
-              ghc.components.library.doHaddock = false;
+          shell = {
+            withHoogle = true;
+            tools = {
+              cabal = { };
+              haskell-language-server = { };
             };
-            packages.inferno-core = {
+            buildInputs = [ pkgs.nixpkgs-fmt ] ++
+              # ormolu build currently segfaults on the M1
+              lib.optional (pkgs.system != "aarch64-darwin") (ormoluFor compiler pkgs);
+          };
+          modules = [
+            {
               enableLibraryProfiling = profiling;
-              enableProfiling = profiling;
-              inherit ghcOptions;
-            };
-          }
-        ];
-      };
+              packages = {
+                # This takes forever to build
+                ghc.components.library.doHaddock = false;
+              };
+              packages.inferno-core = {
+                enableLibraryProfiling = profiling;
+                enableProfiling = profiling;
+                inherit ghcOptions;
+              };
+            }
+          ];
+        };
 
       # Get the same version of `ormolu` everywhere, including the shell
       ormoluFor = compiler: pkgs: pkgs.haskell-nix.tool
