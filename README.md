@@ -22,7 +22,7 @@ We currently only offer a Nix-based build system for building and developing `in
 
 ### Install Nix v2.8 or greater
 
-If you don't have Nix installed, follow the directions [here](https://nixos.org/download.html). This repository uses flakes, an up-and-coming Nix feature, and we recommend installing v2.8 or greater for the best compatibility.
+If you don't have Nix installed, follow the directions [here](https://nixos.org/download.html). This repository uses flakes, a new Nix feature, and we recommend installing v2.8 or greater for the best compatibility.
 
 ### Enable required flakes settings
 
@@ -39,9 +39,9 @@ On NixOS, you can add the same line to `nix.extraOptions` in your system configu
 ### Configure the binary caches
 
 It is _highly_ recommended to configure two extra Nix binary caches to download artifacts when building this project. We offer our own public [Cachix](https://cachix.org) cache (`inferno`) that is populated on CI. Since this project uses IOG's `haskell.nix`, you should also add IOG's
-binary caches. Although our cache contains some of the same artifacts as IOG's, you should still configure the latter in case a critical dependency (e.g. GHC) has not yet been cached, Cachix is experiencing an outage, or you make local changes that would require rebuilding a large dependency (e.g. upgrading to a new GHC version).
+binary caches. Although our cache contains some of the same artifacts as IOG's, you should still configure the latter in case a critical dependency (e.g. GHC) has not yet been cached by us, Cachix is experiencing an outage, or you make local changes that would require rebuilding a large dependency (e.g. upgrading to a new GHC version).
 
-**Important**: If you do not enable at least IOG's binary cache, you _will_ build GHC from source several times!
+**Important**: If you do not enable at least IOG's binary cache, you _will_ build GHC from source several times! This will take at least several hours in most cases.
 
 There are two methods for enabling the caches. The flake will attempt to set the relevant values for you automatically. Caveats apply to this process, so you may need to enable them manually.
 
@@ -68,7 +68,7 @@ If you see output similar to
 warning: ignoring untrusted substituter 'https://cache.iog.io'
 ```
 
-when running a `nix` command, you are not allowed to set this value.
+when running a `nix` command, you are not a trusted user and the settings from the flake will not be applied even if you have selected `y` for each prompt.
 
 On non-NixOS systems, add the following to the system-wide configuration (`/etc/nix/nix.conf`):
 
@@ -90,7 +90,7 @@ If you do not wish to add yourself as a trusted user, you will need to configure
 
 ##### IOG's cache
 
-If you would prefer or need to configure the binary caches manually, you can configure IOG's cache by following the instructions [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache).
+You can configure IOG's cache manually by following the instructions [here](https://input-output-hk.github.io/haskell.nix/tutorials/getting-started.html#setting-up-the-binary-cache). Again, not enabling this cache will require you to build GHC from source several times.
 
 ##### The `inferno` cache
 
