@@ -126,7 +126,8 @@
             withHoogle = true;
             tools = {
               cabal = { };
-              haskell-language-server = { };
+              # This is the final supported version for our current compilers
+              haskell-language-server = "1.7.0.0";
             };
             buildInputs = [ pkgs.nixpkgs-fmt ] ++
               # ormolu build currently segfaults on the M1
@@ -231,6 +232,8 @@
                   '';
                 };
             in
+            # FIXME
+            # `ghc884` is broken, see https://github.com/plow-technologies/inferno/issues/23
             lib.attrsets.mapAttrs'
               (compiler: v: lib.attrsets.nameValuePair compiler v.devShell)
               flakes
@@ -255,7 +258,7 @@
             in
             ps // {
               # Build all packages and checks
-              default = pkgs.runCommand "build-all"
+              default = pkgs.runCommand "everything"
                 {
                   combined = builtins.attrValues self.checks.${system}
                   ++ builtins.attrValues ps;
