@@ -5,9 +5,13 @@
     # These are required to build the project, otherwise GHC will be built from
     # source (this is not always possible using haskell.nix either), so it makes
     # sense to enable them directly in the flake
-    extra-substituters = [ "https://cache.iog.io" ];
+    extra-substituters = [
+      "https://cache.iog.io"
+      "https://inferno.cachix.org"
+    ];
     extra-trusted-public-keys = [
       "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ="
+      "inferno.cachix.org-1:48GsOmEfRPXpTZsQSmnD2P42lpbUeHrjlzyhasL5rug="
     ];
     bash-prompt = "\\[\\e[0;37m\\](\\[\\e[0m\\]nix) \\[\\e[0;1;91m\\]inferno \\[\\e[0m\\]\\w \\[\\e[0;1m\\]λ \\[\\e[0m\\]";
   };
