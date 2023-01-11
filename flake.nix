@@ -41,7 +41,7 @@
     let
       inherit (nixpkgs) lib;
 
-      defaultCompiler = "ghc924";
+      defaultCompiler = "ghc925";
 
       # Takes an attribute set mapping compiler versions to `flake`s generated
       # by `haskell.nix` (see `flakesFor` above) and suffixes each derivation
@@ -126,8 +126,11 @@
             withHoogle = true;
             tools = {
               cabal = { };
-              # This is the final supported version for our current compilers
-              haskell-language-server = "1.7.0.0";
+              # FIXME
+              # See https://github.com/plow-technologies/inferno/issues/25
+              #
+              # # This is the final supported version for our current compilers
+              # haskell-language-server = "1.8.0.0";
             };
             buildInputs = [ pkgs.nixpkgs-fmt ] ++
               # ormolu build currently segfaults on the M1
