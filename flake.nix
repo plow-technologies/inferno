@@ -232,9 +232,9 @@
                   '';
                 };
             in
-            # FIXME
-            # `ghc884` is broken, see https://github.com/plow-technologies/inferno/issues/23
             lib.attrsets.mapAttrs'
+              # FIXME
+              # `ghc884` is broken, see https://github.com/plow-technologies/inferno/issues/23
               (compiler: v: lib.attrsets.nameValuePair compiler v.devShell)
               flakes
             // {
