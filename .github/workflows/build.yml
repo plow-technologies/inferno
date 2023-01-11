@@ -1,0 +1,28 @@
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    # TODO
+    # Re-enable only `main` branch
+    # branches:
+    #   - "main"
+  pull_request:
+    branches:
+      - "main"
+
+jobs:
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v18
+      with:
+        extra_nix_config: |
+          extra-substituters = https://cache.iog.io
+          extra-trusted-public-keys = hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=
+    - uses: cachix/cachix-action@v8
+      with:
+        name: inferno
+        authToken: "${{ secrets.CACHIX_TOKEN }}"
+    - run: |
+        nix build -L .#
