@@ -270,7 +270,10 @@
                       (
                         lib.mapAttrsToList
                           (_: v: v.inputDerivation)
-                          (builtins.removeAttrs self.devShells.${system} [ "default" ])
+                          (
+                            # See https://github.com/plow-technologies/inferno/issues/23
+                            builtins.removeAttrs self.devShells.${system} [ "ghc884" ]
+                          )
                       )
                     ];
                 }
