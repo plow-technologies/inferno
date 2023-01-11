@@ -113,10 +113,10 @@
           compiler-nix-name = compiler;
           src = builtins.path {
             path = ./.;
-            filter = path: type:
+            filter = path: _:
               builtins.any
-                (ext: baseNameOf path != ext)
-                [ ".nix" ".md" ];
+                (ext: !lib.hasSuffix ext path)
+                [ ".nix" ".md" ".yml" ];
           };
           shell = {
             withHoogle = true;
