@@ -3,10 +3,7 @@ name: build
 on:
   workflow_dispatch:
   push:
-    # TODO
-    # Re-enable only `main` branch
-    # branches:
-    #   - "main"
+      - "main"
   pull_request:
     branches:
       - "main"
