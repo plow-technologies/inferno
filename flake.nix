@@ -70,7 +70,7 @@
             outputsByCompiler;
           justOutputs = builtins.concatMap builtins.attrValues withSuffixes;
         in
-        builtins.foldl' (x: y: x // y) { } justOutputs;
+        builtins.foldl' lib.mergeAttrs { } justOutputs;
 
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
@@ -186,8 +186,7 @@
             in
             {
               inherit
-                vscode-inferno-syntax-highlighting
-                vscode-inferno-lsp-server;
+                vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
             };
 
         in
@@ -203,6 +202,8 @@
                 {
                   lib = nixpkgs.lib.extend (final: _:
                     {
+                      # Adapted from: NixOS/nixpkgs/f993f8a18659bb15bc5697b6875caf0cba8b1825
+                      #
                       # Needed by `treefmt-nix`, but missing from `nixpkgs`
                       # revision from `haskell.nix`. We can't just use upstream
                       # `nixpkgs` or we'll get cache misses from `haskell.nix`
@@ -323,18 +324,22 @@
           # NOTE
           # This will generate a formatting check and can be reused in the
           # `formatter` output above
-          # FIXME
-          # Disable `ormolu` for `aarch64-darwin`
           treefmt.config = {
             projectRootFile = "flake.nix";
-            programs = {
-              nixpkgs-fmt.enable = true;
-              ormolu = {
-                enable = true;
-                package = ormoluFor defaultCompiler;
-                ghcOpts = [ "TypeApplications" ];
+            programs = { nixpkgs-fmt.enable = true; }
+              # FIXME
+              # Ormolu segfaults on `aarch64-darwin` so it should be disabled
+              # everywhere (i.e. just omit it from `treefmt.config`).
+              #
+              # See https://github.com/plow-technologies/inferno/issues/10
+              // lib.optionalAttrs (system != "aarch64-darwin")
+              {
+                ormolu = {
+                  enable = true;
+                  package = ormoluFor defaultCompiler;
+                  ghcOpts = [ "TypeApplications" ];
+                };
               };
-            };
           };
         };
     };
