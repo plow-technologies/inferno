@@ -154,9 +154,6 @@
               ];
             };
 
-          # Get the same version of `ormolu` everywhere, including the shell
-          ormoluFor = compiler: pkgs.haskell-nix.tool compiler "ormolu" "0.5.0.1";
-
           # Inferno's VSCode packages
           vsCodeInferno =
             let
@@ -323,7 +320,9 @@
 
           # NOTE
           # This will generate a formatting check and can be reused in the
-          # `formatter` output above
+          # `formatter` output above. We can also use the `programs` attribute
+          # to easily get all of the formatters in one place (e.g. in the
+          # `devShells`)
           treefmt.config = {
             projectRootFile = "flake.nix";
             programs = { nixpkgs-fmt.enable = true; }
@@ -336,7 +335,19 @@
               {
                 ormolu = {
                   enable = true;
-                  package = ormoluFor defaultCompiler;
+                  package =
+                    let
+                      # Using `hackage-package` will prevent building `ormolu`
+                      # from interfering with the build plan (incl. incompatible
+                      # compiler versions)
+                      o = pkgs.haskell-nix.hackage-package {
+                        name = "ormolu";
+                        version = "0.5.0.1";
+                        compiler-nix-name = defaultCompiler;
+                        configureArgs = "--disable-benchmarks --disable-tests";
+                      };
+                    in
+                    o.getComponent "exe:ormolu";
                   ghcOpts = [ "TypeApplications" ];
                 };
               };
