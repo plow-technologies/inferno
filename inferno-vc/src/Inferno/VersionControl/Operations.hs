@@ -10,13 +10,13 @@
 -- This module defines operations on the Inferno VC store. The store structure is as follows:
 --
 -- * `<storePath>` stores the JSON serialised `VCMeta VCObject`s, where the filename is the cryptographic hash (`VCOBjectHash`) of the object's contents
--- * `<storePath>/heads` is a set of current HEAD objects of the store, which can be seen as the roots of the VC tree
 -- * `<storePath>/heads` is a set of current HEAD objects of the store, which can be seen as the roots of the VC tree. Each filename is the hash of an object,
---    and the file's contents are all the predecessors of this object, starting from the time it was created or cloned.
+--    and the file's contents are all the predecessors of this object, in chronological order, starting from the time it was created or cloned.
 -- * `<storePath>/to_head` is a map from every `VCOBjectHash` to its current HEAD, where the file name is the source hash and the contents of the file are the HEAD hash
 -- * `<storePath>/deps` is a map from every `VCOBjectHash` to its (transitive) dependencies, i.e. the file `<storePath>/deps/<hash>` describes the closure of `<hash>`
 -- * Deleting `VCMeta VCObject` - Delete is implemented as soft delete. Object is moved to a directory called `removed`. Object's preds are also removed.
 --   When an object is removed, its directory structure is preserved so you can undo it easily. i.e. `removed` directory has the same structure as `vc_store` directory.
+
 module Inferno.VersionControl.Operations where
 
 import Control.Monad (filterM, foldM, forM, forM_)
