@@ -246,9 +246,7 @@
                   '';
                 };
             in
-            lib.attrsets.mapAttrs'
-              (compiler: v: lib.attrsets.nameValuePair compiler v.devShell)
-              flakes
+            lib.attrsets.mapAttrs (_: v: v.devShell) flakes
             // {
               default = flakes.${defaultCompiler}.devShell;
               vscode-inferno-lsp-server = mkNodeDevShell "vscode-inferno-lsp-server";
