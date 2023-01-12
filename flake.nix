@@ -247,8 +247,6 @@
                 };
             in
             lib.attrsets.mapAttrs'
-              # FIXME
-              # `ghc884` is broken, see https://github.com/plow-technologies/inferno/issues/23
               (compiler: v: lib.attrsets.nameValuePair compiler v.devShell)
               flakes
             // {
@@ -281,10 +279,7 @@
                       (
                         lib.mapAttrsToList
                           (_: v: v.inputDerivation)
-                          (
-                            # See https://github.com/plow-technologies/inferno/issues/23
-                            builtins.removeAttrs self.devShells.${system} [ "ghc884" ]
-                          )
+                          self.devShells.${system}
                       )
                     ];
                 }
