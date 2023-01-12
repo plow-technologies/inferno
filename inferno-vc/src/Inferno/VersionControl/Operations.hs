@@ -16,7 +16,6 @@
 -- * `<storePath>/deps` is a map from every `VCOBjectHash` to its (transitive) dependencies, i.e. the file `<storePath>/deps/<hash>` describes the closure of `<hash>`
 -- * Deleting `VCMeta VCObject` - Delete is implemented as soft delete. Object is moved to a directory called `removed`. Object's preds are also removed.
 --   When an object is removed, its directory structure is preserved so you can undo it easily. i.e. `removed` directory has the same structure as `vc_store` directory.
-
 module Inferno.VersionControl.Operations where
 
 import Control.Monad (filterM, foldM, forM, forM_)
