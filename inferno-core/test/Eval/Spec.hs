@@ -36,6 +36,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "3.0" $ VDouble 3.0
     shouldEvaluateTo "3.0-2" $ VDouble 1.0
     shouldEvaluateTo "3.0/2" $ VDouble 1.5
+    shouldEvaluateTo "(+) 3.0 1.0" $ VDouble 4.0
     -- Reciprocals
     shouldEvaluateTo "3.14 * recip 3.14" $ VDouble 1.0
     -- Power

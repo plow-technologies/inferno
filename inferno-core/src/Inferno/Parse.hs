@@ -116,6 +116,16 @@ import qualified Text.Megaparsec.Char.Lexer as Lexer
 uncurry3 :: (a -> b -> c -> d) -> ((a, b, c) -> d)
 uncurry3 f ~(a, b, c) = f a b c
 
+choiceOf :: (t -> Parser a) -> [t] -> Parser a
+choiceOf _ [] = fail "none of the operators matched"
+choiceOf p [x] = p x
+choiceOf p (x : xs) = p x <|> choiceOf p xs
+
+tryMany :: (t -> Parser a) -> [t] -> Parser a
+tryMany _ [] = fail "none of the operators matched"
+tryMany p [x] = p x
+tryMany p (x : xs) = try (p x) <|> tryMany p xs
+
 type Comments = Endo [Comment SourcePos]
 
 output :: Comment SourcePos -> SomeParser r ()
@@ -556,29 +566,89 @@ ifE = do
   fl <- (rword "else" *> expr) <?> "_the 'else' branch\nfor example: if x > 2 then 1 else 0"
   return $ If ifPos cond thenPos tr elsePos fl
 
-appE :: Parser (Expr () SourcePos)
-appE =
-  try (hexadecimal $ Lit)
-    <|> try (uncurry3 Tuple <$> tuple expr)
-    <|> hidden
-      ( ask
-          >>= tryMany operatorAsFun . concat . fst
+-- | Parses an op in prefix syntax WITHOUT opening paren @(@ but with closing paren @)@
+-- E.g. @+)@
+prefixOpsWithoutModule :: SourcePos -> Parser (Expr () SourcePos)
+prefixOpsWithoutModule startPos = do
+  hidden (ask >>= choiceOf (prefixOp startPos) . opsInLocalScope)
+  where
+    opsInLocalScope ops = [s | (_, modNm, s) <- concat $ fst ops, modNm == LocalScope]
+    prefixOp :: SourcePos -> Text -> Parser (Expr () SourcePos)
+    prefixOp pos s = do
+      _ <- symbol $ s <> ")"
+      return $ OpVar pos () LocalScope $ Ident s
+
+-- | Parses a op in prefix syntax of the form @Mod.(+)@
+prefixOpsWithModule :: SourcePos -> Parser (Expr () SourcePos)
+prefixOpsWithModule startPos = do
+  hidden (ask >>= tryMany prefixOp . opsNotInLocal)
+  where
+    opsNotInLocal ops = [(modNm, s) | (_, modNm, s) <- concat $ fst ops, modNm /= LocalScope]
+    prefixOp :: (Scoped ModuleName, Text) -> Parser (Expr () SourcePos)
+    prefixOp (modNm, s) = do
+      _ <- symbol $ fromScoped "" (unModuleName <$> modNm) <> ".(" <> s <> ")"
+      return $ OpVar startPos () modNm $ Ident s
+
+-- | Parses a tuple @a, b, c, ...)@ WITHOUT opening paren @(@ but with closing paren @)@
+-- Returns (list of (expr, commaPos), endParenPos)
+tupleElems :: Parser ([(Expr () SourcePos, Maybe SourcePos)], SourcePos)
+tupleElems =
+  ( do
+      e <- expr
+      ( do
+          char ')'
+          endPos <- getSourcePos
+          return ([(e, Nothing)], endPos)
+        ) <|> (
+        do
+          commaPos <- lexeme $ char ',' *> getSourcePos
+          (es, endPos) <- tupleElems
+          return ((e, Just commaPos) : es, endPos)
+        )
       )
     <|> do
-      startPos <- getSourcePos
-      symbol "("
-      e <- expr
-      char ')'
-      endPos <- getSourcePos
-      lexeme $ pure $ Bracketed startPos e endPos
+          char ')'
+          endPos <- getSourcePos
+          return ([], endPos)
+
+-- | Parses any bracketed expression: tuples, bracketed exprs (1 + 2), and prefix ops (+)
+bracketedE :: Parser (Expr () SourcePos)
+bracketedE = do
+  startPos <- getSourcePos
+  symbol "("
+  -- Either a prefix op or a tuple. bracketed exprs are 1-tuples
+  prefixOpsWithoutModule startPos <|> bracketedOrTuple startPos
+  where
+    bracketedOrTuple startPos = do
+      (es, endPos) <- tupleElems
+      lexeme $ pure $ case es of
+        [] -> Tuple startPos TNil endPos
+        [(e, _)] -> Bracketed startPos e endPos
+        _ -> Tuple startPos (tListFromList es) endPos
+
+term :: Parser (Expr () SourcePos)
+term =
+  bracketedE
+    <|> try (hexadecimal Lit)
     <|> try doubleE
     <|> intE
     <|> enumE Enum
-    <|> do
+    <|> do -- Variable: foo or Mod.foo or Mod.(+)
       startPos <- getSourcePos
       lexeme $
-        try ((\nmspc x -> Var startPos () (Scope $ ModuleName nmspc) $ Expl $ ExtIdent $ Right x) <$> variable <*> (char '.' *> variable))
-          <|> (try $ (Var startPos () LocalScope . Expl . ExtIdent . Right) <$> variable <* notFollowedBy (char '.'))
+        try
+          ((\ nmspc x
+              -> Var startPos () (Scope $ ModuleName nmspc)
+                  $ Expl $ ExtIdent $ Right x)
+            <$> variable
+            <*> (char '.' *> variable))
+          <|>
+            prefixOpsWithModule startPos
+          <|>
+            try
+              (Var startPos () LocalScope . Expl . ExtIdent . Right
+                <$> variable
+                <* notFollowedBy (char '.'))
     <|> noneE Empty
     <|> someE One expr
     <|> ifE
@@ -594,25 +664,14 @@ appE =
     <|> try arrayE
     <|> arrayComprE
 
-term :: Parser (Expr () SourcePos)
-term =
-  appE >>= \x ->
-    (some appE >>= \xs -> return (foldl App x xs))
+app :: Parser (Expr () SourcePos)
+app =
+  term >>= \x ->
+    (some term >>= \xs -> return (foldl App x xs))
       <|> return x
 
-operatorAsFun :: (Fixity, Scoped ModuleName, Text) -> Parser (Expr () SourcePos)
-operatorAsFun (_fix, modNm, s) = do
-  startPos <- getSourcePos
-  symbol $ (fromScoped "" $ ((<> ".") . unModuleName) <$> modNm) <> "(" <> s <> ")"
-  return $ OpVar startPos () modNm $ Ident s
-
-tryMany :: (t -> Parser a) -> [t] -> Parser a
-tryMany _ [] = fail "none of the operators matched"
-tryMany p [x] = p x
-tryMany p (x : xs) = try (p x) <|> tryMany p xs
-
 expr :: Parser (Expr () SourcePos)
-expr = ask >>= \(opsTable, _) -> makeExprParser term $ mkOperators opsTable
+expr = ask >>= \(opsTable, _) -> makeExprParser app $ mkOperators opsTable
 
 mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
 mkOperators opsTable =
