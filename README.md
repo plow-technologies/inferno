@@ -190,9 +190,11 @@ $ cd ./vscode-inferno-syntax-highlighting
 
 ### Formatting all sources
 
-To format all of the Nix and Haskell sources, run `nix fmt`. **Note**: this command assumes that certain executables are available on the `PATH`; please enter the development environment with `nix develop` before trying to run the formatter.
+To format all of the Nix and Haskell sources, run `nix fmt`. Alternately, running `nix develop` and then the command `treefmt` in the development shell will perform the same formatting.
 
-To run a formatting check that will fail if any files are not formatted, run `nix build -L .#check.<SYSTEM>.formatting`.
+To run a formatting check that will fail if any files are not formatted, run `nix build -L .#check.<SYSTEM>.treefmt`.
+
+**NOTE**: Ormolu currently segfaults during compilation on `aarch64-darwin` (M1 Macs). `ormolu` is accordingly omitted from the formatter (`formatters.aarch64-darwin`) and formatting check (`checks.aarch64-darwin.treefmt`). CI will still fail on unformatted Haskell sources as it runs on `x86_64-linux`, so it is recommended to install `ormolu-0.5.0.1` on your system using an alternate source. See https://github.com/plow-technologies/inferno/issues/10 for more.
 
 ## Golden Files
 
