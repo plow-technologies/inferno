@@ -19,7 +19,7 @@
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
-    treefmt.url = "github:numtide/treefmt";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
     # preferable over nixpkgs' Haskell support
     haskell-nix.url = "github:input-output-hk/haskell.nix";
@@ -34,7 +34,7 @@
     { self
     , nixpkgs
     , flake-parts
-    , treefmt
+    , treefmt-nix
     , haskell-nix
     , ...
     }@inputs:
@@ -190,14 +190,15 @@
         };
 
     in
-    flake-parts.lib.mkFlake { inherit self; } {
+    flake-parts.lib.mkFlake { inherit inputs; } {
       systems = nixpkgs.lib.systems.flakeExposed;
+      imports = [ treefmt-nix.flakeModule ];
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, ... }:
         let
           flakes = flakesFor pkgs;
         in
-        {
+        rec {
           # Set the `pkgs` that are passed to `perSystem`
           _module.args.pkgs = import nixpkgs {
             inherit (haskell-nix) config;
@@ -297,28 +298,23 @@
           #
           # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924`
           checks =
-            {
-              formatting = pkgs.runCommand "formatting-check"
-                {
-                  buildInputs = [ pkgs.nixpkgs-fmt (ormoluFor defaultCompiler pkgs) ];
-                }
-                ''
-                  cp -r --no-preserve=mode --preserve=timestamps ${self}/* .
-                  chmod -R +rwx .
-                  export HOME=$TMPDIR
-                  ${treefmt.legacyPackages.${system}.treefmt}/bin/treefmt --fail-on-change
-                  touch $out
-                '';
-            }
-            // flakes.${defaultCompiler}.checks
-            // collectOutputs "checks" flakes;
+            flakes.${defaultCompiler}.checks // collectOutputs "checks" flakes;
+
+          formatter = treefmt-nix.lib.mkWrapper pkgs treefmt.config;
 
           # NOTE
-          # This should be run from the development shell (i.e. run `nix develop` first).
-          # Treefmt expects the formatters to be on the PATH
-          formatter = treefmt.legacyPackages.${system}.withConfig {
-            settings = lib.importTOML ./treefmt.toml;
+          # This will generate a formatting check and can be reused in the
+          # `formatter` output above
+          treefmt.config = {
             projectRootFile = "flake.nix";
+            programs = {
+              nixpkgs-fmt.enable = true;
+              ormolu = {
+                enable = true;
+                package = ormoluFor defaultCompiler pkgs;
+                ghcOpts = [ "TypeApplications" ];
+              };
+            };
           };
         };
 
