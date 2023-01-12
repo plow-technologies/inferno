@@ -192,7 +192,10 @@
     in
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = nixpkgs.lib.systems.flakeExposed;
-      imports = [ treefmt-nix.flakeModule ];
+      imports = [
+        flake-parts.flakeModules.easyOverlay
+        treefmt-nix.flakeModule
+      ];
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, ... }:
         let
@@ -302,6 +305,12 @@
 
           formatter = treefmt-nix.lib.mkWrapper pkgs treefmt.config;
 
+          # Defined packages included in the generated `overlays.default`
+          overlayAttrs = {
+            inherit (config.packages)
+              inferno-lsp-server vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
+          };
+
           # NOTE
           # This will generate a formatting check and can be reused in the
           # `formatter` output above
@@ -317,31 +326,5 @@
             };
           };
         };
-
-      # Non-enumerated outputs
-      flake = {
-        overlays.default = lib.composeManyExtensions [
-          (final: prev:
-            # Needed to build the VSCode packages
-            lib.optionalAttrs (!(prev ? buildNpmPackage))
-              (inputs.npm-buildpackage.overlays.default final prev)
-            # Needed to build Inferno itself
-            // lib.optionalAttrs (!(prev ? haskell-nix))
-              (inputs.haskell-nix.overlays.combined final prev)
-          )
-          (_: prev:
-            let
-              inherit ((flakesFor prev).${defaultCompiler}) packages;
-            in
-            {
-              inherit
-                (vsCodeInfernoFor prev)
-                vscode-inferno-syntax-highlighting
-                vscode-inferno-lsp-server;
-              inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
-            }
-          )
-        ];
-      };
     };
 }
