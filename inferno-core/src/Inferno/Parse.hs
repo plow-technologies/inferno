@@ -599,17 +599,17 @@ tupleElems =
           char ')'
           endPos <- getSourcePos
           return ([(e, Nothing)], endPos)
-        ) <|> (
-        do
-          commaPos <- lexeme $ char ',' *> getSourcePos
-          (es, endPos) <- tupleElems
-          return ((e, Just commaPos) : es, endPos)
         )
-      )
+        <|> ( do
+                commaPos <- lexeme $ char ',' *> getSourcePos
+                (es, endPos) <- tupleElems
+                return ((e, Just commaPos) : es, endPos)
+            )
+  )
     <|> do
-          char ')'
-          endPos <- getSourcePos
-          return ([], endPos)
+      char ')'
+      endPos <- getSourcePos
+      return ([], endPos)
 
 -- | Parses any bracketed expression: tuples, bracketed exprs (1 + 2), and prefix ops (+)
 bracketedE :: Parser (Expr () SourcePos)
@@ -633,22 +633,26 @@ term =
     <|> try doubleE
     <|> intE
     <|> enumE Enum
-    <|> do -- Variable: foo or Mod.foo or Mod.(+)
+    <|> do
+      -- Variable: foo or Mod.foo or Mod.(+)
       startPos <- getSourcePos
       lexeme $
         try
-          ((\ nmspc x
-              -> Var startPos () (Scope $ ModuleName nmspc)
-                  $ Expl $ ExtIdent $ Right x)
-            <$> variable
-            <*> (char '.' *> variable))
-          <|>
-            prefixOpsWithModule startPos
-          <|>
-            try
-              (Var startPos () LocalScope . Expl . ExtIdent . Right
+          ( ( \nmspc x ->
+                Var startPos () (Scope $ ModuleName nmspc) $
+                  Expl $
+                    ExtIdent $
+                      Right x
+            )
+              <$> variable
+              <*> (char '.' *> variable)
+          )
+          <|> prefixOpsWithModule startPos
+          <|> try
+            ( Var startPos () LocalScope . Expl . ExtIdent . Right
                 <$> variable
-                <* notFollowedBy (char '.'))
+                <* notFollowedBy (char '.')
+            )
     <|> noneE Empty
     <|> someE One expr
     <|> ifE
