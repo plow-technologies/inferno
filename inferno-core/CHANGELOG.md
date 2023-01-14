@@ -1,5 +1,8 @@
 # Revision History for inferno-core
 
+## 0.1.0.4 -- 2022-01-13
+* Improve parser performance by refactoring parsing of bracketed expressions
+
 ## 0.1.0.3 -- 2022-01-01
 * Fix incorrect shadowing of variables in match expressions
 
