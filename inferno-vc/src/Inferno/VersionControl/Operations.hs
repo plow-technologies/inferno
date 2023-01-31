@@ -288,17 +288,28 @@ fetchVCObject' mprefix h = do
     trace $ ReadJSON fp
     either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
 
+-- | Fetch an object WITHOUT holding any locks. This is used by the cached client, which
+-- is safe since the cache is read only.
+fetchVCObjectUnsafe :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
+fetchVCObjectUnsafe h = do
+  VCStorePath storePath <- asks getTyped
+  let fp = storePath </> show h
+  checkPathExists fp
+  trace $ ReadJSON fp
+  either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
+
 -- | Fetch multiple objects (without locking in between)
 fetchVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => [VCObjectHash] -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjects hs = do
   Map.fromList <$> forM hs (\h -> (h,) <$> fetchVCObject h)
 
-fetchVCObjectClosureHashes :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => VCObjectHash -> m [VCObjectHash]
+-- | Fetch all dependencies of an object.
+-- NOTE: this is done without holding a lock, as dependencies are never modified.
+fetchVCObjectClosureHashes :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => VCObjectHash -> m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
   VCStorePath storePath <- asks getTyped
-  lock <- asks getTyped
   let fp = storePath </> "deps" </> show h
-  withRead lock $ readVCObjectHashTxt fp
+  readVCObjectHashTxt fp
 
 fetchVCObjectWithClosure :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectWithClosure h = do
