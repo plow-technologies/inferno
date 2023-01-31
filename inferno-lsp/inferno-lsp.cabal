@@ -35,7 +35,7 @@ library
     , containers                         >= 0.6.2 && < 0.7
     , inferno-core                       >= 0.1.0 && < 0.2
     , inferno-types                      >= 0.1.0 && < 0.2
-    , inferno-vc                         >= 0.1.0 && < 0.2
+    , inferno-vc                         >= 0.2.0 && < 0.3
     , lsp                                >= 1.6.0 && < 1.7
     , lsp-types                          >= 1.6.0 && < 1.7
     , megaparsec                         >= 9.2.1 && < 9.3

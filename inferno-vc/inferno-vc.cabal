@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-vc
-version:             0.1.0
+version:             0.2.0
 synopsis:            Version control server for Inferno
 description:         A version control server for Inferno scripts
 category:            DSL,Scripting
@@ -52,12 +52,15 @@ library
     , QuickCheck                         >= 2.14.2 && < 2.15
     , quickcheck-arbitrary-adt           >= 0.3.1 && < 0.4
     , quickcheck-instances               >= 0.3.28 && < 0.4
+    , SafeSemaphore
+    -- TODO add version bounds
     , servant                            >= 0.19 && < 0.20
     , servant-client                     >= 0.19 && < 0.20
     , servant-server                     >= 0.19.1 && < 0.20
     , servant-typed-error                >= 0.1.2 && < 0.2
     , text                               >= 2.0.1 && < 2.1
     , time                               >= 1.9.3 && < 1.12
+    , unliftio-core
     , wai                                >= 3.2.3 && < 3.3
     , wai-extra                          >= 3.1.12 && < 3.2
     , warp                               >= 3.3.23 && < 3.4

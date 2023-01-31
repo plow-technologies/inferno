@@ -60,12 +60,15 @@ The `to_head` mappings are used by the `fetchHist(h)` operation, which uses the 
 ## Option 1: fix the current implementation
 
 - Idea: all versions of a script share a unique `histID`. Instead of `to_head`, you have a meta field `to_hist` in the object file as this is stable.
-- Maintain a `hist_to_head` map in memory that maps each histID to the hash of its head, and use Control.Concurrent.Lock or an MVar to update this map atomically.
+- Maintain a `hist_to_head` map in memory that maps each histID to the hash of its head, and use [Control.Concurrent.Lock](https://hackage.haskell.org/package/concurrent-extra-0.7.0.12/docs/Control-Concurrent-Lock.html) or an MVar to update this map atomically.
 - `store(o, p)` writes a new head file for `o`, but retries until it can successfully update `hist_to_head`.
 - `fetchHist(h)` looks up the `histID` from the meta file, finds the head from `hist_to_head`, and returns the history saved in the appropriate head file.
 - `hist_to_head` can be periodically saved to file and on startup the last snapshot can be loaded and updated if necessary (as it is easy to reconstruct it from all object metas).
 - Pros: small migration from current store, most operations don't need lock so is relatively efficient.
 - Cons: need to carefully check/prove concurrent correctness, needs migration
+
+- What happens if there is a crash, and 2 concurrent new HEADs? Recovery can pick arbitrary one. Or discard both.
+- Use a checksum to detect crash. Remember crash can happen when snapshotting! (How does VPDB deal with this?)
 
 ```python
 def store(o, h_p):
@@ -87,14 +90,14 @@ def store(o, h_p):
 - Store adds row to table and unsets `isHead` of pred (atomically)
 - Index can be `hash`, so fetch is fast
 - All versions of a script share a unique `histID`, so `fetchHist(h)` looks up `histID` of `h` and fetches all rows with that `histID`.
-- DB is periodically backed up to file
+- DB is periodically [backed up](https://www.postgresql.org/docs/current/continuous-archiving.html) to file
 - Pro: concurrent correctness and efficiency guaranteed by DB
 - Con: making all operations atomic might be slower than a correct implementation of Option 1
 - Con: needs migration of store
 
 ## Option 3: STM
 
-- Can use an in-memory STM data structure and make each operation atomic
+- Can use an in-memory [STM data structure](https://web.mit.edu/price/a/2007/haskell/stm-lock-free-data-structures.pdf) and make each operation atomic
 - Like VPDB, have a thread save a snapshot of the structure to file periodically
 - Pro: STM ensures no concurrency bugs
 - Con: entire store needs to fit in memory
