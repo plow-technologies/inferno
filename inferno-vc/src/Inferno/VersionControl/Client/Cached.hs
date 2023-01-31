@@ -28,6 +28,8 @@ import Servant.Client (ClientEnv, ClientError)
 import Servant.Typed.Error (TypedClientM, runTypedClientM)
 import System.Directory (doesFileExist)
 import System.FilePath.Posix ((</>))
+import Control.Monad.Catch (MonadMask)
+import Control.Concurrent.FairRWLock (RWLock)
 
 data CachedVCClientError
   = ClientVCStoreError VCServerError
@@ -60,8 +62,10 @@ fetchVCObjectClosure ::
     HasType (IOTracer VCServerTrace) env,
     HasType Ops.VCStorePath env,
     HasType ClientEnv env,
+    HasType RWLock env,
     MonadReader env m,
     MonadIO m,
+    MonadMask m,
     FromJSON a,
     FromJSON g,
     ToJSON a,

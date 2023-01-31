@@ -18,13 +18,14 @@
 --   When an object is removed, its directory structure is preserved so you can undo it easily. i.e. `removed` directory has the same structure as `vc_store` directory.
 module Inferno.VersionControl.Operations where
 
-import           Control.Concurrent.FairRWLock        ( RWLock )
+import Control.Concurrent.FairRWLock (RWLock)
 import qualified Control.Concurrent.FairRWLock as RWL
-import Control.Monad (filterM, foldM, forM, forM_)
+import Control.Exception (throwIO)
+import Control.Monad.Catch (bracket_, MonadMask)
+import Control.Monad (foldM, forM, forM_)
 import Control.Monad.Error.Lens (throwing, catching)
-import Control.Monad.Except (MonadError, catchError)
+import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.IO.Unlift (MonadUnliftIO(withRunInIO))
 import Control.Monad.Reader (MonadReader (..), asks)
 import Crypto.Hash (digestFromByteString)
 import Data.Aeson (FromJSON, ToJSON, Value, eitherDecode, encode)
@@ -66,13 +67,13 @@ type VCStoreLogM env m = (HasType (IOTracer VCServerTrace) env, MonadReader env 
 
 type VCStoreEnvM env m = (HasType VCStorePath env, MonadReader env m, MonadIO m)
 
-type VCStoreLockM env m = (HasType RWLock env, MonadReader env m, MonadUnliftIO m)
+type VCStoreLockM env m = (HasType RWLock env, MonadReader env m, MonadIO m, MonadMask m)
 
-withWrite :: MonadUnliftIO m => RWLock -> m b -> m b
-withWrite lock f = withRunInIO $ \run -> RWL.withWrite lock $ run f
+withWrite :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
+withWrite lock = bracket_ (liftIO $ RWL.acquireWrite lock) (liftIO $ RWL.releaseWrite lock >>= either throwIO return)
 
-withRead :: MonadUnliftIO m => RWLock -> m b -> m b
-withRead lock f = withRunInIO $ \run -> RWL.withRead lock $ run f
+withRead :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
+withRead lock = bracket_ (liftIO $ RWL.acquireRead lock) (liftIO $ RWL.releaseRead lock >>= either throwIO return)
 
 trace :: VCStoreLogM env m => VCServerTrace -> m ()
 trace t = do
