@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                inferno-core
-version:             0.1.0.4
+version:             0.1.0.5
 synopsis:            A statically-typed functional scripting language
 description:         Parser, type inference, and interpreter for a statically-typed functional scripting language
 category:            DSL,Scripting
@@ -15,6 +15,7 @@ build-type:          Simple
 extra-source-files:
     CHANGELOG.md
     golden/**/*.json
+    golden/**/*.bin
 
 source-repository head
   type: git
@@ -96,6 +97,7 @@ test-suite inferno-tests
     , exceptions
     , hspec
     , hspec-golden-aeson
+    , hspec-golden-cereal
     , inferno-core
     , inferno-types
     , inferno-vc

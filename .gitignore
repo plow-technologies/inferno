@@ -22,4 +22,5 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 result*
+.vscode/
 .venv/

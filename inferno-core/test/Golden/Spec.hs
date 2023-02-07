@@ -1,5 +1,8 @@
+{-# LANGUAGE TypeApplications #-}
+
 module Golden.Spec (goldenTests) where
 
+import Data.Proxy (Proxy (Proxy))
 import Inferno.Types.Syntax (BaseType, Ident, InfernoType, ModuleName, TV)
 import Inferno.Types.Type (Namespace)
 import Inferno.VersionControl.Types
@@ -8,21 +11,32 @@ import Inferno.VersionControl.Types
     VCObjectPred,
     VCObjectVisibility,
   )
-import Test.Aeson.GenericSpecs
-  ( Proxy (..),
-    roundtripAndGoldenADTSpecs,
+import qualified Test.Aeson.GenericSpecs as Aeson
+  ( roundtripAndGoldenADTSpecs,
+  )
+import qualified Test.Cereal.GenericSpecs as Cereal
+  ( roundtripAndGoldenADTSpecs,
   )
 import Test.Hspec (Spec)
 
 goldenTests :: Spec
 goldenTests = do
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy VCObjectHash)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy Ident)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy ModuleName)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy Namespace)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy VCIncompatReason)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy VCObjectPred)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy VCObjectVisibility)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy BaseType)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy TV)
-  roundtripAndGoldenADTSpecs (Proxy :: Proxy InfernoType)
+  goldenAesonTests
+  goldenCerealTests
+
+goldenAesonTests :: Spec
+goldenAesonTests = do
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCObjectHash
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @Ident
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @ModuleName
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @Namespace
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCIncompatReason
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCObjectPred
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCObjectVisibility
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @BaseType
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @TV
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @InfernoType
+
+goldenCerealTests :: Spec
+goldenCerealTests = do
+  Cereal.roundtripAndGoldenADTSpecs $ Proxy @VCObjectHash
