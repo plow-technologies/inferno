@@ -1,9 +1,12 @@
 # Revision History for inferno-core
 
-## 0.1.0.4 -- 2022-01-13
+## 0.1.0.5 -- 2023-02-07
+* Add hspec-golden-cereal tests for VCObjectHash
+
+## 0.1.0.4 -- 2023-01-13
 * Improve parser performance by refactoring parsing of bracketed expressions
 
-## 0.1.0.3 -- 2022-01-01
+## 0.1.0.3 -- 2023-01-01
 * Fix incorrect shadowing of variables in match expressions
 
 ## 0.1.0.2 -- 2022-12-31

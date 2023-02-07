@@ -27,7 +27,15 @@ import Data.Int (Int32, Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
-import Data.Serialize (Serialize, get, put, runGet, runPut)
+import Data.Serialize
+  ( Serialize,
+    get,
+    getByteString,
+    put,
+    putByteString,
+    runGet,
+    runPut,
+  )
 import qualified Data.Set as Set
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -97,13 +105,13 @@ instance Hashable VCObjectHash where
 
 instance Serialize VCObjectHash where
   get =
-    get
+    (getByteString 44)
       >>= ( \b -> do
               b64 <- either fail pure $ Base64.decode b
               digest <- maybe (fail "VCObjectHash: Unable to digest from Base64 ByteString") pure $ digestFromByteString b64
               pure $ VCObjectHash digest
           )
-  put = put . Base64.encode . convert . vcObjectHashDigest
+  put = putByteString . Base64.encode . convert . vcObjectHashDigest
 
 -- | Typeclass of hashable objects
 class VCHashUpdate obj where
