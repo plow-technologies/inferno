@@ -102,9 +102,8 @@ data TypeClass = TypeClass
     params :: [InfernoType]
   }
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-
-instance Arbitrary TypeClass where
-  arbitrary = undefined -- TODO
+  deriving Arbitrary via (GenericArbitrary TypeClass)
+  deriving anyclass ToADTArbitrary
 
 data TCScheme = ForallTC [TV] (Set TypeClass) ImplType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, ToADTArbitrary)

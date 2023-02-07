@@ -435,7 +435,10 @@ instance ElementPosition ImplExpl where
     Expl (ExtIdent (Left _)) -> (pos, pos)
     Expl (ExtIdent (Right a)) -> (pos, incSourceCol pos $ Text.length a)
 
-data Fixity = InfixOp InfixFixity | PrefixOp deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+data Fixity = InfixOp InfixFixity | PrefixOp
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+  deriving Arbitrary via (GenericArbitrary Fixity)
+  deriving anyclass ToADTArbitrary
 
 data InfixFixity = NoFix | LeftFix | RightFix
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
@@ -989,8 +992,8 @@ data Pat hash pos
       (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON)
 
-instance Arbitrary (Pat hash pos) where
-  arbitrary = undefined -- TODO. See test/Parse/Spec's Arbitrary (Pat () ())
+-- instance Arbitrary (Pat hash pos) where
+--   arbitrary = undefined -- TODO. See test/Parse/Spec's Arbitrary (Pat () ())
 
 makeBaseFunctor ''Pat
 
