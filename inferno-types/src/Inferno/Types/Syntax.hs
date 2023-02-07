@@ -76,6 +76,7 @@ module Inferno.Types.Syntax
     Dependencies (..),
     GenericArbitrary (..),
     arbitraryName,
+    arbitrarySizedPat,
     collectArrs,
     extractArgsAndPrettyPrint,
     tListToList,
@@ -146,6 +147,7 @@ import qualified Prettyprinter.Internal as Pretty
 import Test.QuickCheck (Arbitrary (..), Gen, elements, PrintableString (getPrintableString), listOf, oneof, recursivelyShrink, shrinkNothing, sized, suchThat, choose)
 import Test.QuickCheck.Arbitrary.ADT (GArbitrary, ToADTArbitrary (..), genericArbitrary)
 import Test.QuickCheck.Instances.Text ()
+import Test.QuickCheck.Instances.Semigroup ()
 import Text.Megaparsec (Pos, SourcePos (..), mkPos, unPos)
 import Text.Read (readMaybe)
 
@@ -460,13 +462,18 @@ data Comment pos
   | BlockComment pos Text pos
   deriving (Show, Eq, Ord, Data, Generic, Functor, Foldable, ToJSON, FromJSON)
 
--- TODO do we need a generic Arbitrary (Comment pos) instance?
-instance Arbitrary (Comment ()) where
+instance Arbitrary pos => Arbitrary (Comment pos) where
   shrink = shrinkNothing
   arbitrary =
     oneof
-      [ (\x -> LineComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r'),
-        (\x -> BlockComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
+      [ LineComment
+          <$> arbitrary
+          <*> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r')
+          <*> arbitrary,
+        BlockComment
+          <$> arbitrary
+          <*> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
+          <*> arbitrary
       ]
 
 instance Pretty (Comment a) where
@@ -718,19 +725,18 @@ data Import pos
   | ICommentAfter (Import pos) (Comment pos)
   | ICommentBelow (Import pos) (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Generic, Data, ToJSON, FromJSON)
-  -- TODO if Arbitrary (Comment pos) then use this instead of explicit instance below
-  -- But use explicit instance if some parsing test fails with generic instance
-  -- deriving Arbitrary via (GenericArbitrary (Import pos))
-  -- deriving anyclass ToADTArbitrary
+  -- TODO use explicit instance below if some parsing test fails
+  deriving Arbitrary via (GenericArbitrary (Import pos))
+  deriving anyclass ToADTArbitrary
 
-instance Arbitrary (Import ()) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ IVar () <$> arbitrary,
-        IOpVar () <$> arbitrary,
-        IEnum () () <$> arbitrary
-      ]
+-- instance Arbitrary (Import ()) where
+--   shrink = shrinkNothing
+--   arbitrary =
+--     oneof
+--       [ IVar () <$> arbitrary,
+--         IOpVar () <$> arbitrary,
+--         IEnum () () <$> arbitrary
+--       ]
 
 makeBaseFunctor ''Import
 
@@ -992,8 +998,32 @@ data Pat hash pos
       (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON)
 
--- instance Arbitrary (Pat hash pos) where
---   arbitrary = undefined -- TODO. See test/Parse/Spec's Arbitrary (Pat () ())
+instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Pat hash pos) where
+  shrink = recursivelyShrink
+  arbitrary = sized arbitrarySizedPat
+
+arbitrarySizedPat :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Pat hash pos)
+arbitrarySizedPat n =
+  oneof
+    [ PVar <$> arbitrary <*> pure Nothing,
+      PVar <$> arbitrary <*> (Just <$> arbitrary),
+      -- TODO do we not want other scopes? Try if the following passes parse tests
+      -- PEnum <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary,
+      PEnum <$> arbitrary <*> arbitrary <*> pure LocalScope <*> arbitrary,
+      PLit <$> arbitrary <*> arbitrary,
+      POne <$> arbitrary <*> arbitrarySizedPat n,
+      PEmpty <$> arbitrary,
+      PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
+      PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
+      PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
+      PTuple
+        <$> arbitrary
+        <*> do
+          k <- choose (0, n)
+          tListFromList <$> sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+          `suchThat` (\xs -> length xs /= 1)
+        <*> arbitrary
+    ]
 
 makeBaseFunctor ''Pat
 
