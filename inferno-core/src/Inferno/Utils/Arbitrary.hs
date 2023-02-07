@@ -47,12 +47,12 @@ baseOpsTable = Prelude.baseOpsTable @(ExceptT EvalError IO) @() $ Prelude.builti
 -- This is because the parser tests use this. However, golden tests in theory should
 -- test all Exprs, so at some point we should revisit this and generate the missing ones
 -- (e.g., this doesn't generate any Exprs with implicit vars)
+-- TODO does inferno-vc store scripts with implicit vars?
 
 instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
   shrink = recursivelyShrink
   arbitrary = sized arbitrarySized
     where
-      -- TODO does inferno-vc store scripts with implicit vars?
       -- Don't generate implicit variables, because parser does not support them
       arbitraryExtIdent = ExtIdent <$> Right <$> arbitraryName
       arbitraryImplExpl = oneof [Impl <$> arbitraryExtIdent, Expl <$> arbitraryExtIdent]
@@ -82,38 +82,46 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> (arbitrarySized $ n `div` 3)
 
       arbitraryLam n =
-        (\vs e -> Lam () vs () e)
-          <$> arbitraryLamVars
+        Lam
+          <$> arbitrary
+          <*> arbitraryLamVars
+          <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
         where
           -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
-          arbitraryLamVars :: Gen (NonEmpty ((), Maybe ExtIdent))
+          arbitraryLamVars :: Arbitrary pos => Gen (NonEmpty (pos, Maybe ExtIdent))
           arbitraryLamVars = arbitrary `suchThat` (all isSomeRight . snd . NonEmpty.unzip)
           isSomeRight (Just (ExtIdent (Right _))) = True
           isSomeRight _ = False
 
       arbitraryLet n =
-        (\v e1 e2 -> Let () () v () e1 () e2)
-          <$> arbitraryImplExpl
+        Let
+          <$> arbitrary
+          <*> arbitrary
+          <*> arbitraryImplExpl
+          <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
 
       arbitraryIString n =
-        (\xs -> InterpolatedString () xs ())
-          <$> do
+        InterpolatedString
+          <$> arbitrary
+          <*> do
             k <- choose (0, n)
             oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
+          <*> arbitrary
         where
-          goT :: Int -> Gen (IStr 'True ((), Expr () (), ()))
+          goT :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (IStr 'True (pos, Expr hash pos, pos))
           goT = \case
             0 -> pure ISEmpty
             m ->
               oneof
-                [ ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goT (m - 1),
-                  ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goF (m - 1)
+                [ ISExpr <$> ((,,) <$> arbitrary <*> (arbitrarySized $ n `div` 3) <*> arbitrary) <*> goT (m - 1),
+                  ISExpr <$> ((,,) <$> arbitrary <*> (arbitrarySized $ n `div` 3) <*> arbitrary) <*> goF (m - 1)
                 ]
 
-          goF :: Int -> Gen (IStr 'False ((), Expr () (), ()))
+          goF :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (IStr 'False (pos, Expr hash pos, pos))
           goF = \case
             0 ->
               ISStr
@@ -129,18 +137,23 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                 <*> goT (m - 1)
 
       arbitraryIf n =
-        (\c t f -> If () c () t () f)
-          <$> (arbitrarySized $ n `div` 3)
+        If
+          <$> arbitrary
           <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
+          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
 
       arbitraryAssert n =
-        (\c e -> Assert () c () e)
-          <$> (arbitrarySized $ n `div` 3)
+        Assert
+          <$> arbitrary
+          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
 
       arbitraryOp n =
-        (\(prec, fix, op) e1 e2 -> Op e1 () () (prec, fix) LocalScope (Ident op) e2)
+        (\(prec, fix, op) e1 e2 p h -> Op e1 p h (prec, fix) LocalScope (Ident op) e2)
           <$> ( oneof
                   $ map pure
                   $ concatMap
@@ -156,9 +169,11 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
               )
           <*> (arbitrarySized $ n `div` 3)
           <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
+          <*> arbitrary
 
       arbitraryPreOp n =
-        (\(prec, op) e -> PreOp () () prec LocalScope (Ident op) e)
+        (\(prec, op) e p h -> PreOp p h prec LocalScope (Ident op) e)
           <$> ( oneof
                   $ map pure
                   $ concatMap
@@ -173,28 +188,51 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                   $ IntMap.toList baseOpsTable
               )
           <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
+          <*> arbitrary
 
       arbitraryCase n =
-        (\e cs -> Case () e () (NonEmpty.fromList cs) ())
+        (\e cs p1 p2 p3 -> Case p1 e p2 (NonEmpty.fromList cs) p3)
           <$> (arbitrarySized $ n `div` 3)
           <*> do
             k <- choose (0, n)
             sequence
-              [ (\i e -> ((), i, (), e))
+              [ (\i e p1 p2 -> (p1, i, p2, e))
                   <$> arbitrarySizedPat (n `div` 3)
                   <*> arbitrarySized (n `div` 3)
+                  <*> arbitrary
+                  <*> arbitrary
                 | _ <- [1 .. k]
               ]
             `suchThat` (not . null)
+          <*> arbitrary
+          <*> arbitrary
+          <*> arbitrary
 
-      arbitraryBracketed n = (\e -> Bracketed () e ()) <$> arbitrarySized (n `div` 3)
+      arbitraryBracketed n =
+        Bracketed <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary
+
+      arbitraryArrayComp n =
+        ArrayComp
+          <$> arbitrary
+          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
+          -- <*> ((\xs -> NonEmpty.fromList [((), x, (), e', Nothing) | (x, e') <- xs])
+          <*> (NonEmpty.fromList
+            <$> do
+              k <- choose (0, n)
+              sequence [(,,,,) <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrarySized (n `div` 3) <*> pure Nothing | _ <- [1 .. k]]
+              `suchThat` (not . null))
+          <*> oneof [(\p e -> Just (p, e)) <$> arbitrary <*> (arbitrarySized $ n `div` 3), pure Nothing]
+          <*> arbitrary
+
       arbitrarySized :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Expr hash pos)
       arbitrarySized 0 =
         oneof
           [ arbitraryVar,
             arbitraryEnum,
             arbitraryLit,
-            pure $ Empty ()
+            Empty <$> arbitrary
           ]
       arbitrarySized n =
         oneof
@@ -208,22 +246,19 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             arbitraryIf n,
             arbitraryOp n,
             arbitraryPreOp n,
-            (\xs -> Array () xs ())
-              <$> ( do
+            Array
+              <$> arbitrary
+              <*> ( do
                       k <- choose (0, n)
                       sequence [(,Nothing) <$> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
-                  ),
-            One () <$> arbitrarySized (n `div` 3),
-            pure $ Empty (),
+                  )
+              <*> arbitrary,
+            arbitraryArrayComp n,
+            One <$> arbitrary <*> arbitrarySized (n `div` 3),
+            Empty <$> arbitrary,
             arbitraryAssert n,
             arbitraryCase n,
-            (\e xs c -> ArrayComp () e () (NonEmpty.fromList [((), x, (), e', Nothing) | (x, e') <- xs]) c ())
-              <$> (arbitrarySized $ n `div` 3)
-              <*> do
-                k <- choose (0, n)
-                sequence [(,) <$> arbitrary <*> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
-                `suchThat` (not . null)
-              <*> oneof [Just . ((),) <$> (arbitrarySized $ n `div` 3), pure Nothing],
+            One <$> arbitrary <*> arbitrarySized (n `div` 3),
             arbitraryBracketed n,
             CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
             CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary,
