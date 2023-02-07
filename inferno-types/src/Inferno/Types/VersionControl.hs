@@ -27,6 +27,15 @@ import Data.Int (Int32, Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
+import Data.Serialize
+  ( Serialize,
+    get,
+    getByteString,
+    put,
+    putByteString,
+    runGet,
+    runPut,
+  )
 import qualified Data.Set as Set
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -93,6 +102,16 @@ instance Arbitrary VCObjectHash where
 instance Hashable VCObjectHash where
   hashWithSalt salt (VCObjectHash digest) =
     hashWithSalt salt $ convert @(Digest SHA256) @ByteString digest
+
+instance Serialize VCObjectHash where
+  get =
+    (getByteString 44)
+      >>= ( \b -> do
+              b64 <- either fail pure $ Base64.decode b
+              digest <- maybe (fail "VCObjectHash: Unable to digest from Base64 ByteString") pure $ digestFromByteString b64
+              pure $ VCObjectHash digest
+          )
+  put = putByteString . Base64.encode . convert . vcObjectHashDigest
 
 -- | Typeclass of hashable objects
 class VCHashUpdate obj where
@@ -282,12 +301,13 @@ pinnedUnderVCToMaybe = \case
   _ -> Nothing
 
 vcObjectHashToByteString :: VCObjectHash -> ByteString
-vcObjectHashToByteString = Base64.encode . convert . vcObjectHashDigest
+vcObjectHashToByteString = runPut . put
 
 byteStringToVCObjectHash :: ByteString -> Maybe VCObjectHash
-byteStringToVCObjectHash b = do
-  b64 <- either (const Nothing) Just $ Base64.decode b
-  VCObjectHash <$> digestFromByteString b64
+byteStringToVCObjectHash bs =
+  let result :: Either String VCObjectHash
+      result = runGet get bs
+   in either (const Nothing) Just result
 
 vcHash :: VCHashUpdate obj => obj -> VCObjectHash
 vcHash o = VCObjectHash $ hashFinalize $ hashInit &< o
