@@ -10,6 +10,7 @@ import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr, ModuleName, OpsTable)
 import Inferno.Types.Type (Namespace, TCScheme, TypeClass, TypeMetadata)
 import Inferno.Types.VersionControl (VCHashUpdate, VCObjectHash)
+import Test.QuickCheck (Arbitrary (..))
 
 data Module objs = Module
   { moduleName :: ModuleName,
@@ -17,8 +18,11 @@ data Module objs = Module
     moduleTypeClasses :: Set.Set TypeClass,
     moduleObjects :: objs
   }
-  deriving (Eq, Generic)
+  deriving (Show, Eq, Generic)
   deriving anyclass (VCHashUpdate, ToJSON, FromJSON)
+
+instance Arbitrary a => Arbitrary (Module a) where
+  arbitrary = undefined -- TODO
 
 newtype BuiltinModuleHash = BuiltinModuleHash ModuleName
   deriving stock (Generic)

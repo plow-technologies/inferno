@@ -16,14 +16,12 @@ import Data.Text.Lazy (toStrict)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
-    Comment (..),
     Expr (..),
     ExtIdent (..),
     Fixity (..),
     IStr (..),
     Ident (Ident),
     ImplExpl (..),
-    Import (..),
     InfixFixity (..),
     Lit (..),
     ModuleName (..),
@@ -48,89 +46,12 @@ import Test.QuickCheck
     genericShrink,
     oneof,
     recursivelyShrink,
-    shrinkNothing,
     sized,
     suchThat,
     (===),
   )
 import Text.Pretty.Simple (pShow)
 import Utils (baseOpsTable, builtinModulesOpsTable)
-
-instance Arbitrary a => Arbitrary (Scoped a) where
-  arbitrary = oneof $ [pure LocalScope, Scope <$> arbitrary]
-  shrink = shrinkNothing
-
-instance Arbitrary InfixFixity where
-  arbitrary = oneof $ map pure [NoFix, LeftFix, RightFix]
-  shrink = shrinkNothing
-
-instance Arbitrary Lit where
-  arbitrary =
-    oneof
-      [ LInt <$> arbitrary,
-        LDouble <$> arbitrary,
-        (LText . pack . getPrintableString) <$> arbitrary,
-        LHex <$> arbitrary
-      ]
-
-instance Arbitrary ImplExpl where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ Impl <$> arbitrary,
-        Expl <$> arbitrary
-      ]
-
-instance Arbitrary (Import ()) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ IVar () <$> arbitrary,
-        IOpVar () <$> arbitrary,
-        IEnum () () <$> arbitrary
-      ]
-
-instance Arbitrary (Comment ()) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ (\x -> LineComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r'),
-        (\x -> BlockComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
-      ]
-
-instance Arbitrary a => Arbitrary (SomeIStr a) where
-  arbitrary = sized $ \n -> do
-    k <- choose (0, n)
-    oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
-    where
-      goT :: Int -> Gen (IStr 'True a)
-      goT = \case
-        0 -> pure ISEmpty
-        n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
-
-      goF :: Int -> Gen (IStr 'False a)
-      goF = \case
-        0 -> ISStr <$> arbitrary <*> pure ISEmpty
-        n -> ISStr <$> arbitrary <*> goT (n - 1)
-
-  shrink (SomeIStr ISEmpty) = []
-  shrink (SomeIStr (ISStr s xs)) =
-    -- shrink to subterms
-    [SomeIStr xs]
-      ++
-      -- recursively shrink subterms
-      [ case xs' of
-          SomeIStr (ISStr _ _) -> xs'
-          SomeIStr r@(ISExpr _ _) -> SomeIStr $ ISStr s r
-          SomeIStr r@ISEmpty -> SomeIStr $ ISStr s r
-        | xs' <- shrink (SomeIStr xs)
-      ]
-  shrink (SomeIStr (ISExpr e xs)) =
-    [SomeIStr xs]
-      ++ [SomeIStr (ISExpr e' xs) | e' <- shrink e]
-      ++
-      -- recursively shrink subterms
-      [SomeIStr (ISExpr e' xs') | (e', SomeIStr xs') <- shrink (e, SomeIStr xs)]
 
 instance Arbitrary (Pat () ()) where
   arbitrary = sized arbitrarySizedPat

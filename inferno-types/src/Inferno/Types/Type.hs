@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Inferno.Types.Type
@@ -44,7 +45,7 @@ import qualified Data.Set as Set
 -- import Data.String (IsString)
 import Data.Text (Text, unpack)
 import GHC.Generics (Generic)
-import Inferno.Types.Syntax (BaseType (..), Expr, ExtIdent (..), Ident (..), InfernoType (..), ModuleName (..), TV (..), punctuate')
+import Inferno.Types.Syntax (GenericArbitrary (..), BaseType (..), Expr, ExtIdent (..), Ident (..), InfernoType (..), ModuleName (..), TV (..), punctuate')
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter
   ( Doc,
@@ -67,6 +68,8 @@ import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
 
 data ImplType = ImplType (Map ExtIdent InfernoType) InfernoType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+  deriving Arbitrary via (GenericArbitrary ImplType)
+  deriving anyclass ToADTArbitrary
 
 data Scheme = Forall [TV] ImplType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
@@ -100,8 +103,14 @@ data TypeClass = TypeClass
   }
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
+instance Arbitrary TypeClass where
+  arbitrary = undefined -- TODO
+
 data TCScheme = ForallTC [TV] (Set TypeClass) ImplType
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, ToADTArbitrary)
+  deriving Arbitrary via (GenericArbitrary TCScheme)
+  -- TODO what's the difference between 'anyclass ToADTArbitrary' and just ToADTArbitrary?
+  -- deriving anyclass ToADTArbitrary
 
 tySig :: [Doc ann] -> [Doc ann]
 tySig [] = []

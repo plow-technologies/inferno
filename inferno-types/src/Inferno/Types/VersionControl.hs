@@ -39,6 +39,7 @@ import Inferno.Types.Syntax
     Expr (..),
     ExtIdent (..),
     Fixity,
+    GenericArbitrary (..),
     IStr (..),
     Ident (..),
     ImplExpl (..),
@@ -269,6 +270,8 @@ deriving via (VCHashUpdateViaShow SourcePos) instance VCHashUpdate SourcePos
 
 data Pinned a = Local | Builtin VCObjectHash | UnderVC a
   deriving (Show, Eq, Ord, Generic, Functor, Data, ToJSON, FromJSON, VCHashUpdate)
+  deriving Arbitrary via (GenericArbitrary (Pinned a))
+  deriving anyclass ToADTArbitrary
 
 pinnedToMaybe :: Pinned VCObjectHash -> Maybe VCObjectHash
 pinnedToMaybe = \case

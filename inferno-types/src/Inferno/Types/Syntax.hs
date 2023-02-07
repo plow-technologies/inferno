@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -73,6 +74,7 @@ module Inferno.Types.Syntax
     SourcePos (..),
     Scoped (..),
     Dependencies (..),
+    GenericArbitrary (..),
     arbitraryName,
     collectArrs,
     extractArgsAndPrettyPrint,
@@ -112,11 +114,11 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import Data.Word (Word64)
-import GHC.Generics (Generic)
+import GHC.Generics (Generic, Rep)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Numeric (showHex)
 import Prettyprinter
@@ -141,11 +143,18 @@ import Prettyprinter
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
-import Test.QuickCheck (Arbitrary (..), Gen, elements, listOf, oneof, recursivelyShrink, shrinkNothing, sized, suchThat)
-import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
+import Test.QuickCheck (Arbitrary (..), Gen, elements, PrintableString (getPrintableString), listOf, oneof, recursivelyShrink, shrinkNothing, sized, suchThat, choose)
+import Test.QuickCheck.Arbitrary.ADT (GArbitrary, ToADTArbitrary (..), genericArbitrary)
 import Test.QuickCheck.Instances.Text ()
 import Text.Megaparsec (Pos, SourcePos (..), mkPos, unPos)
 import Text.Read (readMaybe)
+
+-- | A utility type for deriving Arbitrary for simple types
+-- Use as @deriving Arbitrary via (GenericArbitrary MyType)@
+newtype GenericArbitrary a = GenericArbitrary a
+
+instance (Generic a, GArbitrary ga, ga ~ Rep a) => Arbitrary (GenericArbitrary a) where
+  arbitrary = GenericArbitrary <$> genericArbitrary
 
 newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
@@ -406,6 +415,8 @@ instance FromJSONKey ExtIdent where
 
 data ImplExpl = Impl ExtIdent | Expl ExtIdent
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+  deriving Arbitrary via (GenericArbitrary ImplExpl)
+  deriving anyclass ToADTArbitrary
 
 instance Pretty ExtIdent where
   pretty (ExtIdent i) = case i of
@@ -426,7 +437,10 @@ instance ElementPosition ImplExpl where
 
 data Fixity = InfixOp InfixFixity | PrefixOp deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
-data InfixFixity = NoFix | LeftFix | RightFix deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+data InfixFixity = NoFix | LeftFix | RightFix
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+  deriving Arbitrary via (GenericArbitrary InfixFixity)
+  deriving anyclass ToADTArbitrary
 
 instance ToJSON Pos where
   toJSON = toJSON . unPos
@@ -442,6 +456,15 @@ data Comment pos
   = LineComment pos Text pos
   | BlockComment pos Text pos
   deriving (Show, Eq, Ord, Data, Generic, Functor, Foldable, ToJSON, FromJSON)
+
+-- TODO do we need a generic Arbitrary (Comment pos) instance?
+instance Arbitrary (Comment ()) where
+  shrink = shrinkNothing
+  arbitrary =
+    oneof
+      [ (\x -> LineComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r'),
+        (\x -> BlockComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
+      ]
 
 instance Pretty (Comment a) where
   pretty = \case
@@ -462,6 +485,15 @@ data Lit
   | LText Text
   | LHex Word64
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+instance Arbitrary Lit where
+  arbitrary =
+    oneof
+      [ LInt <$> arbitrary,
+        LDouble <$> arbitrary,
+        (LText . pack . getPrintableString) <$> arbitrary,
+        LHex <$> arbitrary
+      ]
 
 instance Pretty Lit where
   pretty = \case
@@ -602,6 +634,40 @@ deriving instance Functor SomeIStr
 
 deriving instance Foldable SomeIStr
 
+instance Arbitrary a => Arbitrary (SomeIStr a) where
+  arbitrary = sized $ \n -> do
+    k <- choose (0, n)
+    oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
+    where
+      goT :: Int -> Gen (IStr 'True a)
+      goT = \case
+        0 -> pure ISEmpty
+        n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
+
+      goF :: Int -> Gen (IStr 'False a)
+      goF = \case
+        0 -> ISStr <$> arbitrary <*> pure ISEmpty
+        n -> ISStr <$> arbitrary <*> goT (n - 1)
+
+  shrink (SomeIStr ISEmpty) = []
+  shrink (SomeIStr (ISStr s xs)) =
+    -- shrink to subterms
+    [SomeIStr xs]
+      ++
+      -- recursively shrink subterms
+      [ case xs' of
+          SomeIStr (ISStr _ _) -> xs'
+          SomeIStr r@(ISExpr _ _) -> SomeIStr $ ISStr s r
+          SomeIStr r@ISEmpty -> SomeIStr $ ISStr s r
+        | xs' <- shrink (SomeIStr xs)
+      ]
+  shrink (SomeIStr (ISExpr e xs)) =
+    [SomeIStr xs]
+      ++ [SomeIStr (ISExpr e' xs) | e' <- shrink e]
+      ++
+      -- recursively shrink subterms
+      [SomeIStr (ISExpr e' xs') | (e', SomeIStr xs') <- shrink (e, SomeIStr xs)]
+
 toEitherList :: SomeIStr e -> [Either Text e]
 toEitherList = \case
   SomeIStr ISEmpty -> []
@@ -649,11 +715,26 @@ data Import pos
   | ICommentAfter (Import pos) (Comment pos)
   | ICommentBelow (Import pos) (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Generic, Data, ToJSON, FromJSON)
+  -- TODO if Arbitrary (Comment pos) then use this instead of explicit instance below
+  -- But use explicit instance if some parsing test fails with generic instance
+  -- deriving Arbitrary via (GenericArbitrary (Import pos))
+  -- deriving anyclass ToADTArbitrary
+
+instance Arbitrary (Import ()) where
+  shrink = shrinkNothing
+  arbitrary =
+    oneof
+      [ IVar () <$> arbitrary,
+        IOpVar () <$> arbitrary,
+        IEnum () () <$> arbitrary
+      ]
 
 makeBaseFunctor ''Import
 
 data Scoped a = LocalScope | Scope a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Data, Generic, ToJSON, FromJSON)
+  deriving Arbitrary via (GenericArbitrary (Scoped a))
+  deriving anyclass ToADTArbitrary
 
 fromScoped :: a -> Scoped a -> a
 fromScoped d = \case
@@ -907,6 +988,9 @@ data Pat hash pos
       (Pat hash pos)
       (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON)
+
+instance Arbitrary (Pat hash pos) where
+  arbitrary = undefined -- TODO. See test/Parse/Spec's Arbitrary (Pat () ())
 
 makeBaseFunctor ''Pat
 

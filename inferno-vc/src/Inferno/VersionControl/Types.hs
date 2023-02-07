@@ -34,7 +34,7 @@ import Data.Text (Text)
 import Foreign.C.Types (CTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Module (Module (..))
-import Inferno.Types.Syntax (Dependencies (..), Expr (..), Ident (..))
+import Inferno.Types.Syntax (Dependencies (..), Expr (..), GenericArbitrary (..), Ident (..))
 import Inferno.Types.Type (Namespace, TCScheme (..)) -- TypeMetadata(..),
 import Inferno.Types.VersionControl (Pinned (..), VCHashUpdate (..), VCObjectHash (..), pinnedUnderVCToMaybe, vcHash, vcObjectHashToByteString)
 import Test.QuickCheck (Arbitrary (..), oneof)
@@ -46,7 +46,22 @@ data VCObject
   | VCFunction (Expr (Pinned VCObjectHash) ()) TCScheme -- (Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
   | VCTestFunction (Expr (Pinned VCObjectHash) ())
   | VCEnum Ident (Set Ident)
-  deriving (Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
+  deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
+  deriving Arbitrary via (GenericArbitrary VCObject)
+  deriving anyclass ToADTArbitrary
+
+-- TODO In order to show Arbitrary VCObject, we need the following instance.
+-- Alternatively, we can just show the generic type is arbitrary as below.
+-- See test/Parse/Spec's Arbitrary (Expr () ()) for an example, but note that it
+-- only generates valid expressions. For golden tests we don't need to restrict ourselves
+-- to valid expressions, so perhaps we can define a general Arbitrary instance in
+-- Inferno.Types.Syntax?
+
+instance Arbitrary (Expr (Pinned VCObjectHash) ()) where
+  arbitrary = undefined -- TODO
+
+-- instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
+--   arbitrary = undefined -- TODO
 
 showVCObjectType :: VCObject -> Text
 showVCObjectType = \case
