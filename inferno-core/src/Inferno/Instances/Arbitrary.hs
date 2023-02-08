@@ -528,6 +528,183 @@ arbitrarySizedPat n =
         <*> arbitrary
     ]
 
+--instance Arbitrary (Expr () ()) where
+--  shrink = recursivelyShrink
+--  arbitrary = sized arbitrarySized
+--    where
+--      -- Don't generate implicit variables, because parser does not support them
+--      arbitraryExtIdent = ExtIdent <$> Right <$> arbitraryName
+--      arbitraryImplExpl = oneof [Impl <$> arbitraryExtIdent, Expl <$> arbitraryExtIdent]
+--      arbitraryVar =
+--        oneof
+--          [ Var () () LocalScope <$> arbitraryImplExpl,
+--            OpVar () () LocalScope . Ident
+--              <$> ( oneof
+--                      $ concatMap
+--                        ( \case
+--                            (InfixOp _, _, op) -> [pure op]
+--                            _ -> []
+--                        )
+--                      $ concat
+--                      $ IntMap.elems baseOpsTable
+--                  )
+--          ]
+--      arbitraryEnum = Enum () () LocalScope <$> arbitrary
+--      arbitraryLit = Lit () <$> arbitrary
+--
+--      arbitraryApp n =
+--        App
+--          <$> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryLam n =
+--        (\vs e -> Lam () vs () e)
+--          <$> arbitraryLamVars
+--          <*> (arbitrarySized $ n `div` 3)
+--        where
+--          -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
+--          arbitraryLamVars :: Gen (NonEmpty ((), Maybe ExtIdent))
+--          arbitraryLamVars = arbitrary `suchThat` (all isSomeRight . snd . NonEmpty.unzip)
+--          isSomeRight (Just (ExtIdent (Right _))) = True
+--          isSomeRight _ = False
+--
+--      arbitraryLet n =
+--        (\v e1 e2 -> Let () () v () e1 () e2)
+--          <$> arbitraryImplExpl
+--          <*> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryIString n =
+--        (\xs -> InterpolatedString () xs ())
+--          <$> do
+--            k <- choose (0, n)
+--            oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
+--        where
+--          goT :: Int -> Gen (IStr 'True ((), Expr () (), ()))
+--          goT = \case
+--            0 -> pure ISEmpty
+--            m ->
+--              oneof
+--                [ ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goT (m - 1),
+--                  ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goF (m - 1)
+--                ]
+--
+--          goF :: Int -> Gen (IStr 'False ((), Expr () (), ()))
+--          goF = \case
+--            0 ->
+--              ISStr
+--                <$> ( (Text.pack . getPrintableString <$> arbitrary)
+--                        `suchThat` (\x -> not (Text.null x) && Text.all (\c -> c /= '\\' && c /= '$' && c /= '`') x)
+--                    )
+--                <*> pure ISEmpty
+--            m ->
+--              ISStr
+--                <$> ( (Text.pack . getPrintableString <$> arbitrary)
+--                        `suchThat` (\x -> not (Text.null x) && Text.all (\c -> c /= '\\' && c /= '$' && c /= '`') x)
+--                    )
+--                <*> goT (m - 1)
+--
+--      arbitraryIf n =
+--        (\c t f -> If () c () t () f)
+--          <$> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryAssert n =
+--        (\c e -> Assert () c () e)
+--          <$> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryOp n =
+--        (\(prec, fix, op) e1 e2 -> Op e1 () () (prec, fix) LocalScope (Ident op) e2)
+--          <$> ( oneof
+--                  $ map pure
+--                  $ concatMap
+--                    ( \(prec, xs) ->
+--                        concatMap
+--                          ( \case
+--                              (InfixOp fix, _, op) -> [(prec, fix, op)]
+--                              _ -> []
+--                          )
+--                          xs
+--                    )
+--                  $ IntMap.toList baseOpsTable
+--              )
+--          <*> (arbitrarySized $ n `div` 3)
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryPreOp n =
+--        (\(prec, op) e -> PreOp () () prec LocalScope (Ident op) e)
+--          <$> ( oneof
+--                  $ map pure
+--                  $ concatMap
+--                    ( \(prec, xs) ->
+--                        concatMap
+--                          ( \case
+--                              (PrefixOp, _, op) -> [(prec, op)]
+--                              _ -> []
+--                          )
+--                          xs
+--                    )
+--                  $ IntMap.toList baseOpsTable
+--              )
+--          <*> (arbitrarySized $ n `div` 3)
+--
+--      arbitraryCase n =
+--        (\e cs -> Case () e () (NonEmpty.fromList cs) ())
+--          <$> (arbitrarySized $ n `div` 3)
+--          <*> do
+--            k <- choose (0, n)
+--            sequence
+--              [ (\i e -> ((), i, (), e))
+--                  <$> arbitrarySizedPat (n `div` 3)
+--                  <*> arbitrarySized (n `div` 3)
+--                | _ <- [1 .. k]
+--              ]
+--            `suchThat` (not . null)
+--
+--      arbitraryBracketed n = (\e -> Bracketed () e ()) <$> arbitrarySized (n `div` 3)
+--      arbitrarySized 0 =
+--        oneof
+--          [ arbitraryVar,
+--            arbitraryEnum,
+--            arbitraryLit,
+--            pure $ Empty ()
+--          ]
+--      arbitrarySized n =
+--        oneof
+--          [ arbitraryVar,
+--            arbitraryEnum,
+--            arbitraryLit,
+--            arbitraryApp n,
+--            arbitraryLam n,
+--            arbitraryLet n,
+--            arbitraryIString n,
+--            arbitraryIf n,
+--            arbitraryOp n,
+--            arbitraryPreOp n,
+--            (\xs -> Array () xs ())
+--              <$> ( do
+--                      k <- choose (0, n)
+--                      sequence [(,Nothing) <$> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
+--                  ),
+--            One () <$> arbitrarySized (n `div` 3),
+--            pure $ Empty (),
+--            arbitraryAssert n,
+--            arbitraryCase n,
+--            (\e xs c -> ArrayComp () e () (NonEmpty.fromList [((), x, (), e', Nothing) | (x, e') <- xs]) c ())
+--              <$> (arbitrarySized $ n `div` 3)
+--              <*> do
+--                k <- choose (0, n)
+--                sequence [(,) <$> arbitrary <*> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
+--                `suchThat` (not . null)
+--              <*> oneof [Just . ((),) <$> (arbitrarySized $ n `div` 3), pure Nothing],
+--            arbitraryBracketed n,
+--            CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
+--            CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary,
+--            CommentBelow <$> arbitrarySized (n `div` 3) <*> arbitrary
+--          ]
+
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Type
 deriving instance ToADTArbitrary Type.ImplType
 deriving via (GenericArbitrary Type.ImplType) instance Arbitrary Type.ImplType

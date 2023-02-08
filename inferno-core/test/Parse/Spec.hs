@@ -8,7 +8,9 @@ module Parse.Spec where
 
 import Data.Functor.Foldable (ana, project)
 import qualified Data.IntMap as IntMap (elems, toList)
-import qualified Data.List.NonEmpty as NEList
+import Data.List.NonEmpty (NonEmpty)
+import Inferno.Instances.Arbitrary ()
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as Text
 import Data.Text.Lazy (toStrict)
@@ -96,7 +98,7 @@ parsingTests = describe "pretty printing/parsing" $ do
           <?> ( "Pretty: \n"
                   <> (renderPretty x)
                   <> "\nParse error:\n"
-                  <> (pack $ prettyError $ fst $ NEList.head err)
+                  <> (pack $ prettyError $ fst $ NonEmpty.head err)
               )
       Right (res, _comments) ->
         (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
@@ -155,7 +157,7 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldFailFor "_x"
     shouldFailFor "let _ = () in ()"
     shouldFailFor "let _x = () in ()"
-    shouldSucceedFor "fun _x -> ()" $ Lam () (((), Nothing) NEList.:| []) () (Tuple () TNil ())
+    shouldSucceedFor "fun _x -> ()" $ Lam () (((), Nothing) NonEmpty.:| []) () (Tuple () TNil ())
 
   describe "parsing implicit variables" $ do
     let letImpl x = Let () () (Impl (ExtIdent $ Right x)) () (Tuple () TNil ()) () (Tuple () TNil ())
@@ -224,8 +226,8 @@ parsingTests = describe "pretty printing/parsing" $ do
 
   describe "parsing case statements" $ do
     shouldFailFor "match () with {}"
-    shouldSucceedFor "match () with { () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NEList.:| []) ()
-    shouldSucceedFor "match () with { | () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NEList.:| []) ()
+    shouldSucceedFor "match () with { () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NonEmpty.:| []) ()
+    shouldSucceedFor "match () with { | () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NonEmpty.:| []) ()
 
   describe "parsing assertions" $ do
     shouldFailFor "assert #false"
@@ -237,7 +239,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Tuple () TNil ())
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Nothing) NEList.:| [])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Nothing) NonEmpty.:| [])
         Nothing
         ()
     shouldSucceedFor "[(x,y) | x <- someList, y <- otherList]" $
@@ -245,7 +247,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Tuple () (TCons (Var () () LocalScope (Expl (ExtIdent $ Right "x")), Just ()) (Var () () LocalScope (Expl (ExtIdent $ Right "y")), Nothing) []) ())
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NEList.:| [((), Ident "y", (), Var () () LocalScope (Expl (ExtIdent $ Right "otherList")), Nothing)])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NonEmpty.:| [((), Ident "y", (), Var () () LocalScope (Expl (ExtIdent $ Right "otherList")), Nothing)])
         Nothing
         ()
     shouldSucceedFor "[2*x | x <- someList, if x > 10]" $
@@ -253,7 +255,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Op (Lit () (LInt 2)) () () (10, LeftFix) LocalScope (Ident "*") (Var () () LocalScope (Expl (ExtIdent $ Right "x"))))
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NEList.:| [])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NonEmpty.:| [])
         (Just ((), Op (Var () () LocalScope (Expl (ExtIdent $ Right "x"))) () () (7, NoFix) LocalScope (Ident ">") (Lit () (LInt 10))))
         ()
     shouldFailFor "[() | if x > 10]"
@@ -261,7 +263,7 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $
         case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NEList.head err)
+          Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NonEmpty.head err)
           Right (res, _) -> fmap (const ()) res `shouldBe` ast
     shouldFailFor str =
       it ("should fail for \"" <> unpack str <> "\"") $
