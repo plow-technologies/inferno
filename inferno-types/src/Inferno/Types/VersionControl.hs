@@ -7,18 +7,16 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
--- Needed for a ToADTArbitrary on VCObjectHash
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Types.VersionControl where
 
 import Control.DeepSeq (NFData)
-import Crypto.Hash (Context, Digest, digestFromByteString, hash, hashFinalize, hashInit, hashUpdate)
+import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashInit, hashUpdate)
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
 import Data.ByteArray (ByteArrayAccess, convert)
 import Data.ByteArray.Pack (fill, putStorable)
-import Data.ByteString (ByteString, pack)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import Data.Data (Data)
@@ -48,7 +46,6 @@ import Inferno.Types.Syntax
     Expr (..),
     ExtIdent (..),
     Fixity,
-    GenericArbitrary (..),
     IStr (..),
     Ident (..),
     ImplExpl (..),
@@ -73,18 +70,12 @@ import Inferno.Types.Type
     TypeMetadata (..),
   )
 import Servant.API (FromHttpApiData (..), ToHttpApiData (..))
-import Test.QuickCheck.Arbitrary (Arbitrary (..))
-import Test.QuickCheck.Arbitrary.ADT
 import Text.Megaparsec (SourcePos)
 
 newtype VCObjectHash = VCObjectHash {vcObjectHashDigest :: Digest SHA256}
   deriving stock (Generic, Data)
-  deriving anyclass (ToJSONKey, FromJSONKey, NFData, ToADTArbitrary)
+  deriving anyclass (ToJSONKey, FromJSONKey, NFData)
   deriving newtype (Eq, Ord, Read, ByteArrayAccess)
-
--- Orphan Instance Required for ToADTArbitrary VCObjectHash
-instance Arbitrary (Digest SHA256) where
-  arbitrary = hash . pack <$> arbitrary
 
 instance Show VCObjectHash where
   show = Char8.unpack . vcObjectHashToByteString
@@ -96,9 +87,6 @@ instance FromJSON VCObjectHash where
   parseJSON = withText "VCObjectHash" $ \piece -> do
     b64 <- either fail pure $ Base64.decode $ encodeUtf8 piece
     maybe (fail $ unpack $ "Cannot decode hash " <> piece) (pure . VCObjectHash) . digestFromByteString $ b64
-
-instance Arbitrary VCObjectHash where
-  arbitrary = VCObjectHash . hash . Char8.pack <$> arbitrary
 
 instance Hashable VCObjectHash where
   hashWithSalt salt (VCObjectHash digest) =
@@ -289,8 +277,6 @@ deriving via (VCHashUpdateViaShow SourcePos) instance VCHashUpdate SourcePos
 
 data Pinned a = Local | Builtin VCObjectHash | UnderVC a
   deriving (Show, Eq, Ord, Generic, Functor, Data, ToJSON, FromJSON, VCHashUpdate)
-  deriving Arbitrary via (GenericArbitrary (Pinned a))
-  deriving anyclass ToADTArbitrary
 
 pinnedToMaybe :: Pinned VCObjectHash -> Maybe VCObjectHash
 pinnedToMaybe = \case

@@ -46,14 +46,9 @@ library
     , http-client                        >= 0.7.13 && < 0.8
     , http-types                         >= 0.12.3 && < 0.13
     , inferno-types                      >= 0.1.0 && < 0.2
-    -- TODO why doesn't this work?
-    -- , inferno-core
     , lens                               >= 5.2 && < 5.3
     , mtl                                >= 2.2.2 && < 2.3
     , plow-log                           >= 0.1.6 && < 0.2
-    , QuickCheck                         >= 2.14.2 && < 2.15
-    , quickcheck-arbitrary-adt           >= 0.3.1 && < 0.4
-    , quickcheck-instances               >= 0.3.28 && < 0.4
     , servant                            >= 0.19 && < 0.20
     , servant-client                     >= 0.19 && < 0.20
     , servant-server                     >= 0.19.1 && < 0.20

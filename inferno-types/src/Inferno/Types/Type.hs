@@ -45,7 +45,7 @@ import qualified Data.Set as Set
 -- import Data.String (IsString)
 import Data.Text (Text, unpack)
 import GHC.Generics (Generic)
-import Inferno.Types.Syntax (GenericArbitrary (..), BaseType (..), Expr, ExtIdent (..), Ident (..), InfernoType (..), ModuleName (..), TV (..), punctuate')
+import Inferno.Types.Syntax (BaseType (..), Expr, ExtIdent (..), Ident (..), InfernoType (..), ModuleName (..), TV (..), punctuate')
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter
   ( Doc,
@@ -63,13 +63,9 @@ import Prettyprinter
     -- tupled,
     (<+>),
   )
-import Test.QuickCheck (Arbitrary (..), oneof)
-import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
 
 data ImplType = ImplType (Map ExtIdent InfernoType) InfernoType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary ImplType)
-  deriving anyclass ToADTArbitrary
 
 data Scheme = Forall [TV] ImplType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
@@ -102,14 +98,9 @@ data TypeClass = TypeClass
     params :: [InfernoType]
   }
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary TypeClass)
-  deriving anyclass ToADTArbitrary
 
 data TCScheme = ForallTC [TV] (Set TypeClass) ImplType
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, ToADTArbitrary)
-  deriving Arbitrary via (GenericArbitrary TCScheme)
-  -- TODO what's the difference between 'anyclass ToADTArbitrary' and just ToADTArbitrary?
-  -- deriving anyclass ToADTArbitrary
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
 tySig :: [Doc ann] -> [Doc ann]
 tySig [] = []
@@ -223,7 +214,7 @@ data Namespace
   | EnumNamespace Ident
   | ModuleNamespace ModuleName
   | TypeNamespace Ident
-  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON, ToADTArbitrary)
+  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
 
 instance Pretty Namespace where
   pretty = \case
@@ -232,16 +223,6 @@ instance Pretty Namespace where
     EnumNamespace (Ident i) -> "#" <> pretty i
     ModuleNamespace (ModuleName m) -> pretty m
     TypeNamespace (Ident i) -> pretty i
-
-instance Arbitrary Namespace where
-  arbitrary =
-    oneof
-      [ FunNamespace <$> arbitrary,
-        OpNamespace <$> arbitrary,
-        EnumNamespace <$> arbitrary,
-        ModuleNamespace <$> arbitrary,
-        TypeNamespace <$> arbitrary
-      ]
 
 namespaceToIdent :: Namespace -> Ident
 namespaceToIdent = \case

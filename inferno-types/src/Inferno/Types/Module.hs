@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 
 module Inferno.Types.Module where
@@ -8,10 +7,9 @@ import Data.Aeson (FromJSON, ToJSON)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
-import Inferno.Types.Syntax (Expr, ModuleName, OpsTable, GenericArbitrary (..))
+import Inferno.Types.Syntax (Expr, ModuleName, OpsTable)
 import Inferno.Types.Type (Namespace, TCScheme, TypeClass, TypeMetadata)
 import Inferno.Types.VersionControl (VCHashUpdate, VCObjectHash)
-import Test.QuickCheck (Arbitrary (..))
 
 data Module objs = Module
   { moduleName :: ModuleName,
@@ -20,7 +18,6 @@ data Module objs = Module
     moduleObjects :: objs
   }
   deriving (Show, Eq, Generic)
-  deriving Arbitrary via (GenericArbitrary (Module objs))
   deriving anyclass (VCHashUpdate, ToJSON, FromJSON)
 
 newtype BuiltinModuleHash = BuiltinModuleHash ModuleName

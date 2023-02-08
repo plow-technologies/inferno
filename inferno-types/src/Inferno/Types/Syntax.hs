@@ -74,9 +74,6 @@ module Inferno.Types.Syntax
     SourcePos (..),
     Scoped (..),
     Dependencies (..),
-    GenericArbitrary (..),
-    arbitraryName,
-    arbitrarySizedPat,
     collectArrs,
     extractArgsAndPrettyPrint,
     tListToList,
@@ -115,11 +112,11 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
-import Data.Text (Text, pack)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import Data.Word (Word64)
-import GHC.Generics (Generic, Rep)
+import GHC.Generics (Generic)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Numeric (showHex)
 import Prettyprinter
@@ -144,24 +141,12 @@ import Prettyprinter
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
-import Test.QuickCheck (Arbitrary (..), Gen, elements, PrintableString (getPrintableString), listOf, oneof, recursivelyShrink, shrinkNothing, sized, suchThat, choose)
-import Test.QuickCheck.Arbitrary.ADT (GArbitrary, ToADTArbitrary (..), genericArbitrary)
-import Test.QuickCheck.Instances.Text ()
-import Test.QuickCheck.Instances.Semigroup ()
 import Text.Megaparsec (Pos, SourcePos (..), mkPos, unPos)
 import Text.Read (readMaybe)
 
--- | A utility type for deriving Arbitrary for simple types
--- Use as @deriving Arbitrary via (GenericArbitrary MyType)@
-newtype GenericArbitrary a = GenericArbitrary a
-
-instance (Generic a, GArbitrary ga, ga ~ Rep a) => Arbitrary (GenericArbitrary a) where
-  arbitrary = GenericArbitrary <$> genericArbitrary
-
 newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Arbitrary, Serialize)
-  deriving anyclass (ToADTArbitrary)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Serialize)
 
 data BaseType
   = TInt
@@ -174,26 +159,7 @@ data BaseType
   | TTimeDiff
   | TResolution
   | TEnum Text (Set.Set Ident)
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, ToADTArbitrary)
-
-instance Arbitrary BaseType where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof $
-      (TEnum <$> (Text.pack <$> arbitrary) <*> (Set.fromList <$> listOf arbitrary))
-        : ( map
-              pure
-              [ TInt,
-                TDouble,
-                TWord16,
-                TWord32,
-                TWord64,
-                TText,
-                TTime,
-                TTimeDiff,
-                TResolution
-              ]
-          )
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
 instance Serialize BaseType where
   get =
@@ -248,46 +214,8 @@ data InfernoType
   | TOptional InfernoType
   | TTuple (TList InfernoType)
   | TRep InfernoType
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable, ToADTArbitrary)
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
-
-instance Arbitrary InfernoType where
-  shrink = recursivelyShrink
-  arbitrary = sized arbitrarySized
-    where
-      arbitraryVar =
-        TVar <$> arbitrary
-
-      arbitraryArr n =
-        TArr
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryTTuple n =
-        oneof
-          [ pure $ TTuple TNil,
-            TTuple <$> (TCons <$> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3) <*> listOf (arbitrarySized $ n `div` 3))
-          ]
-
-      arbitraryBase = TBase <$> arbitrary
-
-      arbitraryRest n = do
-        constr <- elements [TArray, TSeries, TOptional, TRep]
-        constr <$> (arbitrarySized $ n `div` 3)
-
-      arbitrarySized 0 =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase
-          ]
-      arbitrarySized n =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase,
-            arbitraryArr n,
-            arbitraryTTuple n,
-            arbitraryRest n
-          ]
 
 punctuate' :: Doc ann -> [Doc ann] -> [Doc ann]
 punctuate' _ [] = []
@@ -354,28 +282,10 @@ rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "No
 newtype Ident = Ident {unIdent :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData, Hashable)
-  deriving anyclass (ToADTArbitrary)
-
-arbitraryName :: Gen Text
-arbitraryName =
-  ( (\a as -> Text.pack $ a : as)
-      <$> (elements ['a' .. 'z'])
-      <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['_'])
-  )
-    `suchThat` (\i -> not $ i `elem` rws)
-
-instance Arbitrary Ident where
-  shrink = shrinkNothing
-  arbitrary = Ident <$> arbitraryName
 
 newtype ModuleName = ModuleName {unModuleName :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, IsString)
-  deriving anyclass (ToADTArbitrary)
-
-instance Arbitrary ModuleName where
-  shrink = shrinkNothing
-  arbitrary = ModuleName <$> arbitraryName
 
 class ElementPosition a where
   elementPosition :: SourcePos -> a -> (SourcePos, SourcePos)
@@ -396,11 +306,6 @@ newtype ExtIdent = ExtIdent (Either Int Text)
   deriving (Show, Eq, Ord, Data, Generic)
   deriving newtype (ToJSON, FromJSON)
 
-instance Arbitrary ExtIdent where
-  shrink = shrinkNothing
-  arbitrary =
-    ExtIdent <$> oneof [Left <$> (arbitrary `suchThat` ((<) 0)), Right <$> arbitraryName]
-
 instance ToJSONKey ExtIdent where
   toJSONKey = toJSONKeyText $ \case
     ExtIdent (Left i) -> "var$" <> (Text.pack $ show i)
@@ -417,8 +322,6 @@ instance FromJSONKey ExtIdent where
 
 data ImplExpl = Impl ExtIdent | Expl ExtIdent
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary ImplExpl)
-  deriving anyclass ToADTArbitrary
 
 instance Pretty ExtIdent where
   pretty (ExtIdent i) = case i of
@@ -439,13 +342,9 @@ instance ElementPosition ImplExpl where
 
 data Fixity = InfixOp InfixFixity | PrefixOp
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary Fixity)
-  deriving anyclass ToADTArbitrary
 
 data InfixFixity = NoFix | LeftFix | RightFix
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary InfixFixity)
-  deriving anyclass ToADTArbitrary
 
 instance ToJSON Pos where
   toJSON = toJSON . unPos
@@ -461,20 +360,6 @@ data Comment pos
   = LineComment pos Text pos
   | BlockComment pos Text pos
   deriving (Show, Eq, Ord, Data, Generic, Functor, Foldable, ToJSON, FromJSON)
-
-instance Arbitrary pos => Arbitrary (Comment pos) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ LineComment
-          <$> arbitrary
-          <*> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r')
-          <*> arbitrary,
-        BlockComment
-          <$> arbitrary
-          <*> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
-          <*> arbitrary
-      ]
 
 instance Pretty (Comment a) where
   pretty = \case
@@ -496,15 +381,6 @@ data Lit
   | LHex Word64
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
-instance Arbitrary Lit where
-  arbitrary =
-    oneof
-      [ LInt <$> arbitrary,
-        LDouble <$> arbitrary,
-        (LText . pack . getPrintableString) <$> arbitrary,
-        LHex <$> arbitrary
-      ]
-
 instance Pretty Lit where
   pretty = \case
     LInt i -> if i < 0 then "(" <> pretty i <> ")" else pretty i
@@ -516,15 +392,8 @@ instance ElementPosition Lit where
   elementPosition pos l = (pos, incSourceCol pos $ length $ show $ pretty l)
 
 data TList a = TNil | TCons a a [a]
-  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable, ToADTArbitrary)
+  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
-
-instance Arbitrary a => Arbitrary (TList a) where
-  arbitrary =
-    oneof
-      [ pure TNil,
-        TCons <$> arbitrary <*> arbitrary <*> listOf arbitrary
-      ]
 
 instance Traversable TList where
   {-# INLINE traverse #-} -- so that traverse can fuse
@@ -644,40 +513,6 @@ deriving instance Functor SomeIStr
 
 deriving instance Foldable SomeIStr
 
-instance Arbitrary a => Arbitrary (SomeIStr a) where
-  arbitrary = sized $ \n -> do
-    k <- choose (0, n)
-    oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
-    where
-      goT :: Int -> Gen (IStr 'True a)
-      goT = \case
-        0 -> pure ISEmpty
-        n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
-
-      goF :: Int -> Gen (IStr 'False a)
-      goF = \case
-        0 -> ISStr <$> arbitrary <*> pure ISEmpty
-        n -> ISStr <$> arbitrary <*> goT (n - 1)
-
-  shrink (SomeIStr ISEmpty) = []
-  shrink (SomeIStr (ISStr s xs)) =
-    -- shrink to subterms
-    [SomeIStr xs]
-      ++
-      -- recursively shrink subterms
-      [ case xs' of
-          SomeIStr (ISStr _ _) -> xs'
-          SomeIStr r@(ISExpr _ _) -> SomeIStr $ ISStr s r
-          SomeIStr r@ISEmpty -> SomeIStr $ ISStr s r
-        | xs' <- shrink (SomeIStr xs)
-      ]
-  shrink (SomeIStr (ISExpr e xs)) =
-    [SomeIStr xs]
-      ++ [SomeIStr (ISExpr e' xs) | e' <- shrink e]
-      ++
-      -- recursively shrink subterms
-      [SomeIStr (ISExpr e' xs') | (e', SomeIStr xs') <- shrink (e, SomeIStr xs)]
-
 toEitherList :: SomeIStr e -> [Either Text e]
 toEitherList = \case
   SomeIStr ISEmpty -> []
@@ -725,25 +560,11 @@ data Import pos
   | ICommentAfter (Import pos) (Comment pos)
   | ICommentBelow (Import pos) (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Generic, Data, ToJSON, FromJSON)
-  -- TODO use explicit instance below if some parsing test fails
-  deriving Arbitrary via (GenericArbitrary (Import pos))
-  deriving anyclass ToADTArbitrary
-
--- instance Arbitrary (Import ()) where
---   shrink = shrinkNothing
---   arbitrary =
---     oneof
---       [ IVar () <$> arbitrary,
---         IOpVar () <$> arbitrary,
---         IEnum () () <$> arbitrary
---       ]
 
 makeBaseFunctor ''Import
 
 data Scoped a = LocalScope | Scope a
   deriving (Show, Eq, Ord, Functor, Foldable, Traversable, Data, Generic, ToJSON, FromJSON)
-  deriving Arbitrary via (GenericArbitrary (Scoped a))
-  deriving anyclass ToADTArbitrary
 
 fromScoped :: a -> Scoped a -> a
 fromScoped d = \case
@@ -997,33 +818,6 @@ data Pat hash pos
       (Pat hash pos)
       (Comment pos)
   deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON)
-
-instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Pat hash pos) where
-  shrink = recursivelyShrink
-  arbitrary = sized arbitrarySizedPat
-
-arbitrarySizedPat :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Pat hash pos)
-arbitrarySizedPat n =
-  oneof
-    [ PVar <$> arbitrary <*> pure Nothing,
-      PVar <$> arbitrary <*> (Just <$> arbitrary),
-      -- TODO do we not want other scopes? Try if the following passes parse tests
-      -- PEnum <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary,
-      PEnum <$> arbitrary <*> arbitrary <*> pure LocalScope <*> arbitrary,
-      PLit <$> arbitrary <*> arbitrary,
-      POne <$> arbitrary <*> arbitrarySizedPat n,
-      PEmpty <$> arbitrary,
-      PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
-      PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      PTuple
-        <$> arbitrary
-        <*> do
-          k <- choose (0, n)
-          tListFromList <$> sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-          `suchThat` (\xs -> length xs /= 1)
-        <*> arbitrary
-    ]
 
 makeBaseFunctor ''Pat
 
