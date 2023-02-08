@@ -264,17 +264,19 @@ instance Arbitrary a => Arbitrary (SomeIStr a) where
       -- recursively shrink subterms
       [SomeIStr (ISExpr e' xs') | (e', SomeIStr xs') <- shrink (e, SomeIStr xs)]
 
-deriving instance Arbitrary pos => ToADTArbitrary (Import pos)
--- TODO use explicit instance below if some parsing test fails
-deriving via (GenericArbitrary (Import pos)) instance Arbitrary pos => Arbitrary (Import pos)
--- instance Arbitrary (Import ()) where
---   shrink = shrinkNothing
---   arbitrary =
---     oneof
---       [ IVar () <$> arbitrary,
---         IOpVar () <$> arbitrary,
---         IEnum () () <$> arbitrary
---       ]
+-- TODO I changed to the explicit instance below in case that's causing the tests to hang
+-- Perhaps the best way would be to use a size bound on the recursive constructors like
+-- ICommentAbove
+-- deriving instance Arbitrary pos => ToADTArbitrary (Import pos)
+-- deriving via (GenericArbitrary (Import pos)) instance Arbitrary pos => Arbitrary (Import pos)
+instance Arbitrary pos => Arbitrary (Import pos) where
+  shrink = shrinkNothing
+  arbitrary =
+    oneof
+      [ IVar <$> arbitrary <*> arbitrary,
+        IOpVar <$> arbitrary <*> arbitrary,
+        IEnum <$> arbitrary <*> arbitrary <*> arbitrary
+      ]
 
 deriving instance Arbitrary a => ToADTArbitrary (Scoped a)
 deriving via (GenericArbitrary (Scoped a)) instance Arbitrary a => Arbitrary (Scoped a)
@@ -452,7 +454,6 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <$> arbitrary
           <*> (arbitrarySized $ n `div` 3)
           <*> arbitrary
-          -- <*> ((\xs -> NonEmpty.fromList [((), x, (), e', Nothing) | (x, e') <- xs])
           <*> (NonEmpty.fromList
             <$> do
               k <- choose (0, n)
@@ -523,8 +524,9 @@ arbitrarySizedPat n =
         <$> arbitrary
         <*> do
           k <- choose (0, n)
-          tListFromList <$> sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-          `suchThat` (\xs -> length xs /= 1)
+          tListFromList <$>
+            ( sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+              `suchThat` (\xs -> length xs /= 1))
         <*> arbitrary
     ]
 
