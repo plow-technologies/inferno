@@ -16,12 +16,14 @@ import Data.Text.Lazy (toStrict)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
+    Comment (..),
     Expr (..),
     ExtIdent (..),
     Fixity (..),
     IStr (..),
     Ident (Ident),
     ImplExpl (..),
+    Import (..),
     InfixFixity (..),
     Lit (..),
     ModuleName (..),
