@@ -12,6 +12,7 @@ import qualified Data.List.NonEmpty as NEList
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as Text
 import Data.Text.Lazy (toStrict)
+import Inferno.Instances.Arbitrary (arbitraryName)
 -- import Inferno.Module.Prelude (baseOpsTable, builtinModulesOpsTable)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
@@ -29,7 +30,6 @@ import Inferno.Types.Syntax
     Scoped (..),
     SomeIStr (..),
     TList (..),
-    arbitraryName,
     tListFromList,
   )
 import Inferno.Utils.Prettyprinter (renderPretty)

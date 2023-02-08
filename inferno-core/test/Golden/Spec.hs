@@ -5,6 +5,7 @@ module Golden.Spec (goldenTests) where
 import Data.Proxy (Proxy (Proxy))
 import Inferno.Types.Syntax (BaseType, Ident, InfernoType, ModuleName, TV)
 import Inferno.Types.Type (Namespace)
+import Inferno.Instances.Arbitrary ()
 import Inferno.VersionControl.Types
   ( VCIncompatReason,
     VCObjectHash,
