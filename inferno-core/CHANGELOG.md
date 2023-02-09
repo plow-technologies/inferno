@@ -1,5 +1,9 @@
 # Revision History for inferno-core
 
+## 0.1.2 -- 2023-02-09
+* Add golden aeson tests for VCObject
+* Collect every Arbitrary (and ToADTArbitrary) instances in a new module called Inferno.Instances.Arbitrary 
+
 ## 0.1.0.5 -- 2023-02-07
 * Add hspec-golden-cereal tests for VCObjectHash
 
