@@ -11,7 +11,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
 import Data.Text.Lazy (toStrict)
 import Inferno.Instances.Arbitrary ()
--- import Inferno.Module.Prelude (baseOpsTable, builtinModulesOpsTable)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
@@ -30,7 +29,7 @@ import Inferno.Types.Syntax
   )
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
-import Test.Hspec.QuickCheck (modifyMaxSuccess, prop)
+import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
   ( Property,
     Testable (property),
@@ -75,25 +74,24 @@ infixl 2 <?>
 
 parsingTests :: Spec
 parsingTests = describe "pretty printing/parsing" $ do
-  modifyMaxSuccess (const 5) $
-    prop "parseExpr and pretty are inverse up to normalizeExpr" $
-      \(x :: Expr () ()) -> case parseExpr baseOpsTable builtinModulesOpsTable (renderPretty x) of
-        Left err ->
-          property False
-            <?> ( "Pretty: \n"
-                    <> (renderPretty x)
-                    <> "\nParse error:\n"
-                    <> (pack $ prettyError $ fst $ NonEmpty.head err)
-                )
-        Right (res, _comments) ->
-          (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
-            <?> ( "Pretty: \n"
-                    <> (renderPretty x)
-                    <> "\nParsed: \n"
-                    <> (toStrict $ pShow res)
-                    <> "\nParsed pretty: \n"
-                    <> (renderPretty res)
-                )
+  prop "parseExpr and pretty are inverse up to normalizeExpr" $
+    \(x :: Expr () ()) -> case parseExpr baseOpsTable builtinModulesOpsTable (renderPretty x) of
+      Left err ->
+        property False
+          <?> ( "Pretty: \n"
+                  <> (renderPretty x)
+                  <> "\nParse error:\n"
+                  <> (pack $ prettyError $ fst $ NonEmpty.head err)
+              )
+      Right (res, _comments) ->
+        (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
+          <?> ( "Pretty: \n"
+                  <> (renderPretty x)
+                  <> "\nParsed: \n"
+                  <> (toStrict $ pShow res)
+                  <> "\nParsed pretty: \n"
+                  <> (renderPretty res)
+              )
 
   describe "parsing literals" $ do
     shouldSucceedFor "0" $ Lit () (LInt 0)
