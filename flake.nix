@@ -270,16 +270,21 @@
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
-                  combined = builtins.concatLists
-                    [
-                      (builtins.attrValues self.checks.${system})
-                      (builtins.attrValues ps)
-                      (
-                        lib.mapAttrsToList
-                          (_: v: v.inputDerivation)
-                          self.devShells.${system}
-                      )
-                    ];
+                  combined =
+                    let
+                      putTreefmtFirst = builtins.sort
+                        (x: _: if x.name == "treefmt-check" then true else false);
+                    in
+                    builtins.concatLists
+                      [
+                        (putTreefmtFirst (builtins.attrValues self.checks.${system}))
+                        (builtins.attrValues ps)
+                        (
+                          lib.mapAttrsToList
+                            (_: v: v.inputDerivation)
+                            self.devShells.${system}
+                        )
+                      ];
                 }
                 ''
                   echo $combined
