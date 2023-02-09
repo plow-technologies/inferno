@@ -32,7 +32,7 @@ goldenTests = do
 goldenAesonTests :: Spec
 goldenAesonTests = do
   Aeson.roundtripAndGoldenADTSpecsWithSettings
-    (Aeson.defaultSettings {Aeson.sampleSize = 1})
+    (Aeson.defaultSettings {Aeson.sampleSize = 5})
     $ Proxy @VCObject
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCObjectHash
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @Ident

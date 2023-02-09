@@ -3,83 +3,151 @@
         {
             "contents": {
                 "contents": [
-                    [],
+                    {
+                        "contents": [
+                            {
+                                "contents": [
+                                    [],
+                                    [
+                                        {
+                                            "Left": "𰿲j𬡁!s~(𪆀n."
+                                        }
+                                    ],
+                                    []
+                                ],
+                                "tag": "InterpolatedString"
+                            },
+                            {
+                                "contents": [
+                                    [],
+                                    "oC$|𐩂ⲋf𭿪x喩wU-f@z",
+                                    []
+                                ],
+                                "tag": "BlockComment"
+                            }
+                        ],
+                        "tag": "CommentBelow"
+                    },
                     {
                         "contents": [
                             [],
                             {
-                                "contents": [
+                                "contents": 9107659,
+                                "tag": "LInt"
+                            }
+                        ],
+                        "tag": "Lit"
+                    }
+                ],
+                "tag": "App"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            [
+                                [
                                     [],
-                                    [],
-                                    []
+                                    {
+                                        "Right": "bla1z6i0_ghc91dy59tz7pnl9uh3zxg"
+                                    }
                                 ],
-                                "tag": "Array"
-                            },
+                                [
+                                    [],
+                                    {
+                                        "Right": "mm8pgcmqdmohtg58l2a9"
+                                    }
+                                ],
+                                [
+                                    [],
+                                    {
+                                        "Right": "s1oj6dtzm5nvi80x6ctv__9fosp9451qqhhw0ydtrb0"
+                                    }
+                                ]
+                            ],
                             [],
                             {
                                 "contents": [
-                                    [],
                                     {
                                         "contents": [
                                             [],
-                                            {
-                                                "contents": "05unIrIRp9BuCP-RCPkJG2M84Vn4S40jHGeu9nFo08U=",
-                                                "tag": "Builtin"
-                                            },
-                                            {
-                                                "tag": "LocalScope"
-                                            },
-                                            {
-                                                "contents": {
-                                                    "Right": "lxewp87abxs311f75qof4n_ka9ta9"
-                                                },
-                                                "tag": "Expl"
-                                            }
-                                        ],
-                                        "tag": "Var"
-                                    },
-                                    [],
-                                    {
-                                        "contents": [
                                             {
                                                 "contents": [],
                                                 "tag": "Empty"
                                             },
                                             [],
                                             {
-                                                "contents": "02VPOo5zwaqRgTVd0uVO-ann0jwxJDrcP7K1kI5gxK0=",
-                                                "tag": "Builtin"
-                                            },
-                                            [
-                                                9,
-                                                "LeftFix"
-                                            ],
-                                            {
-                                                "tag": "LocalScope"
-                                            },
-                                            "-",
-                                            {
                                                 "contents": [
                                                     [],
                                                     {
-                                                        "contents": "HvjG76S_tVUld75tV6jtaLTZnbZVZa585b4L_34cpg8=",
-                                                        "tag": "UnderVC"
+                                                        "tag": "Local"
                                                     },
                                                     {
                                                         "tag": "LocalScope"
                                                     },
-                                                    "&&"
+                                                    {
+                                                        "contents": {
+                                                            "Right": "xgm1_xfw113w8e8h4874pn"
+                                                        },
+                                                        "tag": "Impl"
+                                                    }
                                                 ],
-                                                "tag": "OpVar"
+                                                "tag": "Var"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -13434940,
+                                                        "tag": "LInt"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
                                             }
                                         ],
-                                        "tag": "Op"
+                                        "tag": "If"
+                                    },
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -15200565,
+                                                        "tag": "LInt"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "begcyh9kzsq1bbb5p35k"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ],
+                                        "tag": "Assert"
                                     }
                                 ],
-                                "tag": "Assert"
+                                "tag": "App"
                             }
                         ],
-                        "tag": "Assert"
+                        "tag": "Lam"
                     },
                     [],
                     {
@@ -90,43 +158,364 @@
                                     {
                                         "contents": [
                                             [],
-                                            {
-                                                "contents": 13013796,
-                                                "tag": "LHex"
-                                            }
+                                            [
+                                                {
+                                                    "Right": [
+                                                        [],
+                                                        {
+                                                            "contents": [],
+                                                            "tag": "Empty"
+                                                        },
+                                                        []
+                                                    ]
+                                                },
+                                                {
+                                                    "Left": "?.]=xxHyp(#"
+                                                }
+                                            ],
+                                            []
                                         ],
-                                        "tag": "Lit"
+                                        "tag": "InterpolatedString"
                                     },
                                     {
                                         "contents": [
                                             [],
-                                            {
-                                                "contents": "1bLH4bY9H6kYq3YwVA6vZwQX4VQ_EC6wHyfwwL8mpyc=",
-                                                "tag": "Builtin"
-                                            },
-                                            {
-                                                "tag": "LocalScope"
-                                            },
-                                            "y"
+                                            " JZ=O=",
+                                            []
                                         ],
-                                        "tag": "Enum"
+                                        "tag": "BlockComment"
                                     }
                                 ],
-                                "tag": "App"
+                                "tag": "CommentBelow"
                             }
                         ],
                         "tag": "One"
-                    },
-                    [],
-                    {
-                        "contents": [],
-                        "tag": "Empty"
                     }
                 ],
-                "tag": "If"
+                "tag": "Assert"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    {
+                                        "contents": [
+                                            [],
+                                            [],
+                                            {
+                                                "contents": {
+                                                    "Right": "wl41jhz4a4o5jvcoow_0ebafpafg"
+                                                },
+                                                "tag": "Impl"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "9𨅓𭚢H|UE[T",
+                                                        "tag": "LText"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "DPX-stxm6cmywVRiIJNm3nKVq-7o3Dc7xAXfD42LhdI=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "Right": "vv7odrl15nutexmxebpkau2kl"
+                                                        },
+                                                        "tag": "Expl"
+                                                    }
+                                                ],
+                                                "tag": "Var"
+                                            }
+                                        ],
+                                        "tag": "Let"
+                                    },
+                                    [],
+                                    {
+                                        "contents": "FfQjGXwI2sywjqJScwnzhb8GVuXXHjV1ui32ElHnquo=",
+                                        "tag": "Builtin"
+                                    },
+                                    [
+                                        10,
+                                        "LeftFix"
+                                    ],
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "/",
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "_3O_cbytSIaUVbossZ1toO7baho8qN_DfKUtkXLYBDA=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "ts7pk5bg2s1y"
+                                                ],
+                                                "tag": "Enum"
+                                            },
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            }
+                                        ],
+                                        "tag": "App"
+                                    }
+                                ],
+                                "tag": "Op"
+                            }
+                        ],
+                        "tag": "One"
+                    }
+                ],
+                "tag": "One"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": "g8hNciYmIW8n8d03CjXAmEG-GdPGlWxNXlai1HeBUpA=",
+                        "tag": "Builtin"
+                    },
+                    {
+                        "tag": "LocalScope"
+                    },
+                    "h0iymi6xj8pr"
+                ],
+                "tag": "Enum"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    {
+                        "contents": [
+                            [],
+                            "UtF𝙼t_䱪𮡺!H,Br❝𡟙𥌽+굄6zꠙ𫾏z홀:?𥦡sm꒹",
+                            []
+                        ],
+                        "tag": "LineComment"
+                    },
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    {
+                                        "contents": {
+                                            "Right": "f_6"
+                                        },
+                                        "tag": "Expl"
+                                    }
+                                ],
+                                "tag": "Var"
+                            },
+                            [],
+                            [
+                                [
+                                    [],
+                                    "lar0ngts9",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    }
+                                                ],
+                                                "tag": "One"
+                                            },
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    "u1unraw3j1176",
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "Zo1REiQCLRLWVCzrulXX06ZmdpJ_L3GHnO6RFsmSUAc=",
+                                                                "tag": "Builtin"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "Right": "bilqk7d_n8n4s"
+                                                                },
+                                                                "tag": "Expl"
+                                                            }
+                                                        ],
+                                                        "tag": "Var"
+                                                    },
+                                                    null
+                                                ]
+                                            ],
+                                            [
+                                                [],
+                                                {
+                                                    "contents": [
+                                                        [],
+                                                        {
+                                                            "contents": [],
+                                                            "tag": "Empty"
+                                                        }
+                                                    ],
+                                                    "tag": "One"
+                                                }
+                                            ],
+                                            []
+                                        ],
+                                        "tag": "ArrayComp"
+                                    },
+                                    null
+                                ],
+                                [
+                                    [],
+                                    "u3fhjwpp21h3yqkvnsjsve2vrh",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "btag_1iqyvcl4md2gmemxthc1dclb8m0ax5c8q7a7_2"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "p0n9s5u9lqns6h9wc36n05jpwi5_likgvlv3uwnzfl9bbxyb1jjxj89imcg2n2et32a508n6"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "n"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "pbza9m9ywa"
+                                                    }
+                                                ]
+                                            ],
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "xoP8Q2yozuQeQFDLn_m3sSQJRLXKsjStCC1phwgD6s0=",
+                                                                "tag": "UnderVC"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "xrbx0y2vs6ji2fosf"
+                                                        ],
+                                                        "tag": "Enum"
+                                                    },
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    }
+                                                ],
+                                                "tag": "App"
+                                            }
+                                        ],
+                                        "tag": "Lam"
+                                    },
+                                    null
+                                ],
+                                [
+                                    [],
+                                    "izkbnnr4ezs3nil1imnc60pc",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "pfn8ewk0_44_gwzom4okr0c71e7ek"
+                                                        ],
+                                                        "tag": "Enum"
+                                                    }
+                                                ],
+                                                "tag": "One"
+                                            },
+                                            []
+                                        ],
+                                        "tag": "Bracketed"
+                                    },
+                                    null
+                                ]
+                            ],
+                            null,
+                            []
+                        ],
+                        "tag": "ArrayComp"
+                    }
+                ],
+                "tag": "CommentAbove"
             },
             "tag": "VCTestFunction"
         }
     ],
-    "seed": 842707543
+    "seed": -392396380
 }
