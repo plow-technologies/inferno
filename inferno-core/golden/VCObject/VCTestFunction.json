@@ -1,0 +1,132 @@
+{
+    "samples": [
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    [],
+                                    []
+                                ],
+                                "tag": "Array"
+                            },
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "05unIrIRp9BuCP-RCPkJG2M84Vn4S40jHGeu9nFo08U=",
+                                                "tag": "Builtin"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "Right": "lxewp87abxs311f75qof4n_ka9ta9"
+                                                },
+                                                "tag": "Expl"
+                                            }
+                                        ],
+                                        "tag": "Var"
+                                    },
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            },
+                                            [],
+                                            {
+                                                "contents": "02VPOo5zwaqRgTVd0uVO-ann0jwxJDrcP7K1kI5gxK0=",
+                                                "tag": "Builtin"
+                                            },
+                                            [
+                                                9,
+                                                "LeftFix"
+                                            ],
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "-",
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "HvjG76S_tVUld75tV6jtaLTZnbZVZa585b4L_34cpg8=",
+                                                        "tag": "UnderVC"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "&&"
+                                                ],
+                                                "tag": "OpVar"
+                                            }
+                                        ],
+                                        "tag": "Op"
+                                    }
+                                ],
+                                "tag": "Assert"
+                            }
+                        ],
+                        "tag": "Assert"
+                    },
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": 13013796,
+                                                "tag": "LHex"
+                                            }
+                                        ],
+                                        "tag": "Lit"
+                                    },
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "1bLH4bY9H6kYq3YwVA6vZwQX4VQ_EC6wHyfwwL8mpyc=",
+                                                "tag": "Builtin"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "y"
+                                        ],
+                                        "tag": "Enum"
+                                    }
+                                ],
+                                "tag": "App"
+                            }
+                        ],
+                        "tag": "One"
+                    },
+                    [],
+                    {
+                        "contents": [],
+                        "tag": "Empty"
+                    }
+                ],
+                "tag": "If"
+            },
+            "tag": "VCTestFunction"
+        }
+    ],
+    "seed": 842707543
+}

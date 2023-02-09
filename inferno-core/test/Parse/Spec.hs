@@ -7,25 +7,19 @@
 module Parse.Spec where
 
 import Data.Functor.Foldable (ana, project)
-import qualified Data.IntMap as IntMap (elems, toList)
-import Data.List.NonEmpty (NonEmpty)
-import Inferno.Instances.Arbitrary ()
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
-import qualified Data.Text as Text
 import Data.Text.Lazy (toStrict)
+import Inferno.Instances.Arbitrary ()
 -- import Inferno.Module.Prelude (baseOpsTable, builtinModulesOpsTable)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
-    Comment (..),
     Expr (..),
     ExtIdent (..),
-    Fixity (..),
     IStr (..),
     Ident (Ident),
     ImplExpl (..),
-    Import (..),
     InfixFixity (..),
     Lit (..),
     ModuleName (..),
@@ -33,24 +27,14 @@ import Inferno.Types.Syntax
     Scoped (..),
     SomeIStr (..),
     TList (..),
-    tListFromList,
   )
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
-import Test.Hspec.QuickCheck (prop)
+import Test.Hspec.QuickCheck (modifyMaxSuccess, prop)
 import Test.QuickCheck
-  ( Arbitrary (..),
-    Gen,
-    PrintableString (getPrintableString),
-    Property,
+  ( Property,
     Testable (property),
-    choose,
     counterexample,
-    genericShrink,
-    oneof,
-    recursivelyShrink,
-    sized,
-    suchThat,
     (===),
   )
 import Text.Pretty.Simple (pShow)
@@ -91,30 +75,25 @@ infixl 2 <?>
 
 parsingTests :: Spec
 parsingTests = describe "pretty printing/parsing" $ do
-  prop "parseExpr and pretty are inverse up to normalizeExpr" $
-    \(x :: Expr () ()) -> case parseExpr baseOpsTable builtinModulesOpsTable (renderPretty x) of
-      _ -> True
-      -- TODO for some reason even a simple case statement like this loops forever:
-      -- Left err -> False
-      -- Right (res, _comments) -> True
-
-      -- Original code:
-      -- Left err ->
-      --   property False
-      --     <?> ( "Pretty: \n"
-      --             <> (renderPretty x)
-      --             <> "\nParse error:\n"
-      --             <> (pack $ prettyError $ fst $ NonEmpty.head err)
-      --         )
-      -- Right (res, _comments) ->
-      --   (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
-      --     <?> ( "Pretty: \n"
-      --             <> (renderPretty x)
-      --             <> "\nParsed: \n"
-      --             <> (toStrict $ pShow res)
-      --             <> "\nParsed pretty: \n"
-      --             <> (renderPretty res)
-      --         )
+  modifyMaxSuccess (const 5) $
+    prop "parseExpr and pretty are inverse up to normalizeExpr" $
+      \(x :: Expr () ()) -> case parseExpr baseOpsTable builtinModulesOpsTable (renderPretty x) of
+        Left err ->
+          property False
+            <?> ( "Pretty: \n"
+                    <> (renderPretty x)
+                    <> "\nParse error:\n"
+                    <> (pack $ prettyError $ fst $ NonEmpty.head err)
+                )
+        Right (res, _comments) ->
+          (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
+            <?> ( "Pretty: \n"
+                    <> (renderPretty x)
+                    <> "\nParsed: \n"
+                    <> (toStrict $ pShow res)
+                    <> "\nParsed pretty: \n"
+                    <> (renderPretty res)
+                )
 
   describe "parsing literals" $ do
     shouldSucceedFor "0" $ Lit () (LInt 0)
