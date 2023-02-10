@@ -446,7 +446,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> arbitrary
       
-      -- FIXME: Currently broken, if we include this one we hang parseExpr test
+      -- Only generate case statements of size 1 or above:
+      arbitraryCase 0 = undefined
       arbitraryCase n =
         (\e cs p1 p2 p3 -> Case p1 e p2 (NonEmpty.fromList cs) p3)
           <$> (arbitrarySized $ n `div` 3)
@@ -513,7 +514,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             Empty <$> arbitrary,
             arbitraryAssert n,
-            -- arbitraryCase n -- Broken!
+            arbitraryCase n, -- Broken!
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             arbitraryBracketed n,
             
@@ -538,14 +539,12 @@ arbitrarySizedPat n =
       PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
       PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
       PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      PTuple
+      (\p1 ts p2 -> PTuple p1 (tListFromList ts) p2)
         <$> arbitrary
-        <*> do
-          k <- choose (0, n)
-          tListFromList
-            <$> ( sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-                    `suchThat` (\xs -> length xs /= 1)
-                )
+        <*> ( do
+            k <- choose (0, n)
+            sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+          ) `suchThat` (\xs -> length xs /= 1)
         <*> arbitrary
     ]
 
