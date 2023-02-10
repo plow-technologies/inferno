@@ -7,23 +7,18 @@
 module Parse.Spec where
 
 import Data.Functor.Foldable (ana, project)
-import qualified Data.IntMap as IntMap (elems, toList)
-import qualified Data.List.NonEmpty as NEList
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
-import qualified Data.Text as Text
 import Data.Text.Lazy (toStrict)
--- import Inferno.Module.Prelude (baseOpsTable, builtinModulesOpsTable)
+import Inferno.Instances.Arbitrary ()
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
-    Comment (..),
     Expr (..),
     ExtIdent (..),
-    Fixity (..),
     IStr (..),
     Ident (Ident),
     ImplExpl (..),
-    Import (..),
     InfixFixity (..),
     Lit (..),
     ModuleName (..),
@@ -31,310 +26,18 @@ import Inferno.Types.Syntax
     Scoped (..),
     SomeIStr (..),
     TList (..),
-    arbitraryName,
-    tListFromList,
   )
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
-  ( Arbitrary (..),
-    Gen,
-    PrintableString (getPrintableString),
-    Property,
+  ( Property,
     Testable (property),
-    choose,
     counterexample,
-    genericShrink,
-    oneof,
-    recursivelyShrink,
-    shrinkNothing,
-    sized,
-    suchThat,
     (===),
   )
 import Text.Pretty.Simple (pShow)
 import Utils (baseOpsTable, builtinModulesOpsTable)
-
-instance Arbitrary a => Arbitrary (Scoped a) where
-  arbitrary = oneof $ [pure LocalScope, Scope <$> arbitrary]
-  shrink = shrinkNothing
-
-instance Arbitrary InfixFixity where
-  arbitrary = oneof $ map pure [NoFix, LeftFix, RightFix]
-  shrink = shrinkNothing
-
-instance Arbitrary Lit where
-  arbitrary =
-    oneof
-      [ LInt <$> arbitrary,
-        LDouble <$> arbitrary,
-        (LText . pack . getPrintableString) <$> arbitrary,
-        LHex <$> arbitrary
-      ]
-
-instance Arbitrary ImplExpl where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ Impl <$> arbitrary,
-        Expl <$> arbitrary
-      ]
-
-instance Arbitrary (Import ()) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ IVar () <$> arbitrary,
-        IOpVar () <$> arbitrary,
-        IEnum () () <$> arbitrary
-      ]
-
-instance Arbitrary (Comment ()) where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof
-      [ (\x -> LineComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r'),
-        (\x -> BlockComment () x ()) <$> (pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
-      ]
-
-instance Arbitrary a => Arbitrary (SomeIStr a) where
-  arbitrary = sized $ \n -> do
-    k <- choose (0, n)
-    oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
-    where
-      goT :: Int -> Gen (IStr 'True a)
-      goT = \case
-        0 -> pure ISEmpty
-        n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
-
-      goF :: Int -> Gen (IStr 'False a)
-      goF = \case
-        0 -> ISStr <$> arbitrary <*> pure ISEmpty
-        n -> ISStr <$> arbitrary <*> goT (n - 1)
-
-  shrink (SomeIStr ISEmpty) = []
-  shrink (SomeIStr (ISStr s xs)) =
-    -- shrink to subterms
-    [SomeIStr xs]
-      ++
-      -- recursively shrink subterms
-      [ case xs' of
-          SomeIStr (ISStr _ _) -> xs'
-          SomeIStr r@(ISExpr _ _) -> SomeIStr $ ISStr s r
-          SomeIStr r@ISEmpty -> SomeIStr $ ISStr s r
-        | xs' <- shrink (SomeIStr xs)
-      ]
-  shrink (SomeIStr (ISExpr e xs)) =
-    [SomeIStr xs]
-      ++ [SomeIStr (ISExpr e' xs) | e' <- shrink e]
-      ++
-      -- recursively shrink subterms
-      [SomeIStr (ISExpr e' xs') | (e', SomeIStr xs') <- shrink (e, SomeIStr xs)]
-
-instance Arbitrary (Pat () ()) where
-  arbitrary = sized arbitrarySizedPat
-  shrink = recursivelyShrink
-
-arbitrarySizedPat :: Int -> Gen (Pat () ())
-arbitrarySizedPat n =
-  oneof
-    [ pure $ PVar () Nothing,
-      PVar () . Just <$> arbitrary,
-      PEnum () () LocalScope <$> arbitrary,
-      PLit () <$> arbitrary,
-      POne () <$> arbitrarySizedPat n,
-      pure $ PEmpty (),
-      PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
-      PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      (\xs -> PTuple () (tListFromList xs) ())
-        <$> do
-          k <- choose (0, n)
-          sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-          `suchThat` (\xs -> length xs /= 1)
-    ]
-
-instance Arbitrary e => Arbitrary (NEList.NonEmpty e) where
-  arbitrary = NEList.fromList <$> (arbitrary `suchThat` (not . null))
-  shrink = genericShrink
-
-instance Arbitrary (Expr () ()) where
-  shrink = recursivelyShrink
-  arbitrary = sized arbitrarySized
-    where
-      -- Don't generate implicit variables, because parser does not support them
-      arbitraryExtIdent = ExtIdent <$> Right <$> arbitraryName
-      arbitraryImplExpl = oneof [Impl <$> arbitraryExtIdent, Expl <$> arbitraryExtIdent]
-      arbitraryVar =
-        oneof
-          [ Var () () LocalScope <$> arbitraryImplExpl,
-            OpVar () () LocalScope . Ident
-              <$> ( oneof
-                      $ concatMap
-                        ( \case
-                            (InfixOp _, _, op) -> [pure op]
-                            _ -> []
-                        )
-                      $ concat
-                      $ IntMap.elems baseOpsTable
-                  )
-          ]
-      arbitraryEnum = Enum () () LocalScope <$> arbitrary
-      arbitraryLit = Lit () <$> arbitrary
-
-      arbitraryApp n =
-        App
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryLam n =
-        (\vs e -> Lam () vs () e)
-          <$> arbitraryLamVars
-          <*> (arbitrarySized $ n `div` 3)
-        where
-          -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
-          arbitraryLamVars :: Gen (NEList.NonEmpty ((), Maybe ExtIdent))
-          arbitraryLamVars = arbitrary `suchThat` (all isSomeRight . snd . NEList.unzip)
-          isSomeRight (Just (ExtIdent (Right _))) = True
-          isSomeRight _ = False
-
-      arbitraryLet n =
-        (\v e1 e2 -> Let () () v () e1 () e2)
-          <$> arbitraryImplExpl
-          <*> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryIString n =
-        (\xs -> InterpolatedString () xs ())
-          <$> do
-            k <- choose (0, n)
-            oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
-        where
-          goT :: Int -> Gen (IStr 'True ((), Expr () (), ()))
-          goT = \case
-            0 -> pure ISEmpty
-            m ->
-              oneof
-                [ ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goT (m - 1),
-                  ISExpr <$> ((\x -> ((), x, ())) <$> (arbitrarySized $ n `div` 3)) <*> goF (m - 1)
-                ]
-
-          goF :: Int -> Gen (IStr 'False ((), Expr () (), ()))
-          goF = \case
-            0 ->
-              ISStr
-                <$> ( (pack . getPrintableString <$> arbitrary)
-                        `suchThat` (\x -> not (Text.null x) && Text.all (\c -> c /= '\\' && c /= '$' && c /= '`') x)
-                    )
-                <*> pure ISEmpty
-            m ->
-              ISStr
-                <$> ( (pack . getPrintableString <$> arbitrary)
-                        `suchThat` (\x -> not (Text.null x) && Text.all (\c -> c /= '\\' && c /= '$' && c /= '`') x)
-                    )
-                <*> goT (m - 1)
-
-      arbitraryIf n =
-        (\c t f -> If () c () t () f)
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryAssert n =
-        (\c e -> Assert () c () e)
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryOp n =
-        (\(prec, fix, op) e1 e2 -> Op e1 () () (prec, fix) LocalScope (Ident op) e2)
-          <$> ( oneof
-                  $ map pure
-                  $ concatMap
-                    ( \(prec, xs) ->
-                        concatMap
-                          ( \case
-                              (InfixOp fix, _, op) -> [(prec, fix, op)]
-                              _ -> []
-                          )
-                          xs
-                    )
-                  $ IntMap.toList baseOpsTable
-              )
-          <*> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryPreOp n =
-        (\(prec, op) e -> PreOp () () prec LocalScope (Ident op) e)
-          <$> ( oneof
-                  $ map pure
-                  $ concatMap
-                    ( \(prec, xs) ->
-                        concatMap
-                          ( \case
-                              (PrefixOp, _, op) -> [(prec, op)]
-                              _ -> []
-                          )
-                          xs
-                    )
-                  $ IntMap.toList baseOpsTable
-              )
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryCase n =
-        (\e cs -> Case () e () (NEList.fromList cs) ())
-          <$> (arbitrarySized $ n `div` 3)
-          <*> do
-            k <- choose (0, n)
-            sequence
-              [ (\i e -> ((), i, (), e))
-                  <$> arbitrarySizedPat (n `div` 3)
-                  <*> arbitrarySized (n `div` 3)
-                | _ <- [1 .. k]
-              ]
-            `suchThat` (not . null)
-
-      arbitraryBracketed n = (\e -> Bracketed () e ()) <$> arbitrarySized (n `div` 3)
-      arbitrarySized 0 =
-        oneof
-          [ arbitraryVar,
-            arbitraryEnum,
-            arbitraryLit,
-            pure $ Empty ()
-          ]
-      arbitrarySized n =
-        oneof
-          [ arbitraryVar,
-            arbitraryEnum,
-            arbitraryLit,
-            arbitraryApp n,
-            arbitraryLam n,
-            arbitraryLet n,
-            arbitraryIString n,
-            arbitraryIf n,
-            arbitraryOp n,
-            arbitraryPreOp n,
-            (\xs -> Array () xs ())
-              <$> ( do
-                      k <- choose (0, n)
-                      sequence [(,Nothing) <$> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
-                  ),
-            One () <$> arbitrarySized (n `div` 3),
-            pure $ Empty (),
-            arbitraryAssert n,
-            arbitraryCase n,
-            (\e xs c -> ArrayComp () e () (NEList.fromList [((), x, (), e', Nothing) | (x, e') <- xs]) c ())
-              <$> (arbitrarySized $ n `div` 3)
-              <*> do
-                k <- choose (0, n)
-                sequence [(,) <$> arbitrary <*> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
-                `suchThat` (not . null)
-              <*> oneof [Just . ((),) <$> (arbitrarySized $ n `div` 3), pure Nothing],
-            arbitraryBracketed n,
-            CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
-            CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary,
-            CommentBelow <$> arbitrarySized (n `div` 3) <*> arbitrary
-          ]
 
 normalizePat :: Pat h a -> Pat h a
 normalizePat = ana $ \case
@@ -378,7 +81,7 @@ parsingTests = describe "pretty printing/parsing" $ do
           <?> ( "Pretty: \n"
                   <> (renderPretty x)
                   <> "\nParse error:\n"
-                  <> (pack $ prettyError $ fst $ NEList.head err)
+                  <> (pack $ prettyError $ fst $ NonEmpty.head err)
               )
       Right (res, _comments) ->
         (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
@@ -437,7 +140,7 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldFailFor "_x"
     shouldFailFor "let _ = () in ()"
     shouldFailFor "let _x = () in ()"
-    shouldSucceedFor "fun _x -> ()" $ Lam () (((), Nothing) NEList.:| []) () (Tuple () TNil ())
+    shouldSucceedFor "fun _x -> ()" $ Lam () (((), Nothing) NonEmpty.:| []) () (Tuple () TNil ())
 
   describe "parsing implicit variables" $ do
     let letImpl x = Let () () (Impl (ExtIdent $ Right x)) () (Tuple () TNil ()) () (Tuple () TNil ())
@@ -506,8 +209,8 @@ parsingTests = describe "pretty printing/parsing" $ do
 
   describe "parsing case statements" $ do
     shouldFailFor "match () with {}"
-    shouldSucceedFor "match () with { () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NEList.:| []) ()
-    shouldSucceedFor "match () with { | () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NEList.:| []) ()
+    shouldSucceedFor "match () with { () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NonEmpty.:| []) ()
+    shouldSucceedFor "match () with { | () -> ()}" $ Case () (Tuple () TNil ()) () (((), PTuple () TNil (), (), Tuple () TNil ()) NonEmpty.:| []) ()
 
   describe "parsing assertions" $ do
     shouldFailFor "assert #false"
@@ -519,7 +222,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Tuple () TNil ())
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Nothing) NEList.:| [])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Nothing) NonEmpty.:| [])
         Nothing
         ()
     shouldSucceedFor "[(x,y) | x <- someList, y <- otherList]" $
@@ -527,7 +230,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Tuple () (TCons (Var () () LocalScope (Expl (ExtIdent $ Right "x")), Just ()) (Var () () LocalScope (Expl (ExtIdent $ Right "y")), Nothing) []) ())
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NEList.:| [((), Ident "y", (), Var () () LocalScope (Expl (ExtIdent $ Right "otherList")), Nothing)])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NonEmpty.:| [((), Ident "y", (), Var () () LocalScope (Expl (ExtIdent $ Right "otherList")), Nothing)])
         Nothing
         ()
     shouldSucceedFor "[2*x | x <- someList, if x > 10]" $
@@ -535,7 +238,7 @@ parsingTests = describe "pretty printing/parsing" $ do
         ()
         (Op (Lit () (LInt 2)) () () (10, LeftFix) LocalScope (Ident "*") (Var () () LocalScope (Expl (ExtIdent $ Right "x"))))
         ()
-        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NEList.:| [])
+        (((), Ident "x", (), Var () () LocalScope (Expl (ExtIdent $ Right "someList")), Just ()) NonEmpty.:| [])
         (Just ((), Op (Var () () LocalScope (Expl (ExtIdent $ Right "x"))) () () (7, NoFix) LocalScope (Ident ">") (Lit () (LInt 10))))
         ()
     shouldFailFor "[() | if x > 10]"
@@ -543,7 +246,7 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $
         case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NEList.head err)
+          Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NonEmpty.head err)
           Right (res, _) -> fmap (const ()) res `shouldBe` ast
     shouldFailFor str =
       it ("should fail for \"" <> unpack str <> "\"") $

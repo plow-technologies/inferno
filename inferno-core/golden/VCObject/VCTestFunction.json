@@ -1,0 +1,2306 @@
+{
+    "samples": [
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    [
+                        [
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "Right": "e"
+                                            }
+                                        ]
+                                    ],
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "hfw4kp"
+                                                    }
+                                                ]
+                                            ],
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 26.441778218523783,
+                                                                "tag": "LDouble"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "One"
+                                            }
+                                        ],
+                                        "tag": "Lam"
+                                    }
+                                ],
+                                "tag": "Lam"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    {
+                                        "contents": {
+                                            "Right": "f51gpeo6vi41x_alkl5"
+                                        },
+                                        "tag": "Expl"
+                                    }
+                                ],
+                                "tag": "Var"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": 16615788,
+                                        "tag": "LHex"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": 9270396,
+                                                "tag": "LHex"
+                                            }
+                                        ],
+                                        "tag": "Lit"
+                                    }
+                                ],
+                                "tag": "One"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "xluc5o__t5be8hlluswpur7fyatl106"
+                                                        ],
+                                                        "tag": "Enum"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "}𦳰㪉QE2 ࢅ盉GA_q컦#𒄭ؖ<RQ",
+                                                            []
+                                                        ],
+                                                        "tag": "LineComment"
+                                                    }
+                                                ],
+                                                "tag": "CommentBelow"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "3𑀷𥄷7=u?GX𣜲𦥣",
+                                                    []
+                                                ],
+                                                "tag": "BlockComment"
+                                            }
+                                        ],
+                                        "tag": "CommentAfter"
+                                    },
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "NXeS5eVFqnEj-klDrbSUzsNOd3CARMogRozGqYHJTgQ=",
+                                                        "tag": "UnderVC"
+                                                    },
+                                                    {
+                                                        "contents": "p",
+                                                        "tag": "Scope"
+                                                    },
+                                                    "p37x432n"
+                                                ],
+                                                "tag": "PEnum"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "xp2z7xa33y8"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "TNil"
+                                                    },
+                                                    []
+                                                ],
+                                                "tag": "PTuple"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "4;U",
+                                                        "tag": "LText"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    null
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "*"
+                                                ],
+                                                "tag": "OpVar"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "KB]m%$嫭(c5̦aw;6",
+                                                            []
+                                                        ],
+                                                        "tag": "LineComment"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 14878922,
+                                                                "tag": "LHex"
+                                                            }
+                                                        ],
+                                                        "tag": "PLit"
+                                                    }
+                                                ],
+                                                "tag": "PCommentAbove"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "x5rmo54"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "ff5yzb2kva"
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            }
+                                        ]
+                                    ],
+                                    []
+                                ],
+                                "tag": "Case"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "86441oDH9aFISa3Bt8D0PFymqjEe0_AKcdE2UCLGr2Q=",
+                                                "tag": "Builtin"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "nloclg6m4z2awv"
+                                        ],
+                                        "tag": "Enum"
+                                    },
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "contents": [],
+                                                "tag": "PEmpty"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": 11543977,
+                                                        "tag": "LInt"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "jlt5nco8gss"
+                                                ],
+                                                "tag": "PEnum"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "s'\\𡥻y|x",
+                                                        "tag": "LText"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "-}$𨣀6Tc.k",
+                                                            []
+                                                        ],
+                                                        "tag": "BlockComment"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    {
+                                                                        "contents": 6441874,
+                                                                        "tag": "LHex"
+                                                                    }
+                                                                ],
+                                                                "tag": "PLit"
+                                                            },
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    "7-壡l3j𘝸%q@Io𫴅0𰕸",
+                                                                    []
+                                                                ],
+                                                                "tag": "LineComment"
+                                                            }
+                                                        ],
+                                                        "tag": "PCommentBelow"
+                                                    }
+                                                ],
+                                                "tag": "PCommentAbove"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "-oJHUmMnAs9srXh0eSnwD20xUL1z30MJOqQBjXhzwIU=",
+                                                        "tag": "UnderVC"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "uxtf87f6xu"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "TNil"
+                                                            },
+                                                            []
+                                                        ],
+                                                        "tag": "PTuple"
+                                                    }
+                                                ],
+                                                "tag": "POne"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "dH6dKtNV23oUnmHgp15_kGRpJbviAkCfRjyWohwZ_iA=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "zcjrkwlhrjjmu0hurykr"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ]
+                                    ],
+                                    []
+                                ],
+                                "tag": "Case"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 4989244,
+                                                                "tag": "LInt"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "One"
+                                            },
+                                            []
+                                        ],
+                                        "tag": "Bracketed"
+                                    }
+                                ],
+                                "tag": "One"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "v5lTGqqHJI8LOukjEYIIzW79YQBLiYq6kRk3lhbouNo=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    19,
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "-",
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": -0.8953690685443165,
+                                                                "tag": "LDouble"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "PreOp"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    [
+                                                        4,
+                                                        "RightFix"
+                                                    ],
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "XOR",
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "OAkYuUalJmQKQN9dztZRZ5Tz2Xu9nmu1U9A3xEOfMcM=",
+                                                                "tag": "Builtin"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "Right": "mxvsqief0ip5"
+                                                                },
+                                                                "tag": "Impl"
+                                                            }
+                                                        ],
+                                                        "tag": "Var"
+                                                    }
+                                                ],
+                                                "tag": "Op"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "NA3HETHvlMj_yqgUW0e4q8yDwmEZEkZ-ZIk6ypDyl1Q=",
+                                                                "tag": "UnderVC"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "Right": "hsm8ybp_j"
+                                                                },
+                                                                "tag": "Expl"
+                                                            }
+                                                        ],
+                                                        "tag": "Var"
+                                                    },
+                                                    []
+                                                ],
+                                                "tag": "Bracketed"
+                                            }
+                                        ],
+                                        "tag": "If"
+                                    },
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "qcov3eaqy4mxk_gvd5inr81heo"
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "g5mf1"
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -26.54832066998699,
+                                                        "tag": "LDouble"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "zcbmhprbtimufwqkrt0m6wt4bi"
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    null
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -8810785,
+                                                        "tag": "LInt"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    null
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "t5NDmphYZJlJBfSPnLHOqKA6okUoqDd-QSp3C0dpG9w=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "p83"
+                                                ],
+                                                "tag": "Enum"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "PEmpty"
+                                                    }
+                                                ],
+                                                "tag": "POne"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "keyhSWulqYoqmh0P13wdts7YgXxyxiMl1jo7ybqM2OU=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "-"
+                                                ],
+                                                "tag": "OpVar"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "dGE9rWEHkDZXeDKosNN4u-ZaNJRHdrVXxwN9HPdVoWo=",
+                                                                "tag": "Builtin"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "xmqm9so"
+                                                        ],
+                                                        "tag": "PEnum"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "M跰+𧟬\\𰠃0/\"0𢪟7Pt?RX봣3H?c",
+                                                            []
+                                                        ],
+                                                        "tag": "BlockComment"
+                                                    }
+                                                ],
+                                                "tag": "PCommentAfter"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -19.65874964897732,
+                                                        "tag": "LDouble"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    "j.n^𮇠}X&8𦪸tf:@%𣸹s2䑃x圐NGq",
+                                                                    []
+                                                                ],
+                                                                "tag": "BlockComment"
+                                                            },
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    "pvuksxm"
+                                                                ],
+                                                                "tag": "PVar"
+                                                            }
+                                                        ],
+                                                        "tag": "PCommentAbove"
+                                                    }
+                                                ],
+                                                "tag": "POne"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    {
+                                                        "contents": {
+                                                            "Right": "vb2bi62cn0w1mgge4oc9l1"
+                                                        },
+                                                        "tag": "Impl"
+                                                    }
+                                                ],
+                                                "tag": "Var"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "TNil"
+                                                            },
+                                                            []
+                                                        ],
+                                                        "tag": "PTuple"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            ")'kz@JK🜈閮{$*.4u&𘄢'Y𭙏🏢𬯷aT:Ꮒ",
+                                                            []
+                                                        ],
+                                                        "tag": "LineComment"
+                                                    }
+                                                ],
+                                                "tag": "PCommentBelow"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": 5603795,
+                                                        "tag": "LHex"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ]
+                                    ],
+                                    []
+                                ],
+                                "tag": "Case"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "/"
+                                                ],
+                                                "tag": "OpVar"
+                                            }
+                                        ],
+                                        "tag": "One"
+                                    },
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "kfcwygrh0gtrm3hjf9r39bjxv165iazdlko0"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "Right": "e6ix33ggnjr1h_63senhtzymal7yxsvfyzwntlv"
+                                                    }
+                                                ]
+                                            ],
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "0'uL𠁝-k;𥲰T0䱝 $𠋾CF3h9QL1UVL𑜂",
+                                                                "tag": "LText"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    },
+                                                    []
+                                                ],
+                                                "tag": "Bracketed"
+                                            }
+                                        ],
+                                        "tag": "Lam"
+                                    },
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    [],
+                                                    {
+                                                        "contents": {
+                                                            "Right": "vr5aa6bys7"
+                                                        },
+                                                        "tag": "Impl"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": -7.64962309808175,
+                                                                "tag": "LDouble"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "z顎",
+                                                                "tag": "LText"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "Let"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    }
+                                                ],
+                                                "tag": "One"
+                                            }
+                                        ],
+                                        "tag": "App"
+                                    }
+                                ],
+                                "tag": "If"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "\\!𮔮j/|$fgka",
+                                                    []
+                                                ],
+                                                "tag": "BlockComment"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 3364895,
+                                                                "tag": "LInt"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "If"
+                                            }
+                                        ],
+                                        "tag": "CommentAbove"
+                                    },
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "WTJG_aJSrTYBtraZtz0u2VKBUDiLvTK4UdWTdgPHjTI=",
+                                                        "tag": "UnderVC"
+                                                    },
+                                                    19,
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "-",
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": -11001197,
+                                                                "tag": "LInt"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    }
+                                                ],
+                                                "tag": "PreOp"
+                                            },
+                                            []
+                                        ],
+                                        "tag": "Bracketed"
+                                    },
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "tag": "Local"
+                                                    },
+                                                    19,
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "-",
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "lg_cb4xgrcpl3"
+                                                        ],
+                                                        "tag": "Enum"
+                                                    }
+                                                ],
+                                                "tag": "PreOp"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "%"
+                                                        ],
+                                                        "tag": "OpVar"
+                                                    }
+                                                ],
+                                                "tag": "Assert"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "jVTwoTFcOJAeTFEdfdX-qvGsk2Q6LUPEb17oLsr1zgE=",
+                                                        "tag": "Builtin"
+                                                    },
+                                                    19,
+                                                    {
+                                                        "tag": "LocalScope"
+                                                    },
+                                                    "-",
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    }
+                                                ],
+                                                "tag": "PreOp"
+                                            }
+                                        ],
+                                        "tag": "If"
+                                    }
+                                ],
+                                "tag": "If"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": "7oQiV92WUENJMty0mOyAWgduQcyc59ZoIGHWuwy4rkc=",
+                                        "tag": "UnderVC"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "/"
+                                ],
+                                "tag": "OpVar"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "Right": "aos4if_upf6ldju7x6_9zjansa579znc"
+                                            }
+                                        ]
+                                    ],
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "r` ",
+                                                "tag": "LText"
+                                            }
+                                        ],
+                                        "tag": "Lit"
+                                    }
+                                ],
+                                "tag": "Lam"
+                            },
+                            null
+                        ],
+                        [
+                            {
+                                "contents": [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "6wbIC85MWdD4UWAxO46iudt6vEU2gY9ZWMI-zOQjWVY=",
+                                                "tag": "UnderVC"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            {
+                                                "contents": {
+                                                    "Right": "m1oa8"
+                                                },
+                                                "tag": "Expl"
+                                            }
+                                        ],
+                                        "tag": "Var"
+                                    },
+                                    {
+                                        "contents": [
+                                            [],
+                                            "t𡣠",
+                                            []
+                                        ],
+                                        "tag": "BlockComment"
+                                    }
+                                ],
+                                "tag": "CommentBelow"
+                            },
+                            null
+                        ]
+                    ],
+                    []
+                ],
+                "tag": "Array"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "tag": "Local"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "*"
+                                        ],
+                                        "tag": "OpVar"
+                                    },
+                                    [],
+                                    [
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    null
+                                                ],
+                                                "tag": "PVar"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            }
+                                        ],
+                                        [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "rg1Ch3J3sl6sbKTIjxWSv9ukyhHmcqv2b4UwvUmcT10=",
+                                                        "tag": "UnderVC"
+                                                    },
+                                                    {
+                                                        "contents": "ojmmwqkvi_o",
+                                                        "tag": "Scope"
+                                                    },
+                                                    "qlgswo6if7r"
+                                                ],
+                                                "tag": "PEnum"
+                                            },
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": -11091703,
+                                                        "tag": "LInt"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            }
+                                        ]
+                                    ],
+                                    []
+                                ],
+                                "tag": "Case"
+                            },
+                            [],
+                            [
+                                [
+                                    [],
+                                    "ir2vqnoe4gd",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": ".𘙷𨿗|ⱏ6a𒑰R𰌃k=𝕣%ib%6.J",
+                                                "tag": "LText"
+                                            }
+                                        ],
+                                        "tag": "Lit"
+                                    },
+                                    null
+                                ],
+                                [
+                                    [],
+                                    "whg7wuxdnvt8i",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "NMUyQWYulyCpuRDw9hyAhY13eP3YwaerklkW1Cz3A0M=",
+                                                "tag": "UnderVC"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "-"
+                                        ],
+                                        "tag": "OpVar"
+                                    },
+                                    null
+                                ],
+                                [
+                                    [],
+                                    "svio85jnofj4wn45lr1",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": -8009026,
+                                                "tag": "LInt"
+                                            }
+                                        ],
+                                        "tag": "Lit"
+                                    },
+                                    null
+                                ],
+                                [
+                                    [],
+                                    "r7mv_r",
+                                    [],
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "tag": "Local"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "q2z15vc9qvbb6f79ybyg8qc"
+                                        ],
+                                        "tag": "Enum"
+                                    },
+                                    null
+                                ]
+                            ],
+                            null,
+                            []
+                        ],
+                        "tag": "ArrayComp"
+                    },
+                    [],
+                    [
+                        [
+                            [],
+                            "gitnb0bey0u45tba_bq1ldt",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": "=[g58<c",
+                                                        "tag": "LText"
+                                                    }
+                                                ],
+                                                "tag": "Lit"
+                                            },
+                                            [],
+                                            {
+                                                "tag": "Local"
+                                            },
+                                            [
+                                                9,
+                                                "LeftFix"
+                                            ],
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "+",
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "𧿙AET",
+                                                            []
+                                                        ],
+                                                        "tag": "LineComment"
+                                                    }
+                                                ],
+                                                "tag": "CommentBelow"
+                                            }
+                                        ],
+                                        "tag": "Op"
+                                    }
+                                ],
+                                "tag": "One"
+                            },
+                            null
+                        ]
+                    ],
+                    null,
+                    []
+                ],
+                "tag": "ArrayComp"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            [],
+                            []
+                        ],
+                        "tag": "Array"
+                    },
+                    [],
+                    [
+                        [
+                            [],
+                            "pz1fujx0qom2",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    {
+                                        "contents": {
+                                            "Right": "xkghgxadq1rlyqy"
+                                        },
+                                        "tag": "Expl"
+                                    }
+                                ],
+                                "tag": "Var"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "h7b47ewssi2baiaimyx0nmlra1t5tey",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": "uhI1XfPE9B2a3XhqWRU0egRVhJm_lSnj0fc0pjR9nkc=",
+                                        "tag": "UnderVC"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "go0a4wbw"
+                                ],
+                                "tag": "Enum"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "sydvysqw82kbvr4f9n7ao5i_s",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "*"
+                                ],
+                                "tag": "OpVar"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "nymbkx8mhonlf",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": "刀hwGy𫧒q4𣦚V𖭫AE@L*BN\\6b()=",
+                                        "tag": "LText"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "g3q3c4kv6e7s8",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    {
+                                        "contents": {
+                                            "Right": "lxaegu2vqr2ktoc8onheip8n"
+                                        },
+                                        "tag": "Expl"
+                                    }
+                                ],
+                                "tag": "Var"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "xlmaek4eeuxyq8uwky",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    {
+                                        "contents": {
+                                            "Right": "xelhcovjy7w7cswy859hlfzh"
+                                        },
+                                        "tag": "Expl"
+                                    }
+                                ],
+                                "tag": "Var"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "rlumm687x",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "d3",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "iaa7a_xo",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "vjb7ev2vrpo06",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "axsfsjox",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": "j-ݢ+",
+                                        "tag": "LText"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "yxs54_ergewsz1ih9j7n87",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": 11398234,
+                                        "tag": "LInt"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "w08w6k_gftjnewfd2t9ahvnk7z1d",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "**"
+                                ],
+                                "tag": "OpVar"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "f0rus",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "tag": "Local"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "dxpik508_bcyym7u2vpni"
+                                ],
+                                "tag": "Enum"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "nt1mu7q1dgd3lyogvre",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": "UsRRGf4Q-LiAtj6Bsqfme2S8e48VnIcy7YPYj_Isn9M=",
+                                        "tag": "Builtin"
+                                    },
+                                    {
+                                        "tag": "LocalScope"
+                                    },
+                                    "ngzwfysrowvhseo1u9ie_rtjsz"
+                                ],
+                                "tag": "Enum"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "o0qqg0jfwe7ega2qjk12o5zz9",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "t24fkb855ec15q4rhpioa4qilr",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": 5398295,
+                                        "tag": "LHex"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "izk2q49a9iscv8i92sap2ztew",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": -0.3498377441347999,
+                                        "tag": "LDouble"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "c9pyj6qw4xtaaqn6o5p2ix_pv3",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "pohho_5jlwenbrutj71",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "c9uadd9bj3p06eghvbbm0r27rl0xccx",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "oroi_m8is510fg73k87yszj",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "i7ib4_7hyw642_",
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": 12925245,
+                                        "tag": "LInt"
+                                    }
+                                ],
+                                "tag": "Lit"
+                            },
+                            null
+                        ],
+                        [
+                            [],
+                            "erh",
+                            [],
+                            {
+                                "contents": [],
+                                "tag": "Empty"
+                            },
+                            null
+                        ]
+                    ],
+                    null,
+                    []
+                ],
+                "tag": "ArrayComp"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            [
+                                [
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "/"
+                                                        ],
+                                                        "tag": "OpVar"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "𠮦6nKnMv*HaE",
+                                                            []
+                                                        ],
+                                                        "tag": "LineComment"
+                                                    }
+                                                ],
+                                                "tag": "CommentAfter"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "L^+w n疊恪ld#^#.0`lT`",
+                                                                "tag": "LText"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    },
+                                                    [],
+                                                    [
+                                                        [
+                                                            [],
+                                                            "nsfs05ho02lp8ppuyt77hj",
+                                                            [],
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    {
+                                                                        "tag": "Local"
+                                                                    },
+                                                                    {
+                                                                        "tag": "LocalScope"
+                                                                    },
+                                                                    "/"
+                                                                ],
+                                                                "tag": "OpVar"
+                                                            },
+                                                            null
+                                                        ]
+                                                    ],
+                                                    null,
+                                                    []
+                                                ],
+                                                "tag": "ArrayComp"
+                                            }
+                                        ],
+                                        "tag": "App"
+                                    },
+                                    null
+                                ],
+                                [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU=",
+                                                "tag": "UnderVC"
+                                            },
+                                            {
+                                                "tag": "LocalScope"
+                                            },
+                                            "+"
+                                        ],
+                                        "tag": "OpVar"
+                                    },
+                                    null
+                                ],
+                                [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "X;:",
+                                                            []
+                                                        ],
+                                                        "tag": "BlockComment"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "*"
+                                                        ],
+                                                        "tag": "OpVar"
+                                                    }
+                                                ],
+                                                "tag": "CommentAbove"
+                                            },
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    "jz0k5nrq4wg5n6jbyp35ddmv0yp9vy",
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    {
+                                                                        "contents": "NpWKsDPgeM9R_OXj9WKYkQTV0rEMdSfaNF2xqcoiToQ=",
+                                                                        "tag": "UnderVC"
+                                                                    },
+                                                                    {
+                                                                        "tag": "LocalScope"
+                                                                    },
+                                                                    "-"
+                                                                ],
+                                                                "tag": "OpVar"
+                                                            },
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    "繒ZQ𗶝z𫫳V`oD酁",
+                                                                    []
+                                                                ],
+                                                                "tag": "BlockComment"
+                                                            }
+                                                        ],
+                                                        "tag": "CommentAfter"
+                                                    },
+                                                    null
+                                                ]
+                                            ],
+                                            null,
+                                            []
+                                        ],
+                                        "tag": "ArrayComp"
+                                    },
+                                    null
+                                ],
+                                [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    [],
+                                                    {
+                                                        "contents": {
+                                                            "Right": "hyx20p73l8emmf2"
+                                                        },
+                                                        "tag": "Expl"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 5290754,
+                                                                "tag": "LInt"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "Right": "p57cgimtl53qoe37ia685vo5s"
+                                                                },
+                                                                "tag": "Impl"
+                                                            }
+                                                        ],
+                                                        "tag": "Var"
+                                                    }
+                                                ],
+                                                "tag": "Let"
+                                            },
+                                            [],
+                                            [
+                                                [
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "PEmpty"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "d7xnzssX15LHicZuUjVQNqyqCUD4Ix3EY9GqVsLb2kM=",
+                                                                "tag": "UnderVC"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "k81s_pcx31qo5fbv6r2xcdz68jjjov"
+                                                        ],
+                                                        "tag": "Enum"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    {
+                                                                        "contents": [
+                                                                            [],
+                                                                            {
+                                                                                "contents": 8084748,
+                                                                                "tag": "LInt"
+                                                                            }
+                                                                        ],
+                                                                        "tag": "PLit"
+                                                                    }
+                                                                ],
+                                                                "tag": "POne"
+                                                            }
+                                                        ],
+                                                        "tag": "POne"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [],
+                                                        "tag": "Empty"
+                                                    }
+                                                ],
+                                                [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "TNil"
+                                                            },
+                                                            []
+                                                        ],
+                                                        "tag": "PTuple"
+                                                    },
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "tag": "Local"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            "%"
+                                                        ],
+                                                        "tag": "OpVar"
+                                                    }
+                                                ]
+                                            ],
+                                            []
+                                        ],
+                                        "tag": "Case"
+                                    },
+                                    null
+                                ],
+                                [
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": "1kYQra5Kk3f3c-kgihw_VQI_TE_WPa2ZESd4EqaxyKw=",
+                                                                "tag": "Builtin"
+                                                            },
+                                                            {
+                                                                "tag": "LocalScope"
+                                                            },
+                                                            {
+                                                                "contents": {
+                                                                    "Right": "yz7_v_u41250zrohuj1q"
+                                                                },
+                                                                "tag": "Impl"
+                                                            }
+                                                        ],
+                                                        "tag": "Var"
+                                                    },
+                                                    [],
+                                                    [
+                                                        [
+                                                            [],
+                                                            {
+                                                                "contents": [],
+                                                                "tag": "PEmpty"
+                                                            },
+                                                            [],
+                                                            {
+                                                                "contents": [
+                                                                    [],
+                                                                    {
+                                                                        "tag": "Local"
+                                                                    },
+                                                                    {
+                                                                        "tag": "LocalScope"
+                                                                    },
+                                                                    "-"
+                                                                ],
+                                                                "tag": "OpVar"
+                                                            }
+                                                        ]
+                                                    ],
+                                                    []
+                                                ],
+                                                "tag": "Case"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "/𖭐;G;hg𨍴gS&𘒨w:xc.𦼧nbw^",
+                                                    []
+                                                ],
+                                                "tag": "LineComment"
+                                            }
+                                        ],
+                                        "tag": "CommentBelow"
+                                    },
+                                    null
+                                ],
+                                [
+                                    {
+                                        "contents": [
+                                            [],
+                                            {
+                                                "contents": [
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            {
+                                                                "contents": 16262070,
+                                                                "tag": "LHex"
+                                                            }
+                                                        ],
+                                                        "tag": "Lit"
+                                                    },
+                                                    {
+                                                        "contents": [
+                                                            [],
+                                                            "<t|'𤋒㾾GyM",
+                                                            []
+                                                        ],
+                                                        "tag": "BlockComment"
+                                                    }
+                                                ],
+                                                "tag": "CommentBelow"
+                                            }
+                                        ],
+                                        "tag": "One"
+                                    },
+                                    null
+                                ]
+                            ],
+                            []
+                        ],
+                        "tag": "Array"
+                    },
+                    [],
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "contents": [
+                                    [],
+                                    {
+                                        "contents": [
+                                            {
+                                                "contents": [],
+                                                "tag": "Empty"
+                                            },
+                                            {
+                                                "contents": [
+                                                    [],
+                                                    "襄𤩗Vk♧fMY\\erPaf⑼kv𥩨uIvotb/w伏%+",
+                                                    []
+                                                ],
+                                                "tag": "BlockComment"
+                                            }
+                                        ],
+                                        "tag": "CommentBelow"
+                                    }
+                                ],
+                                "tag": "One"
+                            }
+                        ],
+                        "tag": "One"
+                    }
+                ],
+                "tag": "Assert"
+            },
+            "tag": "VCTestFunction"
+        },
+        {
+            "contents": {
+                "contents": [
+                    {
+                        "contents": [
+                            [],
+                            "n⚥TS7𦓵m'd!i$켟''𫼎1y3𨤐,",
+                            []
+                        ],
+                        "tag": "LineComment"
+                    },
+                    {
+                        "contents": [
+                            [],
+                            {
+                                "tag": "Local"
+                            },
+                            {
+                                "tag": "LocalScope"
+                            },
+                            "**"
+                        ],
+                        "tag": "OpVar"
+                    }
+                ],
+                "tag": "CommentAbove"
+            },
+            "tag": "VCTestFunction"
+        }
+    ],
+    "seed": -1250674235
+}

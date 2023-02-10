@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Inferno.Types.Type
@@ -62,8 +63,6 @@ import Prettyprinter
     -- tupled,
     (<+>),
   )
-import Test.QuickCheck (Arbitrary (..), oneof)
-import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
 
 data ImplType = ImplType (Map ExtIdent InfernoType) InfernoType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
@@ -215,7 +214,7 @@ data Namespace
   | EnumNamespace Ident
   | ModuleNamespace ModuleName
   | TypeNamespace Ident
-  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON, ToADTArbitrary)
+  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
 
 instance Pretty Namespace where
   pretty = \case
@@ -224,16 +223,6 @@ instance Pretty Namespace where
     EnumNamespace (Ident i) -> "#" <> pretty i
     ModuleNamespace (ModuleName m) -> pretty m
     TypeNamespace (Ident i) -> pretty i
-
-instance Arbitrary Namespace where
-  arbitrary =
-    oneof
-      [ FunNamespace <$> arbitrary,
-        OpNamespace <$> arbitrary,
-        EnumNamespace <$> arbitrary,
-        ModuleNamespace <$> arbitrary,
-        TypeNamespace <$> arbitrary
-      ]
 
 namespaceToIdent :: Namespace -> Ident
 namespaceToIdent = \case

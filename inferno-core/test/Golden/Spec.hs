@@ -3,16 +3,21 @@
 module Golden.Spec (goldenTests) where
 
 import Data.Proxy (Proxy (Proxy))
+import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (BaseType, Ident, InfernoType, ModuleName, TV)
 import Inferno.Types.Type (Namespace)
 import Inferno.VersionControl.Types
   ( VCIncompatReason,
+    VCObject,
     VCObjectHash,
     VCObjectPred,
     VCObjectVisibility,
   )
 import qualified Test.Aeson.GenericSpecs as Aeson
-  ( roundtripAndGoldenADTSpecs,
+  ( defaultSettings,
+    roundtripAndGoldenADTSpecs,
+    roundtripAndGoldenADTSpecsWithSettings,
+    sampleSize,
   )
 import qualified Test.Cereal.GenericSpecs as Cereal
   ( roundtripAndGoldenADTSpecs,
@@ -26,6 +31,9 @@ goldenTests = do
 
 goldenAesonTests :: Spec
 goldenAesonTests = do
+  Aeson.roundtripAndGoldenADTSpecsWithSettings
+    (Aeson.defaultSettings {Aeson.sampleSize = 5})
+    $ Proxy @VCObject
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @VCObjectHash
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @Ident
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @ModuleName

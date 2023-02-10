@@ -5,6 +5,7 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -73,7 +74,6 @@ module Inferno.Types.Syntax
     SourcePos (..),
     Scoped (..),
     Dependencies (..),
-    arbitraryName,
     collectArrs,
     extractArgsAndPrettyPrint,
     tListToList,
@@ -141,16 +141,12 @@ import Prettyprinter
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
-import Test.QuickCheck (Arbitrary (..), Gen, elements, listOf, oneof, recursivelyShrink, shrinkNothing, sized, suchThat)
-import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
-import Test.QuickCheck.Instances.Text ()
 import Text.Megaparsec (Pos, SourcePos (..), mkPos, unPos)
 import Text.Read (readMaybe)
 
 newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Arbitrary, Serialize)
-  deriving anyclass (ToADTArbitrary)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Serialize)
 
 data BaseType
   = TInt
@@ -163,26 +159,7 @@ data BaseType
   | TTimeDiff
   | TResolution
   | TEnum Text (Set.Set Ident)
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, ToADTArbitrary)
-
-instance Arbitrary BaseType where
-  shrink = shrinkNothing
-  arbitrary =
-    oneof $
-      (TEnum <$> (Text.pack <$> arbitrary) <*> (Set.fromList <$> listOf arbitrary))
-        : ( map
-              pure
-              [ TInt,
-                TDouble,
-                TWord16,
-                TWord32,
-                TWord64,
-                TText,
-                TTime,
-                TTimeDiff,
-                TResolution
-              ]
-          )
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
 instance Serialize BaseType where
   get =
@@ -237,46 +214,8 @@ data InfernoType
   | TOptional InfernoType
   | TTuple (TList InfernoType)
   | TRep InfernoType
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable, ToADTArbitrary)
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
-
-instance Arbitrary InfernoType where
-  shrink = recursivelyShrink
-  arbitrary = sized arbitrarySized
-    where
-      arbitraryVar =
-        TVar <$> arbitrary
-
-      arbitraryArr n =
-        TArr
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryTTuple n =
-        oneof
-          [ pure $ TTuple TNil,
-            TTuple <$> (TCons <$> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3) <*> listOf (arbitrarySized $ n `div` 3))
-          ]
-
-      arbitraryBase = TBase <$> arbitrary
-
-      arbitraryRest n = do
-        constr <- elements [TArray, TSeries, TOptional, TRep]
-        constr <$> (arbitrarySized $ n `div` 3)
-
-      arbitrarySized 0 =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase
-          ]
-      arbitrarySized n =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase,
-            arbitraryArr n,
-            arbitraryTTuple n,
-            arbitraryRest n
-          ]
 
 punctuate' :: Doc ann -> [Doc ann] -> [Doc ann]
 punctuate' _ [] = []
@@ -343,28 +282,10 @@ rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "No
 newtype Ident = Ident {unIdent :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData, Hashable)
-  deriving anyclass (ToADTArbitrary)
-
-arbitraryName :: Gen Text
-arbitraryName =
-  ( (\a as -> Text.pack $ a : as)
-      <$> (elements ['a' .. 'z'])
-      <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['_'])
-  )
-    `suchThat` (\i -> not $ i `elem` rws)
-
-instance Arbitrary Ident where
-  shrink = shrinkNothing
-  arbitrary = Ident <$> arbitraryName
 
 newtype ModuleName = ModuleName {unModuleName :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, IsString)
-  deriving anyclass (ToADTArbitrary)
-
-instance Arbitrary ModuleName where
-  shrink = shrinkNothing
-  arbitrary = ModuleName <$> arbitraryName
 
 class ElementPosition a where
   elementPosition :: SourcePos -> a -> (SourcePos, SourcePos)
@@ -384,11 +305,6 @@ instance ElementPosition (Maybe Ident) where
 newtype ExtIdent = ExtIdent (Either Int Text)
   deriving (Show, Eq, Ord, Data, Generic)
   deriving newtype (ToJSON, FromJSON)
-
-instance Arbitrary ExtIdent where
-  shrink = shrinkNothing
-  arbitrary =
-    ExtIdent <$> oneof [Left <$> (arbitrary `suchThat` ((<) 0)), Right <$> arbitraryName]
 
 instance ToJSONKey ExtIdent where
   toJSONKey = toJSONKeyText $ \case
@@ -424,9 +340,11 @@ instance ElementPosition ImplExpl where
     Expl (ExtIdent (Left _)) -> (pos, pos)
     Expl (ExtIdent (Right a)) -> (pos, incSourceCol pos $ Text.length a)
 
-data Fixity = InfixOp InfixFixity | PrefixOp deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+data Fixity = InfixOp InfixFixity | PrefixOp
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
-data InfixFixity = NoFix | LeftFix | RightFix deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+data InfixFixity = NoFix | LeftFix | RightFix
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
 instance ToJSON Pos where
   toJSON = toJSON . unPos
@@ -474,15 +392,8 @@ instance ElementPosition Lit where
   elementPosition pos l = (pos, incSourceCol pos $ length $ show $ pretty l)
 
 data TList a = TNil | TCons a a [a]
-  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable, ToADTArbitrary)
+  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
-
-instance Arbitrary a => Arbitrary (TList a) where
-  arbitrary =
-    oneof
-      [ pure TNil,
-        TCons <$> arbitrary <*> arbitrary <*> listOf arbitrary
-      ]
 
 instance Traversable TList where
   {-# INLINE traverse #-} -- so that traverse can fuse
