@@ -452,7 +452,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
         (\e cs p1 p2 p3 -> Case p1 e p2 (NonEmpty.fromList cs) p3)
           <$> (arbitrarySized $ n `div` 3)
           <*> ( do
-                  k <- chooseInt (0, n)
+                  k <- chooseInt (1, n)
                   sequence
                     [ (\i e p1 p2 -> (p1, i, p2, e))
                         <$> arbitrarySizedPat (n `div` (3 * k))
@@ -462,7 +462,6 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                       | _ <- [1 .. k]
                     ]
               )
-            `suchThat` (not . null)
           <*> arbitrary
           <*> arbitrary
           <*> arbitrary
@@ -470,6 +469,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryBracketed n =
         Bracketed <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary
 
+      -- Only generate array comp statements of size 1 or above:
+      arbitraryArrayComp 0 = undefined
       arbitraryArrayComp n =
         ArrayComp
           <$> arbitrary
@@ -477,9 +478,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> ( NonEmpty.fromList
                   <$> do
-                    k <- chooseInt (0, n)
-                    sequence [(,,,,) <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrarySized (n `div` 3) <*> pure Nothing | _ <- [1 .. k]]
-                    `suchThat` (not . null)
+                    k <- chooseInt (1, n)
+                    sequence [(,,,,) <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrarySized (n `div` (3 * k)) <*> pure Nothing | _ <- [1 .. k]]
               )
           <*> oneof [(\p e -> Just (p, e)) <$> arbitrary <*> (arbitrarySized $ n `div` 3), pure Nothing]
           <*> arbitrary
