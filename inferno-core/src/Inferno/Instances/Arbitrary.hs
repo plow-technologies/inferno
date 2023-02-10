@@ -76,7 +76,7 @@ import Test.QuickCheck
   ( Arbitrary (..),
     Gen,
     PrintableString (getPrintableString),
-    choose,
+    chooseInt,
     elements,
     listOf,
     oneof,
@@ -245,7 +245,7 @@ instance Arbitrary a => Arbitrary (TList a) where
 
 instance Arbitrary a => Arbitrary (SomeIStr a) where
   arbitrary = sized $ \n -> do
-    k <- choose (0, n)
+    k <- chooseInt (0, n)
     oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
     where
       goT :: Arbitrary a => Int -> Gen (IStr 'True a)
@@ -363,7 +363,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
         InterpolatedString
           <$> arbitrary
           <*> do
-            k <- choose (0, n)
+            k <- chooseInt (0, n)
             oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
           <*> arbitrary
         where
@@ -451,16 +451,17 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryCase n =
         (\e cs p1 p2 p3 -> Case p1 e p2 (NonEmpty.fromList cs) p3)
           <$> (arbitrarySized $ n `div` 3)
-          <*> do
-            k <- choose (0, n)
-            sequence
-              [ (\i e p1 p2 -> (p1, i, p2, e))
-                  <$> arbitrarySizedPat (n `div` (3 * k))
-                  <*> arbitrarySized (n `div` (3 * k))
-                  <*> arbitrary
-                  <*> arbitrary
-                | _ <- [1 .. k]
-              ]
+          <*> ( do
+                  k <- chooseInt (0, n)
+                  sequence
+                    [ (\i e p1 p2 -> (p1, i, p2, e))
+                        <$> arbitrarySizedPat (n `div` (3 * k))
+                        <*> arbitrarySized (n `div` (3 * k))
+                        <*> arbitrary
+                        <*> arbitrary
+                      | _ <- [1 .. k]
+                    ]
+              )
             `suchThat` (not . null)
           <*> arbitrary
           <*> arbitrary
@@ -476,7 +477,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> ( NonEmpty.fromList
                   <$> do
-                    k <- choose (0, n)
+                    k <- chooseInt (0, n)
                     sequence [(,,,,) <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrarySized (n `div` 3) <*> pure Nothing | _ <- [1 .. k]]
                     `suchThat` (not . null)
               )
@@ -506,7 +507,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             Array
               <$> arbitrary
               <*> ( do
-                      k <- choose (0, n)
+                      k <- chooseInt (0, n)
                       sequence [(,Nothing) <$> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
                   )
               <*> arbitrary,
@@ -541,7 +542,7 @@ arbitrarySizedPat n =
       (\p1 ts p2 -> PTuple p1 (tListFromList ts) p2)
         <$> arbitrary
         <*> ( do
-                k <- choose (0, n)
+                k <- chooseInt (0, n)
                 sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
             )
           `suchThat` (\xs -> length xs /= 1)
