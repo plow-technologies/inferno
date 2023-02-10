@@ -445,7 +445,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> (arbitrarySized $ n `div` 3)
           <*> arbitrary
           <*> arbitrary
-      
+
       -- Only generate case statements of size 1 or above:
       arbitraryCase 0 = undefined
       arbitraryCase n =
@@ -517,7 +517,6 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             arbitraryCase n, -- Broken!
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             arbitraryBracketed n,
-            
             CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
             CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary,
             CommentBelow <$> arbitrarySized (n `div` 3) <*> arbitrary
@@ -542,9 +541,10 @@ arbitrarySizedPat n =
       (\p1 ts p2 -> PTuple p1 (tListFromList ts) p2)
         <$> arbitrary
         <*> ( do
-            k <- choose (0, n)
-            sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
-          ) `suchThat` (\xs -> length xs /= 1)
+                k <- choose (0, n)
+                sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+            )
+          `suchThat` (\xs -> length xs /= 1)
         <*> arbitrary
     ]
 
