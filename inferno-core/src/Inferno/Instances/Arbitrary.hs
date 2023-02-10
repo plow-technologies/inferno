@@ -455,8 +455,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             k <- choose (0, n)
             sequence
               [ (\i e p1 p2 -> (p1, i, p2, e))
-                  <$> arbitrarySizedPat (n `div` 3)
-                  <*> arbitrarySized (n `div` 3)
+                  <$> arbitrarySizedPat (n `div` (3 * k))
+                  <*> arbitrarySized (n `div` (3 * k))
                   <*> arbitrary
                   <*> arbitrary
                 | _ <- [1 .. k]
@@ -514,7 +514,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             Empty <$> arbitrary,
             arbitraryAssert n,
-            arbitraryCase n, -- Broken!
+            arbitraryCase n,
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             arbitraryBracketed n,
             CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
@@ -533,7 +533,7 @@ arbitrarySizedPat n =
       PVar <$> arbitrary <*> (Just <$> arbitrary),
       PEnum <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary,
       PLit <$> arbitrary <*> arbitrary,
-      POne <$> arbitrary <*> arbitrarySizedPat n,
+      POne <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
       PEmpty <$> arbitrary,
       PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
       PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
