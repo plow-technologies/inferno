@@ -40,16 +40,15 @@ noInternalError = RequestPredicate $ \req mgr -> do
 
 spec :: Spec
 spec = describe "inferno-vc server" $ do
-  -- let maxTries = 20
-  -- let args = defaultArgs { maxSuccess = maxTries }
+  let maxTries = 35
+  let args = defaultArgs { maxSuccess = maxTries }
+  -- let args = defaultArgs
 
-  it "no internal errors" $ withStdoutLogger $ \appLogger -> do
+  it "no internal errors" $ do
     withSystemTempDirectory "vc_store_" $ \vcPath -> do
-      -- let settings = setLogger appLogger defaultSettings
-      let settings = defaultSettings
-      withServantServerAndSettings testApi settings (pserver vcPath) $ \url ->
-        serverSatisfies testApi url defaultArgs (noInternalError <%> mempty)
-      -- putStrLn "Done"
+      withServantServer testApi (pserver vcPath) $ \url ->
+        serverSatisfies testApi url args (noInternalError <%> mempty)
+    putStrLn "Done"
 
   where
     tracer = contramap vcServerTraceToString $ IOTracer $ simpleStdOutTracer
