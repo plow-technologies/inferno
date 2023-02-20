@@ -38,6 +38,7 @@ import Data.Text (pack)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
+import GHC.Utils.Monad (unlessM)
 import Inferno.Types.Syntax (Dependencies (..))
 import Inferno.VersionControl.Log (VCServerTrace (..))
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
@@ -85,8 +86,8 @@ initVCCachedClient =
   (getTyped <$> ask) >>= \(VCStorePath storePath) -> liftIO $ do
     createDirectoryIfMissing True $ storePath </> "deps"
 
-checkPathExists :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> m ()
-checkPathExists fp =
+assertPathExists :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> m ()
+assertPathExists fp =
   liftIO (doesFileExist fp) >>= \case
     False -> throwError $ CouldNotFindPath fp
     True -> pure ()
@@ -94,7 +95,7 @@ checkPathExists fp =
 getDepsFromStore :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> VCObjectHash -> m BL.ByteString
 getDepsFromStore path h = do
   let fp = path </> show h
-  checkPathExists fp
+  unlessM (liftIO $ doesFileExist fp) $ throwError $ CouldNotFindObject h
   liftIO $ BL.readFile $ path </> show h
 
 appendBS :: (VCStoreLogM env m) => FilePath -> BL.ByteString -> m ()
@@ -120,7 +121,7 @@ writeHashedJSON path o = do
 
 readVCObjectHashTxt :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> m [VCObjectHash]
 readVCObjectHashTxt fp = do
-  checkPathExists fp
+  assertPathExists fp
   trace $ ReadTxt fp
   deps <- filter (not . B.null) . Char8.lines <$> (liftIO $ B.readFile fp)
   forM deps $ \dep -> do
@@ -262,7 +263,7 @@ fetchVCObject' mprefix h = do
   let fp = case mprefix of
         Nothing -> storePath </> show h
         Just prefix -> storePath </> prefix </> show h
-  checkPathExists fp
+  unlessM (liftIO $ doesFileExist fp) $ throwError $ CouldNotFindObject h
   trace $ ReadJSON fp
   either (throwError . CouldNotDecodeObject h) pure =<< (liftIO $ eitherDecode <$> BL.readFile fp)
 
@@ -274,6 +275,7 @@ fetchVCObjectClosureHashes :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM
 fetchVCObjectClosureHashes h = do
   VCStorePath storePath <- getTyped <$> ask
   let fp = storePath </> "deps" </> show h
+  unlessM (liftIO $ doesFileExist fp) $ throwError $ CouldNotFindObject h
   readVCObjectHashTxt fp
 
 fetchVCObjectWithClosure :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
@@ -296,7 +298,7 @@ fetchCurrentHead h = do
       readVCObjectHashTxt fp >>= \case
         [h'] -> pure h'
         _ -> throwError $ CouldNotFindHead h
-    else throwError $ CouldNotFindHead h
+    else throwError $ CouldNotFindObject h
 
 fetchVCObjectHistory :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m [VCMeta a g VCObjectHash]
 fetchVCObjectHistory h = do
