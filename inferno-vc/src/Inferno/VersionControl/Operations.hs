@@ -430,8 +430,8 @@ getAllHeads = do
 -- | Fetch all objects that are public or that belong to the given set of groups.
 -- Note this is a potentially long operation so no locks are held while traversing the
 -- store and checking every object -- making this operation weakly consistent.
--- This means the returned list does not reflect the state of the store at any point
--- in time.
+-- This means the returned list does not necessarily reflect the state of the store at any
+-- point in time.
 fetchFunctionsForGroups :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, Ord g, FromJSON a, FromJSON g) => Set.Set g -> m [VCMeta a g VCObjectHash]
 fetchFunctionsForGroups grps = do
   heads <- getAllHeads
