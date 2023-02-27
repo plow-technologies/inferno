@@ -261,8 +261,7 @@
               ps =
                 collectOutputs "packages" flakes // {
                   inherit (vsCodeInferno)
-                    vscode-inferno-syntax-highlighting
-                    vscode-inferno-lsp-server;
+                    vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
                   inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
                 };
             in
@@ -270,15 +269,18 @@
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
-                  combined = builtins.concatLists
-                    [
-                      (builtins.attrValues self.checks.${system})
+                  combined =
+                    let
+                      # This will ensure that `treefmt-check` builds first, before
+                      # any other `packages` or `checks`. This way CI will fail
+                      # early in case formatting errors are detected
+                      putTreefmtFirst = builtins.sort
+                        (x: _: if x.name == "treefmt-check" then true else false);
+                    in
+                    builtins.concatLists [
+                      (putTreefmtFirst (builtins.attrValues self.checks.${system}))
                       (builtins.attrValues ps)
-                      (
-                        lib.mapAttrsToList
-                          (_: v: v.inputDerivation)
-                          self.devShells.${system}
-                      )
+                      (lib.mapAttrsToList (_: v: v.inputDerivation) self.devShells.${system})
                     ];
                 }
                 ''

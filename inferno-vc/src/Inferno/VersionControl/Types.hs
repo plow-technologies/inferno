@@ -37,16 +37,13 @@ import Inferno.Types.Module (Module (..))
 import Inferno.Types.Syntax (Dependencies (..), Expr (..), Ident (..))
 import Inferno.Types.Type (Namespace, TCScheme (..)) -- TypeMetadata(..),
 import Inferno.Types.VersionControl (Pinned (..), VCHashUpdate (..), VCObjectHash (..), pinnedUnderVCToMaybe, vcHash, vcObjectHashToByteString)
-import Test.QuickCheck (Arbitrary (..), oneof)
-import Test.QuickCheck.Arbitrary.ADT (ToADTArbitrary)
-import Test.QuickCheck.Instances.Text ()
 
 data VCObject
   = VCModule (Module (Map Ident VCObjectHash))
   | VCFunction (Expr (Pinned VCObjectHash) ()) TCScheme -- (Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
   | VCTestFunction (Expr (Pinned VCObjectHash) ())
   | VCEnum Ident (Set Ident)
-  deriving (Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
+  deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
 
 showVCObjectType :: VCObject -> Text
 showVCObjectType = \case
@@ -64,11 +61,6 @@ instance Dependencies VCObject VCObjectHash where
 
 data VCObjectVisibility = VCObjectPublic | VCObjectPrivate deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
 
-instance Arbitrary VCObjectVisibility where
-  arbitrary = oneof $ map pure [VCObjectPublic, VCObjectPrivate]
-
-deriving instance ToADTArbitrary VCObjectVisibility
-
 newtype VCCommitMessage = VCCommitMessage {unVCCommitMessage :: Text}
   deriving stock (Show, Eq, Generic)
   deriving newtype (ToJSON, FromJSON, VCHashUpdate)
@@ -77,11 +69,6 @@ data VCIncompatReason
   = TypeSignatureChange
   | EnumConstructorsChanged
   deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
-
-instance Arbitrary VCIncompatReason where
-  arbitrary = oneof $ map pure [TypeSignatureChange, EnumConstructorsChanged]
-
-deriving instance ToADTArbitrary VCIncompatReason
 
 data VCObjectPred
   = -- | Original script (root of the histories).
@@ -106,18 +93,6 @@ data VCObjectPred
     CloneOfNotFound VCObjectHash
   deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)
 
-instance Arbitrary VCObjectPred where
-  arbitrary =
-    oneof
-      [ pure Init,
-        CompatibleWithPred <$> arbitrary,
-        IncompatibleWithPred <$> arbitrary <*> arbitrary,
-        MarkedBreakingWithPred <$> arbitrary,
-        CloneOf <$> arbitrary
-      ]
-
-deriving instance ToADTArbitrary VCObjectPred
-
 -- the owner information and commit messages will be added in further revisions with other metadata as needed
 data VCMeta author group o = VCMeta
   { timestamp :: CTime,
@@ -131,17 +106,3 @@ data VCMeta author group o = VCMeta
     obj :: o
   }
   deriving (Show, Eq, Functor, Generic, ToJSON, FromJSON, VCHashUpdate)
-
-instance (Arbitrary a, Arbitrary g, Arbitrary o) => Arbitrary (VCMeta a g o) where
-  arbitrary =
-    VCMeta
-      <$> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-      <*> arbitrary
-
-deriving instance (Arbitrary a, Arbitrary g, Arbitrary o) => ToADTArbitrary (VCMeta a g o)

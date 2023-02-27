@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 
 module Inferno.Types.Module where
 
@@ -17,7 +17,7 @@ data Module objs = Module
     moduleTypeClasses :: Set.Set TypeClass,
     moduleObjects :: objs
   }
-  deriving (Eq, Generic)
+  deriving (Show, Eq, Generic)
   deriving anyclass (VCHashUpdate, ToJSON, FromJSON)
 
 newtype BuiltinModuleHash = BuiltinModuleHash ModuleName

@@ -7,18 +7,16 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
--- Needed for a ToADTArbitrary on VCObjectHash
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Types.VersionControl where
 
 import Control.DeepSeq (NFData)
-import Crypto.Hash (Context, Digest, digestFromByteString, hash, hashFinalize, hashInit, hashUpdate)
+import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashInit, hashUpdate)
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
 import Data.ByteArray (ByteArrayAccess, convert)
 import Data.ByteArray.Pack (fill, putStorable)
-import Data.ByteString (ByteString, pack)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import Data.Data (Data)
@@ -27,6 +25,15 @@ import Data.Int (Int32, Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
+import Data.Serialize
+  ( Serialize,
+    get,
+    getByteString,
+    put,
+    putByteString,
+    runGet,
+    runPut,
+  )
 import qualified Data.Set as Set
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -63,18 +70,12 @@ import Inferno.Types.Type
     TypeMetadata (..),
   )
 import Servant.API (FromHttpApiData (..), ToHttpApiData (..))
-import Test.QuickCheck.Arbitrary (Arbitrary (..))
-import Test.QuickCheck.Arbitrary.ADT
 import Text.Megaparsec (SourcePos)
 
 newtype VCObjectHash = VCObjectHash {vcObjectHashDigest :: Digest SHA256}
   deriving stock (Generic, Data)
-  deriving anyclass (ToJSONKey, FromJSONKey, NFData, ToADTArbitrary)
+  deriving anyclass (ToJSONKey, FromJSONKey, NFData)
   deriving newtype (Eq, Ord, Read, ByteArrayAccess)
-
--- Orphan Instance Required for ToADTArbitrary VCObjectHash
-instance Arbitrary (Digest SHA256) where
-  arbitrary = hash . pack <$> arbitrary
 
 instance Show VCObjectHash where
   show = Char8.unpack . vcObjectHashToByteString
@@ -87,12 +88,19 @@ instance FromJSON VCObjectHash where
     b64 <- either fail pure $ Base64.decode $ encodeUtf8 piece
     maybe (fail $ unpack $ "Cannot decode hash " <> piece) (pure . VCObjectHash) . digestFromByteString $ b64
 
-instance Arbitrary VCObjectHash where
-  arbitrary = VCObjectHash . hash . Char8.pack <$> arbitrary
-
 instance Hashable VCObjectHash where
   hashWithSalt salt (VCObjectHash digest) =
     hashWithSalt salt $ convert @(Digest SHA256) @ByteString digest
+
+instance Serialize VCObjectHash where
+  get =
+    (getByteString 44)
+      >>= ( \b -> do
+              b64 <- either fail pure $ Base64.decode b
+              digest <- maybe (fail "VCObjectHash: Unable to digest from Base64 ByteString") pure $ digestFromByteString b64
+              pure $ VCObjectHash digest
+          )
+  put = putByteString . Base64.encode . convert . vcObjectHashDigest
 
 -- | Typeclass of hashable objects
 class VCHashUpdate obj where
@@ -282,12 +290,13 @@ pinnedUnderVCToMaybe = \case
   _ -> Nothing
 
 vcObjectHashToByteString :: VCObjectHash -> ByteString
-vcObjectHashToByteString = Base64.encode . convert . vcObjectHashDigest
+vcObjectHashToByteString = runPut . put
 
 byteStringToVCObjectHash :: ByteString -> Maybe VCObjectHash
-byteStringToVCObjectHash b = do
-  b64 <- either (const Nothing) Just $ Base64.decode b
-  VCObjectHash <$> digestFromByteString b64
+byteStringToVCObjectHash bs =
+  let result :: Either String VCObjectHash
+      result = runGet get bs
+   in either (const Nothing) Just result
 
 vcHash :: VCHashUpdate obj => obj -> VCObjectHash
 vcHash o = VCObjectHash $ hashFinalize $ hashInit &< o

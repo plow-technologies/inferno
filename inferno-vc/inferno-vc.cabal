@@ -50,9 +50,9 @@ library
     , lens                               >= 5.2 && < 5.3
     , mtl                                >= 2.2.2 && < 2.3
     , plow-log                           >= 0.1.6 && < 0.2
-    , QuickCheck                         >= 2.14.2 && < 2.15
-    , quickcheck-arbitrary-adt           >= 0.3.1 && < 0.4
-    , quickcheck-instances               >= 0.3.28 && < 0.4
+    -- , QuickCheck                         >= 2.14.2 && < 2.15
+    -- , quickcheck-arbitrary-adt           >= 0.3.1 && < 0.4
+    -- , quickcheck-instances               >= 0.3.28 && < 0.4
     , SafeSemaphore                      >= 0.10.1 && < 0.11
     , servant                            >= 0.19 && < 0.20
     , servant-client                     >= 0.19 && < 0.20

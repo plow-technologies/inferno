@@ -40,7 +40,6 @@ import Data.Monoid (Endo (..))
 import qualified Data.Set as Set
 import Data.Text (Text, pack, singleton, unpack)
 import qualified Data.Text as Text
-import Debug.Trace
 import Inferno.Infer.Env (closeOver)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
@@ -454,7 +453,7 @@ openModE = label "an 'open' module expression\nfor example: open A in ..." $
   where
     openAll modNm = do
       (opsTable, modOpsTables) <- ask
-      case trace ("modOpsTables: " <> show modOpsTables) $ Map.lookup modNm modOpsTables of
+      case Map.lookup modNm modOpsTables of
         Just opsTable' ->
           withReaderT (const (IntMap.unionWith (<>) opsTable opsTable', modOpsTables)) $
             (rword "in" <?> "_the 'in' keyword") *> expr
