@@ -125,6 +125,57 @@ test-suite inferno-tests
     , RecordWildCards
   ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
 
+test-suite inferno-vc-tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test/VC
+  main-is:             Spec.hs
+  -- other-modules:
+  build-depends:
+      base >=4.7 && <5
+    , aeson
+    , async
+    -- , containers
+    , directory
+    -- , exceptions
+    , ghc
+    , hspec
+    -- , hspec-golden-aeson
+    -- , hspec-golden-cereal
+    , http-client
+    , http-types
+    , http-media
+    , inferno-core
+    , inferno-types
+    , inferno-vc
+    -- , megaparsec
+    , mtl
+    -- , prettyprinter
+    -- , pretty-simple
+    , plow-log
+    , QuickCheck
+    , quickcheck-instances
+    , servant
+    , servant-quickcheck
+    , servant-server
+    , string-conversions
+    -- , recursion-schemes
+    -- , text
+    , wai-logger
+    , warp
+  default-language:    Haskell2010
+  default-extensions:
+      DeriveDataTypeable
+    , DeriveFunctor
+    , DeriveGeneric
+    , FlexibleContexts
+    , FlexibleInstances
+    , LambdaCase
+    , OverloadedStrings
+    , TupleSections
+    , RecordWildCards
+  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  -- -threaded -fprof-auto "-with-rtsopts=-N -p"
+
 executable inferno
   main-is: Main.hs
   hs-source-dirs:
