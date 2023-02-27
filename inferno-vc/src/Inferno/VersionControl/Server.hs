@@ -12,10 +12,10 @@ module Inferno.VersionControl.Server where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
-import           Control.Concurrent.FairRWLock        ( RWLock )
+import Control.Concurrent.FairRWLock (RWLock)
 import qualified Control.Concurrent.FairRWLock as RWL
 import Control.Monad (forever)
-import Control.Monad.Except (ExceptT(..), runExceptT)
+import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Contravariant (contramap)

@@ -21,9 +21,9 @@ module Inferno.VersionControl.Operations where
 import Control.Concurrent.FairRWLock (RWLock)
 import qualified Control.Concurrent.FairRWLock as RWL
 import Control.Exception (throwIO)
-import Control.Monad.Catch (bracket_, MonadMask)
 import Control.Monad (foldM, forM, forM_)
-import Control.Monad.Error.Lens (throwing, catching)
+import Control.Monad.Catch (MonadMask, bracket_)
+import Control.Monad.Error.Lens (catching, throwing)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), asks)
@@ -437,20 +437,20 @@ fetchFunctionsForGroups grps = do
   heads <- getAllHeads
   foldM
     ( \objs hsh ->
-      -- Since we don't hold a lock, some heads might have been deleted in the meantime
-      -- so we catch and ignore CouldNotFindPath errors:
-      catching (_Typed @VCStoreError) (checkGroupAndAdd objs hsh) (ignoreNotFounds objs)
+        -- Since we don't hold a lock, some heads might have been deleted in the meantime
+        -- so we catch and ignore CouldNotFindPath errors:
+        catching (_Typed @VCStoreError) (checkGroupAndAdd objs hsh) (ignoreNotFounds objs)
     )
     []
     heads
   where
     checkGroupAndAdd objs hsh = do
-        meta@VCMeta {obj, visibility, group} <- fetchVCObject hsh
-        pure $ case obj of
-          VCFunction _ _ ->
-            if visibility == VCObjectPublic || group `Set.member` grps
-              then fmap (const hsh) meta : objs
-              else objs
-          _ -> objs
+      meta@VCMeta {obj, visibility, group} <- fetchVCObject hsh
+      pure $ case obj of
+        VCFunction _ _ ->
+          if visibility == VCObjectPublic || group `Set.member` grps
+            then fmap (const hsh) meta : objs
+            else objs
+        _ -> objs
     ignoreNotFounds objs (CouldNotFindPath _) = pure objs
     ignoreNotFounds _ e = throwError e
