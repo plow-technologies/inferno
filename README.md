@@ -196,6 +196,22 @@ To run a formatting check that will fail if any files are not formatted, run `ni
 
 **NOTE**: Ormolu currently segfaults during compilation on `aarch64-darwin` (M1 Macs). `ormolu` is accordingly omitted from the formatter (`formatters.aarch64-darwin`) and formatting check (`checks.aarch64-darwin.treefmt`). CI will still fail on unformatted Haskell sources as it runs on `x86_64-linux`, so it is recommended to install `ormolu-0.5.0.1` on your system using an alternate source. See https://github.com/plow-technologies/inferno/issues/10 for more.
 
+### Profiling
+
+We have a profiling build of the inferno binary, which can be used via:
+
+```
+nix shell .#inferno-core:exe:inferno-ghc924-prof
+```
+
+One can also obtain a shell with profiling enabled:
+
+```
+nix develop .#ghc924-prof
+```
+
+Or build packages and checks for the profiling configuration by putting `-ghc924-prof` at the end. For example, `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924-prof`
+
 ## Golden Files
 
 The golden files for the exported frontend types currently live in `inferno-core/golden`. This will likely change as all the exported types should ideally be defined in `inferno-types`
