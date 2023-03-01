@@ -92,7 +92,7 @@ fetchVCObjectClosure fetchVCObjects fetchVCObjectClosureHashes objHash = do
   localObjs <-
     Map.fromList
       <$> ( forM localHashes $ \h ->
-              (h,) <$> Ops.fetchVCObject h
+              (h,) <$> Ops.fetchVCObjectUnsafe h
           )
 
   nonLocalObjs <- liftServantClient $ fetchVCObjects nonLocalHashes
