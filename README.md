@@ -201,9 +201,15 @@ To run a formatting check that will fail if any files are not formatted, run `ni
 We have a profiling build of the inferno binary, which can be used via:
 
 ```
-nix shell .#inferno-core:exe:inferno-ghc924-prof
+$ nix run .#inferno-core:exe:inferno-ghc924-prof 
 ```
 
+Or equivalently:
+
+```
+$ nix build .#inferno-core:exe:inferno-ghc924-prof
+$ ./result/bin/inferno
+```
 One can also obtain a shell with profiling enabled:
 
 ```
