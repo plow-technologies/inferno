@@ -12,8 +12,10 @@ module Inferno.VersionControl.Server where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
+import Control.Concurrent.FairRWLock (RWLock)
+import qualified Control.Concurrent.FairRWLock as RWL
 import Control.Monad (forever)
-import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Monad.Except (ExceptT (..), runExceptT)
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Contravariant (contramap)
@@ -78,8 +80,8 @@ type VersionControlAPI a g =
     :<|> "delete" :> "autosave" :> "function" :> ReqBody '[JSON] VCObjectHash :> DeleteThrowingVCStoreError '[JSON] ()
     :<|> "delete" :> "scripts" :> Capture "hash" VCObjectHash :> DeleteThrowingVCStoreError '[JSON] ()
 
-vcServer :: (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => FilePath -> IOTracer VCServerTrace -> Server (VersionControlAPI a g)
-vcServer config tracer =
+vcServer :: (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => FilePath -> IOTracer VCServerTrace -> RWLock -> Server (VersionControlAPI a g)
+vcServer config tracer lock =
   toHandler . fetchFunctionH
     :<|> toHandler . Ops.fetchFunctionsForGroups
     :<|> toHandler . Ops.fetchVCObject
@@ -98,8 +100,8 @@ vcServer config tracer =
 
     pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
 
-    toHandler :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace) (ExceptT VCServerError Handler) a -> Handler (Union (WithError VCServerError a))
-    toHandler = liftTypedError . flip runReaderT (Ops.VCStorePath config, tracer)
+    toHandler :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace, RWLock) (ExceptT VCServerError Handler) a -> Handler (Union (WithError VCServerError a))
+    toHandler = liftTypedError . flip runReaderT (Ops.VCStorePath config, tracer, lock)
 
 runServer :: forall proxy a g. (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => proxy a -> proxy g -> IO ()
 runServer proxyA proxyG = do
@@ -114,23 +116,24 @@ runServerConfig _ _ serverConfig = do
       vcPath = _vcPath serverConfig
       settingsWithTimeout = setTimeout 300 defaultSettings
       tracer = contramap vcServerTraceToString $ IOTracer $ simpleStdOutTracer
-      deleteOp = Ops.deleteStaleAutosavedVCObjects :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace) (ExceptT VCServerError IO) ()
-      cleanup =
-        (runExceptT $ flip runReaderT (Ops.VCStorePath vcPath, tracer) deleteOp) >>= \case
+      deleteOp = Ops.deleteStaleAutosavedVCObjects :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace, RWLock) (ExceptT VCServerError IO) ()
+      cleanup lock =
+        runExceptT (runReaderT deleteOp (Ops.VCStorePath vcPath, tracer, lock)) >>= \case
           Left (VCServerError {serverError}) ->
             traceWith @IOTracer tracer (ThrownVCStoreError serverError)
           Right _ -> pure ()
 
   runReaderT Ops.initVCStore $ Ops.VCStorePath vcPath
+  lock <- RWL.new
   print ("running..." :: String)
   -- Cleanup stale autosave scripts in a separate thread every hour:
-  withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
+  withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup lock) $
     -- And run the server:
     runSettings (setPort port $ setHost host settingsWithTimeout) $
       ungzipRequest $
         gzip def $
           serve (Proxy :: Proxy (VersionControlAPI a g)) $
-            vcServer vcPath tracer
+            vcServer vcPath tracer lock
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g

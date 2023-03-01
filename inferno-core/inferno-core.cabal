@@ -54,7 +54,7 @@ library
     , cryptonite                >= 0.30 && < 0.31
     , exceptions                >= 0.10.4 && < 0.11
     , generic-lens              >= 2.2.1 && < 2.3
-    , inferno-vc                >= 0.1.0 && < 0.2
+    , inferno-vc                >= 0.2.0 && < 0.3
     , inferno-types             >= 0.1.0 && < 0.2
     , megaparsec                >= 9.2.1 && < 9.3
     , memory                    >= 0.18.0 && < 0.19

@@ -18,11 +18,15 @@
 --   When an object is removed, its directory structure is preserved so you can undo it easily. i.e. `removed` directory has the same structure as `vc_store` directory.
 module Inferno.VersionControl.Operations where
 
-import Control.Monad (filterM, foldM, forM, forM_)
-import Control.Monad.Error.Lens (throwing)
+import Control.Concurrent.FairRWLock (RWLock)
+import qualified Control.Concurrent.FairRWLock as RWL
+import Control.Exception (throwIO)
+import Control.Monad (foldM, forM, forM_)
+import Control.Monad.Catch (MonadMask, bracket_)
+import Control.Monad.Error.Lens (catching, throwing)
 import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad.Reader (MonadReader (..))
+import Control.Monad.Reader (MonadReader (..), asks)
 import Crypto.Hash (digestFromByteString)
 import Data.Aeson (FromJSON, ToJSON, Value, eitherDecode, encode)
 import qualified Data.ByteString as B
@@ -62,6 +66,14 @@ type VCStoreErrM err m = (AsType VCStoreError err, MonadError err m, MonadIO m)
 type VCStoreLogM env m = (HasType (IOTracer VCServerTrace) env, MonadReader env m, MonadIO m)
 
 type VCStoreEnvM env m = (HasType VCStorePath env, MonadReader env m, MonadIO m)
+
+type VCStoreLockM env m = (HasType RWLock env, MonadReader env m, MonadIO m, MonadMask m)
+
+withWrite :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
+withWrite lock = bracket_ (liftIO $ RWL.acquireWrite lock) (liftIO $ RWL.releaseWrite lock >>= either throwIO return)
+
+withRead :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
+withRead lock = bracket_ (liftIO $ RWL.acquireRead lock) (liftIO $ RWL.releaseRead lock >>= either throwIO return)
 
 trace :: VCStoreLogM env m => VCServerTrace -> m ()
 trace t = do
@@ -127,9 +139,10 @@ readVCObjectHashTxt fp = do
     decoded <- either (const $ throwError $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
     maybe (throwError $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
 
-storeVCObject :: forall env err m a g. (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCHashUpdate a, VCHashUpdate g, ToJSON a, ToJSON g, FromJSON a, FromJSON g) => VCMeta a g VCObject -> m VCObjectHash
+storeVCObject :: forall env err m a g. (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, VCHashUpdate a, VCHashUpdate g, ToJSON a, ToJSON g, FromJSON a, FromJSON g) => VCMeta a g VCObject -> m VCObjectHash
 storeVCObject obj@VCMeta {obj = ast, pred = p} = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
   -- if the new object has a direct predecessor (i.e. is not a clone or an initial commit)
   --  we need to make sure that the predecessor is currently a HEAD object in the store
   let maybeCurrentHead = case p of
@@ -141,73 +154,78 @@ storeVCObject obj@VCMeta {obj = ast, pred = p} = do
         IncompatibleWithPred h _ -> Just h
         MarkedBreakingWithPred h -> Just h
 
-  obj_h <- case maybeCurrentHead of
-    Just pred_hash -> do
-      let head_fp = storePath </> "heads" </> show pred_hash
-      -- check to see if pred_hash exists in '<storePath>/heads`
-      exists_head <- liftIO $ doesFileExist head_fp
-      if exists_head
-        then do
-          -- we know that pred_h is currently HEAD, we can therefore store the object and metadata in the store
-          obj_h <- writeHashedJSON storePath obj
-          -- next we make the newly added object the HEAD
-          let new_head_fp = storePath </> "heads" </> show obj_h
-          liftIO $ renameFile head_fp new_head_fp
-          -- we append the previous head hash to the file (this serves as lookup for all the predecessors)
-          appendBS new_head_fp $ BL.fromStrict $ vcObjectHashToByteString pred_hash <> "\n"
-          -- now we need to change all the predecessor mappings in '<storePath>/to_head' to point to the new HEAD
-          -- we also include the new head pointing to itself
-          preds <- readVCObjectHashTxt new_head_fp
-          let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
-          forM_ (obj_h : preds) (\pred_h -> writeBS (storePath </> "to_head" </> show pred_h) obj_h_bs)
+  withWrite lock $ do
+    obj_h <- case maybeCurrentHead of
+      Just pred_hash -> do
+        let head_fp = storePath </> "heads" </> show pred_hash
+        -- check to see if pred_hash exists in '<storePath>/heads`
+        exists_head <- liftIO $ doesFileExist head_fp
+        if exists_head
+          then do
+            -- we know that pred_h is currently HEAD, we can therefore store the object and metadata in the store
+            obj_h <- writeHashedJSON storePath obj
+            -- next we make the newly added object the HEAD
+            let new_head_fp = storePath </> "heads" </> show obj_h
+            liftIO $ renameFile head_fp new_head_fp
+            -- we append the previous head hash to the file (this serves as lookup for all the predecessors)
+            appendBS new_head_fp $ BL.fromStrict $ vcObjectHashToByteString pred_hash <> "\n"
+            -- now we need to change all the predecessor mappings in '<storePath>/to_head' to point to the new HEAD
+            -- we also include the new head pointing to itself
+            preds <- readVCObjectHashTxt new_head_fp
+            let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
+            forM_ (obj_h : preds) (\pred_h -> writeBS (storePath </> "to_head" </> show pred_h) obj_h_bs)
 
-          pure obj_h
-        else throwError $ TryingToAppendToNonHead pred_hash
-    Nothing -> do
-      obj_h <- writeHashedJSON storePath obj
-      -- as there is no previous HEAD for this object, we simply create a new one
-      let new_head_fp = storePath </> "heads" </> show obj_h
-      appendBS new_head_fp mempty
+            pure obj_h
+          else throwError $ TryingToAppendToNonHead pred_hash
+      Nothing -> do
+        obj_h <- writeHashedJSON storePath obj
+        -- as there is no previous HEAD for this object, we simply create a new one
+        let new_head_fp = storePath </> "heads" </> show obj_h
+        appendBS new_head_fp mempty
 
-      -- we again make sure to add a self reference link to the '<storePath>/to_head' map
-      let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
-      writeBS (storePath </> "to_head" </> show obj_h) obj_h_bs
-      pure obj_h
+        -- we again make sure to add a self reference link to the '<storePath>/to_head' map
+        let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
+        writeBS (storePath </> "to_head" </> show obj_h) obj_h_bs
+        pure obj_h
 
-  -- finally, we store the dependencies of the commited object by fetching the dependencies from the AST
-  let deps = Set.toList $ getDependencies ast
-  writeBS (storePath </> "deps" </> show obj_h) mempty
-  forM_ deps $ \dep_h -> do
-    -- first we append the direct dependency hash 'dep_h'
-    appendBS (storePath </> "deps" </> show obj_h) $ BL.fromStrict $ vcObjectHashToByteString dep_h <> "\n"
-    -- then we append the transitive dependencies of the given object, pointed to by the hash 'dep_h'
-    appendBS (storePath </> "deps" </> show obj_h) =<< getDepsFromStore (storePath </> "deps") dep_h
+    -- finally, we store the dependencies of the commited object by fetching the dependencies from the AST
+    let deps = Set.toList $ getDependencies ast
+    writeBS (storePath </> "deps" </> show obj_h) mempty
+    forM_ deps $ \dep_h -> do
+      -- first we append the direct dependency hash 'dep_h'
+      appendBS (storePath </> "deps" </> show obj_h) $ BL.fromStrict $ vcObjectHashToByteString dep_h <> "\n"
+      -- then we append the transitive dependencies of the given object, pointed to by the hash 'dep_h'
+      appendBS (storePath </> "deps" </> show obj_h) =<< getDepsFromStore (storePath </> "deps") dep_h
 
-  pure obj_h
+    pure obj_h
 
 -- | Delete a temporary object from the VC. This is used for autosaved scripts
 -- and to run tests against unsaved scripts
-deleteAutosavedVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => VCObjectHash -> m ()
+deleteAutosavedVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => VCObjectHash -> m ()
 deleteAutosavedVCObject obj_hash = do
-  VCStorePath storePath <- getTyped <$> ask
-  -- check if object meta exists with hash meta_hash, and get meta
-  (VCMeta {name = obj_name} :: VCMeta Value Value VCObject) <- fetchVCObject obj_hash
-  -- check that it is safe to delete
-  if obj_name == pack "<AUTOSAVE>"
-    then do
-      -- delete object, object meta, head/to_head, and deps
-      deleteFile $ (storePath </> show obj_hash)
-      deleteFile $ (storePath </> "heads" </> show obj_hash)
-      deleteFile $ (storePath </> "to_head" </> show obj_hash)
-      deleteFile $ (storePath </> "deps" </> show obj_hash)
-    else throwError $ TryingToDeleteNonAutosave obj_name
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
+  withWrite lock $ do
+    -- check if object meta exists with hash meta_hash, and get meta
+    (VCMeta {name = obj_name} :: VCMeta Value Value VCObject) <- fetchVCObject obj_hash
+    -- check that it is safe to delete
+    if obj_name == pack "<AUTOSAVE>"
+      then do
+        -- delete object, object meta, head/to_head, and deps
+        deleteFile $ storePath </> show obj_hash
+        deleteFile $ storePath </> "heads" </> show obj_hash
+        deleteFile $ storePath </> "to_head" </> show obj_hash
+        deleteFile $ storePath </> "deps" </> show obj_hash
+      else throwError $ TryingToDeleteNonAutosave obj_name
   where
     deleteFile fp = do
       trace $ DeleteFile fp
       liftIO $ removeFile fp
 
 -- | Deletes all stale autosaved objects from the VC.
-deleteStaleAutosavedVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => m ()
+-- As this is a non-critical maintenance operation, we do not hold the lock around the
+-- entire operation.
+deleteStaleAutosavedVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => m ()
 deleteStaleAutosavedVCObjects = do
   -- We know that all autosaves must be heads:
   heads <- getAllHeads
@@ -223,91 +241,111 @@ deleteStaleAutosavedVCObjects = do
           else pure ()
     )
 
--- | Soft delete script and its predecessors
+-- | Soft delete script and its history (both predecessors and successors).
 -- All scripts and their references are moved to "removed" directory
-deleteVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => VCObjectHash -> m ()
+deleteVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => VCObjectHash -> m ()
 deleteVCObjects obj_hash = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
   liftIO $ do
     createDirectoryIfMissing True $ storePath </> "removed"
     createDirectoryIfMissing True $ storePath </> "removed" </> "heads"
     createDirectoryIfMissing True $ storePath </> "removed" </> "to_head"
     createDirectoryIfMissing True $ storePath </> "removed" </> "deps"
 
-  (metas :: [VCMeta Value Value VCObjectHash]) <- fetchVCObjectHistory obj_hash
-  forM_ metas $ \VCMeta {obj = hash} -> do
-    forM_
-      [ show hash,
-        "heads" </> show hash,
-        "to_head" </> show hash,
-        "deps" </> show hash
-      ]
-      $ \source_fp -> safeRenameFile (storePath </> source_fp) (storePath </> "removed" </> source_fp)
+  withWrite lock $ do
+    (metas :: [VCMeta Value Value VCObjectHash]) <- fetchVCObjectHistory obj_hash
+    forM_ metas $ \VCMeta {obj = hash} -> do
+      forM_
+        [ show hash,
+          "heads" </> show hash,
+          "to_head" </> show hash,
+          "deps" </> show hash
+        ]
+        $ \source_fp -> safeRenameFile (storePath </> source_fp) (storePath </> "removed" </> source_fp)
   where
     safeRenameFile source target = do
       liftIO (doesFileExist source) >>= \case
         False -> pure ()
         True -> liftIO $ renameFile source target
 
-fetchVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
+fetchVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
 fetchVCObject = fetchVCObject' Nothing
 
 -- | Fetch object from removed directory
-fetchRemovedVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
+fetchRemovedVCObject :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
 fetchRemovedVCObject = fetchVCObject' (Just "removed")
 
-fetchVCObject' :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => Maybe FilePath -> VCObjectHash -> m (VCMeta a g VCObject)
+fetchVCObject' :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => Maybe FilePath -> VCObjectHash -> m (VCMeta a g VCObject)
 fetchVCObject' mprefix h = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
   let fp = case mprefix of
         Nothing -> storePath </> show h
         Just prefix -> storePath </> prefix </> show h
+  withRead lock $ do
+    checkPathExists fp
+    trace $ ReadJSON fp
+    either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
+
+-- | Fetch an object WITHOUT holding any locks. This is used by the cached client, which
+-- is safe since the cache is read only.
+fetchVCObjectUnsafe :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (VCMeta a g VCObject)
+fetchVCObjectUnsafe h = do
+  VCStorePath storePath <- asks getTyped
+  let fp = storePath </> show h
   checkPathExists fp
   trace $ ReadJSON fp
-  either (throwError . CouldNotDecodeObject h) pure =<< (liftIO $ eitherDecode <$> BL.readFile fp)
+  either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
 
-fetchVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => [VCObjectHash] -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
+-- | Fetch multiple objects (without locking in between)
+fetchVCObjects :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => [VCObjectHash] -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjects hs = do
-  Map.fromList <$> (forM hs $ \h -> (h,) <$> fetchVCObject h)
+  Map.fromList <$> forM hs (\h -> (h,) <$> fetchVCObject h)
 
+-- | Fetch all dependencies of an object.
+-- NOTE: this is done without holding a lock, as dependencies are never modified.
 fetchVCObjectClosureHashes :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => VCObjectHash -> m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
   let fp = storePath </> "deps" </> show h
   readVCObjectHashTxt fp
 
-fetchVCObjectWithClosure :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
+fetchVCObjectWithClosure :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => VCObjectHash -> m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectWithClosure h = do
-  deps <- fetchVCObjectClosureHashes h
-  Map.fromList <$> (forM deps $ \dep -> (dep,) <$> fetchVCObject dep)
+  lock <- asks getTyped
+  withRead lock $ do
+    deps <- fetchVCObjectClosureHashes h
+    Map.fromList <$> forM deps (\dep -> (dep,) <$> fetchVCObject dep)
 
-calculateMissingVCObjects :: VCStoreEnvM env m => [VCObjectHash] -> m [VCObjectHash]
-calculateMissingVCObjects = filterM $ \h -> do
-  VCStorePath storePath <- getTyped <$> ask
-  not <$> (liftIO $ doesFileExist $ storePath </> show h)
-
-fetchCurrentHead :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m) => VCObjectHash -> m VCObjectHash
+fetchCurrentHead :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => VCObjectHash -> m VCObjectHash
 fetchCurrentHead h = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
   let fp = storePath </> "to_head" </> show h
-  exists <- liftIO $ doesFileExist fp
-  if exists
-    then
-      readVCObjectHashTxt fp >>= \case
-        [h'] -> pure h'
-        _ -> throwError $ CouldNotFindHead h
-    else throwError $ CouldNotFindHead h
+  withRead lock $ do
+    exists <- liftIO $ doesFileExist fp
+    if exists
+      then
+        readVCObjectHashTxt fp >>= \case
+          [h'] -> pure h'
+          _ -> throwError $ CouldNotFindHead h
+      else throwError $ CouldNotFindHead h
 
-fetchVCObjectHistory :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, FromJSON a, FromJSON g) => VCObjectHash -> m [VCMeta a g VCObjectHash]
+fetchVCObjectHistory :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, FromJSON a, FromJSON g) => VCObjectHash -> m [VCMeta a g VCObjectHash]
 fetchVCObjectHistory h = do
-  head_h <- fetchCurrentHead h
-  VCStorePath storePath <- getTyped <$> ask
-  let head_fp = storePath </> "heads" </> show head_h
-  preds <- readVCObjectHashTxt head_fp
-  -- When we fold the preds, we check if they exist in two places
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
+  history <- withRead lock $ do
+    head_h <- fetchCurrentHead h
+    let head_fp = storePath </> "heads" </> show head_h
+    preds <- readVCObjectHashTxt head_fp
+    pure $ head_h : preds
+  -- When we fold the history, we check if they exist in two places
   -- 1. in 'vc_store' for available scripts
   -- 2. then in 'vc_store/removed' for scripts that have been deleted
   -- If a script has been deleted, we track its hash.
+  -- Since objects can never be modified, only deleted, we don't need to hold a lock here
   let f acc hsh = do
         existsInRoot <- liftIO $ doesFileExist $ storePath </> show hsh
         existsInRemoved <- liftIO $ doesFileExist $ storePath </> "removed" </> show hsh
@@ -327,9 +365,9 @@ fetchVCObjectHistory h = do
               -- 2. Ignore this meta.
               -- Approach no. 2 is taken here by just returning the accumulator.
                 pure acc
-  (metas, removeds) <- foldM f ([], []) (head_h : preds)
-  -- We like to know if the source of the clone still exists. We can do this by checking against the deleted hashes
-  -- that we tracked above.
+  (metas, removeds) <- foldM f ([], []) history
+  -- The rest of this function handles the case when this script history was obtained by
+  -- cloning, and adds the original script to the returned history, if it still exists:
   case removeds of
     [] ->
       -- if it is a clone, we would like to prepend source of the cloned script as part of the history.
@@ -376,6 +414,8 @@ fetchVCObjectHistory h = do
 getAllHeads :: (VCStoreLogM env m, VCStoreEnvM env m) => m [VCObjectHash]
 getAllHeads = do
   VCStorePath storePath <- getTyped <$> ask
+  -- We don't need a lock here because this only lists the heads/ directory, it doesn't
+  -- read any file contents (and I assume the `ls` is atomic)
   headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
   pure $
     foldr
@@ -387,18 +427,30 @@ getAllHeads = do
       []
       (map takeFileName headsRaw)
 
-fetchFunctionsForGroups :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, Ord g, FromJSON a, FromJSON g) => Set.Set g -> m [VCMeta a g VCObjectHash]
+-- | Fetch all objects that are public or that belong to the given set of groups.
+-- Note this is a potentially long operation so no locks are held while traversing the
+-- store and checking every object -- making this operation weakly consistent.
+-- This means the returned list does not necessarily reflect the state of the store at any
+-- point in time.
+fetchFunctionsForGroups :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m, Ord g, FromJSON a, FromJSON g) => Set.Set g -> m [VCMeta a g VCObjectHash]
 fetchFunctionsForGroups grps = do
   heads <- getAllHeads
   foldM
-    ( \objs hsh -> do
-        meta@VCMeta {obj, visibility, group} <- fetchVCObject hsh
-        pure $ case obj of
-          VCFunction _ _ ->
-            if visibility == VCObjectPublic || group `Set.member` grps
-              then (fmap (const hsh) meta) : objs
-              else objs
-          _ -> objs
+    ( \objs hsh ->
+        -- Since we don't hold a lock, some heads might have been deleted in the meantime
+        -- so we catch and ignore CouldNotFindPath errors:
+        catching (_Typed @VCStoreError) (checkGroupAndAdd objs hsh) (ignoreNotFounds objs)
     )
     []
     heads
+  where
+    checkGroupAndAdd objs hsh = do
+      meta@VCMeta {obj, visibility, group} <- fetchVCObject hsh
+      pure $ case obj of
+        VCFunction _ _ ->
+          if visibility == VCObjectPublic || group `Set.member` grps
+            then fmap (const hsh) meta : objs
+            else objs
+        _ -> objs
+    ignoreNotFounds objs (CouldNotFindPath _) = pure objs
+    ignoreNotFounds _ e = throwError e
