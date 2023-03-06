@@ -1,5 +1,8 @@
 # Revision History for inferno-core
 
+## 0.1.3 -- 2023-03-06
+* Update inferno-vc version
+
 ## 0.1.2 -- 2023-02-09
 * Add golden aeson tests for VCObject
 * Collect every Arbitrary (and ToADTArbitrary) instances in a new module called Inferno.Instances.Arbitrary 
