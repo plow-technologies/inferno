@@ -73,4 +73,5 @@ executable inferno-lsp-server
       base >=4.7 && <5
     , inferno-core
     , inferno-lsp
+    , mtl
   default-language: Haskell2010

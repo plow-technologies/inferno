@@ -110,6 +110,7 @@ import Inferno.Module.Prelude.Defs
     yearFun,
     yearsBeforeFun,
     zeroFun,
+    randomFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -118,6 +119,7 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
+import Control.Monad.IO.Class (MonadIO)
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
@@ -161,7 +163,7 @@ preludeNameToTypeMap moduleMap =
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinModules :: (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c
+builtinModules :: (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c
 builtinModules =
   [infernoModules|
 
@@ -335,8 +337,8 @@ module Number
   doubleToInt : double -> int := ###doubleToInt###;
 
   // TODO how to deal with IO?
-  // @doc A (pseudo)random `double`;
-  // random : unit -> double := ###randomFun###;
+  @doc A (pseudo)random `double`;
+  random : () -> double := ###!randomFun###;
 
 module Option
   @doc `Option.reduce f o d` unwraps an optional value `o` and applies `f` to it, if o contains a `Some` value. Otherwise it returns the default value `d`.
