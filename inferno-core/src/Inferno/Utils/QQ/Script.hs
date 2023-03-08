@@ -40,8 +40,10 @@ import Text.Megaparsec
     errorOffset,
     runParser',
   )
+import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.Except (MonadError)
 
-inferno :: forall c. (Pretty c, Eq c) => QuasiQuoter
+inferno :: forall m c. (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => QuasiQuoter
 inferno =
   QuasiQuoter
     { quoteExp = \str -> do
@@ -71,7 +73,7 @@ inferno =
       quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
     }
   where
-    builtins = builtinModules @(Either EvalError) @c
+    builtins = builtinModules @(m) @c
     vcObjectHashToValue :: Crypto.Digest Crypto.SHA256 -> Maybe TH.ExpQ
     vcObjectHashToValue h =
       let str = (convert h) :: ByteString

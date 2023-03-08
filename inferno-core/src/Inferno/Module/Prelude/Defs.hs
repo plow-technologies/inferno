@@ -37,6 +37,8 @@ import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
+import System.Random (randomIO)
+import Control.Monad.IO.Class (MonadIO)
 
 zeroVal :: Value c m
 zeroVal = VInt 0
@@ -112,6 +114,9 @@ formatTime :: CTime -> Text -> Text
 formatTime t f =
   let t1 = posixSecondsToUTCTime $ realToFrac t
    in pack $ Time.Format.formatTime Time.Format.defaultTimeLocale (unpack f) t1
+
+randomFun :: (MonadIO m) => Value c m
+randomFun = VFun $ \_ -> VDouble <$> randomIO
 
 keepSomesFun :: (MonadError EvalError m) => Value c m
 keepSomesFun =

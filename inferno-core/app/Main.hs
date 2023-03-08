@@ -56,7 +56,7 @@ main = do
                     Left err -> print err
                     Right res -> showPretty res
   where
-    prelude :: ModuleMap (Either EvalError) ()
+    prelude :: ModuleMap (ExceptT EvalError IO) ()
     prelude = builtinModules
 
     allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
