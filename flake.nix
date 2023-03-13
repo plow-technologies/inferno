@@ -28,6 +28,17 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+
+    # Needed for the `hasktorch` integration
+    hasktorch = {
+      url = "github:hasktorch/hasktorch";
+      # NOTE: `hasktorch` does have its own flake, but none of its outputs are
+      # useful to us. We just need the source for `libtorch`
+      flake = false;
+    };
+    tokenizers = {
+      url = "github:hasktorch/tokenizers/flakes";
+    };
   };
 
   outputs =
@@ -114,45 +125,7 @@
           # want users who get packages from our `overlays.default` to be able to
           # use their own `nixpkgs` without having to instantiate ours as well
           # (which would happen if we just use `self.packages` directly in the overlay)
-          infernoFor = { compiler, ghcOptions ? [ ], profiling ? false }:
-            pkgs.haskell-nix.cabalProject {
-              name = "inferno";
-              compiler-nix-name = compiler;
-              src = builtins.path {
-                path = ./.;
-                filter = path: _:
-                  builtins.any
-                    (ext: !lib.hasSuffix ext path)
-                    [ ".nix" ".md" ".yml" ];
-              };
-              shell = {
-                withHoogle = true;
-                tools = {
-                  cabal = { };
-                  # FIXME
-                  # See https://github.com/plow-technologies/inferno/issues/25
-                  #
-                  # # This is the final supported version for our current compilers
-                  # haskell-language-server = "1.8.0.0";
-                };
-                buildInputs = [ config.treefmt.build.wrapper ]
-                  ++ builtins.attrValues config.treefmt.build.programs;
-              };
-              modules = [
-                {
-                  enableLibraryProfiling = profiling;
-                  packages = {
-                    # This takes forever to build
-                    ghc.components.library.doHaddock = false;
-                  };
-                  packages.inferno-core = {
-                    enableLibraryProfiling = profiling;
-                    enableProfiling = profiling;
-                    inherit ghcOptions;
-                  };
-                }
-              ];
-            };
+          infernoFor = args: import ./nix ({ inherit pkgs config; } // args);
 
           # Inferno's VSCode packages
           vsCodeInferno =
@@ -195,6 +168,20 @@
             overlays = [
               haskell-nix.overlays.combined
               inputs.npm-buildpackage.overlays.default
+              inputs.tokenizers.overlay
+              (
+                final: prev:
+                  lib.optionalAttrs (prev.stdenv.isx86_64) rec {
+                    libtorch =
+                      final.callPackage "${inputs.hasktorch}/nix/libtorch.nix" {
+                        cudaSupport = false;
+                        device = "cpu";
+                      };
+                    torch = libtorch;
+                    c10 = libtorch;
+                    torch_cpu = libtorch;
+                  }
+              )
               (_: _:
                 {
                   lib = nixpkgs.lib.extend (final: _:
