@@ -206,6 +206,8 @@
             ];
           };
 
+          legacyPackages = pkgs // infernoFor { compiler = defaultCompiler; };
+
           # To enter a development environment for a particular GHC version, use
           # the compiler name, e.g. `nix develop .#ghc8107`
           #
