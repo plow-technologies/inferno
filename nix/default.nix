@@ -1,13 +1,32 @@
-{ pkgs
-, compiler
+{ compiler
+, config
 , ghcOptions ? [ ]
 , profiling ? false
-, config
+  # Must be of the form: { device = <cpu|cuda-10|cuda-11>; }
+, torchConfig ? { }
 , ...
-}:
+}@args:
 
 let
-  inherit (pkgs) lib;
+  inherit (args.pkgs) lib;
+  # This will let us specify options at the top-level (i.e. in the flake outputs,
+  # and then override the options for building `libtorch`). So we could have
+  # CPU and CUDA versions in the flake
+  pkgs =
+    args.pkgs.extend
+      (
+        _: prev:
+          lib.optionalAttrs prev.stdenv.isx86_64 rec {
+            # If `torchConfig == {  }`, then this gives us the CPU-version, which
+            # is the default set by `makeOverridable` in the overlay that adds
+            # `libtorch` to the package set
+            torch = prev.torch.override torchConfig;
+            # This should always be the same as `torch`
+            c10 = torch;
+            torch_cpu = prev.torch.override { device = "cpu"; };
+            torch_cuda = prev.torch.override { device = "cuda-11"; };
+          }
+      );
 in
 pkgs.haskell-nix.cabalProject {
   name = "inferno";
@@ -32,7 +51,6 @@ pkgs.haskell-nix.cabalProject {
   };
   modules = [
     {
-      enableLibraryProfiling = profiling;
       nonReinstallablePkgs = [
         "rts"
         "ghc-heap"
@@ -74,7 +92,10 @@ pkgs.haskell-nix.cabalProject {
         "terminfo"
       ] ++ lib.optional (compiler != "ghc884")
         "exceptions";
+    }
 
+    {
+      enableLibraryProfiling = profiling;
       packages = {
         inferno-core = {
           enableLibraryProfiling = profiling;
@@ -84,17 +105,28 @@ pkgs.haskell-nix.cabalProject {
 
         # This takes forever to build
         ghc.components.library.doHaddock = false;
+      };
+    }
 
-        # Hasktorch-related
+    # Hasktorch-related
+    {
+      packages = {
         libtorch-ffi = {
           configureFlags = [
             "--extra-lib-dirs=${pkgs.torch.out}/lib"
             "--extra-include-dirs=${pkgs.torch.dev}/include"
           ];
           flags = {
-            cuda = false;
+            cuda = pkgs.torch.passthru.cudaSupport;
+            gcc = !pkgs.torch.passthru.cudaSupport
+              && pkgs.stdenv.hostPlatform.isDarwin;
+            # Flag for linking torch platform for AMD GPUs
+            #
+            # This is also hardcoded to `false` in Hasktorch's own haskell.nix
+            # configuration, so I'm not sure if it's even supported
+            # See:
+            # https://github.com/hasktorch/hasktorch/blob/de3b709980a0d78d2284d91847c09f522830da61/nix/haskell.nix
             rocm = false;
-            gcc = true;
           };
         };
 
