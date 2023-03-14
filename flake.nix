@@ -273,6 +273,14 @@
                 };
             in
             ps // rec {
+              vscode-inferno = pkgs.runCommand "vscode-inferno"
+                { }
+                ''
+                  mkdir -p $out/{vscode,bin}
+                  ln -s ${ps.vscode-inferno-syntax-highlighting} $out/vscode/syntax-highlighting
+                  ln -s ${ps.vscode-inferno-lsp-server} $out/vscode/lsp-server
+                  ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
+                '';
               inferno = packages."inferno-core:exe:inferno";
               inferno-cpu = inferno;
               inferno-cuda = flakes."${defaultCompiler}-cuda".packages."inferno-core:exe:inferno";
