@@ -98,10 +98,12 @@
           flakes = {
             "${defaultCompiler}-prof" = (
               infernoFor {
-                compiler = defaultCompiler;
                 profiling = true;
                 ghcOptions = [ "-eventlog" ];
               }
+            ).flake { };
+            "${defaultCompiler}-cuda" = (
+              infernoFor { torchConfig.device = "cuda-11"; }
             ).flake { };
           }
           // builtins.listToAttrs
@@ -270,7 +272,10 @@
                   inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
                 };
             in
-            ps // {
+            ps // rec {
+              inferno = packages."inferno-core:exe:inferno";
+              inferno-cpu = inferno;
+              inferno-cuda = flakes."${defaultCompiler}-cuda".packages."inferno-core:exe:inferno";
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
@@ -294,7 +299,10 @@
                 '';
             };
 
-          apps = collectOutputs "apps" flakes // {
+          apps = collectOutputs "apps" flakes // rec {
+            inferno = flakes.${defaultCompiler}.apps."inferno-core:exe:inferno";
+            inferno-cpu = inferno;
+            inferno-cuda = flakes."${defaultCompiler}-cuda".apps."inferno-core:exe:inferno";
             inferno-lsp-server =
               flakes.${defaultCompiler}.apps."inferno-lsp:exe:inferno-lsp-server";
           };

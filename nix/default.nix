@@ -1,4 +1,4 @@
-{ compiler
+{ compiler ? "ghc924"
 , config
 , ghcOptions ? [ ]
 , profiling ? false
