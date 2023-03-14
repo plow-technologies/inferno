@@ -72,10 +72,8 @@
           outputsByCompiler = lib.mapAttrsToList
             (compiler: flake: { "${compiler}" = flake.${attr} or { }; })
             flakes;
-          addSuffix = compiler: lib.attrsets.mapAttrs'
-            (output: drv:
-              lib.attrsets.nameValuePair "${output}-${compiler}" drv
-            );
+          addSuffix = compiler: lib.mapAttrs'
+            (output: drv: lib.attrsets.nameValuePair "${output}-${compiler}" drv);
           withSuffixes = builtins.map
             (builtins.mapAttrs addSuffix)
             outputsByCompiler;
@@ -253,7 +251,7 @@
                   '';
                 };
             in
-            lib.attrsets.mapAttrs (_: v: v.devShell) flakes
+            builtins.mapAttrs (_: v: v.devShell) flakes
             // {
               default = flakes.${defaultCompiler}.devShell;
               vscode-inferno-lsp-server = mkNodeDevShell "vscode-inferno-lsp-server";
@@ -271,8 +269,9 @@
                     vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
                   inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
                 };
+              inferno = "inferno-core:exe:inferno";
             in
-            ps // rec {
+            ps // {
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -281,9 +280,9 @@
                   ln -s ${ps.vscode-inferno-lsp-server} $out/vscode/lsp-server
                   ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
                 '';
-              inferno = packages."inferno-core:exe:inferno";
-              inferno-cpu = inferno;
-              inferno-cuda = flakes."${defaultCompiler}-cuda".packages."inferno-core:exe:inferno";
+              inferno = packages.${inferno};
+              inferno-cpu = packages.${inferno};
+              inferno-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
@@ -307,10 +306,7 @@
                 '';
             };
 
-          apps = collectOutputs "apps" flakes // rec {
-            inferno = flakes.${defaultCompiler}.apps."inferno-core:exe:inferno";
-            inferno-cpu = inferno;
-            inferno-cuda = flakes."${defaultCompiler}-cuda".apps."inferno-core:exe:inferno";
+          apps = collectOutputs "apps" flakes // {
             inferno-lsp-server =
               flakes.${defaultCompiler}.apps."inferno-lsp:exe:inferno-lsp-server";
           };
