@@ -28,6 +28,7 @@ import Prettyprinter
     (<+>),
   )
 import System.Posix.Types (EpochTime)
+import Torch (ScriptModule, Tensor (..))
 
 data Value custom m
   = VInt Int64
@@ -44,6 +45,8 @@ data Value custom m
   | VEmpty
   | VFun (Value custom m -> m (Value custom m))
   | VTypeRep InfernoType
+  | VTensor Tensor
+  | VModel ScriptModule
   | VCustom custom
 
 instance Eq c => Eq (Value c m) where
@@ -60,6 +63,7 @@ instance Eq c => Eq (Value c m) where
   (VArray a1) == (VArray a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
   (VTuple a1) == (VTuple a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
   (VTypeRep t1) == (VTypeRep t2) = t1 == t2
+  (VTensor t1) == (VTensor t2) = t1 == t2
   (VCustom c1) == (VCustom c2) = c1 == c2
   _ == _ = False
 
@@ -79,6 +83,8 @@ instance Pretty c => Pretty (Value c m) where
     VFun {} -> "<<function>>"
     VEpochTime t -> pretty $ show t <> "s"
     VTypeRep t -> "@" <> pretty t
+    VTensor t -> align (pretty $ Text.pack $ show t)
+    VModel m -> align (pretty $ Text.pack $ show m)
     VCustom c -> pretty c
 
 newtype ImplEnvM m c a = ImplEnvM {unImplEnvM :: ReaderT (Map.Map ExtIdent (Value c (ImplEnvM m c))) m a}

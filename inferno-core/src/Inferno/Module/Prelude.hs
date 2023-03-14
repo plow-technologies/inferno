@@ -26,6 +26,11 @@ import Inferno.Module.Prelude.Defs
     argmaxFun,
     argminFun,
     argsortFun,
+    asArray1Fun,
+    asArray2Fun,
+    asTensor1Fun,
+    asTensor2Fun,
+    asTensor4Fun,
     averageFun,
     ceilingFun,
     clearBitFun,
@@ -45,6 +50,7 @@ import Inferno.Module.Prelude.Defs
     foldlFun,
     foldrFun,
     formatTime,
+    forwardFun,
     fromWordFun,
     geqFun,
     gtFun,
@@ -58,10 +64,12 @@ import Inferno.Module.Prelude.Defs
     leqFun,
     limitFun,
     lnFun,
+    loadModelFun,
     logBaseFun,
     logFun,
     ltFun,
     magnitudeFun,
+    matmulFun,
     maxFun,
     maximumFun,
     minFun,
@@ -93,6 +101,7 @@ import Inferno.Module.Prelude.Defs
     subFun,
     sumFun,
     tanFun,
+    tanHTFun,
     tanhFun,
     testBitFun,
     textLength,
@@ -102,6 +111,7 @@ import Inferno.Module.Prelude.Defs
     toWord16Fun,
     toWord32Fun,
     toWord64Fun,
+    transpose2DFun,
     truncateFun,
     truncateToFun,
     weeksBeforeFun,
@@ -118,6 +128,7 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
+import Torch (Tensor, zeros')
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
@@ -150,6 +161,9 @@ preludeNameToTypeMap moduleMap =
             : [Map.mapKeys (Just nm,) $ (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList $ moduleMap]
       h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems $ moduleMap]
    in Map.mapMaybe (\h -> Map.lookup h h2ty) n2h
+
+zerosFun :: Int -> Int -> Tensor
+zerosFun n m = zeros' [n, m]
 
 -- In the definitions below, ###!x### is an anti-quotation to a haskell variable `x` of type `Monad m => (Value m)`
 -- This sort of Value is necessary for polymorphic functions such as `map` or `id`
@@ -197,6 +211,7 @@ module Number
   define addition on word32 word64 word64;
   define addition on word64 word32 word64;
   define addition on word64 word64 word64;
+  define addition on tensor tensor tensor;
 
 
   @doc Addition on `int`, `double`, `word16/32/64`, `time` and `timeDiff`;
@@ -337,6 +352,29 @@ module Number
   // TODO how to deal with IO?
   // @doc A (pseudo)random `double`;
   // random : unit -> double := ###randomFun###;
+
+module Tensor
+  zeros : int -> int -> tensor := ###zerosFun###;
+
+  asTensor1 : array of double -> tensor := ###!asTensor1Fun###;
+
+  asTensor2 : array of (array of double) -> tensor := ###!asTensor2Fun###;
+
+  asTensor4 : array of (array of (array of (array of double))) -> tensor := ###!asTensor4Fun###;
+
+  asArray1 : tensor -> array of double := ###asArray1Fun###;
+
+  asArray2 : tensor -> array of (array of double) := ###asArray2Fun###;
+
+  tanh : tensor -> tensor := ###tanHTFun###;
+
+  transpose2D : tensor -> tensor := ###transpose2DFun###;
+
+  matmul : tensor -> tensor -> tensor := ###matmulFun###;
+
+  loadModel : text -> model := ###loadModelFun###;
+
+  forward : model -> tensor -> tensor := ###forwardFun###;
 
 module Option
   @doc `Option.reduce f o d` unwraps an optional value `o` and applies `f` to it, if o contains a `Some` value. Otherwise it returns the default value `d`.
