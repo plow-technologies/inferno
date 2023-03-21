@@ -4,6 +4,7 @@
 , profiling ? false
   # Must be of the form: { device = <cpu|cuda-10|cuda-11>; }
 , torchConfig ? { }
+, inputs
 , ...
 }@args:
 
@@ -48,6 +49,16 @@ pkgs.haskell-nix.cabalProject {
     };
     buildInputs = [ config.treefmt.build.wrapper ]
       ++ builtins.attrValues config.treefmt.build.programs;
+    shellHook =
+      let
+        cudaSupport =
+          lib.optionalString pkgs.torch.passthru.cudaSupport
+            ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/run/opengl-driver/lib"'';
+      in
+      ''
+        ${cudaSupport}
+        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
+      '';
   };
   modules = [
     {

@@ -125,7 +125,7 @@
           # want users who get packages from our `overlays.default` to be able to
           # use their own `nixpkgs` without having to instantiate ours as well
           # (which would happen if we just use `self.packages` directly in the overlay)
-          infernoFor = args: import ./nix ({ inherit pkgs config; } // args);
+          infernoFor = args: import ./nix ({ inherit pkgs config inputs; } // args);
 
           # Inferno's VSCode packages
           vsCodeInferno =
