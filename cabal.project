@@ -52,3 +52,12 @@ source-repository-package
     --sha256: 0hi4s3p0whf0ndsxn8qrfc3a7qndsgac0vz7n23kp3rx69yp0yr1
     tag: 2d0fe9b2f0aa0e1aefc7bfed95a501e59486afb0
     subdir: inline-c-cpp
+
+-- FIXME
+-- `hasktorch` configures these automatically as well in their
+-- haskell.nix setup
+package libtorch-ffi
+    ghc-options: -j +RTS -A128m -n2m -RTS
+
+package hasktorch
+    ghc-options: -j +RTS -A128m -n2m -RTS

@@ -10,9 +10,12 @@
 
 let
   inherit (args.pkgs) lib;
-  # This will let us specify options at the top-level (i.e. in the flake outputs,
-  # and then override the options for building `libtorch`). So we could have
-  # CPU and CUDA versions in the flake
+  # This will let us specify `libtorch`-related options at the top level (i.e.
+  # in the flake outputs) and override `libtorch`
+  #
+  # This enables us to have both CPU and CUDA versions in the flake simultaneously
+  # via a single configuration option, without obligating us to deal with the
+  # `libtorch` build configuration ad-hoc at the top level
   pkgs =
     args.pkgs.extend
       (
