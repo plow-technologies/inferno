@@ -63,7 +63,19 @@ pkgs.haskell-nix.cabalProject {
       let
         cudaSupport =
           lib.optionalString pkgs.torch.passthru.cudaSupport
-            ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/run/opengl-driver/lib"'';
+            ''
+              os=$(awk -F= '$1=="ID" { print $2 ;}' /etc/os-release)
+              llp=""
+              case "$os" in
+                  "nixos")
+                      llp="/run/opengl-driver/lib"
+                      ;;
+                  *)
+                      llp="/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu"
+                      ;;
+              esac
+              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
+            '';
       in
       ''
         ${cudaSupport}
