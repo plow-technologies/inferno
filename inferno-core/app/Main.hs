@@ -21,47 +21,55 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (VCObjectHash (..), pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (showPretty)
 import System.Environment (getArgs)
+import Torch
 
 main :: IO ()
 main = do
-  file <- head <$> getArgs
-  src <- Text.readFile file
+  let n = 256
+  -- let x = ones [n, n] (withDevice (Device CPU 0) defaultOpts)
+  -- let y = ones [n, n] (withDevice (Device CPU 0) defaultOpts)
+  let x = ones [n, n] (withDevice (Device CUDA 0) defaultOpts)
+  let y = ones [n, n] (withDevice (Device CUDA 0) defaultOpts)
+  print $ matmul x y
 
-  -- parse
-  case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) src of
-    Left err -> print err
-    Right (ast, _comments) -> do
-      -- pin free variables to builtin prelude function hashes
-      case pinExpr (builtinModulesPinMap prelude) ast of
-        Left err -> print err
-        Right pinnedAST -> do
-          -- typecheck
-          case inferExpr prelude pinnedAST of
-            Left err -> print err
-            Right (pinnedAST', sch@(ForallTC _ _ (ImplType _ typ)), _tyMap) -> do
-              let sig = collectArrs typ
-              let outTy = last sig
-              let inTys = init sig
-              -- infer runtime type-reps
-              case inferTypeReps allClasses sch inTys outTy of
-                Left err -> print err
-                Right runtimeReps -> do
-                  let finalAst =
-                        foldl
-                          App
-                          (bimap pinnedToMaybe (const ()) pinnedAST')
-                          [TypeRep () ty | ty <- runtimeReps]
-                  -- evaluate
-                  runEvalIO mkEnv mempty finalAst >>= \case
-                    Left err -> print err
-                    Right res -> showPretty res
-  where
-    prelude :: ModuleMap (Either EvalError) ()
-    prelude = builtinModules
+  -- file <- head <$> getArgs
+  -- src <- Text.readFile file
 
-    allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
+  -- -- parse
+  -- case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) src of
+  --   Left err -> print err
+  --   Right (ast, _comments) -> do
+  --     -- pin free variables to builtin prelude function hashes
+  --     case pinExpr (builtinModulesPinMap prelude) ast of
+  --       Left err -> print err
+  --       Right pinnedAST -> do
+  --         -- typecheck
+  --         case inferExpr prelude pinnedAST of
+  --           Left err -> print err
+  --           Right (pinnedAST', sch@(ForallTC _ _ (ImplType _ typ)), _tyMap) -> do
+  --             let sig = collectArrs typ
+  --             let outTy = last sig
+  --             let inTys = init sig
+  --             -- infer runtime type-reps
+  --             case inferTypeReps allClasses sch inTys outTy of
+  --               Left err -> print err
+  --               Right runtimeReps -> do
+  --                 let finalAst =
+  --                       foldl
+  --                         App
+  --                         (bimap pinnedToMaybe (const ()) pinnedAST')
+  --                         [TypeRep () ty | ty <- runtimeReps]
+  --                 -- evaluate
+  --                 runEvalIO mkEnv mempty finalAst >>= \case
+  --                   Left err -> print err
+  --                   Right res -> showPretty res
+  -- where
+  --   prelude :: ModuleMap (Either EvalError) ()
+  --   prelude = builtinModules
 
-    mkEnv :: ImplEnvM (ExceptT EvalError IO) () (TermEnv VCObjectHash () (ImplEnvM (ExceptT EvalError IO) ()))
-    mkEnv = do
-      pinnedEnv <- snd <$> (builtinModulesTerms builtinModules)
-      pure (mempty, pinnedEnv)
+  --   allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
+
+  --   mkEnv :: ImplEnvM (ExceptT EvalError IO) () (TermEnv VCObjectHash () (ImplEnvM (ExceptT EvalError IO) ()))
+  --   mkEnv = do
+  --     pinnedEnv <- snd <$> (builtinModulesTerms builtinModules)
+  --     pure (mempty, pinnedEnv)
