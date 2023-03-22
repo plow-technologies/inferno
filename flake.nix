@@ -183,13 +183,10 @@
                             "cuda-11"
                           ];
                         assert device == "cpu" -> !cudaSupport;
-                        (
-                          pkgs.callPackage "${inputs.hasktorch}/nix/libtorch.nix" {
-                            inherit device cudaSupport;
-                          }
-                        ) // {
-                          passthru = { inherit device cudaSupport; };
+                        pkgs.callPackage "${inputs.hasktorch}/nix/libtorch.nix" {
+                          inherit device cudaSupport;
                         };
+
                     # Adding `makeOverridable` will allow us to propagate options
                     # from the top level (e.g. a specific `infernoFor` build) to
                     # the package set used to build the haskell.nix project (e.g.

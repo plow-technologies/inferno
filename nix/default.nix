@@ -10,6 +10,7 @@
 
 let
   inherit (args.pkgs) lib;
+  cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
   #
@@ -31,11 +32,9 @@ let
               # These should always be the same as `torch`
               c10 = torch;
               torch_cpu = torch;
-            } // lib.optionalAttrs
-              (torchConfig ? device && torchConfig.device != "cpu")
-              {
-                torch_cuda = torch;
-              }
+            } // lib.optionalAttrs cudaSupport {
+              torch_cuda = torch;
+            }
           )
       );
 in
@@ -61,12 +60,24 @@ pkgs.haskell-nix.cabalProject {
       ++ builtins.attrValues config.treefmt.build.programs;
     shellHook =
       let
-        cudaSupport =
-          lib.optionalString pkgs.torch.passthru.cudaSupport
-            ''export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/run/opengl-driver/lib"'';
+        setpath =
+          lib.optionalString cudaSupport
+            ''
+              os=$(awk -F= '$1=="ID" { print $2 ;}' /etc/os-release)
+              llp=""
+              case "$os" in
+                  "nixos")
+                      llp="/run/opengl-driver/lib"
+                      ;;
+                  *)
+                      llp="/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu"
+                      ;;
+              esac
+              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
+            '';
       in
       ''
-        ${cudaSupport}
+        ${setpath}
         export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
       '';
   };
@@ -138,9 +149,8 @@ pkgs.haskell-nix.cabalProject {
             "--extra-include-dirs=${pkgs.torch.dev}/include"
           ];
           flags = {
-            cuda = pkgs.torch.passthru.cudaSupport;
-            gcc = !pkgs.torch.passthru.cudaSupport
-              && pkgs.stdenv.hostPlatform.isDarwin;
+            cuda = cudaSupport;
+            gcc = !cudaSupport && pkgs.stdenv.hostPlatform.isDarwin;
             # Flag for linking torch platform for AMD GPUs
             #
             # This is also hardcoded to `false` in Hasktorch's own haskell.nix
