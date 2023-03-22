@@ -17,16 +17,23 @@ let
     args.pkgs.extend
       (
         _: prev:
-          lib.optionalAttrs prev.stdenv.isx86_64 rec {
-            # If `torchConfig == {  }`, then this gives us the CPU-version, which
+          let
+            # If `torchConfig == { }`, then this gives us the CPU-version, which
             # is the default set by `makeOverridable` in the overlay that adds
             # `libtorch` to the package set
             torch = prev.torch.override torchConfig;
-            # This should always be the same as `torch`
-            c10 = torch;
-            torch_cpu = prev.torch.override { device = "cpu"; };
-            torch_cuda = prev.torch.override { device = "cuda-11"; };
-          }
+          in
+          lib.optionalAttrs prev.stdenv.isx86_64 (
+            {
+              # These should always be the same as `torch`
+              c10 = torch;
+              torch_cpu = torch;
+            } // lib.optionalAttrs
+              (torchConfig ? device && torchConfig.device != "cpu")
+              {
+                torch_cuda = torch;
+              }
+          )
       );
 in
 pkgs.haskell-nix.cabalProject {
