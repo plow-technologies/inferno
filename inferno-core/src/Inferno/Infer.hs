@@ -271,6 +271,25 @@ closeOverTypeReps implTys expr =
                         Lam pos lamList pos expr'
                       )
 
+-- | Desugar syntactic sugar before running type inference
+desugar :: Expr hash pos -> Expr hash pos
+desugar = \case
+  -- TODO fix the positions in the transformed expressions
+  -- let x, y, ... = foo in bar  ==>  match foo with { x, y -> bar }
+    LetTuple p1 ((p, x) NEList.:| []) p2 e1 p3 e2 ->
+      Let p1 p x p2 e1 p3 e2
+    LetTuple p1 xs p2 e1 p3 e2 ->
+      Case p1 e1 p1 (NEList.fromList [(p1, PTuple p1 xs' p2, p2, e2)]) p3
+      where
+        xs' = tListFromList . NEList.toList $ NEList.map (\(p, x) -> implExplToPat p x) xs
+        implExplToPat _ (Impl _) =
+          error "desugar: unexpected Impl"
+        implExplToPat _ (Expl (ExtIdent (Left _))) =
+          error "desugar: unexpected ExtIdent Left"
+        implExplToPat p (Expl (ExtIdent (Right x))) =
+          (PVar p $ Just $ Ident x, Nothing)
+    e -> e
+
 -- | Solve for the top level type of an expression in a given environment
 inferExpr ::
   Map.Map ModuleName (PinnedModule m) ->
@@ -281,7 +300,8 @@ inferExpr ::
       TCScheme,
       Map.Map (Location SourcePos) (TypeMetadata TCScheme)
     )
-inferExpr allModules expr =
+inferExpr allModules expr0 =
+  let expr = desugar expr0 in
   let (env, inScopeClasses) = openBuiltinModuleAndAddPinnedTypes allModules
    in case runInfer env inScopeClasses allModules (infer expr) of
         -- if we threw errors whilst inferring, rethrow
@@ -828,6 +848,26 @@ infer expr =
                 `Set.union` c2
                 `Set.union` Set.singleton (tyConstr v1 t1 [ImplicitVarTypeOverlap tyCls x v1 t1 $ blockPosition expr])
             )
+        LetTuple _ _ _ _ _ _ -> error "infer: LetTuple should already be desugared"
+        -- LetTuple p1 xs p2 e1 p3 e2 -> do
+        --   (e1', ImplType i1 t1, c1) <- infer e1
+        --   -- TODO for each x in xs, create fresh tv and attach like PVar
+        --   -- then make TTuple type and attach to this position for all xs
+        --   let newEnv =
+        --         ( x,
+        --           TypeMetadata
+        --             { identExpr = Var () () LocalScope $ Expl x,
+        --               ty = ForallTC [] (Set.fromList $ map snd $ rights $ Set.toList c1) $ ImplType i1 t1,
+        --               docs = Nothing
+        --             }
+        --         )
+        --   (e2', ImplType i2 t2, c2) <- inEnv newEnv $ infer e2
+        --   let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [i1, i2]
+        --   return
+        --     ( LetTuple p1 xs p2 e1' p3 e2',
+        --       ImplType isMerged t2,
+        --       Set.fromList ics `Set.union` c1 `Set.union` c2
+        --     )
         Op e1 loc mHash opMeta modNm op e2 -> do
           let (sPos, ePos) = elementPosition loc op
           let opLoc = (sPos, incSourceCol ePos $ fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> modNm)

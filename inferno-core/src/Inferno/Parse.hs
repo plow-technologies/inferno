@@ -460,20 +460,40 @@ openModE = label "an 'open' module expression\nfor example: open A in ..." $
         Nothing -> customFailure $ ModuleNotFound modNm
 
 letE :: Parser (Expr () SourcePos)
-letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
+letE = label ("a 'let' expression" ++ example) $
   do
     startPos <- getSourcePos
     hidden $ rword "let"
-    varPos <- getSourcePos
-    x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
-    eqPos <- getSourcePos
-    symbol "=" <?> "'='"
-    e1 <- expr <?> ("an expression to bind to '" ++ show x ++ "'" ++ example x)
+    (vs, eqPos) <- varOrVars
+    e1 <- expr <?> ("an expression to bind to 'x'" ++ example)
     inPos <- getSourcePos
     e2 <- (rword "in" <?> "_the 'in' keyword") *> expr
-    pure $ Let startPos varPos x eqPos e1 inPos e2
+    case vs of
+      [(varPos, x)] -> pure $ Let startPos varPos x eqPos e1 inPos e2
+      xs -> pure $ LetTuple startPos (NEList.fromList xs) eqPos e1 inPos e2
   where
-    example x = "\nfor example: let " ++ show x ++ " = 2 * 5 in ..."
+    example = "\nfor example: let x = 2 * 5 in ..."
+    eq = symbol "=" <?> "'='"
+    varOrVars =
+      ( do
+          varPos <- getSourcePos
+          v <- var
+          ( do
+              eqPos <- getSourcePos
+              eq
+              return ([(varPos, v)], eqPos)
+            )
+            <|> ( do
+                    lexeme $ char ','
+                    (es, eqPos) <- varOrVars
+                    return ((varPos, v) : es, eqPos)
+                )
+      )
+        <|> do
+          eqPos <- getSourcePos
+          eq
+          return ([], eqPos)
+    var = lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
 
 pat :: Parser (Pat () SourcePos)
 pat =
