@@ -174,18 +174,24 @@ pinExpr m expr =
                   args
           Lam p1 args p2 <$> pinExpr m' e
         App e1 e2 -> App <$> pinExpr m e1 <*> pinExpr m e2
-        Let p1 loc x@(Expl (ExtIdent (Right i))) p2 e1 p3 e2 -> do
+        Let p1 loc x p2 e1 p3 e2 -> do
           e1' <- pinExpr m e1
-          e2' <- pinExpr (insertLocal (Ident i) m) e2
+          let m' = case x of
+                      Expl (ExtIdent (Right i)) -> insertLocal (Ident i) m
+                      _ -> m
+          e2' <- pinExpr m' e2
           pure $ Let p1 loc x p2 e1' p3 e2'
-        Let p1 loc x@(Expl (ExtIdent (Left _))) p2 e1 p3 e2 -> do
+        LetTuple p1 xs p2 e1 p3 e2 -> do
           e1' <- pinExpr m e1
-          e2' <- pinExpr m e2
-          pure $ Let p1 loc x p2 e1' p3 e2'
-        Let p1 loc (Impl x) p2 e1 p3 e2 -> do
-          e1' <- pinExpr m e1
-          e2' <- pinExpr m e2
-          pure $ Let p1 loc (Impl x) p2 e1' p3 e2'
+          let m' = foldr
+                    ( \(_, implExpl) m'' -> case implExpl of
+                        Expl (ExtIdent (Right i)) -> insertLocal (Ident i) m''
+                        _ -> m''
+                    )
+                    m
+                    xs
+          e2' <- pinExpr m' e2
+          pure $ LetTuple p1 xs p2 e1' p3 e2'
         Op e1 p1 _ meta modNm op e2 -> do
           hash <- lookupName exprPos modNm (OpNamespace op) m
           (\e1' e2' -> Op e1' p1 hash meta modNm op e2')

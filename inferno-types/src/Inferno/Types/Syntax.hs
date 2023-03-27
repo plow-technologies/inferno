@@ -598,6 +598,13 @@ data Expr hash pos
       (Expr hash pos)
       pos -- position of `in`
       (Expr hash pos)
+  | LetTuple -- e.g. `let x, y = foo in bar`
+      pos -- position of `let`
+      (NonEmpty (pos, ImplExpl)) -- variables
+      pos -- position of `=`
+      (Expr hash pos)
+      pos -- position of `in`
+      (Expr hash pos)
   | Lit pos Lit
   | InterpolatedString
       pos -- position of string start
@@ -947,6 +954,7 @@ instance BlockUtils (Expr hash) where
         AppF (pos1, _) (_, pos2) -> (pos1, pos2)
         LamF pos1 _ _ (_, pos2) -> (pos1, pos2)
         LetF pos1 _ _ _ _ _ (_, pos2) -> (pos1, pos2)
+        LetTupleF pos1 _ _ _ _ (_, pos2) -> (pos1, pos2)
         LitF pos l -> (pos, incSourceCol pos $ length $ show $ pretty l)
         InterpolatedStringF pos1 _ pos2 -> (pos1, pos2)
         IfF pos1 _ _ _ _ (_, pos2) -> (pos1, pos2)
@@ -1130,6 +1138,11 @@ prettyPrec isBracketed prec expr =
        in group $ nest 2 $ vsep [fun, body]
     Let _ _ x _ e1 _ e2 ->
       let letPretty = "let" <+> align (pretty x <+> "=" <+> align (prettyPrec False 0 e1))
+          body = "in" <+> prettyPrec False 0 e2
+       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+    LetTuple _ xs _ e1 _ e2 ->
+      let xsPretty = align (sep . punctuate' "," $ map (pretty . snd) $ toList xs)
+          letPretty = "let" <+> align (xsPretty <+> "=" <+> align (prettyPrec False 0 e1))
           body = "in" <+> prettyPrec False 0 e2
        in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
     Lit _ l -> pretty l
