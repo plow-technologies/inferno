@@ -768,6 +768,7 @@ baseType =
             <|> (symbol "time" *> pure TTime)
             <|> (symbol "resolution" *> pure TResolution)
             <|> (symbol "tensor" *> pure TTensor)
+            <|> (symbol "independentTensor" *> pure TIndependentTensor)
             <|> (symbol "model" *> pure TModel)
         )
 

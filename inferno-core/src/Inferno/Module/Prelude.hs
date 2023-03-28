@@ -122,6 +122,7 @@ import Inferno.Module.Prelude.Defs
     yearsBeforeFun,
     zeroFun,
     randomFun,
+    randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -130,7 +131,7 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
-import Torch (Tensor, zeros')
+import Torch (Tensor, zeros', sumAll)
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
@@ -228,6 +229,7 @@ module Number
   define subtraction on word16 word16 word16;
   define subtraction on word32 word32 word32;
   define subtraction on word64 word64 word64;
+  define subtraction on tensor tensor tensor;
 
   @doc Subtraction on `int`, `double`, `word16/32/64`, `time` and `timeDiff`;
   (-) : forall 'a 'b 'c. {requires subtraction on 'a 'b 'c} => 'a -> 'b -> 'c := ###subFun###;
@@ -246,6 +248,7 @@ module Number
   define multiplication on double double double;
   define multiplication on int timeDiff timeDiff;
   define multiplication on timeDiff int timeDiff;
+  define multiplication on tensor tensor tensor;
 
   @doc Multiplication on `int`, `double`;
   (*) : forall 'a 'b 'c. {requires multiplication on 'a 'b 'c} => 'a -> 'b -> 'c := ###mulFun###;
@@ -351,7 +354,6 @@ module Number
   @doc Convert double to int;
   doubleToInt : double -> int := ###doubleToInt###;
 
-  // TODO how to deal with IO?
   @doc A (pseudo)random `double`;
   random : () -> double := ###!randomFun###;
 
@@ -368,6 +370,10 @@ module ML
 
   asArray2 : tensor -> array of (array of double) := ###asArray2Fun###;
 
+  sumAll : tensor -> tensor := ###sumAll###;
+
+  powT : int -> tensor -> tensor := ###powTFun###;
+
   tanH : tensor -> tensor := ###tanHTFun###;
 
   transpose2D : tensor -> tensor := ###transpose2DFun###;
@@ -377,6 +383,18 @@ module ML
   loadModel : text -> model := ###loadModelFun###;
 
   forward : model -> tensor -> tensor := ###forwardFun###;
+
+  @doc An impure (pseudo)random tensor generator;
+  randomTensorI: array of int -> tensor := ###!randomTensorIFun###;
+
+  makeIndependent : tensor -> independentTensor := ###!makeIndependentFun###;
+
+  toDependent : independentTensor -> tensor := ###toDependentFun###;
+
+  mseLoss : tensor -> tensor -> tensor := ###mseLossFun###;
+
+  // TODO use optimizer type
+  runStep : forall 'm. 'm -> () -> tensor -> double -> ('m, ()) := ###!runStepFun###;
 
 module Option
   @doc `Option.reduce f o d` unwraps an optional value `o` and applies `f` to it, if o contains a `Some` value. Otherwise it returns the default value `d`.

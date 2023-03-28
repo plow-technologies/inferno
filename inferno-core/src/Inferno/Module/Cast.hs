@@ -24,7 +24,7 @@ import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (ImplEnvM, ImplicitCast (..), Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
-import Torch (ScriptModule, Tensor)
+import Torch (ScriptModule, Tensor, IndependentTensor)
 
 type Either3 a b c = Either a (Either b c)
 
@@ -168,6 +168,13 @@ instance ToValue c m Tensor where
 
 instance Pretty c => FromValue c m Tensor where
   fromValue (VTensor t) = pure t
+  fromValue v = couldNotCast v
+
+instance ToValue c m IndependentTensor where
+  toValue = pure . VIndependentTensor
+
+instance Pretty c => FromValue c m IndependentTensor where
+  fromValue (VIndependentTensor t) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue c m ScriptModule where

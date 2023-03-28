@@ -10,7 +10,7 @@ module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
 import Control.Monad.Except (MonadError (throwError))
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -41,14 +41,14 @@ import Foreign.Marshal.Utils (fromBool)
 import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Cast (Either3, Either4, Either5, Either6, Either7)
+import Inferno.Module.Cast (Either3, Either4, Either5, Either6, Either7, fromValue, toValue)
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType)
+import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randIO', makeIndependent, IndependentTensor (toDependent), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow)
 import qualified Torch.DType as TD (DType (Double, Float))
 import qualified Torch.Functional as TF (tanh, transpose2D)
 import Torch.Script (LoadMode (..), loadScript)
@@ -230,32 +230,37 @@ modFun :: Int64 -> Int64 -> Int64
 modFun = mod
 
 mulFun ::
-  Either3 Double Int64 EpochTime ->
-  Either3
+  Either4 Double Int64 EpochTime Tensor ->
+  Either4
     (Either Double Int64 -> Double)
     (Either3 Double Int64 EpochTime -> Either3 Double Int64 EpochTime)
     (Int64 -> EpochTime)
+    (Tensor -> Tensor)
 mulFun =
   bimap (\x -> either ((*) x) ((*) x . fromIntegral)) $
     bimap
-      (\i -> bimap ((*) $ fromIntegral i) (bimap ((*) i) ((*) $ secondsFun i)))
-      (\x -> ((*) x . secondsFun))
+      (\i -> bimap ((*) $ fromIntegral i) (bimap ((*) i) ((*) $ secondsFun i))) $
+      bimap
+        (\x -> ((*) x . secondsFun))
+        (*)
 
 subFun ::
-  Either6 Double Int64 EpochTime Word16 Word32 Word64 ->
-  Either6
+  Either7 Double Int64 EpochTime Word16 Word32 Word64 Tensor ->
+  Either7
     (Either Double Int64 -> Double)
     (Either Double Int64 -> Either Double Int64)
     (EpochTime -> EpochTime)
     (Word16 -> Word16)
     (Word32 -> Word32)
     (Word64 -> Word64)
+    (Tensor -> Tensor)
 subFun =
   bimap (\x -> either ((-) x) ((-) x . fromIntegral)) $
     bimap (\i -> bimap ((-) $ fromIntegral i) ((-) i)) $
       bimap (-) $
         bimap (-) $
-          bimap (-) (-)
+          bimap (-) $
+            bimap (-) (-)
 
 recipFun :: Double -> Double
 recipFun = recip
@@ -598,3 +603,53 @@ forwardFun m t =
   case forward m [IVTensor (toType TD.Float t)] of
     IVTensor t' -> t'
     _ -> error "expected tensor result" -- TODO better error handling
+
+powTFun :: Int -> Tensor -> Tensor
+powTFun i t = pow i t
+
+randomTensorIFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
+randomTensorIFun = VFun $ \xs -> do
+  -- TODO if this works also use this in toTensor functions above
+  size <- fromValue xs
+  t <- liftIO $ randIO' size
+  pure $ VTensor t
+
+makeIndependentFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
+makeIndependentFun = VFun $ \v -> do
+  t <- fromValue v
+  i <- liftIO $ makeIndependent t
+  pure $ VIndependentTensor i
+
+toDependentFun :: IndependentTensor -> Tensor
+toDependentFun = toDependent
+
+mseLossFun :: Tensor -> Tensor -> Tensor
+mseLossFun t1 t2 = mseLoss (toType TD.Float t1) (toType TD.Float t2)
+
+-- runStep :: model -> optimizer -> loss -> float (LR) -> (model, optimizer)
+-- TODO for now, model = array of independenttensor
+-- TODO allow passing in optimizer
+runStepFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
+runStepFun = VFun $ \case
+  VTuple vTs -> do
+    m :: [IndependentTensor] <- mapM getIndependentTensor vTs
+    return $ VFun $ \vO -> do
+      -- o <- fromValue vO
+      return $ VFun $ \vL -> do
+        l <- fromValue vL
+        return $ VFun $ \vLR -> do
+          lr :: Double <- fromValue vLR
+          -- (m', o') <- liftIO $ runStep m o l lr
+          (m', _) <- liftIO $ runStep' m GD l lr
+          vM's <- mapM toValue m'
+          pure $ VTuple [VTuple vM's, VTuple []]
+  _ -> throwError $ RuntimeError "runStep: expecting a tuple of independentTensors"
+  where
+    runStep' :: (Parameterized model) => model -> GD -> Tensor -> Double -> IO (model, GD)
+    runStep' m o l lr = runStep m o l (asTensor lr)
+    getIndependentTensor v = case v of
+      VIndependentTensor x -> pure x
+      _ -> throwError $ RuntimeError "runStep: expecting independentTensor"
+    -- getIndependentTensorTuple = \case
+    --   VTuple xs -> mapM getIndependentTensor xs
+    --   _ -> throwError $ RuntimeError "runStep: expecting a tuple of independentTensors"
