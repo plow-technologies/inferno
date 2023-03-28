@@ -8,6 +8,7 @@
 module Inferno.Module.Prelude where
 
 import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import Inferno.Eval (TermEnv)
@@ -120,6 +121,7 @@ import Inferno.Module.Prelude.Defs
     yearFun,
     yearsBeforeFun,
     zeroFun,
+    randomFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -175,7 +177,7 @@ zerosFun n m = zeros' [n, m]
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinModules :: (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c
+builtinModules :: (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c
 builtinModules =
   [infernoModules|
 
@@ -350,8 +352,8 @@ module Number
   doubleToInt : double -> int := ###doubleToInt###;
 
   // TODO how to deal with IO?
-  // @doc A (pseudo)random `double`;
-  // random : unit -> double := ###randomFun###;
+  @doc A (pseudo)random `double`;
+  random : () -> double := ###!randomFun###;
 
 module ML
   zeros : int -> int -> tensor := ###zerosFun###;

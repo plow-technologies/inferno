@@ -10,6 +10,7 @@ module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
 import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.IO.Class (MonadIO)
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -46,6 +47,7 @@ import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
+import System.Random (randomIO)
 import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType)
 import qualified Torch.DType as TD (DType (Double, Float))
 import qualified Torch.Functional as TF (tanh, transpose2D)
@@ -125,6 +127,9 @@ formatTime :: CTime -> Text -> Text
 formatTime t f =
   let t1 = posixSecondsToUTCTime $ realToFrac t
    in pack $ Time.Format.formatTime Time.Format.defaultTimeLocale (unpack f) t1
+
+randomFun :: (MonadIO m) => Value c m
+randomFun = VFun $ \_ -> VDouble <$> randomIO
 
 keepSomesFun :: (MonadError EvalError m) => Value c m
 keepSomesFun =
