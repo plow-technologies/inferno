@@ -277,10 +277,11 @@ desugar = \case
   -- TODO fix the positions in the transformed expressions
   -- let x, y, ... = foo in bar  ==>  match foo with { x, y -> bar }
     LetTuple p1 ((p, x) NEList.:| []) p2 e1 p3 e2 ->
-      Let p1 p x p2 e1 p3 e2
+      Let p1 p x p2 (desugar e1) p3 (desugar e2)
     LetTuple p1 xs p2 e1 p3 e2 ->
-      Case p1 e1 p1 (NEList.fromList [(p1, PTuple p1 xs' p2, p2, e2)]) p3
+      Case p1 (desugar e1) p1 cases p3
       where
+        cases = (NEList.fromList [(p1, PTuple p1 xs' p2, p2, (desugar e2))])
         xs' = tListFromList . NEList.toList $ NEList.map (\(p, x) -> implExplToPat p x) xs
         implExplToPat _ (Impl _) =
           error "desugar: unexpected Impl"
@@ -288,7 +289,39 @@ desugar = \case
           error "desugar: unexpected ExtIdent Left"
         implExplToPat p (Expl (ExtIdent (Right x))) =
           (PVar p $ Just $ Ident x, Nothing)
+    -- Recurse into other exprs:
+    App e1 e2 -> App (desugar e1) (desugar e2)
+    Lam p1 args p2 e -> Lam p1 args p2 (desugar e)
+    Let p1 p2 i p3 e1 p4 e2 -> Let p1 p2 i p3 (desugar e1) p4 (desugar e2)
+    If p1 e1 p2 e2 p3 e3 -> If p1 (desugar e1) p2 (desugar e2) p3 (desugar e3)
+    Op e1 p1 h f m i e2 -> Op (desugar e1) p1 h f m i (desugar e2)
+    PreOp p1 h f m i e -> PreOp p1 h f m i (desugar e)
+    Tuple p1 es p2 ->
+      Tuple p1 (tListFromList . (map (bimap desugar id)) $ tListToList es) p2
+    One p e -> One p (desugar e)
+    Assert p1 e1 p2 e2 -> Assert p1 (desugar e1) p2 (desugar e2)
+    Case p1 e1 p2 cases p3 ->
+      Case p1 (desugar e1) p2 cases' p3
+      where
+        cases' = NEList.map (\(p1', pat, p2', e') -> (p1', pat, p2', desugar e')) cases
+    Array p1 elems p2 -> Array p1 (map (bimap desugar id) elems) p2
+    ArrayComp p1 e1 p2 froms ifE p3 ->
+      ArrayComp p1 e1 p2 froms' (fmap (bimap id desugar) ifE) p3
+      where
+        froms' = NEList.map (\(p1', i, p2', e', p3') -> (p1', i, p2', desugar e', p3')) froms
+    CommentAbove c e -> CommentAbove c (desugar e)
+    CommentAfter e c -> CommentAfter (desugar e) c
+    CommentBelow e c -> CommentBelow (desugar e) c
+    Bracketed p1 e p2 -> Bracketed p1 (desugar e) p2
+    RenameModule p1 m1 p2 m2 p3 e -> RenameModule p1 m1 p2 m2 p3 (desugar e)
+    OpenModule p1 h m is p2 e -> OpenModule p1 h m is p2 (desugar e)
+    -- Ignore non-recursive constructors: TODO list explicitly
+    -- TODO allow inside InterpolatedString?
     e -> e
+    -- e -> unsafePerformIO $ do
+    --   putStrLn "Skipping:"
+    --   putStrLn $ show $ bimap (const ()) (const ()) e
+    --   return e
 
 -- | Solve for the top level type of an expression in a given environment
 inferExpr ::
