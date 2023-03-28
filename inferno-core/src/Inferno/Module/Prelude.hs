@@ -353,7 +353,7 @@ module Number
   // @doc A (pseudo)random `double`;
   // random : unit -> double := ###randomFun###;
 
-module Tensor
+module ML
   zeros : int -> int -> tensor := ###zerosFun###;
 
   asTensor1 : array of double -> tensor := ###!asTensor1Fun###;
@@ -366,7 +366,7 @@ module Tensor
 
   asArray2 : tensor -> array of (array of double) := ###asArray2Fun###;
 
-  tanh : tensor -> tensor := ###tanHTFun###;
+  tanH : tensor -> tensor := ###tanHTFun###;
 
   transpose2D : tensor -> tensor := ###transpose2DFun###;
 
