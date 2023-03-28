@@ -249,7 +249,7 @@ pinExpr m expr =
                 _ -> Map.fromList <$> (foldM (collectImports openMod modPos) [] $ map fst imports)
 
               let intersectionWithLocal = localM `Map.intersection` checkedImports
-              when (not $ Map.null intersectionWithLocal) $ throwError [AmbiguousName modNm i modPos | i <- Map.keys checkedImports]
+              when (not $ Map.null intersectionWithLocal) $ throwError [AmbiguousName modNm i modPos | i <- Map.keys intersectionWithLocal]
 
               OpenModule p1 hash modNm imports p2 <$> pinExpr (Map.insertWith Map.union LocalScope checkedImports m) e
           where
