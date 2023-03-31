@@ -528,6 +528,13 @@ textSplitAt =
            in pure $ VTuple [VText a, VText b]
         _ -> throwError $ RuntimeError "splitAt: expecting text for the second argument"
     _ -> throwError $ RuntimeError "splitAt: expecting an int for the first argument"
+  
+printFun :: (MonadError EvalError m, MonadIO m) => Value c m
+printFun = VFun $ \case
+  VText t -> do
+    liftIO $ putStrLn $ unpack t
+    return $ VTuple []
+  _ -> throwError $ RuntimeError "print: expecting text"
 
 asTensor1Fun :: (MonadError EvalError m) => Value c m
 asTensor1Fun =

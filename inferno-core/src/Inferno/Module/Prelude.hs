@@ -122,7 +122,7 @@ import Inferno.Module.Prelude.Defs
     yearsBeforeFun,
     zeroFun,
     randomFun,
-    randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun,
+    randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun, printFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -712,5 +712,7 @@ module Base
       | Some a -> a
       | None -> default
     };
+
+  print : text -> () := ###!printFun###;
 
 |]
