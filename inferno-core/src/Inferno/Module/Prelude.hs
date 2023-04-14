@@ -592,7 +592,7 @@ module Word
   define fromBCD on word64;
 
   @doc Decode a BCD-encoded word64;
-  fromBCD : forall 'a. {requires fromBCD on 'a} => 'a -> word64 := ###fromBCDFun###;
+  fromBCD : forall 'a. {requires fromBCD on 'a} => 'a -> option of word64 := ###fromBCDFun###;
 
   define toBCD on word64;
 

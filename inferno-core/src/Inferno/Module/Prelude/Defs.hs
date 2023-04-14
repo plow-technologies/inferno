@@ -523,15 +523,17 @@ toBCDFun :: Word64 -> Word64
 toBCDFun = fromIntegral . toBCD . fromIntegral
 
 -- | Convert binary-coded decimal to unsigned integer.
-fromBCDUnsafe :: Word -> Word
-fromBCDUnsafe = digitSeparation 0 1
+fromBCD :: Word -> Maybe Word
+fromBCD = digitSeparation 0 1
   where
-    digitSeparation :: Word -> Word -> Word -> Word
-    digitSeparation acc _ x | x == 0 = acc
+    digitSeparation :: Word -> Word -> Word -> Maybe Word
+    digitSeparation acc _ x | x == 0 = Just acc
     digitSeparation acc offset x =
       let d = x .&. 0b1111
           acc' = acc + d * offset
-       in acc' `seq` digitSeparation acc' (offset * 10) (unsafeShiftR x 4)
+       in if d <= 9
+            then acc' `seq` digitSeparation acc' (offset * 10) (unsafeShiftR x 4)
+            else Nothing
 
-fromBCDFun :: Word64 -> Word64
-fromBCDFun = fromIntegral . fromBCDUnsafe . fromIntegral
+fromBCDFun :: Word64 -> Maybe Word64
+fromBCDFun = fmap fromIntegral . fromBCD . fromIntegral
