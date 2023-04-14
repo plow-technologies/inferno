@@ -1,3 +1,5 @@
+{-# LANGUAGE BinaryLiterals #-}
+
 module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
@@ -10,6 +12,8 @@ import Data.Bits
     setBit,
     shift,
     testBit,
+    unsafeShiftL,
+    unsafeShiftR,
     xor,
     (.&.),
     (.|.),
@@ -503,3 +507,31 @@ textSplitAt =
            in pure $ VTuple [VText a, VText b]
         _ -> throwError $ RuntimeError "splitAt: expecting text for the second argument"
     _ -> throwError $ RuntimeError "splitAt: expecting an int for the first argument"
+
+-- | Convert unsigned integer to binary-coded decimal.
+toBCD :: Word -> Word
+toBCD = digitSum 0 0
+  where
+    digitSum :: Word -> Int -> Word -> Word
+    digitSum acc _ x | x == 0 = acc
+    digitSum acc offset x =
+      let (q, r) = divMod x 10
+          acc' = unsafeShiftL r offset .|. acc
+       in acc' `seq` digitSum acc' (offset + 4) q
+
+toBCDFun :: Word64 -> Word64
+toBCDFun = fromIntegral . toBCD . fromIntegral
+
+-- | Convert binary-coded decimal to unsigned integer.
+fromBCDUnsafe :: Word -> Word
+fromBCDUnsafe = digitSeparation 0 1
+  where
+    digitSeparation :: Word -> Word -> Word -> Word
+    digitSeparation acc _ x | x == 0 = acc
+    digitSeparation acc offset x =
+      let d = x .&. 0b1111
+          acc' = acc + d * offset
+       in acc' `seq` digitSeparation acc' (offset * 10) (unsafeShiftR x 4)
+
+fromBCDFun :: Word64 -> Word64
+fromBCDFun = fromIntegral . fromBCDUnsafe . fromIntegral
