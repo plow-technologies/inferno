@@ -589,15 +589,11 @@ module Word
   @doc Convert a word to an `int`;
   fromWord : forall 'a. {requires fromWord on 'a} => 'a -> int := ###fromWordFun###;
 
-  define fromBCD on word64;
-
   @doc Decode a BCD-encoded word64;
-  fromBCD : forall 'a. {requires fromBCD on 'a} => 'a -> option of word64 := ###fromBCDFun###;
-
-  define toBCD on word64;
+  fromBCD : word64 -> option of word64 := ###fromBCDFun###;
 
   @doc Encode a BCD-encoded word64;
-  toBCD : forall 'a. {requires toBCD on 'a} => 'a -> word64 := ###toBCDFun###;
+  toBCD : word64 -> word64 := ###toBCDFun###;
 
 module Base
 
