@@ -41,14 +41,14 @@ import Foreign.Marshal.Utils (fromBool)
 import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Cast (Either3, Either4, Either5, Either6, Either7, fromValue, toValue)
+import Inferno.Module.Cast (Either3, Either4, Either5, Either7, fromValue, toValue)
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randIO', makeIndependent, IndependentTensor (toDependent), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow)
+import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randnIO', makeIndependent, IndependentTensor (toDependent), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow)
 import qualified Torch.DType as TD (DType (Double, Float))
 import qualified Torch.Functional as TF (tanh, transpose2D)
 import Torch.Script (LoadMode (..), loadScript)
@@ -542,6 +542,7 @@ asTensor1Fun =
     VArray xs -> do
       fs <- getDoubleList xs
       pure $ VTensor $ asTensor $ fs
+      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
@@ -555,6 +556,7 @@ asTensor2Fun =
     VArray xs -> do
       fs <- mapM getDoubleList xs
       pure $ VTensor $ asTensor $ fs
+      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
@@ -571,6 +573,7 @@ asTensor4Fun =
     VArray xs -> do
       fs <- mapM getDoubleListListList xs
       pure $ VTensor $ asTensor $ fs
+      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array"
   where
     getDouble v = case v of
@@ -618,7 +621,8 @@ randomTensorIFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
 randomTensorIFun = VFun $ \xs -> do
   -- TODO if this works also use this in toTensor functions above
   size <- fromValue xs
-  t <- liftIO $ randIO' size
+  t <- liftIO $ randnIO' size
+  -- t <- liftIO $ randnIO' size (withDType TD.Double defaultOpts)
   pure $ VTensor t
 
 makeIndependentFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
