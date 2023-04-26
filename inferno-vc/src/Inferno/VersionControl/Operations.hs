@@ -378,21 +378,32 @@ fetchVCObjectHistory h = do
         all'@(x : _) ->
           case Inferno.VersionControl.Types.pred x of
             CloneOf hsh' -> do
-              original <- fmap (const hsh') <$> fetchVCObject hsh'
-              -- 'nubBy' is needed for backward compatibility with current scripts. Clone scripts' head look like this,
-              --
-              -- x_0 (init)
-              -- x_1 (clone)
-              -- x_1_1
-              --
-              -- However, for new script (anything after this PR landed,https://github.com/plow-technologies/all/pull/9801),
-              -- clone scripts' head are stored like this,
-              --
-              -- x_1 (clone)
-              -- x_1_1
-              --
-              -- Note that it is missing the init object. When we fetch for histories, we look for pred of clone and add it to the history, but for existing scripts this means it adds init object twice
-              pure $ List.nubBy (\a b -> obj a == obj b) $ original : all'
+              existsInRoot <- liftIO $ doesFileExist $ storePath </> show hsh'
+              existsInRemoved <- liftIO $ doesFileExist $ storePath </> "removed" </> show hsh'
+
+              if existsInRoot
+                then do
+                  original <- fmap (const hsh') <$> fetchVCObject hsh'
+                  -- 'nubBy' is needed for backward compatibility with current scripts. Clone scripts' head look like this,
+                  --
+                  -- x_0 (init)
+                  -- x_1 (clone)
+                  -- x_1_1
+                  --
+                  -- However, for new script (anything after this PR landed,https://github.com/plow-technologies/all/pull/9801),
+                  -- clone scripts' head are stored like this,
+                  --
+                  -- x_1 (clone)
+                  -- x_1_1
+                  --
+                  -- Note that it is missing the init object. When we fetch for histories, we look for pred of clone and add it to the history, but for existing scripts this means it adds init object twice
+                  pure $ List.nubBy (\a b -> obj a == obj b) $ original : all'
+                else do
+                  if existsInRemoved
+                    then do
+                      original <- fmap (const hsh') <$> fetchRemovedVCObject hsh'
+                      pure $ List.nubBy (\a b -> obj a == obj b) $ original {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'} : all'
+                    else pure all'
             _ -> pure all'
         _ -> pure metas
     _ ->
