@@ -122,7 +122,7 @@ import Inferno.Module.Prelude.Defs
     yearsBeforeFun,
     zeroFun,
     randomFun,
-    randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun, printFun,
+    randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun, printFun, trainFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -395,6 +395,9 @@ module ML
 
   // TODO use optimizer type
   runStep : forall 'm. 'm -> () -> tensor -> double -> ('m, ()) := ###!runStepFun###;
+
+  // TODO use optimizer type
+  train : forall 'm. 'm -> () -> ('m -> tensor -> tensor) -> double -> (int -> tensor) -> int -> 'm := ###!trainFun###;
 
 module Option
   @doc `Option.reduce f o d` unwraps an optional value `o` and applies `f` to it, if o contains a `Some` value. Otherwise it returns the default value `d`.

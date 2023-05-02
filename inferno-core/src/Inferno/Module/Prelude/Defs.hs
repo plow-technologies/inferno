@@ -8,7 +8,7 @@
 
 module Inferno.Module.Prelude.Defs where
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bifunctor (bimap)
@@ -48,7 +48,7 @@ import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randnIO, makeIndependent, IndependentTensor (toDependent), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow, withDType, defaultOpts)
+import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randnIO, makeIndependent, IndependentTensor (toDependent, IndependentTensor), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow, withDType, defaultOpts, foldLoop)
 import qualified Torch.DType as TD (DType (Double, Float))
 import qualified Torch.Functional as TF (tanh, transpose2D)
 import Torch.Script (LoadMode (..), loadScript)
@@ -664,3 +664,52 @@ runStepFun = VFun $ \case
     -- getIndependentTensorTuple = \case
     --   VTuple xs -> mapM getIndependentTensor xs
     --   _ -> throwError $ RuntimeError "runStep: expecting a tuple of independentTensors"
+
+trainFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
+-- trainFun = VFun $ \case
+--   VTuple initialModel -> do
+    -- m :: [IndependentTensor] <- mapM getIndependentTensor vTs
+trainFun = VFun $ \initialModel ->
+    return $ VFun $ \vO -> do
+      -- o <- fromValue vO
+      return $ VFun $ \case
+        VFun lossFun ->
+          return $ VFun $ \vLR -> do
+            lr :: Double <- fromValue vLR
+            return $ VFun $ \case
+              VFun inputGen ->
+                return $ VFun $ \vNI -> do
+                  numIters :: Int64 <- fromValue vNI
+
+                  -- finalM <- liftIO $ foldLoop m numIters $ \m' i -> do
+                  foldM (trainStep lossFun lr inputGen) initialModel [1 .. numIters]
+              _ -> throwError $ RuntimeError "trainFun: expecting input generator function"
+        _ -> throwError $ RuntimeError "trainFun: expecting a loss function"
+  -- _ -> throwError $ RuntimeError "trainFun: expecting a tuple of independentTensors"
+  where
+    trainStep :: (MonadError EvalError m, MonadIO m, Pretty c) => (Value c m -> m (Value c m)) -> Double -> (Value c m -> m (Value c m)) -> (Value c m) -> Int64 -> m (Value c m)
+    trainStep lossFun lr inputGen vM i = do
+      inputs <- inputGen $ VInt i
+      _lossAux <- lossFun vM
+      loss <- case _lossAux of
+        VFun lossAux -> do
+          res <- lossAux inputs
+          res' :: Tensor <- fromValue res
+          return res'
+        _ -> throwError $ RuntimeError "TODO"
+      when (i `mod` 100 == 0) $ do
+        liftIO $ putStrLn $ "Iteration: " ++ show i ++ " | Loss: " ++ show loss
+      
+      m :: [IndependentTensor] <- fromValue vM
+      (m', _) <- liftIO $ runStep' m GD loss lr  -- TODO replace GD
+      vFinalM <- mapM toValue m'
+      return $ VTuple vFinalM
+    runStep' :: (Parameterized model) => model -> GD -> Tensor -> Double -> IO (model, GD)
+    runStep' m o l lr = runStep m o l (asTensor lr)
+    getIndependentTensor v = case v of
+      VIndependentTensor x -> pure x
+      _ -> throwError $ RuntimeError "trainFun: expecting independentTensor"
+ 
+  -- TODO next step is to pick loss function from an enum and do computation here so that intermediate model is not converted back from from Value
+
+  -- Can we also use fromValue on inputGen to directly get Tensors from it? No.
