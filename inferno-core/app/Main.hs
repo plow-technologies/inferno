@@ -27,7 +27,8 @@ import Inferno.Utils.Prettyprinter (showPretty)
 import System.Environment (getArgs)
 import qualified Language.Haskell.TH as TH
 import qualified GHC as GHC
-import GHC.Driver.Session (defaultFatalMessager, defaultFlushOut, PackageDBFlag (..), PkgDbRef (..), PackageFlag (ExposePackage))
+import GHC.Driver.Session (defaultFatalMessager, defaultFlushOut, PackageDBFlag (..), PkgDbRef (..), PackageFlag (ExposePackage), PackageArg (..), ModRenaming (..))
+import GHC.Unit.Types (Unit (..), stringToUnit)
 import GHC.Paths (libdir)
 import Unsafe.Coerce (unsafeCoerce)
 import System.Directory (doesFileExist)
@@ -160,15 +161,32 @@ compileHaskell fileName modName funcName _ = do
   GHC.defaultErrorHandler defaultFatalMessager defaultFlushOut $ do
     GHC.runGhc (Just libdir) $ do
       dflags <- GHC.getSessionDynFlags
+      let mkPackage = \p -> ExposePackage p (PackageArg p) (ModRenaming True [])
       let dflags' = dflags {
-        GHC.packageDBFlags = map (PackageDB . PkgDbPath) [
-  -- "/Users/sid/.cabal/store/ghc-9.2.5/package.db",
-  -- "/Users/sid/code/inferno/dist-newstyle/packagedb/ghc-9.2.5",
-  -- "/Users/sid/code/inferno/dist-newstyle/build/x86_64-osx/ghc-9.2.5/inferno-core-0.1.3/x/inferno/package.conf.inplace"
+        GHC.packageDBFlags = reverse $ map (PackageDB . PkgDbPath) [
+            "/Users/sid/.cabal/store/ghc-9.2.5/package.db"
+          -- , "/Users/sid/code/inferno/dist-newstyle/packagedb/ghc-9.2.5"
+          -- , "/Users/sid/code/inferno/dist-newstyle/build/x86_64-osx/ghc-9.2.5/inferno-core-0.1.3/x/inferno/package.conf.inplace"
         ]
-        , GHC.packageFlags = map ExposePackage []
+        , GHC.packageFlags = reverse [
+            (\p -> ExposePackage p (PackageArg p) (ModRenaming True [])) "base-4.16.4.0"
+          , (\p -> ExposePackage p (UnitIdArg (stringToUnit p)) (ModRenaming True [])) "txt-2.0.2-8d2cc470"
+        ]
+        -- , GHC.packageFlags = reverse $ map (mkPackage) [
+        --     "base-4.16.4.0"
+        --   -- , "containers-0.6.5.1"
+        --   -- , "directory-1.3.6.2"
+        --   -- , "exceptions-0.10.4"
+        --   -- , "ghc-9.2.5"
+        --   -- , "ghc-pths-0.1.0.12-ec67cc55"
+        --   -- , "inferno-core-0.1.3-inplace"
+        --   -- , "inferno-types-0.1.2-inplace"
+        --   -- , "mtl-2.2.2"
+        --   -- , "template-haskell-2.18.0.0"
+        --   -- , "txt-2.0.2-8d2cc470"
+        -- ]
       }
-      GHC.setSessionDynFlags dflags
+      GHC.setSessionDynFlags dflags'
       target <- GHC.guessTarget fileName Nothing
       GHC.setTargets [target]
       f <- GHC.load GHC.LoadAllTargets
