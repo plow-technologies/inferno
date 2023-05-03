@@ -48,7 +48,7 @@ import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType, randnIO, makeIndependent, IndependentTensor (toDependent, IndependentTensor), mseLoss, Optimizer (runStep), GD (GD), Parameterized, pow, withDType, defaultOpts, foldLoop)
+import qualified Torch as T
 import qualified Torch.DType as TD (DType (Double, Float))
 import qualified Torch.Functional as TF (tanh, transpose2D)
 import Torch.Script (LoadMode (..), loadScript)
@@ -200,7 +200,7 @@ enumFromToInt64 :: Int64 -> Int64 -> [Int64]
 enumFromToInt64 = enumFromTo
 
 sumFun ::
-  Either7 Double Int64 EpochTime Word16 Word32 Word64 Tensor ->
+  Either7 Double Int64 EpochTime Word16 Word32 Word64 T.Tensor ->
   Either7
     (Either Double Int64 -> Double)
     (Either Double Int64 -> Either Double Int64)
@@ -208,7 +208,7 @@ sumFun ::
     (Word16 -> Word16)
     (Word32 -> Word32)
     (Word64 -> Word64)
-    (Tensor -> Tensor)
+    (T.Tensor -> T.Tensor)
 sumFun =
   bimap (\x -> either ((+) x) ((+) x . fromIntegral)) $
     bimap (\i -> bimap ((+) $ fromIntegral i) ((+) i)) $
@@ -230,12 +230,12 @@ modFun :: Int64 -> Int64 -> Int64
 modFun = mod
 
 mulFun ::
-  Either4 Double Int64 EpochTime Tensor ->
+  Either4 Double Int64 EpochTime T.Tensor ->
   Either4
     (Either Double Int64 -> Double)
     (Either3 Double Int64 EpochTime -> Either3 Double Int64 EpochTime)
     (Int64 -> EpochTime)
-    (Tensor -> Tensor)
+    (T.Tensor -> T.Tensor)
 mulFun =
   bimap (\x -> either ((*) x) ((*) x . fromIntegral)) $
     bimap
@@ -245,7 +245,7 @@ mulFun =
         (*)
 
 subFun ::
-  Either7 Double Int64 EpochTime Word16 Word32 Word64 Tensor ->
+  Either7 Double Int64 EpochTime Word16 Word32 Word64 T.Tensor ->
   Either7
     (Either Double Int64 -> Double)
     (Either Double Int64 -> Either Double Int64)
@@ -253,7 +253,7 @@ subFun ::
     (Word16 -> Word16)
     (Word32 -> Word32)
     (Word64 -> Word64)
-    (Tensor -> Tensor)
+    (T.Tensor -> T.Tensor)
 subFun =
   bimap (\x -> either ((-) x) ((-) x . fromIntegral)) $
     bimap (\i -> bimap ((-) $ fromIntegral i) ((-) i)) $
@@ -528,7 +528,7 @@ textSplitAt =
            in pure $ VTuple [VText a, VText b]
         _ -> throwError $ RuntimeError "splitAt: expecting text for the second argument"
     _ -> throwError $ RuntimeError "splitAt: expecting an int for the first argument"
-  
+
 printFun :: (MonadError EvalError m, MonadIO m) => Value c m
 printFun = VFun $ \case
   VText t -> do
@@ -541,8 +541,8 @@ asTensor1Fun =
   VFun $ \case
     VArray xs -> do
       fs <- getDoubleList xs
-      pure $ VTensor $ asTensor $ fs
-      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
+      -- pure $ VTensor $ T.asTensor $ fs
+      pure $ VTensor $ T.toType TD.Float $ T.asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
@@ -555,8 +555,8 @@ asTensor2Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleList xs
-      pure $ VTensor $ asTensor $ fs
-      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
+      -- pure $ VTensor $ T.asTensor $ fs
+      pure $ VTensor $ T.toType TD.Float $ T.asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
@@ -572,8 +572,8 @@ asTensor4Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleListListList xs
-      pure $ VTensor $ asTensor $ fs
-      -- pure $ VTensor $ toType TD.Float $ asTensor $ fs
+      -- pure $ VTensor $ T.asTensor $ fs
+      pure $ VTensor $ T.toType TD.Float $ T.asTensor $ fs
     _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array"
   where
     getDouble v = case v of
@@ -589,53 +589,55 @@ asTensor4Fun =
       VArray xs -> mapM getDoubleListList xs
       _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
 
-asArray1Fun :: Tensor -> [Double]
-asArray1Fun t = asValue $ toType TD.Double t
+asArray1Fun :: T.Tensor -> [Double]
+asArray1Fun t = T.asValue $ T.toType TD.Double t
 
-asArray2Fun :: Tensor -> [[Double]]
-asArray2Fun t = asValue $ toType TD.Double t
+asArray2Fun :: T.Tensor -> [[Double]]
+asArray2Fun t = T.asValue $ T.toType TD.Double t
 
-transpose2DFun :: Tensor -> Tensor
+transpose2DFun :: T.Tensor -> T.Tensor
 transpose2DFun t = TF.transpose2D t
 
-matmulFun :: Tensor -> Tensor -> Tensor
-matmulFun t1 t2 = matmul t1 t2
+matmulFun :: T.Tensor -> T.Tensor -> T.Tensor
+matmulFun t1 t2 = T.matmul t1 t2
 
-tanHTFun :: Tensor -> Tensor
+tanHTFun :: T.Tensor -> T.Tensor
 tanHTFun t = TF.tanh t
 
-loadModelFun :: Text -> ScriptModule
+loadModelFun :: Text -> T.ScriptModule
 loadModelFun f = unsafePerformIO $ loadScript WithoutRequiredGrad $ unpack f -- "mnist.ts.pt"
 
--- TODO generalize to [Tensor] input
-forwardFun :: ScriptModule -> Tensor -> Tensor
+-- TODO generalize to [T.Tensor] input
+forwardFun :: T.ScriptModule -> T.Tensor -> T.Tensor
 forwardFun m t =
-  case forward m [IVTensor (toType TD.Float t)] of
-    IVTensor t' -> t'
+  -- case T.forward m [T.IVTensor (T.toType TD.Float t)] of
+  case T.forward m [T.IVTensor t] of
+    T.IVTensor t' -> t'
     _ -> error "expected tensor result" -- TODO better error handling
 
-powTFun :: Int -> Tensor -> Tensor
-powTFun i t = pow i t
+powTFun :: Int -> T.Tensor -> T.Tensor
+powTFun i t = T.pow i t
 
 randomTensorIFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
 randomTensorIFun = VFun $ \xs -> do
   -- TODO if this works also use this in toTensor functions above
   size <- fromValue xs
-  -- t <- liftIO $ randnIO' size
-  t <- liftIO $ randnIO size (withDType TD.Double defaultOpts)
+  t <- liftIO $ T.randnIO' size
+  -- t <- liftIO $ T.randnIO size (T.withDType TD.Double T.defaultOpts)
   pure $ VTensor t
 
 makeIndependentFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
 makeIndependentFun = VFun $ \v -> do
   t <- fromValue v
-  i <- liftIO $ makeIndependent t
+  i <- liftIO $ T.makeIndependent t
   pure $ VIndependentTensor i
 
-toDependentFun :: IndependentTensor -> Tensor
-toDependentFun = toDependent
+toDependentFun :: T.IndependentTensor -> T.Tensor
+toDependentFun = T.toDependent
 
-mseLossFun :: Tensor -> Tensor -> Tensor
-mseLossFun t1 t2 = mseLoss (toType TD.Float t1) (toType TD.Float t2)
+mseLossFun :: T.Tensor -> T.Tensor -> T.Tensor
+-- mseLossFun t1 t2 = T.mseLoss (T.toType TD.Float t1) (T.toType TD.Float t2)
+mseLossFun t1 t2 = T.mseLoss t1 t2
 
 -- runStep :: model -> optimizer -> loss -> float (LR) -> (model, optimizer)
 -- TODO for now, model = array of independenttensor
@@ -643,7 +645,7 @@ mseLossFun t1 t2 = mseLoss (toType TD.Float t1) (toType TD.Float t2)
 runStepFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
 runStepFun = VFun $ \case
   VTuple vTs -> do
-    m :: [IndependentTensor] <- mapM getIndependentTensor vTs
+    m :: [T.IndependentTensor] <- mapM getIndependentTensor vTs
     return $ VFun $ \vO -> do
       -- o <- fromValue vO
       return $ VFun $ \vL -> do
@@ -651,13 +653,13 @@ runStepFun = VFun $ \case
         return $ VFun $ \vLR -> do
           lr :: Double <- fromValue vLR
           -- (m', o') <- liftIO $ runStep m o l lr
-          (m', _) <- liftIO $ runStep' m GD l lr
+          (m', _) <- liftIO $ runStep' m T.GD l lr
           vM's <- mapM toValue m'
           pure $ VTuple [VTuple vM's, VTuple []]
   _ -> throwError $ RuntimeError "runStep: expecting a tuple of independentTensors"
   where
-    runStep' :: (Parameterized model) => model -> GD -> Tensor -> Double -> IO (model, GD)
-    runStep' m o l lr = runStep m o l (asTensor lr)
+    runStep' :: (T.Parameterized model) => model -> T.GD -> T.Tensor -> Double -> IO (model, T.GD)
+    runStep' m o l lr = T.runStep m o l (T.asTensor lr)
     getIndependentTensor v = case v of
       VIndependentTensor x -> pure x
       _ -> throwError $ RuntimeError "runStep: expecting independentTensor"
@@ -665,51 +667,101 @@ runStepFun = VFun $ \case
     --   VTuple xs -> mapM getIndependentTensor xs
     --   _ -> throwError $ RuntimeError "runStep: expecting a tuple of independentTensors"
 
+-- | train : modelName -> opt -> loss -> LR -> trainData -> trainLabels -> batchSize -> model
+-- TODO output type? ScriptModel? need to run forward on it
 trainFun :: (MonadError EvalError m, MonadIO m, Pretty c) => Value c m
--- trainFun = VFun $ \case
---   VTuple initialModel -> do
-    -- m :: [IndependentTensor] <- mapM getIndependentTensor vTs
-trainFun = VFun $ \initialModel ->
+trainFun = VFun $ \vM -> do
+    modelName :: Text <- fromValue vM
     return $ VFun $ \vO -> do
       -- o <- fromValue vO
-      return $ VFun $ \case
-        VFun lossFun ->
-          return $ VFun $ \vLR -> do
-            lr :: Double <- fromValue vLR
-            return $ VFun $ \case
-              VFun inputGen ->
-                return $ VFun $ \vNI -> do
-                  numIters :: Int64 <- fromValue vNI
+      return $ VFun $ \vL -> do
+        lossName :: Text <- fromValue vL
+        return $ VFun $ \vLR -> do
+          lr :: Double <- fromValue vLR
+          return $ VFun $ \vTD -> do
+            trainData :: T.Tensor <- fromValue vTD
+            return $ VFun $ \vTL -> do
+              trainLabels :: T.Tensor <- fromValue vTL
+              return $ VFun $ \vBS -> do
+                batchSize :: Int <- fromValue vBS
+                let spec = getModelSpec modelName
+                initModel <- liftIO $ T.sample spec
+                let modelFn = getModelFn modelName
+                let lossFn = getLossFn lossName
 
-                  -- finalM <- liftIO $ foldLoop m numIters $ \m' i -> do
-                  foldM (trainStep lossFun lr inputGen) initialModel [1 .. numIters]
-              _ -> throwError $ RuntimeError "trainFun: expecting input generator function"
-        _ -> throwError $ RuntimeError "trainFun: expecting a loss function"
-  -- _ -> throwError $ RuntimeError "trainFun: expecting a tuple of independentTensors"
+                -- Split dataset into batches
+                let batchedData = T.split batchSize (T.Dim 0) trainData
+                let batchedLabels = T.split batchSize (T.Dim 0) trainLabels
+                let numIters = length batchedData
+                let dataset = zip3 batchedData batchedLabels [1 .. numIters]
+
+                -- Go through training data once
+                res <- liftIO $ foldM (trainStep modelFn lossFn lr) initModel dataset
+                -- res <- foldM (trainStep' modelFn lossFn lr trainData trainLabels) initModel [1 .. numIters]
+
+                liftIO $ putStrLn $ "Final model : " ++ show res
+                return $ VInt 0 -- TODO
   where
-    trainStep :: (MonadError EvalError m, MonadIO m, Pretty c) => (Value c m -> m (Value c m)) -> Double -> (Value c m -> m (Value c m)) -> (Value c m) -> Int64 -> m (Value c m)
-    trainStep lossFun lr inputGen vM i = do
-      inputs <- inputGen $ VInt i
-      _lossAux <- lossFun vM
-      loss <- case _lossAux of
-        VFun lossAux -> do
-          res <- lossAux inputs
-          res' :: Tensor <- fromValue res
-          return res'
-        _ -> throwError $ RuntimeError "TODO"
+    trainStep' :: (MonadError EvalError m, MonadIO m, T.Parameterized model) =>
+      (model -> T.Tensor -> T.Tensor) ->
+      (T.Tensor -> T.Tensor -> T.Tensor) ->
+      Double ->
+      T.Tensor ->
+      T.Tensor ->
+      model ->
+      Int ->
+      m model
+    trainStep' modelFn lossFn lr trainData trainLabels model i = do
+      let inputs = trainData
+      let groundTruth = trainLabels
+      let modelOut = modelFn model inputs
+      let loss = lossFn groundTruth modelOut
       when (i `mod` 100 == 0) $ do
         liftIO $ putStrLn $ "Iteration: " ++ show i ++ " | Loss: " ++ show loss
-      
-      m :: [IndependentTensor] <- fromValue vM
-      (m', _) <- liftIO $ runStep' m GD loss lr  -- TODO replace GD
-      vFinalM <- mapM toValue m'
-      return $ VTuple vFinalM
-    runStep' :: (Parameterized model) => model -> GD -> Tensor -> Double -> IO (model, GD)
-    runStep' m o l lr = runStep m o l (asTensor lr)
-    getIndependentTensor v = case v of
-      VIndependentTensor x -> pure x
-      _ -> throwError $ RuntimeError "trainFun: expecting independentTensor"
- 
-  -- TODO next step is to pick loss function from an enum and do computation here so that intermediate model is not converted back from from Value
 
-  -- Can we also use fromValue on inputGen to directly get Tensors from it? No.
+      (newModel, _) <- liftIO $ runStep' model T.GD loss lr
+      return newModel
+
+    trainStep :: (T.Parameterized model) =>
+      (model -> T.Tensor -> T.Tensor) ->
+      (T.Tensor -> T.Tensor -> T.Tensor) ->
+      Double ->
+      model ->
+      (T.Tensor, T.Tensor, Int) ->
+      IO model
+    trainStep modelFn lossFn lr model (trainData, trainLabels, i) = do
+      let modelOut = modelFn model trainData
+      let loss = lossFn trainLabels modelOut
+      when (i `mod` 100 == 0) $ do
+        putStrLn $ "Iteration: " ++ show i ++ " | Loss: " ++ show loss
+
+      (newModel, _) <- runStep' model T.GD loss lr
+      return newModel
+
+    runStep' :: (T.Parameterized model) => model -> T.GD -> T.Tensor -> Double -> IO (model, T.GD)
+    runStep' m o l lr = T.runStep m o l (T.asTensor lr)
+
+    -- TODO linearModel : numInFeat -> numOutFeat -> PresetModel etc
+    -- getModelSpec :: forall spec model. (T.Randomizable spec model) => Text -> spec
+    getModelSpec = \case
+      "Linear" -> T.LinearSpec {in_features = 1, out_features = 1}
+      s -> error $ "Unsupported model type: " ++ Text.unpack s
+
+    -- getModelFn :: (T.Parameterized model) => Text -> model -> T.Tensor -> T.Tensor
+    getModelFn = \case
+      -- "Linear" -> (\state input -> T.squeezeAll $ T.linear state input)
+      "Linear" -> (\state input -> T.linear state input)
+      s -> error $ "Unsupported model type: " ++ Text.unpack s
+
+    getLossFn :: Text -> T.Tensor -> T.Tensor -> T.Tensor
+    getLossFn = \case
+      "MSE" -> T.mseLoss
+      s -> error $ "Unsupported loss type: " ++ Text.unpack s
+
+calcPi :: Int -> Double
+calcPi n =
+  let (res, _) = foldl step (0.0, -1.0) [1 .. n] in
+  4 * res
+  where
+    step :: (Double, Double) -> Int -> (Double, Double)
+    step = \(acc, sign) i -> (acc + sign / (2 * (fromIntegral i) - 1), -1 * sign)
