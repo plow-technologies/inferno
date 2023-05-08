@@ -123,6 +123,7 @@ import Inferno.Module.Prelude.Defs
     zeroFun,
     randomFun,
     randomTensorIFun, makeIndependentFun, mseLossFun, runStepFun, toDependentFun, powTFun, printFun, trainFun, calcPi,
+    zerosFun, softmaxFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -131,7 +132,7 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
-import Torch (Tensor, zeros', sumAll)
+import Torch (sumAll)
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
@@ -164,9 +165,6 @@ preludeNameToTypeMap moduleMap =
             : [Map.mapKeys (Just nm,) $ (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList $ moduleMap]
       h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems $ moduleMap]
    in Map.mapMaybe (\h -> Map.lookup h h2ty) n2h
-
-zerosFun :: Int -> Int -> Tensor
-zerosFun n m = zeros' [n, m]
 
 -- In the definitions below, ###!x### is an anti-quotation to a haskell variable `x` of type `Monad m => (Value m)`
 -- This sort of Value is necessary for polymorphic functions such as `map` or `id`
@@ -358,7 +356,10 @@ module Number
   random : () -> double := ###!randomFun###;
 
 module ML
-  zeros : int -> int -> tensor := ###zerosFun###;
+
+  enum dtype := #int | #float | #double;
+
+  zeros : dtype{#int, #float, #double} -> array of int -> tensor := ###!zerosFun###;
 
   asTensor1 : array of double -> tensor := ###!asTensor1Fun###;
 
@@ -376,13 +377,15 @@ module ML
 
   tanH : tensor -> tensor := ###tanHTFun###;
 
+  softmax : int -> tensor -> tensor := ###softmaxFun###;
+
   transpose2D : tensor -> tensor := ###transpose2DFun###;
 
   matmul : tensor -> tensor -> tensor := ###matmulFun###;
 
   loadModel : text -> model := ###loadModelFun###;
 
-  forward : model -> tensor -> tensor := ###forwardFun###;
+  forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 
   @doc An impure (pseudo)random tensor generator;
   randomTensorI: array of int -> tensor := ###!randomTensorIFun###;

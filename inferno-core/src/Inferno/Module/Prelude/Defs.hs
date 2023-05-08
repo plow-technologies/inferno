@@ -42,6 +42,7 @@ import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, Either4, Either5, Either7, fromValue, toValue)
+import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -49,7 +50,7 @@ import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
 import qualified Torch as T
-import qualified Torch.DType as TD (DType (Double, Float))
+import qualified Torch.DType as TD (DType (..))
 import qualified Torch.Functional as TF (tanh, transpose2D)
 import Torch.Script (LoadMode (..), loadScript)
 
@@ -536,6 +537,26 @@ printFun = VFun $ \case
     return $ VTuple []
   _ -> throwError $ RuntimeError "print: expecting text"
 
+-- zerosFun :: [Int] -> T.Tensor
+-- zerosFun = T.zeros'
+zerosFun :: (MonadError EvalError m, Pretty c) => Value c m
+zerosFun =
+  VFun $ \case
+    VEnum _ e -> do
+      opts <- getDtype e
+      return $ VFun $ \vShape -> do
+        shape <- fromValue vShape
+        t <- toValue $ T.zeros shape opts
+        return t
+    _ -> throwError $ RuntimeError "zerosFun: expecting a dtype enum"
+  where
+    getDtype :: (MonadError EvalError m) => Ident -> m T.TensorOptions
+    getDtype = \case
+      "int" -> return $ T.withDType TD.Int64 T.defaultOpts
+      "float" -> return $ T.withDType TD.Float T.defaultOpts
+      "double" -> return $ T.withDType TD.Double T.defaultOpts
+      s -> throwError $ RuntimeError $ "zerosFun: unknown dtype " ++ (show s)
+
 asTensor1Fun :: (MonadError EvalError m) => Value c m
 asTensor1Fun =
   VFun $ \case
@@ -604,16 +625,24 @@ matmulFun t1 t2 = T.matmul t1 t2
 tanHTFun :: T.Tensor -> T.Tensor
 tanHTFun t = TF.tanh t
 
-loadModelFun :: Text -> T.ScriptModule
-loadModelFun f = unsafePerformIO $ loadScript WithoutRequiredGrad $ unpack f -- "mnist.ts.pt"
+softmaxFun :: Int -> T.Tensor -> T.Tensor
+softmaxFun i t = T.softmax (T.Dim i) t
 
--- TODO generalize to [T.Tensor] input
-forwardFun :: T.ScriptModule -> T.Tensor -> T.Tensor
-forwardFun m t =
-  -- case T.forward m [T.IVTensor (T.toType TD.Float t)] of
-  case T.forward m [T.IVTensor t] of
-    T.IVTensor t' -> t'
-    _ -> error "expected tensor result" -- TODO better error handling
+loadModelFun :: Text -> T.ScriptModule
+loadModelFun f = unsafePerformIO $ loadScript WithoutRequiredGrad $ unpack f
+
+forwardFun :: T.ScriptModule -> [T.Tensor] -> [T.Tensor]
+forwardFun m ts =
+  -- let mkIVT t = T.IVTensor $ T.toType TD.Float t in
+  -- let ivts = T.IVTensorList $ map mkIVT ts in
+  unIV $ T.forward m (map T.IVTensor ts)
+  where
+    unIV = \case
+      T.IVTensor t' -> [t']
+      T.IVTensorList ts' -> ts'
+      T.IVTuple ivs ->
+        concat $ map unIV ivs
+      res -> error $ "expected tensor result, got " ++ (show res)
 
 powTFun :: Int -> T.Tensor -> T.Tensor
 powTFun i t = T.pow i t

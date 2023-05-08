@@ -1,0 +1,7 @@
+let n = truncate 1e5 in
+let step = fun state i ->
+  let sum, flip = state in
+  (sum + flip / (2*i - 1), flip * -1)
+in
+let sum, flip = Array.reduce step (0, -1) (1 .. n) in
+4 * sum

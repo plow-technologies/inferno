@@ -1,0 +1,6 @@
+// NOTE: first run bert.py to obtain bert.ts.pt
+let inputs = [ML.zeros ML.#int [1, 14], ML.zeros ML.#int [1, 14]] in
+let model = ML.loadModel "bert.ts.pt" in
+let results = ML.forward model inputs in
+let sums = Array.map ML.sumAll results in
+sums
