@@ -3,6 +3,7 @@ packages:
   ./inferno-types
   ./inferno-lsp
   ./inferno-vc
+  ./inferno-ml
 
 source-repository-package
     type: git
