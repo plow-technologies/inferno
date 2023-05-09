@@ -747,6 +747,7 @@ baseType =
             <|> try (symbol "timeDiff" *> pure TTimeDiff)
             <|> (symbol "time" *> pure TTime)
             <|> (symbol "resolution" *> pure TResolution)
+            <|> (symbol "tensor" *> pure TTensor)
         )
 
 type_variable_raw :: TyParser Text
