@@ -1,11 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-
 module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
@@ -37,19 +29,14 @@ import Data.Word (Word16, Word32, Word64)
 import Debug.Trace (trace)
 import Foreign.C.Types (CTime (..))
 import Foreign.Marshal.Utils (fromBool)
-import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Cast (Either3, Either4, Either5, Either6, Either7)
+import Inferno.Module.Cast (Either3, Either4, Either5, Either6)
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
-import Torch (HasForward (..), IValue (..), ScriptModule, Tensor, asTensor, asValue, matmul, toType)
-import qualified Torch.DType as TD (DType (Double, Float))
-import qualified Torch.Functional as TF (tanh, transpose2D)
-import Torch.Script (LoadMode (..), loadScript)
 
 zeroVal :: Value c m
 zeroVal = VInt 0
@@ -195,22 +182,20 @@ enumFromToInt64 :: Int64 -> Int64 -> [Int64]
 enumFromToInt64 = enumFromTo
 
 sumFun ::
-  Either7 Double Int64 EpochTime Word16 Word32 Word64 Tensor ->
-  Either7
+  Either6 Double Int64 EpochTime Word16 Word32 Word64 ->
+  Either6
     (Either Double Int64 -> Double)
     (Either Double Int64 -> Either Double Int64)
     (EpochTime -> EpochTime)
     (Word16 -> Word16)
     (Word32 -> Word32)
     (Word64 -> Word64)
-    (Tensor -> Tensor)
 sumFun =
   bimap (\x -> either ((+) x) ((+) x . fromIntegral)) $
     bimap (\i -> bimap ((+) $ fromIntegral i) ((+) i)) $
       bimap (+) $
         bimap (+) $
-          bimap (+) $
-            bimap (+) (+)
+          bimap (+) (+)
 
 divFun ::
   Either Double Int64 ->
@@ -518,78 +503,3 @@ textSplitAt =
            in pure $ VTuple [VText a, VText b]
         _ -> throwError $ RuntimeError "splitAt: expecting text for the second argument"
     _ -> throwError $ RuntimeError "splitAt: expecting an int for the first argument"
-
-asTensor1Fun :: (MonadError EvalError m) => Value c m
-asTensor1Fun =
-  VFun $ \case
-    VArray xs -> do
-      fs <- getDoubleList xs
-      pure $ VTensor $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting double values"
-    getDoubleList xs = mapM getDouble xs
-
-asTensor2Fun :: (MonadError EvalError m) => Value c m
-asTensor2Fun =
-  VFun $ \case
-    VArray xs -> do
-      fs <- mapM getDoubleList xs
-      pure $ VTensor $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting double values"
-    getDoubleList = \case
-      VArray xs -> mapM getDouble xs
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array of arrays"
-
--- TODO clean up
-asTensor4Fun :: (MonadError EvalError m) => Value c m
-asTensor4Fun =
-  VFun $ \case
-    VArray xs -> do
-      fs <- mapM getDoubleListListList xs
-      pure $ VTensor $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting double values"
-    getDoubleList = \case
-      VArray xs -> mapM getDouble xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
-    getDoubleListList = \case
-      VArray xs -> mapM getDoubleList xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
-    getDoubleListListList = \case
-      VArray xs -> mapM getDoubleListList xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
-
-asArray1Fun :: Tensor -> [Double]
-asArray1Fun t = asValue $ toType TD.Double t
-
-asArray2Fun :: Tensor -> [[Double]]
-asArray2Fun t = asValue $ toType TD.Double t
-
-transpose2DFun :: Tensor -> Tensor
-transpose2DFun t = TF.transpose2D t
-
-matmulFun :: Tensor -> Tensor -> Tensor
-matmulFun t1 t2 = matmul t1 t2
-
-tanHTFun :: Tensor -> Tensor
-tanHTFun t = TF.tanh t
-
-loadModelFun :: Text -> ScriptModule
-loadModelFun f = unsafePerformIO $ loadScript WithoutRequiredGrad $ unpack f -- "mnist.ts.pt"
-
--- TODO generalize to [Tensor] input
-forwardFun :: ScriptModule -> Tensor -> Tensor
-forwardFun m t =
-  case forward m [IVTensor (toType TD.Float t)] of
-    IVTensor t' -> t'
-    _ -> error "expected tensor result" -- TODO better error handling
