@@ -1,0 +1,50 @@
+-- -*- mode: haskell-cabal -*-
+
+packages:
+  ./inferno-ml
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/hasktorch.git
+    tag: 7218e00e1fb3b6e85b7f655aa1ba56418f636d37
+    --sha256: NHbKHVL34IuufUzDdqAIOlME2S+TcX698nDrNC/O6UQ=
+    subdir:
+      libtorch-ffi
+      libtorch-ffi-helper
+      hasktorch
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/tokenizers
+    tag: 9d25f0ba303193e97f8b22b9c93cbc84725886c3
+    --sha256: 03nm9kd1j6v5ygxiyc86gbr4sjzj4l9xibmpccyws49vwzf02p2k
+    subdir: bindings/haskell/tokenizers-haskell
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/type-errors-pretty
+    --sha256: 0sdw3ga7gbffyywpyx7xn8ghdw9gzsy4l68cas41hwfbkrwxwdg6
+    tag: 32d7abec6a21c42a5f960d7f4133d604e8be79ec
+
+source-repository-package
+    type: git
+    location: https://github.com/fpco/inline-c
+    --sha256: 0hi4s3p0whf0ndsxn8qrfc3a7qndsgac0vz7n23kp3rx69yp0yr1
+    tag: 2d0fe9b2f0aa0e1aefc7bfed95a501e59486afb0
+    subdir: inline-c
+
+source-repository-package
+    type: git
+    location: https://github.com/fpco/inline-c
+    --sha256: 0hi4s3p0whf0ndsxn8qrfc3a7qndsgac0vz7n23kp3rx69yp0yr1
+    tag: 2d0fe9b2f0aa0e1aefc7bfed95a501e59486afb0
+    subdir: inline-c-cpp
+
+-- TODO
+-- `hasktorch` configures these automatically as well in their
+-- haskell.nix setup
+package libtorch-ffi
+    ghc-options: -j +RTS -A128m -n2m -RTS
+
+package hasktorch
+    ghc-options: -j +RTS -A128m -n2m -RTS

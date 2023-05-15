@@ -37,15 +37,27 @@ let
             }
           )
       );
-in
-pkgs.haskell-nix.cabalProject {
-  name = "inferno";
-  compiler-nix-name = compiler;
   src = builtins.path {
     path = ../.;
     filter = path: _:
       builtins.any (ext: !lib.hasSuffix ext path) [ ".nix" ".md" ".yml" ];
   };
+in
+pkgs.haskell-nix.cabalProject {
+  inherit src;
+  name = "inferno";
+  compiler-nix-name = compiler;
+  cabalProject =
+    let
+      snip = "-- *SNIP*";
+      snipped = builtins.elemAt
+        (lib.splitString snip (builtins.readFile "${src}/cabal.project"))
+        0;
+    in
+    ''
+      ${snipped}
+      ${builtins.readFile "${src}/nix/ml.cabal.project"}
+    '';
   shell = {
     withHoogle = true;
     tools = {
