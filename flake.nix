@@ -267,6 +267,7 @@
                   inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
                 };
               inferno = "inferno-core:exe:inferno";
+              inferno-ml = "inferno-ml:exe:inferno-ml-exe";
             in
             ps // {
               vscode-inferno = pkgs.runCommand "vscode-inferno"
@@ -278,8 +279,9 @@
                   ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
                 '';
               inferno = packages.${inferno};
-              inferno-cpu = packages.${inferno};
-              inferno-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno};
+              inferno-ml = packages.${inferno-ml};
+              inferno-ml-cpu = packages.${inferno-ml};
+              inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
