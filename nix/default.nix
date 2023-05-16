@@ -52,14 +52,17 @@ pkgs.haskell-nix.cabalProject {
   compiler-nix-name = compiler;
   cabalProject =
     let
-      snip = "-- *SNIP*";
+      magicComment = "-- *SNIP*";
       snipped = builtins.elemAt
-        (lib.splitString snip (builtins.readFile "${src}/cabal.project"))
+        (lib.splitString magicComment (builtins.readFile "${src}/cabal.project"))
         0;
     in
     ''
       ${snipped}
-      ${builtins.readFile "${src}/nix/ml.cabal.project"}
+      ${
+        lib.optionalString isAtLeastGhc924
+          (builtins.readFile "${src}/nix/ml.cabal.project")
+      }
     '';
   shell = {
     withHoogle = true;
