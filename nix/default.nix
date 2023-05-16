@@ -30,7 +30,7 @@ let
             # `libtorch` to the package set
             torch = prev.torch.override torchConfig;
           in
-          lib.optionalAttrs prev.stdenv.isx86_64 (
+          lib.optionalAttrs (prev.stdenv.isx86_64 && isAtLeastGhc924) (
             {
               # These should always be the same as `torch`
               c10 = torch;
@@ -91,10 +91,11 @@ pkgs.haskell-nix.cabalProject {
               export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
             '';
       in
-      ''
-        ${setpath}
-        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
-      '';
+      lib.optionalString isAtLeastGhc924
+        ''
+          ${setpath}
+          export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
+        '';
   };
   modules = [
     {
