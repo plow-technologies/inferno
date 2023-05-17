@@ -5,8 +5,8 @@ where
 
 import Data.Proxy (Proxy)
 import Data.Text (Text)
-import Inferno.ML.Remote.Types (API)
+import Inferno.ML.Remote.Types (InfernoMlRemoteAPI)
 import Servant.Client (ClientM, client)
 
-runInference :: Proxy API -> Text -> ClientM Text
-runInference = client @API
+runInference :: Proxy InfernoMlRemoteAPI -> Text -> ClientM Text
+runInference = client

@@ -29,6 +29,7 @@ common common
     DisambiguateRecordFields
     DuplicateRecordFields
     FlexibleContexts
+    FlexibleInstances
     GADTs
     GeneralizedNewtypeDeriving
     LambdaCase
@@ -38,6 +39,7 @@ common common
     RecordWildCards
     ScopedTypeVariables
     TypeApplications
+    TypeFamilies
 
   build-depends:      base >=4.7 && <5
 
@@ -45,20 +47,22 @@ library
   import:           common
   exposed-modules:
     Inferno.ML.Remote.Client
+    Inferno.ML.Remote.Handler
     Inferno.ML.Remote.Types
 
   hs-source-dirs:   src
   build-depends:
     , base
+    , bytestring
     , containers
     , exceptions
+    , extra
     , generic-lens
     , inferno-core
     , inferno-ml
     , inferno-types
     , microlens-platform
     , mtl
-    , prettyprinter
     , servant
     , servant-client
     , servant-server

@@ -1,7 +1,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Inferno.ML.Remote.Types
-  ( API,
+  ( InfernoMlRemoteAPI,
     infernoMlRemoteAPI,
   )
 where
@@ -12,7 +12,7 @@ import Servant (JSON, Post, ReqBody, (:>))
 
 -- TODO
 -- Use more descriptive types. Implied `Text -> Text` is pretty awful
-type API = "inference" :> ReqBody '[JSON] Text :> Post '[JSON] Text
+type InfernoMlRemoteAPI = "inference" :> ReqBody '[JSON] Text :> Post '[JSON] Text
 
-infernoMlRemoteAPI :: Proxy API
+infernoMlRemoteAPI :: Proxy InfernoMlRemoteAPI
 infernoMlRemoteAPI = Proxy
