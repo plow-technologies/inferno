@@ -43,10 +43,13 @@ common common
 
 library
   import:           common
-  exposed-modules:  Inferno.ML.Remote.Types
+  exposed-modules:
+    Inferno.ML.Remote.Client
+    Inferno.ML.Remote.Types
+
   hs-source-dirs:   src
   build-depends:
-      base
+    , base
     , containers
     , exceptions
     , generic-lens
