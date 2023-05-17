@@ -24,3 +24,5 @@ cabal.project.local~
 result*
 .vscode/
 .venv/
+.envrc
+.direnv/
