@@ -65,7 +65,7 @@ pkgs.haskell-nix.cabalProject {
       }
     '';
   shell = {
-    withHoogle = true;
+    withHoogle = false;
     tools = {
       cabal = { };
       # FIXME
@@ -102,8 +102,11 @@ pkgs.haskell-nix.cabalProject {
   };
   modules = [
     {
-      config._module.args = {
-        inherit compiler profiling cudaSupport ghcOptions;
+      config = {
+        _module.args = {
+          inherit compiler profiling cudaSupport ghcOptions;
+        };
+        doHaddock = false;
       };
     }
     (import ./modules.nix)

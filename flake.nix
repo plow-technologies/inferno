@@ -169,53 +169,9 @@
               haskell-nix.overlays.combined
               inputs.npm-buildpackage.overlays.default
               inputs.tokenizers.overlay
-              (
-                final: prev:
-                  let
-                    libtorch =
-                      { device ? "cpu"
-                      , cudaSupport ? final.lib.hasPrefix "cuda" device
-                      }:
-                        assert final.lib.assertOneOf "device" device
-                          [
-                            "cpu"
-                            "cuda-10"
-                            "cuda-11"
-                          ];
-                        assert device == "cpu" -> !cudaSupport;
-                        pkgs.callPackage "${inputs.hasktorch}/nix/libtorch.nix" {
-                          inherit device cudaSupport;
-                        };
-
-                    # Adding `makeOverridable` will allow us to propagate options
-                    # from the top level (e.g. a specific `infernoFor` build) to
-                    # the package set used to build the haskell.nix project (e.g.
-                    # with or without CUDA support for the Hasktorch component)
-                    torch = pkgs.makeOverridable libtorch { device = "cpu"; };
-                  in
-                  lib.optionalAttrs prev.stdenv.isx86_64 { inherit torch; }
-              )
-              (_: _:
-                {
-                  lib = nixpkgs.lib.extend (final: _:
-                    {
-                      # Adapted from: NixOS/nixpkgs/f993f8a18659bb15bc5697b6875caf0cba8b1825
-                      #
-                      # Needed by `treefmt-nix`, but missing from `nixpkgs`
-                      # revision from `haskell.nix`. We can't just use upstream
-                      # `nixpkgs` or we'll get cache misses from `haskell.nix`
-                      concatMapAttrs = f:
-                        final.trivial.flip
-                          final.trivial.pipe
-                          [
-                            (final.mapAttrs f)
-                            final.attrValues
-                            (builtins.foldl' final.mergeAttrs { })
-                          ];
-                    }
-                  );
-                }
-              )
+              (_:_: { inherit (inputs) hasktorch; })
+              (import ./nix/overlays/compat.nix)
+              (import ./nix/overlays/torch.nix)
             ];
           };
 
