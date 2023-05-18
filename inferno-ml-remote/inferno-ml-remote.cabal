@@ -40,6 +40,7 @@ common common
     ScopedTypeVariables
     TypeApplications
     TypeFamilies
+    TypeOperators
 
   build-depends:      base >=4.7 && <5
 
@@ -48,6 +49,7 @@ library
   exposed-modules:
     Inferno.ML.Remote.Client
     Inferno.ML.Remote.Handler
+    Inferno.ML.Remote.Server
     Inferno.ML.Remote.Types
 
   hs-source-dirs:   src

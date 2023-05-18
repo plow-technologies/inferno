@@ -3,8 +3,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Inferno.ML.Remote.Handler
-  ( InfernoMlRemoteServer,
-    server,
+  ( runInferenceHandler,
   )
 where
 
@@ -33,7 +32,6 @@ import Inferno.ML.Module.Prelude
     builtinModulesTerms,
     runEvalIO,
   )
-import Inferno.ML.Remote.Types (InfernoMlRemoteAPI)
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
 import Inferno.Types.Syntax (Expr (App, TypeRep), SourcePos, collectArrs)
@@ -42,12 +40,7 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (each, (^.), (^..))
-import Servant (Handler, Server, ServerError (errBody), err500)
-
-type InfernoMlRemoteServer = Server InfernoMlRemoteAPI
-
-server :: InfernoMlRemoteServer
-server = runInferenceHandler
+import Servant (Handler, ServerError (errBody), err500)
 
 -- FIXME
 -- Use more descriptive types for this
