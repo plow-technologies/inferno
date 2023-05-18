@@ -165,14 +165,7 @@
           _module.args.pkgs = import nixpkgs {
             inherit (haskell-nix) config;
             inherit system;
-            overlays = [
-              haskell-nix.overlays.combined
-              inputs.npm-buildpackage.overlays.default
-              inputs.tokenizers.overlay
-              (_:_: { inherit (inputs) hasktorch; })
-              (import ./nix/overlays/compat.nix)
-              (import ./nix/overlays/torch.nix)
-            ];
+            overlays = [ self.overlays.combined ];
           };
 
           legacyPackages = pkgs // infernoFor { compiler = defaultCompiler; };
@@ -320,5 +313,14 @@
               };
           };
         };
+
+      flake.overlays.combined = lib.composeManyExtensions [
+        haskell-nix.overlays.combined
+        inputs.npm-buildpackage.overlays.default
+        inputs.tokenizers.overlay
+        (_:_: { inherit (inputs) hasktorch; })
+        (import ./nix/overlays/compat.nix)
+        (import ./nix/overlays/torch.nix)
+      ];
     };
 }
