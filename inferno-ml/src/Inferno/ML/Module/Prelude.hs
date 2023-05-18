@@ -10,8 +10,9 @@ import Data.Bifunctor (bimap)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Word (Word16, Word32, Word64)
-import Inferno.Eval as Eval (runEvalIO, TermEnv)
+import Inferno.Eval as Eval (TermEnv, runEvalIO)
 import Inferno.Eval.Error (EvalError (..))
+import Inferno.ML.Types.Value
 import Inferno.Module.Cast (Either7, ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Parse (OpsTable)
@@ -26,7 +27,6 @@ import Inferno.Types.Type (Namespace (..), TCScheme, TypeMetadata)
 import Inferno.Types.Value (ImplEnvM, Value)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
-import Inferno.ML.Types.Value
 import System.Posix.Types (EpochTime)
 import qualified Torch as T
 
