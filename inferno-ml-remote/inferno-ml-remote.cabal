@@ -65,6 +65,7 @@ library
     , inferno-types
     , microlens-platform
     , mtl
+    , optparse-applicative
     , servant
     , servant-client
     , servant-server
