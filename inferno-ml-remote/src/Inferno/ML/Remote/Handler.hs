@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedLabels #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Inferno.ML.Remote.Handler
