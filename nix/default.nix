@@ -10,6 +10,9 @@
 
 let
   inherit (args.pkgs) lib;
+  # Some things, notably the Hasktorch integration, will not work if the compiler
+  # version is older than GHC 9.2.4
+  isAtLeastGhc924 = builtins.compareVersions compiler "ghc924" != -1;
   cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
@@ -27,7 +30,7 @@ let
             # `libtorch` to the package set
             torch = prev.torch.override torchConfig;
           in
-          lib.optionalAttrs prev.stdenv.isx86_64 (
+          lib.optionalAttrs (prev.stdenv.isx86_64 && isAtLeastGhc924) (
             {
               # These should always be the same as `torch`
               c10 = torch;
@@ -37,17 +40,32 @@ let
             }
           )
       );
-in
-pkgs.haskell-nix.cabalProject {
-  name = "inferno";
-  compiler-nix-name = compiler;
   src = builtins.path {
     path = ../.;
     filter = path: _:
       builtins.any (ext: !lib.hasSuffix ext path) [ ".nix" ".md" ".yml" ];
   };
+in
+pkgs.haskell-nix.cabalProject {
+  inherit src;
+  name = "inferno";
+  compiler-nix-name = compiler;
+  cabalProject =
+    let
+      magicComment = "-- *SNIP*";
+      snipped = builtins.elemAt
+        (lib.splitString magicComment (builtins.readFile "${src}/cabal.project"))
+        0;
+    in
+    ''
+      ${snipped}
+      ${
+        lib.optionalString isAtLeastGhc924
+          (builtins.readFile "${src}/nix/ml.cabal.project")
+      }
+    '';
   shell = {
-    withHoogle = true;
+    withHoogle = false;
     tools = {
       cabal = { };
       # FIXME
@@ -76,97 +94,25 @@ pkgs.haskell-nix.cabalProject {
               export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
             '';
       in
-      ''
-        ${setpath}
-        export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
-      '';
+      lib.optionalString isAtLeastGhc924
+        ''
+          ${setpath}
+          export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
+        '';
   };
   modules = [
     {
-      nonReinstallablePkgs = [
-        "rts"
-        "ghc-heap"
-        "ghc-prim"
-        "integer-gmp"
-        "integer-simple"
-        "base"
-        "deepseq"
-        "array"
-        "ghc-boot-th"
-        "pretty"
-        "template-haskell"
-        "ghcjs-prim"
-        "ghcjs-th"
-        "ghc-bignum"
-        "stm"
-        "ghc-boot"
-        "ghc"
-        "Cabal"
-        "Win32"
-        "array"
-        "binary"
-        "bytestring"
-        "containers"
-        "directory"
-        "filepath"
-        "ghc-boot"
-        "ghc-compact"
-        "ghc-prim"
-        "hpc"
-        "mtl"
-        "parsec"
-        "process"
-        "text"
-        "time"
-        "transformers"
-        "unix"
-        "xhtml"
-        "terminfo"
-      ] ++ lib.optional (compiler != "ghc884")
-        "exceptions";
-    }
-
-    {
-      enableLibraryProfiling = profiling;
-      packages = {
-        inferno-core = {
-          enableLibraryProfiling = profiling;
-          enableProfiling = profiling;
-          inherit ghcOptions;
+      config = {
+        _module.args = {
+          inherit compiler profiling cudaSupport ghcOptions;
         };
-
-        # This takes forever to build
-        ghc.components.library.doHaddock = false;
+        doHaddock = false;
       };
     }
-
-    # Hasktorch-related
-    {
-      packages = {
-        libtorch-ffi = {
-          configureFlags = [
-            "--extra-lib-dirs=${pkgs.torch.out}/lib"
-            "--extra-include-dirs=${pkgs.torch.dev}/include"
-          ];
-          flags = {
-            cuda = cudaSupport;
-            gcc = !cudaSupport && pkgs.stdenv.hostPlatform.isDarwin;
-            # Flag for linking torch platform for AMD GPUs
-            #
-            # This is also hardcoded to `false` in Hasktorch's own haskell.nix
-            # configuration, so I'm not sure if it's even supported
-            # See:
-            # https://github.com/hasktorch/hasktorch/blob/de3b709980a0d78d2284d91847c09f522830da61/nix/haskell.nix
-            rocm = false;
-          };
-        };
-
-        tokenizers = {
-          configureFlags = [
-            "--extra-lib-dirs=${pkgs.tokenizers-haskell}/lib"
-          ];
-        };
-      };
-    }
-  ];
+    (import ./modules.nix)
+  ]
+  ++ lib.optionals isAtLeastGhc924
+    [
+      (import ./modules/ml.nix)
+    ];
 }
