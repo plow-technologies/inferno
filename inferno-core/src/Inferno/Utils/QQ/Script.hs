@@ -5,6 +5,8 @@
 
 module Inferno.Utils.QQ.Script where
 
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Writer (WriterT (..), appEndo)
 import qualified Crypto.Hash as Crypto
@@ -40,8 +42,6 @@ import Text.Megaparsec
     errorOffset,
     runParser',
   )
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Except (MonadError)
 
 inferno :: forall m c. (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => QuasiQuoter
 inferno =
