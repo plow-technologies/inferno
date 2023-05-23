@@ -748,6 +748,7 @@ baseType =
             <|> (symbol "time" *> pure TTime)
             <|> (symbol "resolution" *> pure TResolution)
             <|> (symbol "tensor" *> pure TTensor)
+            <|> (symbol "model" *> pure TModel)
         )
 
 type_variable_raw :: TyParser Text

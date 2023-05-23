@@ -159,6 +159,7 @@ data BaseType
   | TTimeDiff
   | TResolution
   | TTensor
+  | TModel
   | TEnum Text (Set.Set Ident)
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
@@ -176,6 +177,7 @@ instance Serialize BaseType where
       8 -> pure TResolution
       -- TODO will this mess up reading existing scripts from inferno-vc?
       10 -> pure TTensor
+      11 -> pure TModel
       _ -> do
         nm <- Serialize.get
         ids <- Serialize.get
@@ -192,6 +194,7 @@ instance Serialize BaseType where
     TTimeDiff -> Serialize.putInt8 7
     TResolution -> Serialize.putInt8 8
     TTensor -> Serialize.putInt8 10
+    TModel -> Serialize.putInt8 11
     TEnum nm ids -> do
       Serialize.putInt8 9
       Serialize.put $ Text.encodeUtf8 nm
@@ -208,6 +211,7 @@ instance Hashable BaseType where
   hashWithSalt s TTimeDiff = hashWithSalt s (8 :: Int)
   hashWithSalt s TResolution = hashWithSalt s (9 :: Int)
   hashWithSalt s TTensor = hashWithSalt s (11 :: Int)
+  hashWithSalt s TModel = hashWithSalt s (12 :: Int)
   hashWithSalt s (TEnum nm cs) = hashWithSalt s (10 :: Int, nm, Set.toList cs)
 
 data InfernoType
@@ -249,6 +253,7 @@ instance Pretty BaseType where
     TTimeDiff -> "timeDiff"
     TResolution -> "resolution"
     TTensor -> "tensor"
+    TModel -> "model"
     TEnum t _ -> pretty t
 
 instance Pretty InfernoType where

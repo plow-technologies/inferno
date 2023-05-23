@@ -8,6 +8,7 @@ import qualified Torch as T
 
 data MlValue
   = VTensor T.Tensor
+  | VModel T.ScriptModule
   | VCustom2 -- TODO is this the only way we can extend to both MlValue and PlowValue?
 
 instance Eq MlValue where
@@ -17,11 +18,19 @@ instance Eq MlValue where
 instance Pretty MlValue where
   pretty = \case
     VTensor t -> align (pretty $ Text.pack $ show t)
+    VModel m -> align (pretty $ Text.pack $ show m)
     VCustom2 -> "custom"
 
 instance ToValue MlValue m T.Tensor where
   toValue = pure . VCustom . VTensor
 
-instance Pretty MlValue => FromValue MlValue m T.Tensor where
+instance FromValue MlValue m T.Tensor where
   fromValue (VCustom (VTensor t)) = pure t
+  fromValue v = couldNotCast v
+
+instance ToValue MlValue m T.ScriptModule where
+  toValue = pure . VCustom . VModel
+
+instance FromValue MlValue m T.ScriptModule where
+  fromValue (VCustom (VModel t)) = pure t
   fromValue v = couldNotCast v

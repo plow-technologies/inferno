@@ -8,7 +8,7 @@ import Control.Monad.Except (ExceptT, MonadError, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
--- import GHC.IO.Unsafe (unsafePerformIO)
+import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval as Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.ML.Types.Value
@@ -38,7 +38,7 @@ import Torch
     toDevice,
     toType,
     withDType,
-    zeros,
+    zeros, ScriptModule, IValue (..), HasForward (forward),
   )
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -51,8 +51,7 @@ import Torch.Functional
     tanh,
     transpose2D,
   )
-
--- import qualified Torch.Script as TS
+import qualified Torch.Script as TS
 
 getDtype :: (MonadError EvalError m) => String -> Ident -> m TensorOptions
 getDtype funName = \case
@@ -151,21 +150,21 @@ tanHTFun = Torch.Functional.tanh
 powTFun :: Int -> Tensor -> Tensor
 powTFun i t = pow i t
 
--- loadModelFun :: Text -> ScriptModule
--- loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
+loadModelFun :: Text -> ScriptModule
+loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
 
--- forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
--- forwardFun m ts =
---   -- let mkIVT t = IVTensor $ toType TD.Float t in
---   -- let ivts = IVTensorList $ map mkIVT ts in
---   unIV $ forward m (map IVTensor ts)
---   where
---     unIV = \case
---       IVTensor t' -> [t']
---       IVTensorList ts' -> ts'
---       IVTuple ivs ->
---         concat $ map unIV ivs
---       res -> error $ "expected tensor result, got " ++ (show res)
+forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
+forwardFun m ts =
+  -- let mkIVT t = IVTensor $ toType TD.Float t in
+  -- let ivts = IVTensorList $ map mkIVT ts in
+  unIV $ forward m (map IVTensor ts)
+  where
+    unIV = \case
+      IVTensor t' -> [t']
+      IVTensorList ts' -> ts'
+      IVTuple ivs ->
+        concat $ map unIV ivs
+      res -> error $ "expected tensor result, got " ++ (show res)
 
 randomTensorIFun :: (MonadError EvalError m, MonadIO m) => Value MlValue m
 randomTensorIFun = VFun $ \xs -> do
@@ -226,12 +225,12 @@ module ML
   @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
   toDevice : text -> tensor -> tensor := ###toDeviceFun###;
 
+  loadModel : text -> model := ###loadModelFun###;
+
+  forward : model -> array of tensor -> array of tensor := ###forwardFun###;
+
 |]
 
--- // TODO: these require adding a Model type and value type:
--- loadModel : text -> model := ###loadModelFun###;
-
--- forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 
 builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM (ExceptT EvalError IO) MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM (ExceptT EvalError IO) MlValue))))
 builtinModules =
