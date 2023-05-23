@@ -1,5 +1,5 @@
 open ML in
 let n = 2048 in 
-let t = ones #int [n, n] in
+let t = ones #float [n, n] in
 let t1 = toDevice "cuda:0" t in
-sumAll (matmul t1 t1) // Expected: 8,589,934,592
+sumAll (matmul t1 t1) // Expected: 8.5899e9
