@@ -7,7 +7,7 @@ module Inferno.ML.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOp
 import Control.Monad.Except (ExceptT, MonadError, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
--- import Data.Text (Text, unpack)
+import Data.Text (Text, unpack)
 -- import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval as Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (..))
@@ -26,12 +26,16 @@ import Inferno.Types.Value (ImplEnvM, Value (..))
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Torch
-  ( Tensor,
+  ( Device (..),
+    DeviceType (..),
+    Tensor,
     TensorLike (asTensor),
     TensorOptions,
     asValue,
     defaultOpts,
+    ones,
     randnIO',
+    toDevice,
     toType,
     withDType,
     zeros,
@@ -50,23 +54,34 @@ import Torch.Functional
 
 -- import qualified Torch.Script as TS
 
+getDtype :: (MonadError EvalError m) => String -> Ident -> m TensorOptions
+getDtype funName = \case
+  "int" -> return $ withDType TD.Int64 defaultOpts
+  "float" -> return $ withDType TD.Float defaultOpts
+  "double" -> return $ withDType TD.Double defaultOpts
+  s -> throwError $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
+
 zerosFun :: (MonadError EvalError m) => Value MlValue m
 zerosFun =
   VFun $ \case
     VEnum _ e -> do
-      opts <- getDtype e
+      opts <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
         shape <- fromValue vShape
         t <- toValue $ zeros shape opts
         return t
     _ -> throwError $ RuntimeError "zerosFun: expecting a dtype enum"
-  where
-    getDtype :: (MonadError EvalError m) => Ident -> m TensorOptions
-    getDtype = \case
-      "int" -> return $ withDType TD.Int64 defaultOpts
-      "float" -> return $ withDType TD.Float defaultOpts
-      "double" -> return $ withDType TD.Double defaultOpts
-      s -> throwError $ RuntimeError $ "zerosFun: unknown dtype " ++ (show s)
+
+onesFun :: (MonadError EvalError m) => Value MlValue m
+onesFun =
+  VFun $ \case
+    VEnum _ e -> do
+      opts <- getDtype "ones" e
+      return $ VFun $ \vShape -> do
+        shape <- fromValue vShape
+        t <- toValue $ ones shape opts
+        return t
+    _ -> throwError $ RuntimeError "onesFun: expecting a dtype enum"
 
 asTensor1Fun :: (MonadError EvalError m) => Value MlValue m
 asTensor1Fun =
@@ -161,6 +176,14 @@ randomTensorIFun = VFun $ \xs -> do
   -- t <- liftIO $ randnIO size (withDType TD.Double defaultOpts)
   pure $ VCustom $ VTensor t
 
+toDeviceFun :: Text -> Tensor -> Tensor
+toDeviceFun d t =
+  let device = case d of
+        "cpu" -> Device CPU 0
+        "cuda:0" -> Device CUDA 0
+        device' -> error $ "Unknown device setting: " ++ unpack device'
+   in toDevice device t
+
 mlModules :: (MonadError EvalError m, MonadIO m) => Prelude.ModuleMap m MlValue
 mlModules =
   [infernoModules|
@@ -170,6 +193,8 @@ module ML
   enum dtype := #int | #float | #double;
 
   zeros : dtype{#int, #float, #double} -> array of int -> tensor := ###!zerosFun###;
+
+  ones : dtype{#int, #float, #double} -> array of int -> tensor := ###!onesFun###;
 
   add : tensor -> tensor -> tensor := ###add###;
 
@@ -196,7 +221,10 @@ module ML
   matmul : tensor -> tensor -> tensor := ###matmul###;
 
   @doc An impure (pseudo)random tensor generator;
-  randomTensorI: array of int -> tensor := ###!randomTensorIFun###;
+  randomTensorI : array of int -> tensor := ###!randomTensorIFun###;
+
+  @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
+  toDevice : text -> tensor -> tensor := ###toDeviceFun###;
 
 |]
 

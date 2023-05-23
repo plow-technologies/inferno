@@ -1,3 +1,4 @@
 open ML in
-let t = asTensor2 [[1 | x <- 1 .. 4] | y <- 1 .. 4] in
-sumAll (matmul t t) // Expected: 64
+let n = 64 in 
+let t = ones #int [n, n] in
+sumAll (matmul t t) // Expected: n**3
