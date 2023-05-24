@@ -1,0 +1,5 @@
+open ML in
+let n = 2048 in 
+let t = ones #float [n, n] in
+let t1 = toDevice "cpu" t in
+sumAll (matmul t1 t1) // Expected: 8.5899e9

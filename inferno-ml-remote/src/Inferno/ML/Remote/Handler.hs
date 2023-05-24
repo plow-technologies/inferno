@@ -18,7 +18,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Tuple.Extra (fst3, snd3, (&&&))
-import Inferno.Eval (TermEnv)
+import Inferno.Eval (TermEnv, runEvalIO)
 import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
 import Inferno.Infer.Pinned (pinExpr)
@@ -28,7 +28,6 @@ import Inferno.ML.Module.Prelude
     builtinModulesOpsTable,
     builtinModulesPinMap,
     builtinModulesTerms,
-    runEvalIO,
   )
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
