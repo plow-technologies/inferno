@@ -202,6 +202,16 @@
               default = flakes.${defaultCompiler}.devShell;
               vscode-inferno-lsp-server = mkNodeDevShell "vscode-inferno-lsp-server";
               vscode-inferno-syntax-highlighting = mkNodeDevShell "vscode-inferno-syntax-highlighting";
+              pytorch =
+                pkgs.mkShell {
+                  packages = [
+                    (
+                      pkgs.python3.withPackages (
+                        ps: with ps; [ torch torchvision ]
+                      )
+                    )
+                  ];
+                };
             };
 
           packages =

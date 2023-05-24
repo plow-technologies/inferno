@@ -26,3 +26,5 @@ result*
 .venv/
 .envrc
 .direnv/
+data/
+mnist.*
