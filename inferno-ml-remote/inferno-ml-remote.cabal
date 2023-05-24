@@ -11,6 +11,7 @@ author:             Rory Tyler hayford
 maintainer:         rory.hayford@plowtech.net
 build-type:         Simple
 extra-source-files: CHANGELOG.md
+                    ../inferno-ml/test/*.inferno
 
 source-repository head
   type:     git
