@@ -10,6 +10,7 @@ import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
+import Data.Coerce (coerce)
 import Data.Foldable (foldl')
 import Data.Function ((&))
 import Data.Generics.Labels ()
@@ -29,6 +30,7 @@ import Inferno.ML.Module.Prelude
     builtinModulesPinMap,
     builtinModulesTerms,
   )
+import Inferno.ML.Remote.Types (EvalResult (EvalResult), Script (Script))
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
 import Inferno.Types.Syntax (Expr (App, TypeRep), SourcePos, collectArrs)
@@ -41,9 +43,9 @@ import Servant (Handler, ServerError (errBody), err500)
 
 -- FIXME
 -- Use more descriptive types for this
-runInferenceHandler :: Text -> Handler Text
-runInferenceHandler src =
-  fmap renderPretty . liftEither500
+runInferenceHandler :: Script -> Handler EvalResult
+runInferenceHandler (Script src) =
+  fmap (coerce . renderPretty) . liftEither500
     =<< liftIO . runEvalIO mkEnv mempty
     =<< mkFinalAst
     =<< typecheck src

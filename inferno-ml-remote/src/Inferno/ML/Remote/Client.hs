@@ -4,9 +4,8 @@ module Inferno.ML.Remote.Client
 where
 
 import Data.Proxy (Proxy)
-import Data.Text (Text)
-import Inferno.ML.Remote.Types (InfernoMlRemoteAPI)
+import Inferno.ML.Remote.Types (EvalResult, InfernoMlRemoteAPI, Script)
 import Servant.Client (ClientM, client)
 
-runInference :: Proxy InfernoMlRemoteAPI -> Text -> ClientM Text
+runInference :: Proxy InfernoMlRemoteAPI -> Script -> ClientM EvalResult
 runInference = client

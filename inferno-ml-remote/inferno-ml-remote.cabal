@@ -10,8 +10,9 @@ license:            MIT
 author:             Rory Tyler hayford
 maintainer:         rory.hayford@plowtech.net
 build-type:         Simple
-extra-source-files: CHANGELOG.md
-                    ../inferno-ml/test/*.inferno
+extra-source-files:
+  ../inferno-ml/test/*.inferno
+  CHANGELOG.md
 
 source-repository head
   type:     git
@@ -57,6 +58,7 @@ library
 
   hs-source-dirs:  src
   build-depends:
+    , aeson
     , base
     , bytestring
     , containers
