@@ -30,7 +30,11 @@ import Inferno.ML.Module.Prelude
     builtinModulesPinMap,
     builtinModulesTerms,
   )
-import Inferno.ML.Remote.Types (EvalResult (EvalResult), Script (Script))
+import Inferno.ML.Remote.Types
+  ( EvalResult (EvalResult),
+    InfernoMlRemoteM,
+    Script (Script),
+  )
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
 import Inferno.Types.Syntax (Expr (App, TypeRep), SourcePos, collectArrs)
@@ -39,11 +43,9 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (each, (^.), (^..))
-import Servant (Handler, ServerError (errBody), err500)
+import Servant (ServerError (errBody), err500)
 
--- FIXME
--- Use more descriptive types for this
-runInferenceHandler :: Script -> Handler EvalResult
+runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
 runInferenceHandler (Script src) =
   fmap (coerce . renderPretty) . liftEither500
     =<< liftIO . runEvalIO mkEnv mempty
@@ -54,7 +56,7 @@ runInferenceHandler (Script src) =
       ( Expr (Pinned VCObjectHash) SourcePos,
         TCScheme
       ) ->
-      Handler (Expr (Maybe VCObjectHash) ())
+      InfernoMlRemoteM (Expr (Maybe VCObjectHash) ())
     mkFinalAst (ast, tcscheme) = mkFinal <$> liftEither500 (runtimeReps tys)
       where
         mkFinal :: [InfernoType] -> Expr (Maybe VCObjectHash) ()
@@ -75,7 +77,7 @@ runInferenceHandler (Script src) =
 
     typecheck ::
       Text ->
-      Handler
+      InfernoMlRemoteM
         ( Expr (Pinned VCObjectHash) SourcePos,
           TCScheme
         )
@@ -97,7 +99,7 @@ runInferenceHandler (Script src) =
         )
     mkEnv = (mempty,) . snd <$> builtinModulesTerms
 
-liftEither500 :: forall e a. Show e => Either e a -> Handler a
+liftEither500 :: forall e a. Show e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure
   where
     mk500 :: Show e => e -> ServerError

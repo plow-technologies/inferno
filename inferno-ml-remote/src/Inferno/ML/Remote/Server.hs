@@ -1,19 +1,20 @@
 module Inferno.ML.Remote.Server
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteServer,
+    api,
     main,
     infernoMlRemote,
-    infernoMlRemoteAPI,
   )
 where
 
+import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteServer,
+    InfernoMlRemoteEnv,
+    InfernoMlRemoteM,
     Options,
     parseOptions,
   )
@@ -25,7 +26,7 @@ import Network.Wai.Handler.Warp
     setPort,
   )
 import Network.Wai.Logger (withStdoutLogger)
-import Servant (Application, serve)
+import Servant (Application, ServerT, hoistServer, serve)
 
 main :: IO ()
 main = runServer =<< parseOptions
@@ -33,18 +34,18 @@ main = runServer =<< parseOptions
     runServer :: Options -> IO ()
     runServer options =
       withStdoutLogger $
-        (`runSettings` infernoMlRemote) . mkSettings
+        (`runSettings` infernoMlRemote undefined) . mkSettings
       where
         mkSettings logger =
           defaultSettings
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
 
-infernoMlRemote :: Application
-infernoMlRemote = serve infernoMlRemoteAPI server
+infernoMlRemote :: InfernoMlRemoteEnv -> Application
+infernoMlRemote env = serve api $ hoistServer api (flip runReaderT env) server
 
-infernoMlRemoteAPI :: Proxy InfernoMlRemoteAPI
-infernoMlRemoteAPI = Proxy
+api :: Proxy InfernoMlRemoteAPI
+api = Proxy
 
-server :: InfernoMlRemoteServer
+server :: ServerT InfernoMlRemoteAPI InfernoMlRemoteM
 server = runInferenceHandler

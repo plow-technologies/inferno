@@ -1,27 +1,44 @@
 module Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteServer,
     Options (..),
     Script (..),
     EvalResult (..),
+    InfernoMlRemoteM,
+    InfernoMlRemoteEnv (..),
+    ModelLoader (..),
     parseOptions,
   )
 where
 
 import Control.Applicative ((<**>))
+import Control.Monad.Reader (ReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
-import Servant (JSON, Post, ReqBody, Server, (:>))
+import Servant (Handler, JSON, Post, ReqBody, Server, (:>))
 
 -- TODO
 -- Use more descriptive types. Implied `Text -> Text` is pretty awful
 type InfernoMlRemoteAPI =
   "inference" :> ReqBody '[JSON] Script :> Post '[JSON] EvalResult
 
-type InfernoMlRemoteServer = Server InfernoMlRemoteAPI
+type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
+
+newtype InfernoMlRemoteEnv = InfernoMlRemoteEnv
+  { loader :: ModelLoader
+  }
+  deriving stock (Generic)
+
+-- TODO
+-- Add more ways to load?
+data ModelLoader
+  = -- | Path to directory holding models
+    Paths FilePath
+  | -- | Path to directory holding compressed models
+    CompressedPaths FilePath
+  deriving stock (Show, Eq, Generic)
 
 newtype Options = Options
   { port :: Word64
