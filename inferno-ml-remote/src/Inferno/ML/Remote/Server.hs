@@ -13,14 +13,17 @@ import Data.Proxy (Proxy (Proxy))
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteEnv,
+    InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteM,
     Options,
     parseOptions,
   )
 import Lens.Micro.Platform ((^.))
+import Network.HTTP.Types (Status)
+import Network.Wai (Request)
 import Network.Wai.Handler.Warp
-  ( defaultSettings,
+  ( Settings,
+    defaultSettings,
     runSettings,
     setLogger,
     setPort,
@@ -34,15 +37,19 @@ main = runServer =<< parseOptions
     runServer :: Options -> IO ()
     runServer options =
       withStdoutLogger $
-        (`runSettings` infernoMlRemote undefined) . mkSettings
+        (`runSettings` infernoMlRemote mkEnv) . mkSettings
       where
+        mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
           defaultSettings
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
 
+        mkEnv :: InfernoMlRemoteEnv
+        mkEnv = InfernoMlRemoteEnv $ options ^. #loader
+
 infernoMlRemote :: InfernoMlRemoteEnv -> Application
-infernoMlRemote env = serve api $ hoistServer api (flip runReaderT env) server
+infernoMlRemote env = serve api $ hoistServer api (`runReaderT` env) server
 
 api :: Proxy InfernoMlRemoteAPI
 api = Proxy

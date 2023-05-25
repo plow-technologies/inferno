@@ -5,43 +5,55 @@ module Inferno.ML.Remote.Types
     EvalResult (..),
     InfernoMlRemoteM,
     InfernoMlRemoteEnv (..),
-    ModelLoader (..),
+    ModelCacheOption (..),
+    ModelCache (..),
     parseOptions,
   )
 where
 
-import Control.Applicative ((<**>))
+import Control.Applicative (asum, (<**>))
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
-import Servant (Handler, JSON, Post, ReqBody, Server, (:>))
+import Servant (Handler, JSON, Post, ReqBody, (:>))
 
--- TODO
--- Use more descriptive types. Implied `Text -> Text` is pretty awful
 type InfernoMlRemoteAPI =
   "inference" :> ReqBody '[JSON] Script :> Post '[JSON] EvalResult
 
 type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
 
 newtype InfernoMlRemoteEnv = InfernoMlRemoteEnv
-  { loader :: ModelLoader
+  { loader :: Maybe ModelCacheOption
   }
   deriving stock (Generic)
 
 -- TODO
 -- Add more ways to load?
-data ModelLoader
-  = -- | Path to directory holding models
-    Paths FilePath
-  | -- | Path to directory holding compressed models
-    CompressedPaths FilePath
+data ModelCacheOption
+  = -- | Path to source directory holding models
+    Paths FilePath ModelCache
+  | -- | Path to source directory holding compressed models
+    CompressedPaths FilePath ModelCache
   deriving stock (Show, Eq, Generic)
 
-newtype Options = Options
-  { port :: Word64
+-- | Options for caching ML models to be used with Inferno scripts. When a script
+-- uses @ML.loadModel@, models will be copied from the source configured in
+-- 'ModelCacheOption' and saved to the 'cache' directory. Once the `maxSize` has
+-- been exceeded, least-recently-used cached models will be removed
+data ModelCache = ModelCache
+  { -- | Directry where the models should be cached
+    cache :: FilePath,
+    -- | Maximum size in bytes of the model cache directory
+    maxSize :: Word64
+  }
+  deriving stock (Show, Eq, Generic)
+
+data Options = Options
+  { port :: Word64,
+    loader :: Maybe ModelCacheOption
   }
   deriving stock (Show, Eq, Generic)
 
@@ -73,3 +85,41 @@ parseOptions = Options.execParser opts
               <> Options.value 8080
               <> Options.metavar "UINT"
           )
+        <*> modelCacheOptionP
+
+    modelCacheOptionP :: Options.Parser (Maybe ModelCacheOption)
+    modelCacheOptionP =
+      asum [Just <$> pathsP, Just <$> compressedPathsP, pure Nothing]
+      where
+        compressedPathsP :: Options.Parser ModelCacheOption
+        compressedPathsP =
+          pathP CompressedPaths
+            <* Options.flag'
+              ()
+              ( Options.long "compressed"
+                  <> Options.help "Whether the model source uses compression"
+              )
+
+        pathsP :: Options.Parser ModelCacheOption
+        pathsP = pathP Paths
+
+        pathP :: (FilePath -> ModelCache -> b) -> Options.Parser b
+        pathP f =
+          f
+            <$> Options.strOption
+              ( Options.long "model-source" <> Options.metavar "FILEPATH"
+              )
+            <*> modelCacheP
+
+        modelCacheP :: Options.Parser ModelCache
+        modelCacheP =
+          ModelCache
+            <$> Options.strOption
+              ( Options.long "cache-path" <> Options.metavar "FILEPATH"
+              )
+            <*> Options.option
+              Options.auto
+              ( Options.long "max-size"
+                  <> Options.help "Max size of model cache"
+                  <> Options.metavar "UINT"
+              )

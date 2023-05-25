@@ -64,6 +64,7 @@ library
     , containers
     , extra
     , generic-lens
+    , http-types
     , inferno-core
     , inferno-ml
     , inferno-types
@@ -73,6 +74,7 @@ library
     , servant-client
     , servant-server
     , text
+    , wai
     , wai-logger
     , warp
 
