@@ -26,7 +26,7 @@ type InfernoMlRemoteAPI =
 type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
 
 newtype InfernoMlRemoteEnv = InfernoMlRemoteEnv
-  { loader :: Maybe ModelCacheOption
+  { modelCache :: Maybe ModelCacheOption
   }
   deriving stock (Generic)
 
@@ -45,7 +45,7 @@ data ModelCacheOption
 -- been exceeded, least-recently-used cached models will be removed
 data ModelCache = ModelCache
   { -- | Directry where the models should be cached
-    cache :: FilePath,
+    path :: FilePath,
     -- | Maximum size in bytes of the model cache directory
     maxSize :: Word64
   }
@@ -53,7 +53,7 @@ data ModelCache = ModelCache
 
 data Options = Options
   { port :: Word64,
-    loader :: Maybe ModelCacheOption
+    modelCache :: Maybe ModelCacheOption
   }
   deriving stock (Show, Eq, Generic)
 

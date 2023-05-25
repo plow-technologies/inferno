@@ -46,7 +46,7 @@ main = runServer =<< parseOptions
             & setLogger logger
 
         mkEnv :: InfernoMlRemoteEnv
-        mkEnv = InfernoMlRemoteEnv $ options ^. #loader
+        mkEnv = InfernoMlRemoteEnv $ options ^. #modelCache
 
 infernoMlRemote :: InfernoMlRemoteEnv -> Application
 infernoMlRemote env = serve api $ hoistServer api (`runReaderT` env) server
