@@ -2,6 +2,9 @@
 
 module Inferno.ML.Remote.Handler
   ( runInferenceHandler,
+    mkFinalAst,
+    typecheck,
+    collectModelNames,
   )
 where
 
@@ -76,7 +79,7 @@ import System.Directory
 import System.FilePath (takeFileName, (</>))
 
 runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
-runInferenceHandler (Script src) = do
+runInferenceHandler src = do
   ast <- liftEither500 $ mkFinalAst =<< typecheck src
   cwd <- liftIO getCurrentDirectory
   asks (view #modelCache) >>= \case
@@ -105,7 +108,7 @@ runInferenceHandler (Script src) = do
   where
     runEval :: Expr (Maybe VCObjectHash) () -> InfernoMlRemoteM EvalResult
     runEval ast =
-      fmap (coerce . renderPretty) . liftEither500 . first SomeInfernoError
+      fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
         =<< liftIO (runEvalIO mkEnv mempty ast)
 
     mkEnv ::
@@ -142,7 +145,7 @@ mkFinalAst (ast, tcscheme) = mkFinal <$> first SomeInfernoError (runtimeReps tys
     allClasses = builtinModules ^.. each . #moduleTypeClasses & Set.unions
 
 typecheck ::
-  Text ->
+  Script ->
   Either
     SomeInfernoError
     ( Expr (Pinned VCObjectHash) SourcePos,
@@ -154,6 +157,7 @@ typecheck =
     <=< first SomeInfernoError
       . fmap fst
       . parseExpr baseOpsTable builtinModulesOpsTable
+      . coerce
 
 liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure
