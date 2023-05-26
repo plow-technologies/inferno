@@ -55,6 +55,7 @@ library
     Inferno.ML.Remote.Handler
     Inferno.ML.Remote.Server
     Inferno.ML.Remote.Types
+    Inferno.ML.Remote.Utils
 
   hs-source-dirs:  src
   build-depends:

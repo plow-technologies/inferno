@@ -81,7 +81,7 @@ inferenceSpec = Hspec.around withTestApp $ do
     mkInferenceTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
 collectModelsSpec :: Spec
-collectModelsSpec = Hspec.describe "Inferno.ML.Remote.Handler" $ do
+collectModelsSpec = Hspec.describe "Inferno.ML.Remote.Handler.collectModelNames" $ do
   Hspec.it "extracts models from script" $ do
     mkAstTest "../inferno-ml/test/mnist.inferno" $
       (`Hspec.shouldBe` ["mnist.ts.pt"]) . collectModelNames

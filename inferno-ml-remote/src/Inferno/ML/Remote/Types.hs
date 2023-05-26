@@ -10,6 +10,7 @@ module Inferno.ML.Remote.Types
     ModelCacheOption (..),
     ModelCache (..),
     SomeInfernoError (..),
+    InfernoMlRemoteError (..),
     parseOptions,
   )
 where
@@ -81,6 +82,14 @@ newtype Script = Script Text
 newtype EvalResult = EvalResult Text
   deriving stock (Show, Generic)
   deriving newtype (Eq, FromJSON, ToJSON, IsString)
+
+data InfernoMlRemoteError
+  = CacheSizeExceeded
+  deriving stock (Show)
+
+instance Exception InfernoMlRemoteError where
+  displayException = \case
+    CacheSizeExceeded -> "Model exceeds maximum cache size"
 
 parseOptions :: IO Options
 parseOptions = Options.execParser opts
