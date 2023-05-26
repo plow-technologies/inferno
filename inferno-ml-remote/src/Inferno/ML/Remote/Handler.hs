@@ -5,7 +5,8 @@ module Inferno.ML.Remote.Handler
   )
 where
 
-import Control.Monad ((<=<))
+import Control.Monad (unless, (<=<))
+import Control.Monad.Catch (bracket_)
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.Extra (loopM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -13,7 +14,7 @@ import Control.Monad.Reader.Class (asks)
 import Data.Bifunctor (Bifunctor (bimap))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', traverse_)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
@@ -22,7 +23,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Time (UTCTime)
+import Data.Time (UTCTime, getCurrentTime)
 import Data.Tuple.Extra (dupe, fst3, snd3, (&&&))
 import Data.Word (Word64)
 import Inferno.Eval (TermEnv, runEvalIO)
@@ -45,7 +46,14 @@ import Inferno.ML.Remote.Types
   )
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
-import Inferno.Types.Syntax (Expr (App, TypeRep), SourcePos, collectArrs)
+import Inferno.Types.Syntax
+  ( Expr (App, Bracketed, Let, Lit, OpenModule, TypeRep, Var),
+    ExtIdent (ExtIdent),
+    ImplExpl (Expl),
+    Lit (LText),
+    SourcePos,
+    collectArrs,
+  )
 import Inferno.Types.Type (ImplType, InfernoType, TCScheme, TypeClass)
 import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
@@ -54,20 +62,50 @@ import Lens.Micro.Platform (each, view, (^.), (^..))
 import Servant (ServerError (errBody), err400, err500)
 import System.Directory
   ( copyFile,
+    doesFileExist,
     getAccessTime,
+    getCurrentDirectory,
     getFileSize,
     listDirectory,
     removeFile,
+    setAccessTime,
+    setCurrentDirectory,
   )
 import System.FilePath (takeFileName, (</>))
 
 runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
-runInferenceHandler (Script src) =
-  fmap (coerce . renderPretty) . liftEither500
-    =<< liftIO . runEvalIO mkEnv mempty
-    =<< mkFinalAst
-    =<< typecheck src
+runInferenceHandler (Script src) = do
+  ast <- mkFinalAst =<< typecheck src
+  cwd <- liftIO getCurrentDirectory
+  asks (view #modelCache) >>= \case
+    Nothing -> do
+      unless (null (collectModelNames ast)) $
+        throwError $
+          err500
+            { errBody = "No model cache has been configured for this server"
+            }
+      runEval ast
+    Just cache -> do
+      traverse_ (`cacheAndUseModel` cache) $ collectModelNames ast
+      -- Change working directories to the model cache so that Hasktorch
+      -- can find the models using relative paths (otherwise the AST would need
+      -- to be updated to use an absolute path)
+      --
+      -- NOTE
+      -- We can't use `withCurrentDirectory` here because it expects an IO action
+      -- to run in between. And there's no `UnliftIO` instance for `Handler`
+      -- (because it uses `ExceptT`), so it's easier just to `bracket` it
+      -- directly
+      bracket_
+        (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
+        (cwd & liftIO . setCurrentDirectory)
+        $ runEval ast
   where
+    runEval :: Expr (Maybe VCObjectHash) () -> InfernoMlRemoteM EvalResult
+    runEval ast =
+      fmap (coerce . renderPretty) . liftEither500
+        =<< liftIO (runEvalIO mkEnv mempty ast)
+
     mkFinalAst ::
       ( Expr (Pinned VCObjectHash) SourcePos,
         TCScheme
@@ -126,28 +164,34 @@ liftEither500 = either (throwError . mk500) pure
 
 -- | Takes a model from the model store specified by name and adds it to the model
 -- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
--- be exceeded by adding the new model
-_cacheModel :: Text -> InfernoMlRemoteM FilePath
-_cacheModel model =
-  asks (view #modelCache) >>= \case
-    Nothing ->
-      throwError $
-        err500
-          { errBody = "No model cache has been configured for this server"
-          }
-    Just (Paths src cache) -> moveToCache cache $ src </> Text.unpack model
-    Just _ -> undefined
+-- be exceeded by adding the new model. If the model is already cached, it sets
+-- the access time
+cacheAndUseModel :: Text -> ModelCacheOption -> InfernoMlRemoteM ()
+cacheAndUseModel model = \case
+  Paths src cache ->
+    liftIO (doesFileExist cachedPath) >>= \case
+      -- This also sets the access time for the model to make sure that
+      -- the least-recently-used models can be evicted if necessary
+      True -> liftIO (setAccessTime cachedPath =<< getCurrentTime)
+      -- Moving to the cache will implicitly set the access time
+      False -> moveToCache cache srcPath
+    where
+      srcPath :: FilePath
+      srcPath = src </> Text.unpack model
+
+      cachedPath :: FilePath
+      cachedPath = cache ^. #path & (</> Text.unpack model)
+  _ -> undefined
   where
-    moveToCache :: ModelCache -> FilePath -> InfernoMlRemoteM FilePath
-    moveToCache cache path =
-      modelPath <$ do
-        whenM ((>= view #maxSize cache) <$> newModelSize) $
-          throwError
-            err400
-              { errBody = "Model exceeds maximum size"
-              }
-        whenM cacheSizeExceeded evictOldModels
-        liftIO $ copyFile path modelPath
+    moveToCache :: ModelCache -> FilePath -> InfernoMlRemoteM ()
+    moveToCache cache path = do
+      whenM ((>= view #maxSize cache) <$> newModelSize) $
+        throwError
+          err400
+            { errBody = "Model exceeds maximum cache size"
+            }
+      whenM cacheSizeExceeded evictOldModels
+      liftIO $ copyFile path modelPath
       where
         evictOldModels :: InfernoMlRemoteM ()
         evictOldModels = loopM doEvict =<< modelsByATime dir
@@ -187,6 +231,23 @@ modelsByATime dir =
       . traverse getATime
       . fmap (dupe . (dir </>))
       =<< listDirectory dir
+  where
+    getATime :: (FilePath, FilePath) -> IO (UTCTime, FilePath)
+    getATime (_, p) = (,p) <$> getAccessTime p
 
-getATime :: (FilePath, FilePath) -> IO (UTCTime, FilePath)
-getATime (_, p) = (,p) <$> getAccessTime p
+-- Get the names of models used with @ML.loadModel@ so they can be cached
+collectModelNames :: Expr a () -> [Text]
+collectModelNames = collect mempty
+  where
+    collect :: [Text] -> Expr a () -> [Text]
+    collect models = \case
+      OpenModule _ _ _ _ _ expr -> collect models expr
+      Let _ _ _ _ lhs _ rhs ->
+        collect mempty lhs <> collect models rhs
+      App
+        (Var _ _ _ (Expl (ExtIdent (Right "loadModel"))))
+        (Lit _ (LText model)) ->
+          model : models
+      App lhs rhs -> collect mempty lhs <> collect models rhs
+      Bracketed _ expr _ -> collect models expr
+      _ -> models

@@ -63,9 +63,11 @@ library
     , bytestring
     , containers
     , directory
+    , exceptions
     , extra
     , filepath
     , generic-lens
+    , http-client
     , http-types
     , inferno-core
     , inferno-ml
