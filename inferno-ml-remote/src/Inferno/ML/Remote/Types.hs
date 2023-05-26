@@ -18,6 +18,7 @@ import Control.Applicative (asum, (<**>))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson (FromJSON, ToJSON)
+import Data.String (IsString)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
@@ -75,11 +76,11 @@ data Options = Options
 
 newtype Script = Script Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON)
+  deriving newtype (Eq, FromJSON, ToJSON, IsString)
 
 newtype EvalResult = EvalResult Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON)
+  deriving newtype (Eq, FromJSON, ToJSON, IsString)
 
 parseOptions :: IO Options
 parseOptions = Options.execParser opts

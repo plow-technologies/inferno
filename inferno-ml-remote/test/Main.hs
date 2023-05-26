@@ -1,14 +1,15 @@
 module Main (main) where
 
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Coerce (coerce)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product.Typed (typed)
-import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text.IO
 import Inferno.ML.Remote.Client (runInference)
-import Inferno.ML.Remote.Server (infernoMlRemote, infernoMlRemoteAPI)
+import Inferno.ML.Remote.Server (api, infernoMlRemote)
+import Inferno.ML.Remote.Types (EvalResult (EvalResult), InfernoMlRemoteEnv (InfernoMlRemoteEnv), Script (Script))
 import Lens.Micro.Platform ((.~))
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.Wai.Handler.Warp (testWithApplication)
@@ -36,24 +37,24 @@ inferenceSpec = Hspec.around withTestApp $ do
   let mkEnv :: Int -> ClientEnv
       mkEnv port = baseUrl & typed @Int .~ port & mkClientEnv manager
 
-      inferenceClient :: Text -> ClientM Text
-      inferenceClient = runInference infernoMlRemoteAPI
+      inferenceClient :: Script -> ClientM EvalResult
+      inferenceClient = runInference api
 
       runClient :: Int -> ClientM a -> IO (Either ClientError a)
       runClient port = flip runClientM (mkEnv port)
 
-      mkInferenceTest :: FilePath -> Text -> SpecWith (Arg (Int -> IO ()))
+      mkInferenceTest :: FilePath -> EvalResult -> SpecWith (Arg (Int -> IO ()))
       mkInferenceTest fp expected =
         Hspec.it ("evaluates " <> takeFileName fp) $ \port ->
-          runClient port (inferenceClient =<< liftIO (Text.IO.readFile fp))
-            >>= \case
-              Left e -> Hspec.expectationFailure $ show e
-              Right x -> x `Hspec.shouldBe` expected
+          runClient port (inferenceClient =<< readScript fp)
+            >>= either
+              (Hspec.expectationFailure . show)
+              (`Hspec.shouldBe` expected)
 
   Hspec.describe "POST /inference" $ do
     mkInferenceTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
-    mkInferenceTest "../inferno-ml/test/xor.inferno" . Text.strip $
+    mkInferenceTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
       Text.unlines
         [ "[Tensor Float [1] [-6.7711e-5]",
           ",Tensor Float [1] [ 1.0000   ]",
@@ -66,4 +67,10 @@ inferenceSpec = Hspec.around withTestApp $ do
       "Tensor Float []  8.5899e9   "
 
 withTestApp :: (Int -> IO ()) -> IO ()
-withTestApp = testWithApplication (pure infernoMlRemote)
+withTestApp = testWithApplication . pure $ infernoMlRemote env
+  where
+    env :: InfernoMlRemoteEnv
+    env = InfernoMlRemoteEnv Nothing
+
+readScript :: MonadIO m => FilePath -> m Script
+readScript = fmap coerce . liftIO . Text.IO.readFile
