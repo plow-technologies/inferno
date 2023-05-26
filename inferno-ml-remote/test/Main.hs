@@ -49,7 +49,7 @@ main = Hspec.hspec $ do
 
 -- Tests `/inference` endpoint with various Inferno scripts with ML features
 inferenceSpec :: Spec
-inferenceSpec = Hspec.around withTestApp $ do
+inferenceSpec = Hspec.around withTestAppAndEnv $ do
   baseUrl <- Hspec.runIO $ parseBaseUrl "http://localhost"
   manager <- Hspec.runIO $ newManager defaultManagerSettings
 
@@ -62,8 +62,8 @@ inferenceSpec = Hspec.around withTestApp $ do
       runClient :: Int -> ClientM a -> IO (Either ClientError a)
       runClient port = flip runClientM (mkEnv port)
 
-      mkInferenceTest :: FilePath -> EvalResult -> SpecWith (Arg (Int -> IO ()))
-      mkInferenceTest fp expected =
+      mkEvalTest :: FilePath -> EvalResult -> SpecWith (Arg (Int -> IO ()))
+      mkEvalTest fp expected =
         Hspec.it ("evaluates " <> takeFileName fp) $ \port ->
           runClient port (inferenceClient =<< readScript fp)
             >>= either
@@ -71,9 +71,9 @@ inferenceSpec = Hspec.around withTestApp $ do
               (`Hspec.shouldBe` expected)
 
   Hspec.describe "POST /inference" $ do
-    mkInferenceTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
+    mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
-    mkInferenceTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
+    mkEvalTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
       Text.unlines
         [ "[Tensor Float [1] [-6.7711e-5]",
           ",Tensor Float [1] [ 1.0000   ]",
@@ -81,7 +81,9 @@ inferenceSpec = Hspec.around withTestApp $ do
           ",Tensor Float [1] [-1.9073e-6]]"
         ]
 
-    mkInferenceTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
+    mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
+
+    mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
 
 collectModelsSpec :: Spec
 collectModelsSpec = Hspec.describe "collectModelNames" $ do
@@ -107,26 +109,32 @@ collectModelsSpec = Hspec.describe "collectModelNames" $ do
     astFromScript = fmap (mkFinalAst <=< typecheck) . readScript
 
 cacheModelsSpec :: Spec
-cacheModelsSpec = Hspec.around withTempDir . Hspec.describe "cacheAndUseModel" $ do
-  Hspec.it "caches a model" $ \fp -> do
-    cacheAndUseModel "mnist.ts.pt" . mkCacheOption fp $ 10 * 1073741824
-    (`Hspec.shouldBe` ["mnist.ts.pt"]) =<< listDirectory fp
+cacheModelsSpec =
+  Hspec.around withTempDir . Hspec.describe "cacheAndUseModel" $ do
+    Hspec.it "caches a model" $ \fp -> do
+      cacheAndUseModel "mnist.ts.pt" . mkCacheOption fp $ 10 * 1073741824
+      (`Hspec.shouldBe` ["mnist.ts.pt"]) =<< listDirectory fp
 
-  Hspec.it "throws when model is too big" $ \fp -> do
-    (`Hspec.shouldThrow` (== CacheSizeExceeded)) $
-      cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
-  where
-    mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
-    mkCacheOption fp = Paths "./test" . ModelCache fp
+    Hspec.it "throws when model is too big" $ \fp -> do
+      (`Hspec.shouldThrow` (== CacheSizeExceeded)) $
+        cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
 
-    withTempDir :: (FilePath -> IO ()) -> IO ()
-    withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
+withTestAppAndEnv :: (Int -> IO ()) -> IO ()
+withTestAppAndEnv f =
+  withTempDir $
+    (`withTestApp` f)
+      . InfernoMlRemoteEnv
+      . Just
+      . (`mkCacheOption` (10 * 1073741824))
 
-withTestApp :: (Int -> IO ()) -> IO ()
-withTestApp = testWithApplication . pure $ infernoMlRemote env
-  where
-    env :: InfernoMlRemoteEnv
-    env = InfernoMlRemoteEnv Nothing
+mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
+mkCacheOption fp = Paths "./test" . ModelCache fp
+
+withTempDir :: (FilePath -> IO ()) -> IO ()
+withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
+
+withTestApp :: InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
+withTestApp = testWithApplication . pure . infernoMlRemote
 
 readScript :: MonadIO m => FilePath -> m Script
 readScript = fmap coerce . liftIO . Text.IO.readFile
