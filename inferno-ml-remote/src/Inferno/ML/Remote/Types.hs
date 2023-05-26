@@ -85,7 +85,7 @@ newtype EvalResult = EvalResult Text
 
 data InfernoMlRemoteError
   = CacheSizeExceeded
-  deriving stock (Show)
+  deriving stock (Show, Eq, Generic)
 
 instance Exception InfernoMlRemoteError where
   displayException = \case

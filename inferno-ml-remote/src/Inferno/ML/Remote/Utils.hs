@@ -122,7 +122,7 @@ cacheAndUseModel model = \case
 
       cachedPath :: FilePath
       cachedPath = cache ^. #path & (</> Text.unpack model)
-  _ -> undefined
+  _ -> pure () -- FIXME
   where
     moveToCache :: ModelCache -> FilePath -> m ()
     moveToCache cache path = do

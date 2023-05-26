@@ -101,6 +101,7 @@ test-suite tests
   type:           exitcode-stdio-1.0
   build-depends:
     , base
+    , directory
     , filepath
     , generic-lens
     , hspec
@@ -111,5 +112,6 @@ test-suite tests
     , microlens-platform
     , mtl
     , servant-client
+    , temporary
     , text
     , warp

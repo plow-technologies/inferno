@@ -9,19 +9,19 @@ import Data.Generics.Labels ()
 import Data.Generics.Product.Typed (typed)
 import qualified Data.Text as Text
 import qualified Data.Text.IO as Text.IO
+import Data.Word (Word64)
 import Inferno.ML.Remote.Client (runInference)
-import Inferno.ML.Remote.Handler
-  ( collectModelNames,
-    mkFinalAst,
-    typecheck,
-  )
 import Inferno.ML.Remote.Server (api, infernoMlRemote)
 import Inferno.ML.Remote.Types
   ( EvalResult (EvalResult),
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
+    InfernoMlRemoteError (CacheSizeExceeded),
+    ModelCache (ModelCache),
+    ModelCacheOption (Paths),
     Script (Script),
     SomeInfernoError,
   )
+import Inferno.ML.Remote.Utils (cacheAndUseModel, collectModelNames, mkFinalAst, typecheck)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform ((.~))
@@ -35,14 +35,17 @@ import Servant.Client
     parseBaseUrl,
     runClientM,
   )
+import System.Directory (listDirectory)
 import System.FilePath (takeFileName)
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Arg, Spec, SpecWith)
 import qualified Test.Hspec as Hspec
 
 main :: IO ()
 main = Hspec.hspec $ do
   inferenceSpec
-  collectModelsSpec
+  Hspec.describe "Inferno.ML.Remote.Utils" $
+    collectModelsSpec *> cacheModelsSpec
 
 -- Tests `/inference` endpoint with various Inferno scripts with ML features
 inferenceSpec :: Spec
@@ -81,7 +84,7 @@ inferenceSpec = Hspec.around withTestApp $ do
     mkInferenceTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
 collectModelsSpec :: Spec
-collectModelsSpec = Hspec.describe "Inferno.ML.Remote.Handler.collectModelNames" $ do
+collectModelsSpec = Hspec.describe "collectModelNames" $ do
   Hspec.it "extracts models from script" $ do
     mkAstTest "../inferno-ml/test/mnist.inferno" $
       (`Hspec.shouldBe` ["mnist.ts.pt"]) . collectModelNames
@@ -102,6 +105,22 @@ collectModelsSpec = Hspec.describe "Inferno.ML.Remote.Handler.collectModelNames"
     astFromScript ::
       FilePath -> IO (Either SomeInfernoError (Expr (Maybe VCObjectHash) ()))
     astFromScript = fmap (mkFinalAst <=< typecheck) . readScript
+
+cacheModelsSpec :: Spec
+cacheModelsSpec = Hspec.around withTempDir . Hspec.describe "cacheAndUseModel" $ do
+  Hspec.it "caches a model" $ \fp -> do
+    cacheAndUseModel "mnist.ts.pt" . mkCacheOption fp $ 10 * 1073741824
+    (`Hspec.shouldBe` ["mnist.ts.pt"]) =<< listDirectory fp
+
+  Hspec.it "throws when model is too big" $ \fp -> do
+    (`Hspec.shouldThrow` (== CacheSizeExceeded)) $
+      cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
+  where
+    mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
+    mkCacheOption fp = Paths "./test" . ModelCache fp
+
+    withTempDir :: (FilePath -> IO ()) -> IO ()
+    withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
 
 withTestApp :: (Int -> IO ()) -> IO ()
 withTestApp = testWithApplication . pure $ infernoMlRemote env
