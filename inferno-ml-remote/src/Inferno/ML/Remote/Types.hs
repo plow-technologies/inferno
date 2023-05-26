@@ -1,3 +1,5 @@
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
     Options (..),
@@ -7,11 +9,13 @@ module Inferno.ML.Remote.Types
     InfernoMlRemoteEnv (..),
     ModelCacheOption (..),
     ModelCache (..),
+    SomeInfernoError (..),
     parseOptions,
   )
 where
 
 import Control.Applicative (asum, (<**>))
+import Control.Exception (Exception (displayException))
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Text (Text)
@@ -29,6 +33,18 @@ newtype InfernoMlRemoteEnv = InfernoMlRemoteEnv
   { modelCache :: Maybe ModelCacheOption
   }
   deriving stock (Generic)
+
+-- | Generic container for errors that may arise when parsing\/typechecking
+-- Inferno scripts in handlers. It doesn\'t matter what the specific error is
+-- as it will only be used in a 400 or 500 response with a message body containing
+-- the error
+data SomeInfernoError where
+  SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
+
+deriving stock instance Show SomeInfernoError
+
+instance Exception SomeInfernoError where
+  displayException (SomeInfernoError x) = show x
 
 -- TODO
 -- Add more ways to load?

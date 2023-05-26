@@ -5,13 +5,14 @@ module Inferno.ML.Remote.Handler
   )
 where
 
+import Control.Exception (Exception (displayException))
 import Control.Monad (unless, (<=<))
 import Control.Monad.Catch (bracket_)
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.Extra (loopM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader.Class (asks)
-import Data.Bifunctor (Bifunctor (bimap))
+import Data.Bifunctor (Bifunctor (bimap, first))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
 import Data.Foldable (foldl', traverse_)
@@ -43,6 +44,7 @@ import Inferno.ML.Remote.Types
     ModelCache,
     ModelCacheOption (Paths),
     Script (Script),
+    SomeInfernoError (SomeInfernoError),
   )
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
@@ -75,7 +77,7 @@ import System.FilePath (takeFileName, (</>))
 
 runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
 runInferenceHandler (Script src) = do
-  ast <- mkFinalAst =<< typecheck src
+  ast <- liftEither500 $ mkFinalAst =<< typecheck src
   cwd <- liftIO getCurrentDirectory
   asks (view #modelCache) >>= \case
     Nothing -> do
@@ -103,47 +105,8 @@ runInferenceHandler (Script src) = do
   where
     runEval :: Expr (Maybe VCObjectHash) () -> InfernoMlRemoteM EvalResult
     runEval ast =
-      fmap (coerce . renderPretty) . liftEither500
+      fmap (coerce . renderPretty) . liftEither500 . first SomeInfernoError
         =<< liftIO (runEvalIO mkEnv mempty ast)
-
-    mkFinalAst ::
-      ( Expr (Pinned VCObjectHash) SourcePos,
-        TCScheme
-      ) ->
-      InfernoMlRemoteM (Expr (Maybe VCObjectHash) ())
-    mkFinalAst (ast, tcscheme) = mkFinal <$> liftEither500 (runtimeReps tys)
-      where
-        mkFinal :: [InfernoType] -> Expr (Maybe VCObjectHash) ()
-        mkFinal =
-          foldl' App (bimap pinnedToMaybe (const ()) ast)
-            . fmap (TypeRep ())
-
-        runtimeReps ::
-          ([InfernoType], InfernoType) ->
-          Either [TypeError SourcePos] [InfernoType]
-        runtimeReps = uncurry $ inferTypeReps allClasses tcscheme
-
-        tys :: ([InfernoType], InfernoType)
-        tys =
-          tcscheme ^. typed @ImplType . typed @InfernoType
-            & collectArrs
-            & (init &&& last)
-
-    typecheck ::
-      Text ->
-      InfernoMlRemoteM
-        ( Expr (Pinned VCObjectHash) SourcePos,
-          TCScheme
-        )
-    typecheck =
-      liftEither500 . fmap (fst3 &&& snd3) . inferExpr builtinModules
-        <=< liftEither500 . pinExpr builtinModulesPinMap
-        <=< liftEither500
-          . fmap fst
-          . parseExpr baseOpsTable builtinModulesOpsTable
-
-    allClasses :: Set TypeClass
-    allClasses = builtinModules ^.. each . #moduleTypeClasses & Set.unions
 
     mkEnv ::
       ImplEnvM
@@ -153,11 +116,50 @@ runInferenceHandler (Script src) = do
         )
     mkEnv = (mempty,) . snd <$> builtinModulesTerms
 
-liftEither500 :: forall e a. Show e => Either e a -> InfernoMlRemoteM a
+mkFinalAst ::
+  ( Expr (Pinned VCObjectHash) SourcePos,
+    TCScheme
+  ) ->
+  Either SomeInfernoError (Expr (Maybe VCObjectHash) ())
+mkFinalAst (ast, tcscheme) = mkFinal <$> first SomeInfernoError (runtimeReps tys)
+  where
+    mkFinal :: [InfernoType] -> Expr (Maybe VCObjectHash) ()
+    mkFinal =
+      foldl' App (bimap pinnedToMaybe (const ()) ast)
+        . fmap (TypeRep ())
+
+    runtimeReps ::
+      ([InfernoType], InfernoType) ->
+      Either [TypeError SourcePos] [InfernoType]
+    runtimeReps = uncurry $ inferTypeReps allClasses tcscheme
+
+    tys :: ([InfernoType], InfernoType)
+    tys =
+      tcscheme ^. typed @ImplType . typed @InfernoType
+        & collectArrs
+        & (init &&& last)
+    allClasses :: Set TypeClass
+    allClasses = builtinModules ^.. each . #moduleTypeClasses & Set.unions
+
+typecheck ::
+  Text ->
+  Either
+    SomeInfernoError
+    ( Expr (Pinned VCObjectHash) SourcePos,
+      TCScheme
+    )
+typecheck =
+  first SomeInfernoError . fmap (fst3 &&& snd3) . inferExpr builtinModules
+    <=< first SomeInfernoError . pinExpr builtinModulesPinMap
+    <=< first SomeInfernoError
+      . fmap fst
+      . parseExpr baseOpsTable builtinModulesOpsTable
+
+liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure
   where
     mk500 :: Show e => e -> ServerError
-    mk500 (ByteString.Lazy.Char8.pack . show -> e) =
+    mk500 (ByteString.Lazy.Char8.pack . displayException -> e) =
       err500
         { errBody = "Script evalution failed with: " <> e
         }
