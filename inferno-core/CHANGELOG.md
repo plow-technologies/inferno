@@ -1,5 +1,8 @@
 # Revision History for inferno-core
 
+## 0.2.0 -- 2023-05-29
+* Add MonadIO to prelude and monad stack and add random primitive
+
 ## 0.1.4 -- 2023-04-14
 * Added `toBCD` and `fromBCD` functions to Prelude
 
