@@ -11,6 +11,6 @@ import Control.Monad.Except (ExceptT)
 
 main :: IO ()
 main = do
-  runInfernoLspServer @() @(ExceptT EvalError IO) builtinModules >>= \case
+  runInfernoLspServer @() @IO builtinModules >>= \case
     0 -> exitSuccess
     c -> exitWith . ExitFailure $ c

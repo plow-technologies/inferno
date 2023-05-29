@@ -5,6 +5,7 @@
 
 module Inferno.Utils.QQ.Script where
 
+import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Writer (WriterT (..), appEndo)
 import qualified Crypto.Hash as Crypto
@@ -16,12 +17,12 @@ import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Maybe as Maybe
 import Data.Text (pack)
-import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap)
 import Inferno.Parse (expr, topLevel)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
+import Inferno.Types.Value (ImplEnvM (..))
 import Inferno.Utils.QQ.Common
   ( liftText,
     location',
@@ -41,9 +42,8 @@ import Text.Megaparsec
     runParser',
   )
 import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Except (MonadError)
 
-inferno :: forall m c. (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => QuasiQuoter
+inferno :: forall m c. (MonadIO m, MonadThrow m, MonadCatch (ImplEnvM m c), Pretty c, Eq c) => QuasiQuoter
 inferno =
   QuasiQuoter
     { quoteExp = \str -> do

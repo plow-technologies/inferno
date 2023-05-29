@@ -7,11 +7,10 @@
 
 module Inferno.Module.Prelude where
 
-import Control.Monad.Except (MonadError)
+import Control.Monad.Catch ( MonadThrow(..) , MonadCatch (..))
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import Inferno.Eval (TermEnv)
-import Inferno.Eval.Error (EvalError)
 import qualified Inferno.Infer.Pinned as Pinned
 import Inferno.Module (Module (..), PinnedModule, combineTermEnvs, pinnedModuleHashToTy, pinnedModuleNameToHash)
 import Inferno.Module.Builtin (builtinModule)
@@ -125,15 +124,15 @@ import Control.Monad.IO.Class (MonadIO)
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
-baseOpsTable :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> OpsTable
+baseOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> OpsTable
 baseOpsTable moduleMap =
   let Module {moduleOpsTable = ops, moduleName = modNm} = moduleMap Map.! "Base"
    in IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
 
-builtinModulesOpsTable :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Map.Map ModuleName OpsTable
+builtinModulesOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map ModuleName OpsTable
 builtinModulesOpsTable moduleMap = Map.map (\Module {moduleOpsTable} -> moduleOpsTable) $ moduleMap
 
-builtinModulesPinMap :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
+builtinModulesPinMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
 builtinModulesPinMap moduleMap =
   Pinned.openModule "Base" $
     Pinned.insertBuiltinModule $
@@ -141,10 +140,10 @@ builtinModulesPinMap moduleMap =
         Map.map (Map.map Builtin . pinnedModuleNameToHash) $
           moduleMap
 
-builtinModulesTerms :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+builtinModulesTerms :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
 builtinModulesTerms moduleMap = combineTermEnvs moduleMap
 
-preludeNameToTypeMap :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
+preludeNameToTypeMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
 preludeNameToTypeMap moduleMap =
   let unqualifiedN2h = pinnedModuleNameToHash $ moduleMap Map.! "Base"
       n2h =
@@ -165,7 +164,7 @@ preludeNameToTypeMap moduleMap =
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinModules :: (MonadIO m, MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c
+builtinModules :: (MonadIO m, MonadThrow m, MonadCatch (ImplEnvM m c), Pretty c, Eq c) => ModuleMap m c
 builtinModules =
   [infernoModules|
 

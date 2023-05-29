@@ -6,7 +6,7 @@
 -- module Inferno.Module.Cast (FromValue, ToValue) where
 module Inferno.Module.Cast where
 
-import Control.Monad.Except (MonadError (..))
+import Control.Monad.Catch ( MonadThrow(..) , MonadCatch (..))
 import Control.Monad.Reader (ask)
 import Data.Int (Int64)
 import qualified Data.Map as Map
@@ -37,11 +37,11 @@ type Either7 a b c d e f g = Either a (Either6 b c d e f g)
 
 -- | Types that can be converted to script values, allowing IO in the process.
 class ToValue c m a where
-  toValue :: MonadError EvalError m => a -> m (Value c m)
+  toValue :: MonadThrow m => a -> m (Value c m)
 
 -- | Class of types that can be converted from script values.
 class FromValue c m a where
-  fromValue :: MonadError EvalError m => (Value c m) -> m a
+  fromValue :: MonadThrow m => (Value c m) -> m a
 
 -- | Haskell types that can be casted to mask script types.
 class Kind0 a where
@@ -49,9 +49,9 @@ class Kind0 a where
 
 -- Instances
 
-couldNotCast :: forall c m a. (Pretty c, MonadError EvalError m, Typeable a) => Value c m -> m a
+couldNotCast :: forall c m a. (Pretty c, MonadThrow m, Typeable a) => Value c m -> m a
 couldNotCast v =
-  throwError $
+  throwM $
     CastError $
       "Could not cast value "
         <> (unpack $ renderPretty v)
@@ -108,7 +108,7 @@ instance ToValue c m Int where
 
 instance Pretty c => FromValue c m Int where
   fromValue v = do
-    i <- fromValue v `catchError` (\_ -> couldNotCast v)
+    i <- fromValue v
     if (i :: Int64) < fromIntegral (minBound :: Int) || i > fromIntegral (maxBound :: Int)
       then couldNotCast v
       else pure $ fromIntegral i
@@ -220,7 +220,7 @@ instance (Monad m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2,
           x <- fromValue v
           b <- fromValue b'
           toValue $ f x b
-        Nothing -> throwError $ NotFoundInImplicitEnv i
+        Nothing -> throwM $ NotFoundInImplicitEnv i
 
 -- | In this instance, the 'IO' in the type is ignored.
 instance Kind0 a => Kind0 (IO a) where
@@ -249,8 +249,8 @@ instance (Typeable a, FromValue c m a, Pretty c) => FromValue c m [a] where
   fromValue (VArray vs) = mapM fromValue vs
   fromValue v = couldNotCast v
 
-instance (FromValue c m a, FromValue c m b) => FromValue c m (Either a b) where
-  fromValue v = (Left <$> fromValue v) `catchError` (\_ -> Right <$> fromValue v)
+instance (FromValue c m a, FromValue c m b, MonadCatch m) => FromValue c m (Either a b) where
+  fromValue v = (Left <$> fromValue v) `catch` (\(_ :: EvalError) -> Right <$> fromValue v)
 
 instance Kind0 (Either a b) where
   toType _ = error "Definitions with Either must have explicit type signature"
@@ -274,7 +274,7 @@ instance Kind0 (Either a b) where
 --   toValue (Here  x) = toValue x
 --   toValue (Next x) = toValue x
 
--- serializeToDouble :: MonadError EvalError m => Env -> Value m' -> m Double
+-- serializeToDouble :: MonadThrow m => Env -> Value m' -> m Double
 -- serializeToDouble TypeEnv{..} = \case
 --   VInt i -> return $ fromIntegral i
 --   VDouble d -> return d
@@ -283,13 +283,13 @@ instance Kind0 (Either a b) where
 --   VEnum e -> case Map.lookup e enums of
 --     Just (EnumMeta _ _ cs _) -> case fromIntegral <$> elemIndex e cs of
 --       Just d -> return d
---       Nothing -> throwError $ RuntimeError $ "Malformed environment! Could not find enum constructor in the list"
---     Just _ -> throwError $ RuntimeError $ "Malformed environment! Was expecting enum metadata"
---     Nothing -> throwError $ CastError $ "Enum #" <> Text.unpack e <> " could not be found in the environment."
+--       Nothing -> throwM $ RuntimeError $ "Malformed environment! Could not find enum constructor in the list"
+--     Just _ -> throwM $ RuntimeError $ "Malformed environment! Was expecting enum metadata"
+--     Nothing -> throwM $ CastError $ "Enum #" <> Text.unpack e <> " could not be found in the environment."
 --   VWord16 w -> return $ fromIntegral w
 --   VWord32 w -> return $ fromIntegral w
 --   VWord64 w -> return $ fromIntegral w
 
--- -- deserializeFromDouble :: MonadError EvalError m => Env -> Double -> InfernoType -> m (Value m')
+-- -- deserializeFromDouble :: MonadThrow m => Env -> Double -> InfernoType -> m (Value m')
 -- -- deserializeFromDouble env d = \case
 -- --   TBase TInt -> return $ VInt $

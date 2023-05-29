@@ -5,14 +5,13 @@
 
 module Inferno.LSP.Completion where
 
-import Control.Monad.Except (MonadError)
+import Control.Monad.Catch (MonadThrow (..))
 import Data.List (delete, nub)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Inferno.Eval.Error (EvalError)
 import Inferno.LSP.ParseInfer (getTypeMetadataText, mkPrettyTy)
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (Ident (..), ModuleName (..), rws)
@@ -100,7 +99,7 @@ findInPrelude preludeNameToTypeMap prefix =
         ModuleNamespace (ModuleName n) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower n)
         TypeNamespace _ -> False
 
-mkCompletionItem :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
+mkCompletionItem :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
 mkCompletionItem prelude txt (modNm, ns) tm@TypeMetadata {ty} =
   CompletionItem
     { _label = insertModNm $ renderPretty ns,
