@@ -8,6 +8,7 @@
 module Inferno.Module.Prelude where
 
 import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import Inferno.Eval (TermEnv)
@@ -79,6 +80,7 @@ import Inferno.Module.Prelude.Defs
     orFun,
     piFun,
     powFun,
+    randomFun,
     recipFun,
     roundFun,
     roundToFun,
@@ -112,7 +114,6 @@ import Inferno.Module.Prelude.Defs
     yearFun,
     yearsBeforeFun,
     zeroFun,
-    randomFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -121,7 +122,6 @@ import Inferno.Types.Value (ImplEnvM)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
-import Control.Monad.IO.Class (MonadIO)
 
 type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 
