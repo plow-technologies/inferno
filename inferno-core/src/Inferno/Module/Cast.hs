@@ -6,7 +6,7 @@
 -- module Inferno.Module.Cast (FromValue, ToValue) where
 module Inferno.Module.Cast where
 
-import Control.Monad.Catch ( MonadThrow(..) , MonadCatch (..))
+import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.Reader (ask)
 import Data.Int (Int64)
 import qualified Data.Map as Map

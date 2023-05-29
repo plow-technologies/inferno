@@ -3,7 +3,8 @@
 module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
-import Control.Monad.Catch ( MonadThrow(..) )
+import Control.Monad.Catch (MonadThrow (..))
+import Control.Monad.IO.Class (MonadIO)
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -42,7 +43,6 @@ import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Control.Monad.IO.Class (MonadIO)
 
 zeroVal :: Value c m
 zeroVal = VInt 0

@@ -18,7 +18,7 @@ module Inferno.Module
 where
 
 import Control.Monad (foldM)
-import Control.Monad.Catch ( MonadThrow(..) )
+import Control.Monad.Catch (MonadThrow (..))
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import qualified Data.IntMap as IntMap

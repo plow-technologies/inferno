@@ -87,6 +87,7 @@ newtype ImplEnvM m c a = ImplEnvM {unImplEnvM :: ReaderT (Map.Map ExtIdent (Valu
   deriving (Applicative, Functor, Monad, MonadReader (Map.Map ExtIdent (Value c (ImplEnvM m c))), MonadError e, MonadFix, MonadIO)
 
 deriving instance MonadThrow (ImplEnvM IO ())
+
 deriving instance MonadCatch (ImplEnvM IO ())
 
 runImplEnvM :: Map.Map ExtIdent (Value c (ImplEnvM m c)) -> ImplEnvM m c a -> m a
