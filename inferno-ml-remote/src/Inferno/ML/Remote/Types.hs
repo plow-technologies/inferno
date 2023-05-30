@@ -85,11 +85,18 @@ newtype EvalResult = EvalResult Text
 
 data InfernoMlRemoteError
   = CacheSizeExceeded
+  | NoSuchModel Text
   deriving stock (Show, Eq, Generic)
 
 instance Exception InfernoMlRemoteError where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
+    NoSuchModel m ->
+      unwords
+        [ "Model:",
+          "'" <> Text.unpack m <> "'",
+          "does not exist in the store"
+        ]
 
 parseOptions :: IO Options
 parseOptions = Options.execParser opts

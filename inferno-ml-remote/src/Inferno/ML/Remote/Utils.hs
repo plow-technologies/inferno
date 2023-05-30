@@ -8,7 +8,7 @@ where
 
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadThrow (throwM))
-import Control.Monad.Extra (loopM, whenM)
+import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap, first))
 import Data.Coerce (coerce)
@@ -33,7 +33,7 @@ import Inferno.ML.Module.Prelude
     builtinModulesPinMap,
   )
 import Inferno.ML.Remote.Types
-  ( InfernoMlRemoteError (CacheSizeExceeded),
+  ( InfernoMlRemoteError (CacheSizeExceeded, NoSuchModel),
     ModelCache,
     ModelCacheOption (Paths),
     Script (Script),
@@ -109,7 +109,8 @@ typecheck =
 cacheAndUseModel ::
   forall m. (MonadIO m, MonadThrow m) => Text -> ModelCacheOption -> m ()
 cacheAndUseModel model = \case
-  Paths src cache ->
+  Paths src cache -> do
+    unlessM (liftIO (doesFileExist srcPath)) . throwM $ NoSuchModel model
     liftIO (doesFileExist cachedPath) >>= \case
       -- This also sets the access time for the model to make sure that
       -- the least-recently-used models can be evicted if necessary
