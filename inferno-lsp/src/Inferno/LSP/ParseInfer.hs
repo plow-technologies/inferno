@@ -6,7 +6,7 @@
 module Inferno.LSP.ParseInfer where
 
 import Control.Monad (forM_)
-import Control.Monad.Except (MonadError)
+import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
 import Data.List (find, findIndices, nub, sort)
@@ -16,7 +16,6 @@ import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text, pack)
 import qualified Data.Text as Text
-import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferExpr, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
 import Inferno.Infer.Pinned (pinExpr)
@@ -65,7 +64,7 @@ import Text.Megaparsec.Pos (SourcePos (..), unPos)
 
 parseExprInBaseModule ::
   forall m c.
-  (MonadError EvalError m, Pretty c, Eq c) =>
+  (MonadThrow m, Pretty c, Eq c) =>
   ModuleMap m c ->
   Text ->
   Either
@@ -497,10 +496,10 @@ inferErrorDiagnostic = \case
             ]
     ]
 
-allClasses :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass
+allClasses :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass
 allClasses prelude = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
 
-parseAndInfer :: forall m1 m2 c. (MonadError EvalError m1, Pretty c, Eq c, MonadIO m2) => ModuleMap m1 c -> [Maybe Ident] -> Text -> (InfernoType -> Either Text ()) -> m2 (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(Range, MarkupContent)]))
+parseAndInfer :: forall m1 m2 c. (MonadThrow m1, Pretty c, Eq c, MonadIO m2) => ModuleMap m1 c -> [Maybe Ident] -> Text -> (InfernoType -> Either Text ()) -> m2 (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(Range, MarkupContent)]))
 parseAndInfer prelude idents txt validateInput = do
   let input = case idents of
         [] -> "\n" <> txt
@@ -581,7 +580,7 @@ parseAndInfer prelude idents txt validateInput = do
       TArray _ -> True
       _ -> False
 
-parseAndInferPretty :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Text -> IO ()
+parseAndInferPretty :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> IO ()
 parseAndInferPretty prelude txt =
   (parseAndInfer @m @_ @c prelude) [] txt (const $ Right ()) >>= \case
     Left err -> print err
@@ -594,7 +593,7 @@ parseAndInferPretty prelude txt =
 
       putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy prelude mempty typ)
 
-parseAndInferTypeReps :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Text] -> Text -> IO ()
+parseAndInferTypeReps :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Text] -> Text -> IO ()
 parseAndInferTypeReps prelude expr inTys outTy =
   (parseAndInfer @m @_ @c prelude) [] expr (const $ Right ()) >>= \case
     Left err -> print err
@@ -615,7 +614,7 @@ parseAndInferTypeReps prelude expr inTys outTy =
                 putStrLn ("type reps:" :: String)
                 print res
 
-parseAndInferPossibleTypes :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
+parseAndInferPossibleTypes :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
 parseAndInferPossibleTypes prelude expr inTys outTy =
   (parseAndInfer @m @_ @c prelude) [] expr (const $ Right ()) >>= \case
     Left err -> print err
@@ -638,7 +637,7 @@ parseAndInferPossibleTypes prelude expr inTys outTy =
 
 -- putStrLn $ show hovers
 
-mkHover :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
+mkHover :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
 mkHover prelude currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = tcSchTy} =
   let prettyTy = mkPrettyTy prelude currentClasses tcSchTy
    in ( mkRange ((fromIntegral $ unPos $ sourceLine s) - 2) ((fromIntegral $ unPos $ sourceColumn s) - 1) ((fromIntegral $ unPos $ sourceLine e) - 2) ((fromIntegral $ unPos $ sourceColumn e) - 1),
@@ -650,7 +649,7 @@ mkHover prelude currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = 
             <> (maybe "" ("\n" <>) (getTypeMetadataText meta))
       )
 
-mkPrettyTy :: forall m c ann. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> TCScheme -> Doc ann
+mkPrettyTy :: forall m c ann. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> TCScheme -> Doc ann
 mkPrettyTy prelude currentClasses (ForallTC _tvs cls typ) =
   let ftvTy = ftv typ
    in if Set.null ftvTy

@@ -1,5 +1,6 @@
 module Inferno.Eval.Error where
 
+import Control.Monad.Catch (Exception)
 import Inferno.Types.Syntax (ExtIdent)
 
 data EvalError
@@ -8,3 +9,5 @@ data EvalError
   | CastError String
   | NotFoundInImplicitEnv ExtIdent
   deriving (Show, Eq)
+
+instance Exception EvalError

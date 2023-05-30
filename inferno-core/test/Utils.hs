@@ -2,8 +2,6 @@
 
 module Utils where
 
-import Control.Monad.Catch (MonadCatch)
-import Control.Monad.Except (ExceptT)
 import qualified Data.Map as Map
 import Inferno.Eval as Eval
 import Inferno.Eval.Error (EvalError (..))
@@ -22,25 +20,24 @@ import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 
 type TestCustomValue = ()
 
-builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM (ExceptT EvalError IO) TestCustomValue (Eval.TermEnv VCObjectHash TestCustomValue (ImplEnvM (ExceptT EvalError IO) TestCustomValue))))
-builtinModules = Prelude.builtinModules @(ExceptT EvalError IO) @TestCustomValue
+builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM IO TestCustomValue (Eval.TermEnv VCObjectHash TestCustomValue (ImplEnvM IO TestCustomValue))))
+builtinModules = Prelude.builtinModules @IO @TestCustomValue
 
 builtinModulesOpsTable :: Map.Map ModuleName OpsTable
-builtinModulesOpsTable = Prelude.builtinModulesOpsTable @(ExceptT EvalError IO) @TestCustomValue builtinModules
+builtinModulesOpsTable = Prelude.builtinModulesOpsTable @IO @TestCustomValue builtinModules
 
 builtinModulesPinMap :: Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
-builtinModulesPinMap = Prelude.builtinModulesPinMap @(ExceptT EvalError IO) @TestCustomValue builtinModules
+builtinModulesPinMap = Prelude.builtinModulesPinMap @IO @TestCustomValue builtinModules
 
 baseOpsTable :: OpsTable
-baseOpsTable = Prelude.baseOpsTable @(ExceptT EvalError IO) @TestCustomValue builtinModules
+baseOpsTable = Prelude.baseOpsTable @IO @TestCustomValue builtinModules
 
-builtinModulesTerms :: ImplEnvM (ExceptT EvalError IO) TestCustomValue (Eval.TermEnv VCObjectHash TestCustomValue (ImplEnvM (ExceptT EvalError IO) TestCustomValue))
-builtinModulesTerms = Prelude.builtinModulesTerms @(ExceptT EvalError IO) @TestCustomValue builtinModules
+builtinModulesTerms :: ImplEnvM IO TestCustomValue (Eval.TermEnv VCObjectHash TestCustomValue (ImplEnvM IO TestCustomValue))
+builtinModulesTerms = Prelude.builtinModulesTerms @IO @TestCustomValue builtinModules
 
 runEvalIO ::
-  (MonadCatch m) =>
-  ImplEnvM (ExceptT EvalError m) TestCustomValue (Eval.TermEnv VCObjectHash TestCustomValue (ImplEnvM (ExceptT EvalError m) TestCustomValue)) ->
-  Map.Map ExtIdent (Value TestCustomValue (ImplEnvM (ExceptT EvalError m) TestCustomValue)) ->
+  ImplEnvM IO TestCustomValue (TermEnv VCObjectHash TestCustomValue (ImplEnvM IO TestCustomValue)) ->
+  Map.Map ExtIdent (Value TestCustomValue (ImplEnvM IO TestCustomValue)) ->
   Expr (Maybe VCObjectHash) a ->
-  m (Either EvalError (Value TestCustomValue (ImplEnvM (ExceptT EvalError m) TestCustomValue)))
-runEvalIO = Eval.runEvalIO @_ @TestCustomValue
+  IO (Either EvalError (Value TestCustomValue (ImplEnvM IO TestCustomValue)))
+runEvalIO = Eval.runEvalIO @TestCustomValue

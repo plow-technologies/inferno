@@ -18,14 +18,13 @@ module Inferno.Module
 where
 
 import Control.Monad (foldM)
-import Control.Monad.Except (MonadError)
+import Control.Monad.Catch (MonadThrow (..))
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Inferno.Eval (TermEnv, eval)
-import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
@@ -64,13 +63,13 @@ import Prettyprinter (Pretty)
 import Text.Megaparsec (SourcePos)
 
 combineTermEnvs ::
-  MonadError EvalError m =>
+  MonadThrow m =>
   Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
   ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
 
 buildPinnedQQModules ::
-  (MonadError EvalError m, Pretty c) =>
+  (MonadThrow m, Pretty c) =>
   [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
   Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 buildPinnedQQModules modules =
@@ -95,7 +94,7 @@ buildPinnedQQModules modules =
       modules
   where
     buildModule ::
-      (MonadError EvalError m, Pretty c) =>
+      (MonadThrow m, Pretty c) =>
       Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash)) ->
       Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
       [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))] ->
