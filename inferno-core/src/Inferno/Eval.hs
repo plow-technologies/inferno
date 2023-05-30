@@ -3,17 +3,11 @@
 
 module Inferno.Eval where
 
--- import Control.Monad (foldM, when)
-import Control.Monad.Catch (MonadCatch, SomeException, try)
+import Control.Monad.Catch (MonadThrow (throwM), try)
 import Control.Monad.Except
   ( Except,
-    ExceptT,
-    MonadError (throwError),
     forM,
-    runExcept,
-    runExceptT,
   )
-import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.List.NonEmpty (NonEmpty (..), toList)
@@ -70,13 +64,13 @@ type Interpreter t = Except EvalError t
 emptyTmenv :: TermEnv hash c m
 emptyTmenv = (Map.empty, Map.empty)
 
-eval :: (MonadError EvalError m, MonadError EvalError (ImplEnvM m c), Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
+eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
 eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LInt k) -> return $
     VFun $ \case
       VTypeRep (TBase TInt) -> return $ VInt k
       VTypeRep (TBase TDouble) -> return $ VDouble $ fromIntegral k
-      _ -> throwError $ RuntimeError "Invalid runtime rep for numeric constant."
+      _ -> throwM $ RuntimeError "Invalid runtime rep for numeric constant."
   Lit_ (LDouble k) -> return $ VDouble k
   Lit_ (LHex w) -> return $ VWord64 w
   Lit_ (LText t) -> return $ VText t
@@ -102,20 +96,20 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                     VEnum hash "true" ->
                       if hash == enumBoolHash
                         then Just <$> (eval (nenv, pinnedEnv) e)
-                        else throwError $ RuntimeError "failed to match with a bool"
+                        else throwM $ RuntimeError "failed to match with a bool"
                     VEnum hash "false" ->
                       if hash == enumBoolHash
                         then return Nothing
-                        else throwError $ RuntimeError "failed to match with a bool"
-                    _ -> throwError $ RuntimeError "failed to match with a bool"
+                        else throwM $ RuntimeError "failed to match with a bool"
+                    _ -> throwM $ RuntimeError "failed to match with a bool"
               )
     where
-      sequence' :: (MonadError EvalError m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
+      sequence' :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
       sequence' env'@(localEnv', pinnedEnv') = \case
         (_, Ident x, _, e_s, _) :| [] -> do
           eval env' e_s >>= \case
             VArray vals -> return $ map ((: []) . (ExtIdent $ Right x,)) vals
-            _ -> throwError $ RuntimeError "failed to match with an array"
+            _ -> throwM $ RuntimeError "failed to match with an array"
         (_, Ident x, _, e_s, _) :| (r : rs) -> do
           eval env' e_s >>= \case
             VArray vals ->
@@ -124,49 +118,49 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                         res <- sequence' (Map.insert (ExtIdent $ Right x) v localEnv', pinnedEnv') (r :| rs)
                         return $ map ((ExtIdent $ Right x, v) :) res
                     )
-            _ -> throwError $ RuntimeError "failed to match with an array"
+            _ -> throwM $ RuntimeError "failed to match with an array"
   Enum_ (Just hash) _ i -> return $ VEnum hash i
-  Enum_ Nothing _ _ -> throwError $ RuntimeError "All enums must be pinned"
+  Enum_ Nothing _ _ -> throwM $ RuntimeError "All enums must be pinned"
   Var_ (Just hash) _ x ->
     case Map.lookup hash pinnedEnv of
       Just v -> return v
-      Nothing -> throwError $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
+      Nothing -> throwM $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
   Var_ Nothing _ (Expl x) -> do
     case Map.lookup x localEnv of
       Just v -> return v
-      Nothing -> throwError $ RuntimeError $ show x <> " not found in the unpinned env"
+      Nothing -> throwM $ RuntimeError $ show x <> " not found in the unpinned env"
   Var_ Nothing _ (Impl x) -> do
     implEnv <- ask
     case Map.lookup x implEnv of
       Just v -> return v
-      Nothing -> throwError $ RuntimeError $ show x <> " not found in the implicit env"
+      Nothing -> throwM $ RuntimeError $ show x <> " not found in the implicit env"
   OpVar_ (Just hash) _ x ->
     case Map.lookup hash pinnedEnv of
       Just v -> return v
-      Nothing -> throwError $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
+      Nothing -> throwM $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
   OpVar_ Nothing _ (Ident x) -> do
     case Map.lookup (ExtIdent $ Right x) localEnv of
       Just v -> return v
-      Nothing -> throwError $ RuntimeError $ show x <> " not found in env"
+      Nothing -> throwM $ RuntimeError $ show x <> " not found in env"
   TypeRep_ t -> pure $ VTypeRep t
-  Op_ _ Nothing _ op _ -> throwError $ RuntimeError $ show op <> " should be pinned"
+  Op_ _ Nothing _ op _ -> throwM $ RuntimeError $ show op <> " should be pinned"
   Op_ a (Just hash) _ns op b -> do
     a' <- eval env a
     b' <- eval env b
     case Map.lookup hash pinnedEnv of
-      Nothing -> throwError $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
+      Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
       Just (VFun f) ->
         f a' >>= \case
           VFun f' -> f' b'
-          _ -> throwError $ RuntimeError $ show op <> " not bound to a binary function in env"
-      Just _ -> throwError $ RuntimeError $ show op <> " not bound to a function in env"
-  PreOp_ Nothing _ op _ -> throwError $ RuntimeError $ show op <> " should be pinned"
+          _ -> throwM $ RuntimeError $ show op <> " not bound to a binary function in env"
+      Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
+  PreOp_ Nothing _ op _ -> throwM $ RuntimeError $ show op <> " should be pinned"
   PreOp_ (Just hash) _ns op a -> do
     a' <- eval env a
     case Map.lookup hash pinnedEnv of
-      Nothing -> throwError $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
+      Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
       Just (VFun f) -> f a'
-      Just _ -> throwError $ RuntimeError $ show op <> " not bound to a function in env"
+      Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
   Lam_ args body -> go localEnv $ toList args
     where
       go nenv = \case
@@ -179,7 +173,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       VFun f -> do
         argv <- eval env arg
         f argv
-      _ -> throwError $ RuntimeError "failed to match with a function"
+      _ -> throwM $ RuntimeError "failed to match with a function"
   Let_ (Expl x) e body -> do
     e' <- eval env e
     let nenv = Map.insert x e' localEnv
@@ -192,12 +186,12 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       VEnum hash "true" ->
         if hash == enumBoolHash
           then eval env tr
-          else throwError $ RuntimeError "failed to match with a bool"
+          else throwM $ RuntimeError "failed to match with a bool"
       VEnum hash "false" ->
         if hash == enumBoolHash
           then eval env fl
-          else throwError $ RuntimeError "failed to match with a bool"
-      _ -> throwError $ RuntimeError "failed to match with a bool"
+          else throwM $ RuntimeError "failed to match with a bool"
+      _ -> throwM $ RuntimeError "failed to match with a bool"
   Tuple_ es ->
     foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] (tListToList es) >>= return . VTuple
   One_ e -> eval env e >>= return . VOne
@@ -206,13 +200,13 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
     eval env cond >>= \case
       VEnum hash "false" ->
         if hash == enumBoolHash
-          then throwError AssertionFailed
-          else throwError $ RuntimeError "failed to match with a bool"
+          then throwM AssertionFailed
+          else throwM $ RuntimeError "failed to match with a bool"
       VEnum hash "true" ->
         if hash == enumBoolHash
           then eval env e
-          else throwError $ RuntimeError "failed to match with a bool"
-      _ -> throwError $ RuntimeError "failed to match with a bool"
+          else throwM $ RuntimeError "failed to match with a bool"
+      _ -> throwM $ RuntimeError "failed to match with a bool"
   Case_ e pats -> do
     v <- eval env e
     matchAny v pats
@@ -221,7 +215,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
         Just nenv ->
           -- (<>) is left biased so this will correctly override any shadowed vars from nenv onto env
           eval (nenv <> env) body
-        Nothing -> throwError $ RuntimeError $ "non-exhaustive patterns in case detected in " <> (Text.unpack $ renderPretty v)
+        Nothing -> throwM $ RuntimeError $ "non-exhaustive patterns in case detected in " <> (Text.unpack $ renderPretty v)
       matchAny v ((_, p, _, body) :| (r : rs)) = case match v p of
         Just nenv -> eval (nenv <> env) body
         Nothing -> matchAny v (r :| rs)
@@ -271,21 +265,10 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   OpenModule_ _ _ e -> eval env e
 
 runEvalIO ::
-  (MonadCatch m, Pretty c) =>
-  ImplEnvM (ExceptT EvalError m) c (TermEnv VCObjectHash c (ImplEnvM (ExceptT EvalError m) c)) ->
-  Map.Map ExtIdent (Value c (ImplEnvM (ExceptT EvalError m) c)) ->
-  Expr (Maybe VCObjectHash) a ->
-  m (Either EvalError (Value c (ImplEnvM (ExceptT EvalError m) c)))
-runEvalIO env implicitEnv ex = do
-  input <- try $ runExceptT $ runImplEnvM implicitEnv $ (env >>= \env' -> eval env' ex)
-  return $ case input of
-    Left (e :: SomeException) -> Left $ RuntimeError $ show e
-    Right res -> res
-
-pureEval ::
   (Pretty c) =>
-  TermEnv VCObjectHash c (ImplEnvM (ExceptT EvalError Identity) c) ->
-  Map.Map ExtIdent (Value c (ImplEnvM (ExceptT EvalError Identity) c)) ->
+  ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c)) ->
+  Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
   Expr (Maybe VCObjectHash) a ->
-  Either EvalError (Value c (ImplEnvM (ExceptT EvalError Identity) c))
-pureEval env implicitEnv ex = runExcept $ runImplEnvM implicitEnv $ eval env ex
+  IO (Either EvalError (Value c (ImplEnvM IO c)))
+runEvalIO env implicitEnv ex =
+  try $ runImplEnvM implicitEnv $ (env >>= \env' -> eval env' ex)

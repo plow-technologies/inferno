@@ -16,7 +16,7 @@ import Control.Concurrent.STM.TChan (TChan, newTChan, readTChan, writeTChan)
 import Control.Concurrent.STM.TVar (TVar, modifyTVar, newTVar, readTVar)
 import qualified Control.Exception as E
 import Control.Monad (forever)
-import Control.Monad.Except (MonadError)
+import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.STM (atomically)
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
@@ -30,7 +30,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Utf16.Rope as Rope
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import qualified Data.UUID.V4 as UUID.V4
-import Inferno.Eval.Error (EvalError)
 import Inferno.LSP.Completion (completionQueryAt, filterModuleNameCompletionItems, findInPrelude, identifierCompletionItems, mkCompletionItem, rwsCompletionItems)
 import Inferno.LSP.ParseInfer (parseAndInfer)
 import Inferno.Module.Prelude (ModuleMap, preludeNameToTypeMap)
@@ -75,7 +74,7 @@ import System.IO (BufferMode (NoBuffering), hFlush, hSetBuffering, hSetEncoding,
 -- to the inferno typechecker.
 runInfernoLspServerWith ::
   forall m c.
-  (MonadError EvalError m, Pretty c, Eq c) =>
+  (MonadThrow m, Pretty c, Eq c) =>
   IOTracer T.Text ->
   IO BS.ByteString ->
   (BSL.ByteString -> IO ()) ->
@@ -114,7 +113,7 @@ runInfernoLspServerWith tracer clientIn clientOut prelude getIdents validateInpu
     ioExcept (e :: E.IOException) = traceWith tracer (T.pack (show e)) >> return 1
     someExcept (e :: E.SomeException) = traceWith tracer (T.pack (show e)) >> return 1
 
-runInfernoLspServer :: forall c m. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> IO Int
+runInfernoLspServer :: forall c m. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> IO Int
 runInfernoLspServer prelude = do
   hSetBuffering stdin NoBuffering
   hSetEncoding stdin utf8
@@ -215,7 +214,7 @@ sendDiagnostics fileUri version diags =
 
 -- | Check if we have a handler, and if we create a haskell-lsp handler to pass it as
 -- input into the reactor
-lspHandlers :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> TChan ReactorInput -> Handlers InfernoLspM
+lspHandlers :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> TChan ReactorInput -> Handlers InfernoLspM
 lspHandlers prelude rin = mapHandlers goReq goNot (handle @m @c prelude)
   where
     goReq :: forall (a :: J.Method 'J.FromClient 'J.Request). Handler InfernoLspM a -> Handler InfernoLspM a
@@ -231,7 +230,7 @@ lspHandlers prelude rin = mapHandlers goReq goNot (handle @m @c prelude)
       liftIO $ atomically $ writeTChan rin $ ReactorAction (flip runReaderT infernoEnv $ runLspT env $ f msg)
 
 -- | Where the actual logic resides for handling requests and notifications.
-handle :: forall m c. (MonadError EvalError m, Pretty c, Eq c) => ModuleMap m c -> Handlers InfernoLspM
+handle :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Handlers InfernoLspM
 handle prelude =
   mconcat
     [ notificationHandler J.STextDocumentDidOpen $ \msg -> do
