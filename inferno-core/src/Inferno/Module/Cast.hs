@@ -106,12 +106,12 @@ instance Pretty c => FromValue c m Int64 where
 instance ToValue c m Int where
   toValue = toValue . (fromIntegral :: Int -> Int64)
 
-instance Pretty c => FromValue c m Int where
-  fromValue v = do
-    i <- fromValue v
+instance (Pretty c) => FromValue c m Int where
+  fromValue v@(VInt i) =
     if (i :: Int64) < fromIntegral (minBound :: Int) || i > fromIntegral (maxBound :: Int)
       then couldNotCast v
       else pure $ fromIntegral i
+  fromValue v = couldNotCast v
 
 instance ToValue c m Integer where
   toValue = pure . VInt . fromInteger
