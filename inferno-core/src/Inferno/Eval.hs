@@ -3,14 +3,11 @@
 
 module Inferno.Eval where
 
-import Control.Monad.Catch (MonadThrow (throwM), SomeException, try)
+import Control.Monad.Catch (MonadThrow (throwM), try)
 import Control.Monad.Except
   ( Except,
-    ExceptT,
     forM,
-    runExcept,
   )
-import Control.Monad.Identity (Identity)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.List.NonEmpty (NonEmpty (..), toList)
@@ -273,18 +270,5 @@ runEvalIO ::
   Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
   Expr (Maybe VCObjectHash) a ->
   IO (Either EvalError (Value c (ImplEnvM IO c)))
-runEvalIO env implicitEnv ex = do
-  input <- try $ runImplEnvM implicitEnv $ (env >>= \env' -> eval env' ex)
-  return $ case input of
-    -- TODO this line catches exceptions other than EvalError, which may be what we want, but it also maps all EvalError constructors to RuntimeError -- is there some way to preserve the constructors?
-    Left (e :: SomeException) -> Left $ RuntimeError $ show e
-    Right res -> Right res
-
-pureEval ::
-  -- MonadThrow Identity is probably not true, is it? pureEval is probably impossible. Remove?
-  (Pretty c, MonadThrow Identity) =>
-  TermEnv VCObjectHash c (ImplEnvM (ExceptT EvalError Identity) c) ->
-  Map.Map ExtIdent (Value c (ImplEnvM (ExceptT EvalError Identity) c)) ->
-  Expr (Maybe VCObjectHash) a ->
-  Either EvalError (Value c (ImplEnvM (ExceptT EvalError Identity) c))
-pureEval env implicitEnv ex = runExcept $ runImplEnvM implicitEnv $ eval env ex
+runEvalIO env implicitEnv ex =
+  try $ runImplEnvM implicitEnv $ (env >>= \env' -> eval env' ex)
