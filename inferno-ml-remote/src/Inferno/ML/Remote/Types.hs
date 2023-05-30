@@ -109,11 +109,19 @@ newtype EvalResult = EvalResult Text
 data InfernoMlRemoteError
   = CacheSizeExceeded
   | NoSuchModel Text
+  | ExternalProcessFailed FilePath Int
   deriving stock (Show, Eq, Generic)
 
 instance Exception InfernoMlRemoteError where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
+    ExternalProcessFailed p ec ->
+      unwords
+        [ "Process",
+          "'" <> p <> "'",
+          "failed with exit code",
+          show ec
+        ]
     NoSuchModel m ->
       unwords
         [ "Model:",

@@ -78,8 +78,10 @@ library
     , optparse-applicative
     , servant-client
     , servant-server
+    , temporary
     , text
     , time
+    , typed-process
     , unix
     , wai
     , wai-logger

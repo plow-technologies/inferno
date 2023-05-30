@@ -7,7 +7,7 @@ module Inferno.ML.Remote.Utils
 where
 
 import Control.Monad ((<=<))
-import Control.Monad.Catch (MonadThrow (throwM))
+import Control.Monad.Catch (MonadMask, MonadThrow (throwM), bracket)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap, first))
@@ -33,9 +33,13 @@ import Inferno.ML.Module.Prelude
     builtinModulesPinMap,
   )
 import Inferno.ML.Remote.Types
-  ( InfernoMlRemoteError (CacheSizeExceeded, NoSuchModel),
+  ( InfernoMlRemoteError
+      ( CacheSizeExceeded,
+        ExternalProcessFailed,
+        NoSuchModel
+      ),
     ModelCache,
-    ModelCacheOption (Paths),
+    ModelCacheOption (CompressedPaths, Paths),
     Script (Script),
     SomeInfernoError (SomeInfernoError),
   )
@@ -53,14 +57,19 @@ import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Lens.Micro.Platform (each, view, (^.), (^..))
 import System.Directory
   ( copyFile,
+    createDirectoryIfMissing,
     doesFileExist,
     getAccessTime,
     getFileSize,
     listDirectory,
+    removeDirectoryRecursive,
     removeFile,
     setAccessTime,
   )
-import System.FilePath (takeFileName, (</>))
+import System.Exit (ExitCode (ExitFailure))
+import System.FilePath (takeFileName, (<.>), (</>))
+import System.IO.Temp (createTempDirectory)
+import System.Process.Typed (proc, runProcess)
 
 mkFinalAst ::
   ( Expr (Pinned VCObjectHash) SourcePos,
@@ -107,10 +116,18 @@ typecheck =
 -- be exceeded by adding the new model. If the model is already cached, it sets
 -- the access time
 cacheAndUseModel ::
-  forall m. (MonadIO m, MonadThrow m) => Text -> ModelCacheOption -> m ()
+  forall m.
+  ( MonadIO m,
+    MonadThrow m,
+    MonadMask m
+  ) =>
+  Text ->
+  ModelCacheOption ->
+  m ()
 cacheAndUseModel model = \case
   Paths src cache -> do
     unlessM (liftIO (doesFileExist srcPath)) . throwM $ NoSuchModel model
+    cache ^. #path & liftIO . createDirectoryIfMissing True
     liftIO (doesFileExist cachedPath) >>= \case
       -- This also sets the access time for the model to make sure that
       -- the least-recently-used models can be evicted if necessary
@@ -118,12 +135,42 @@ cacheAndUseModel model = \case
       -- Moving to the cache will implicitly set the access time
       False -> moveToCache cache srcPath
     where
+      cachedPath :: FilePath
+      cachedPath = cache ^. #path & (</> Text.unpack model)
+
       srcPath :: FilePath
       srcPath = src </> Text.unpack model
+  -- TODO
+  -- There's certainly a more efficient way to do this that doesn't require
+  -- an intermediate temp directory, but this makes it easier to share the
+  -- rest of the code with the uncompressed path option
+  CompressedPaths src cache -> do
+    unlessM (liftIO (doesFileExist srcCompressed)) . throwM $ NoSuchModel model
+    cache ^. #path & liftIO . createDirectoryIfMissing True
+    liftIO (doesFileExist cachedPath) >>= \case
+      True -> liftIO (setAccessTime cachedPath =<< getCurrentTime)
+      -- NOTE
+      -- The explicit `bracket` is required here. `withSystemTempDirectory` can't
+      -- be used since it requires and inner IO action. If `Handler` had an
+      -- `UnliftIO` instance, that could be used instead, but it doesn't
+      False ->
+        bracket
+          (liftIO (createTempDirectory "/tmp" "inferno-ml-remote"))
+          (liftIO . removeDirectoryRecursive)
+          $ moveToCache cache <=< decompress
+    where
+      decompress :: FilePath -> m FilePath
+      decompress tmp =
+        runProcess (proc "unzstd" [srcCompressed, "-q", "--output-dir-flat", tmp])
+          >>= \case
+            ExitFailure c -> throwM $ ExternalProcessFailed "unzstd" c
+            _ -> pure $ tmp </> Text.unpack model
 
       cachedPath :: FilePath
       cachedPath = cache ^. #path & (</> Text.unpack model)
-  _ -> pure () -- FIXME
+
+      srcCompressed :: FilePath
+      srcCompressed = src </> Text.unpack model <.> "zst"
   where
     moveToCache :: ModelCache -> FilePath -> m ()
     moveToCache cache path = do
@@ -133,7 +180,7 @@ cacheAndUseModel model = \case
       liftIO $ copyFile path modelPath
       where
         evictOldModels :: m ()
-        evictOldModels = loopM doEvict =<< modelsByATime dir
+        evictOldModels = loopM doEvict =<< modelsByATime cacheDir
 
         doEvict :: [FilePath] -> m (Either [FilePath] ())
         doEvict = \case
@@ -153,13 +200,13 @@ cacheAndUseModel model = \case
 
         newCacheSize :: Word64 -> m Word64
         newCacheSize newSize =
-          (+ newSize) . fromIntegral <$> liftIO (getFileSize dir)
+          (+ newSize) . fromIntegral <$> liftIO (getFileSize cacheDir)
 
         modelPath :: FilePath
-        modelPath = dir </> takeFileName path
+        modelPath = cacheDir </> takeFileName path
 
-        dir :: FilePath
-        dir = cache ^. #path
+        cacheDir :: FilePath
+        cacheDir = cache ^. #path
 
 modelsByATime :: MonadIO m => FilePath -> m [FilePath]
 modelsByATime dir =
