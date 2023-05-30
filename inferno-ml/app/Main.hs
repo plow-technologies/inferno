@@ -2,13 +2,11 @@
 
 module Main where
 
-import Control.Monad.Except (ExceptT)
 import Data.Bifunctor (bimap)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text.IO as Text
 import Inferno.Eval (TermEnv, runEvalIO)
-import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr, inferTypeReps)
 import Inferno.Infer.Pinned (pinExpr)
 import Inferno.ML.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms)
@@ -58,12 +56,12 @@ main = do
                     Left err -> print err
                     Right res -> showPretty res
   where
-    prelude :: ModuleMap (ExceptT EvalError IO) MlValue
+    prelude :: ModuleMap IO MlValue
     prelude = builtinModules
 
     allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
 
-    mkEnv :: ImplEnvM (ExceptT EvalError IO) MlValue (TermEnv VCObjectHash MlValue (ImplEnvM (ExceptT EvalError IO) MlValue))
+    mkEnv :: ImplEnvM IO MlValue (TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))
     mkEnv = do
       pinnedEnv <- snd <$> builtinModulesTerms
       pure (mempty, pinnedEnv)

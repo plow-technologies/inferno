@@ -27,10 +27,10 @@ library
   build-depends:
       base
     , containers
+    , exceptions
     , hasktorch
     , inferno-core
     , inferno-types
-    , mtl
     , text
     , prettyprinter
   default-language: Haskell2010
@@ -53,5 +53,4 @@ executable inferno-ml-exe
     , inferno-ml
     , inferno-types
     , text
-    , mtl
   default-language: Haskell2010

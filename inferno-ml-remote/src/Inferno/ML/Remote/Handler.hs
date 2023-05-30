@@ -6,7 +6,7 @@ module Inferno.ML.Remote.Handler
 where
 
 import Control.Monad ((<=<))
-import Control.Monad.Except (ExceptT, MonadError (throwError))
+import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (bimap))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
@@ -18,8 +18,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Tuple.Extra (fst3, snd3, (&&&))
-import Inferno.Eval (TermEnv)
-import Inferno.Eval.Error (EvalError)
+import Inferno.Eval (TermEnv, runEvalIO)
 import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
 import Inferno.Infer.Pinned (pinExpr)
 import Inferno.ML.Module.Prelude
@@ -28,7 +27,6 @@ import Inferno.ML.Module.Prelude
     builtinModulesOpsTable,
     builtinModulesPinMap,
     builtinModulesTerms,
-    runEvalIO,
   )
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Parse (parseExpr)
@@ -90,9 +88,9 @@ runInferenceHandler src =
 
     mkEnv ::
       ImplEnvM
-        (ExceptT EvalError IO)
+        IO
         MlValue
-        ( TermEnv VCObjectHash MlValue (ImplEnvM (ExceptT EvalError IO) MlValue)
+        ( TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue)
         )
     mkEnv = (mempty,) . snd <$> builtinModulesTerms
 

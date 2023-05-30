@@ -4,7 +4,7 @@
 
 module Inferno.ML.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms) where
 
-import Control.Monad.Except (ExceptT, MonadError, throwError)
+import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
@@ -28,6 +28,9 @@ import Inferno.Utils.QQ.Module (infernoModules)
 import Torch
   ( Device (..),
     DeviceType (..),
+    HasForward (forward),
+    IValue (..),
+    ScriptModule,
     Tensor,
     TensorLike (asTensor),
     TensorOptions,
@@ -38,7 +41,7 @@ import Torch
     toDevice,
     toType,
     withDType,
-    zeros, ScriptModule, IValue (..), HasForward (forward),
+    zeros,
   )
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -53,14 +56,14 @@ import Torch.Functional
   )
 import qualified Torch.Script as TS
 
-getDtype :: (MonadError EvalError m) => String -> Ident -> m TensorOptions
+getDtype :: (MonadThrow m) => String -> Ident -> m TensorOptions
 getDtype funName = \case
   "int" -> return $ withDType TD.Int64 defaultOpts
   "float" -> return $ withDType TD.Float defaultOpts
   "double" -> return $ withDType TD.Double defaultOpts
-  s -> throwError $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
+  s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
 
-zerosFun :: (MonadError EvalError m) => Value MlValue m
+zerosFun :: (MonadThrow m) => Value MlValue m
 zerosFun =
   VFun $ \case
     VEnum _ e -> do
@@ -69,9 +72,9 @@ zerosFun =
         shape <- fromValue vShape
         t <- toValue $ zeros shape opts
         return t
-    _ -> throwError $ RuntimeError "zerosFun: expecting a dtype enum"
+    _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
-onesFun :: (MonadError EvalError m) => Value MlValue m
+onesFun :: (MonadThrow m) => Value MlValue m
 onesFun =
   VFun $ \case
     VEnum _ e -> do
@@ -80,60 +83,60 @@ onesFun =
         shape <- fromValue vShape
         t <- toValue $ ones shape opts
         return t
-    _ -> throwError $ RuntimeError "onesFun: expecting a dtype enum"
+    _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
-asTensor1Fun :: (MonadError EvalError m) => Value MlValue m
+asTensor1Fun :: (MonadThrow m) => Value MlValue m
 asTensor1Fun =
   VFun $ \case
     VArray xs -> do
       fs <- getDoubleList xs
       -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
+    _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
       VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting double values"
+      _ -> throwM $ RuntimeError "asTensor2Fun: expecting double values"
     getDoubleList xs = mapM getDouble xs
 
-asTensor2Fun :: (MonadError EvalError m) => Value MlValue m
+asTensor2Fun :: (MonadThrow m) => Value MlValue m
 asTensor2Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleList xs
       -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array"
+    _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
   where
     getDouble v = case v of
       VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting double values"
+      _ -> throwM $ RuntimeError "asTensor2Fun: expecting double values"
     getDoubleList = \case
       VArray xs -> mapM getDouble xs
-      _ -> throwError $ RuntimeError "asTensor2Fun: expecting an array of arrays"
+      _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array of arrays"
 
 -- TODO clean up
-asTensor4Fun :: (MonadError EvalError m) => Value MlValue m
+asTensor4Fun :: (MonadThrow m) => Value MlValue m
 asTensor4Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleListListList xs
       -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array"
+    _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array"
   where
     getDouble v = case v of
       VDouble x -> pure x
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting double values"
+      _ -> throwM $ RuntimeError "asTensor4Fun: expecting double values"
     getDoubleList = \case
       VArray xs -> mapM getDouble xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
+      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
     getDoubleListList = \case
       VArray xs -> mapM getDoubleList xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
+      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
     getDoubleListListList = \case
       VArray xs -> mapM getDoubleListList xs
-      _ -> throwError $ RuntimeError "asTensor4Fun: expecting an array of arrays"
+      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
 
 asArray1Fun :: Tensor -> [Double]
 asArray1Fun t = asValue $ toType TD.Double t
@@ -166,7 +169,7 @@ forwardFun m ts =
         concat $ map unIV ivs
       res -> error $ "expected tensor result, got " ++ (show res)
 
-randomTensorIFun :: (MonadError EvalError m, MonadIO m) => Value MlValue m
+randomTensorIFun :: (MonadThrow m, MonadIO m) => Value MlValue m
 randomTensorIFun = VFun $ \xs -> do
   -- TODO also allow choosing dtype
   -- TODO if this works also use this in toTensor functions above
@@ -183,7 +186,7 @@ toDeviceFun d t =
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice device t
 
-mlModules :: (MonadError EvalError m, MonadIO m) => Prelude.ModuleMap m MlValue
+mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
 mlModules =
   [infernoModules|
 
@@ -231,8 +234,7 @@ module ML
 
 |]
 
-
-builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM (ExceptT EvalError IO) MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM (ExceptT EvalError IO) MlValue))))
+builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
 builtinModules =
   -- -- "Export" the TachDB module so that its functions can be used without a module prefix
   -- case Map.lookup "Base" modules of
@@ -254,21 +256,21 @@ builtinModules =
   --   modules =
   --     Map.unionWith
   --       (error "Duplicate module name in builtinModules")
-  --       (Prelude.builtinModules @(ExceptT EvalError IO) @PlowValue)
-  --       (plowModules @(ExceptT EvalError IO))
+  --       (Prelude.builtinModules @IO @PlowValue)
+  --       (plowModules @IO)
   Map.unionWith
     (error "Duplicate module name in builtinModules")
-    (Prelude.builtinModules @(ExceptT EvalError IO) @MlValue)
-    (mlModules @(ExceptT EvalError IO))
+    (Prelude.builtinModules @IO @MlValue)
+    (mlModules @IO)
 
 baseOpsTable :: OpsTable
-baseOpsTable = Prelude.baseOpsTable @(ExceptT EvalError IO) @MlValue builtinModules
+baseOpsTable = Prelude.baseOpsTable @IO @MlValue builtinModules
 
 builtinModulesOpsTable :: Map.Map ModuleName OpsTable
-builtinModulesOpsTable = Prelude.builtinModulesOpsTable @(ExceptT EvalError IO) @MlValue builtinModules
+builtinModulesOpsTable = Prelude.builtinModulesOpsTable @IO @MlValue builtinModules
 
 builtinModulesPinMap :: Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
-builtinModulesPinMap = Prelude.builtinModulesPinMap @(ExceptT EvalError IO) @MlValue builtinModules
+builtinModulesPinMap = Prelude.builtinModulesPinMap @IO @MlValue builtinModules
 
-builtinModulesTerms :: ImplEnvM (ExceptT EvalError IO) MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM (ExceptT EvalError IO) MlValue))
-builtinModulesTerms = Prelude.builtinModulesTerms @(ExceptT EvalError IO) @MlValue builtinModules
+builtinModulesTerms :: ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))
+builtinModulesTerms = Prelude.builtinModulesTerms @IO @MlValue builtinModules

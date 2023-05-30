@@ -34,7 +34,7 @@ library
     , co-log-core                        >= 0.3.1 && < 0.4
     , containers                         >= 0.6.2 && < 0.7
     , exceptions                         >= 0.10.4 && < 0.11
-    , inferno-core                       >= 0.2.0 && < 0.3
+    , inferno-core                       >= 0.3.0 && < 0.4
     , inferno-types                      >= 0.1.0 && < 0.2
     , inferno-vc                         >= 0.2.0 && < 0.3
     , lsp                                >= 1.6.0 && < 1.7
