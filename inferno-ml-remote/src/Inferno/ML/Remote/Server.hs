@@ -16,7 +16,7 @@ import Inferno.ML.Remote.Types
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteM,
     Options,
-    parseOptions,
+    mkOptions,
   )
 import Lens.Micro.Platform ((^.))
 import Network.HTTP.Types (Status)
@@ -32,7 +32,7 @@ import Network.Wai.Logger (withStdoutLogger)
 import Servant (Application, ServerT, hoistServer, serve)
 
 main :: IO ()
-main = runServer =<< parseOptions
+main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
     runServer options =
