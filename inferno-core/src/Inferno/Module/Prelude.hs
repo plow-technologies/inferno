@@ -164,7 +164,7 @@ preludeNameToTypeMap moduleMap =
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinModules :: (MonadIO m, MonadThrow m, MonadCatch (ImplEnvM m c), Pretty c, Eq c) => ModuleMap m c
+builtinModules :: (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => ModuleMap m c
 builtinModules =
   [infernoModules|
 

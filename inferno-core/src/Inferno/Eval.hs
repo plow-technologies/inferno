@@ -3,7 +3,6 @@
 
 module Inferno.Eval where
 
--- import Control.Monad (foldM, when)
 import Control.Monad.Catch (MonadThrow (throwM), SomeException, try)
 import Control.Monad.Except
   ( Except,
@@ -68,7 +67,7 @@ type Interpreter t = Except EvalError t
 emptyTmenv :: TermEnv hash c m
 emptyTmenv = (Map.empty, Map.empty)
 
-eval :: (MonadThrow m, MonadThrow (ImplEnvM m c), Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
+eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
 eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LInt k) -> return $
     VFun $ \case
@@ -108,7 +107,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                     _ -> throwM $ RuntimeError "failed to match with a bool"
               )
     where
-      sequence' :: (MonadThrow m, MonadThrow (ImplEnvM m c), Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
+      sequence' :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
       sequence' env'@(localEnv', pinnedEnv') = \case
         (_, Ident x, _, e_s, _) :| [] -> do
           eval env' e_s >>= \case
@@ -269,7 +268,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   OpenModule_ _ _ e -> eval env e
 
 runEvalIO ::
-  (Pretty c, MonadThrow (ImplEnvM IO c)) =>
+  (Pretty c) =>
   ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c)) ->
   Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
   Expr (Maybe VCObjectHash) a ->
@@ -283,7 +282,7 @@ runEvalIO env implicitEnv ex = do
 
 pureEval ::
   -- MonadThrow Identity is probably not true, is it? pureEval is probably impossible. Remove?
-  (Pretty c, MonadThrow Identity, MonadThrow (ImplEnvM (ExceptT EvalError Identity) c)) =>
+  (Pretty c, MonadThrow Identity) =>
   TermEnv VCObjectHash c (ImplEnvM (ExceptT EvalError Identity) c) ->
   Map.Map ExtIdent (Value c (ImplEnvM (ExceptT EvalError Identity) c)) ->
   Expr (Maybe VCObjectHash) a ->

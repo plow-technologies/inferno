@@ -69,7 +69,7 @@ combineTermEnvs ::
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
 
 buildPinnedQQModules ::
-  (MonadThrow m, MonadThrow (ImplEnvM m c), Pretty c) =>
+  (MonadThrow m, Pretty c) =>
   [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
   Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
 buildPinnedQQModules modules =
@@ -94,7 +94,7 @@ buildPinnedQQModules modules =
       modules
   where
     buildModule ::
-      (MonadThrow m, MonadThrow (ImplEnvM m c), Pretty c) =>
+      (MonadThrow m, Pretty c) =>
       Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash)) ->
       Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
       [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))] ->

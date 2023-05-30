@@ -6,7 +6,7 @@
 module Inferno.Types.Value where
 
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
-import Control.Monad.Except (MonadError)
+import Control.Monad.Except (MonadError, lift)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (..))
@@ -86,9 +86,12 @@ instance Pretty c => Pretty (Value c m) where
 newtype ImplEnvM m c a = ImplEnvM {unImplEnvM :: ReaderT (Map.Map ExtIdent (Value c (ImplEnvM m c))) m a}
   deriving (Applicative, Functor, Monad, MonadReader (Map.Map ExtIdent (Value c (ImplEnvM m c))), MonadError e, MonadFix, MonadIO)
 
-deriving instance MonadThrow (ImplEnvM IO ())
+instance MonadThrow m => MonadThrow (ImplEnvM m c) where
+  throwM = ImplEnvM . lift . throwM
 
-deriving instance MonadCatch (ImplEnvM IO ())
+instance MonadCatch m => MonadCatch (ImplEnvM m c) where
+  catch (ImplEnvM (ReaderT m)) c = ImplEnvM $ ReaderT $ \env ->
+    m env `catch` \e -> runImplEnvM env (c e)
 
 runImplEnvM :: Map.Map ExtIdent (Value c (ImplEnvM m c)) -> ImplEnvM m c a -> m a
 runImplEnvM env = flip runReaderT env . unImplEnvM

@@ -23,7 +23,6 @@ import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap)
 import Inferno.Parse (expr, topLevel)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
-import Inferno.Types.Value (ImplEnvM (..))
 import Inferno.Utils.QQ.Common
   ( liftText,
     location',
@@ -43,7 +42,7 @@ import Text.Megaparsec
     runParser',
   )
 
-inferno :: forall m c. (MonadIO m, MonadThrow m, MonadCatch (ImplEnvM m c), Pretty c, Eq c) => QuasiQuoter
+inferno :: forall m c. (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => QuasiQuoter
 inferno =
   QuasiQuoter
     { quoteExp = \str -> do
