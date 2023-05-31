@@ -55,6 +55,7 @@ library
     Inferno.ML.Remote.Handler
     Inferno.ML.Remote.Server
     Inferno.ML.Remote.Types
+    Inferno.ML.Remote.Utils
 
   hs-source-dirs:  src
   build-depends:
@@ -62,8 +63,13 @@ library
     , base
     , bytestring
     , containers
+    , directory
+    , exceptions
     , extra
+    , filepath
     , generic-lens
+    , http-client
+    , http-types
     , inferno-core
     , inferno-ml
     , inferno-types
@@ -72,7 +78,12 @@ library
     , optparse-applicative
     , servant-client
     , servant-server
+    , temporary
     , text
+    , time
+    , typed-process
+    , unix
+    , wai
     , wai-logger
     , warp
 
@@ -92,6 +103,7 @@ test-suite tests
   type:           exitcode-stdio-1.0
   build-depends:
     , base
+    , directory
     , filepath
     , generic-lens
     , hspec
@@ -102,5 +114,6 @@ test-suite tests
     , microlens-platform
     , mtl
     , servant-client
+    , temporary
     , text
     , warp

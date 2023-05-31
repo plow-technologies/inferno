@@ -5,89 +5,80 @@ module Inferno.ML.Remote.Handler
   )
 where
 
-import Control.Monad ((<=<))
+import Control.Exception (Exception (displayException))
+import Control.Monad (unless)
+import Control.Monad.Catch (bracket_)
 import Control.Monad.Except (ExceptT, MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Bifunctor (Bifunctor (bimap))
+import Control.Monad.Reader.Class (asks)
+import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
-import Data.Foldable (foldl')
+import Data.Foldable (traverse_)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Text (Text)
-import Data.Tuple.Extra (fst3, snd3, (&&&))
+import qualified Data.Text as Text
 import Inferno.Eval (TermEnv, runEvalIO)
 import Inferno.Eval.Error (EvalError)
-import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
-import Inferno.Infer.Pinned (pinExpr)
-import Inferno.ML.Module.Prelude
-  ( baseOpsTable,
-    builtinModules,
-    builtinModulesOpsTable,
-    builtinModulesPinMap,
-    builtinModulesTerms,
+import Inferno.ML.Module.Prelude (builtinModulesTerms)
+import Inferno.ML.Remote.Types
+  ( EvalResult (EvalResult),
+    InfernoMlRemoteM,
+    ModelCache,
+    Script,
+    SomeInfernoError (SomeInfernoError),
   )
-import Inferno.ML.Remote.Types (EvalResult (EvalResult), Script (Script))
+import Inferno.ML.Remote.Utils
+  ( cacheAndUseModel,
+    collectModelNames,
+    mkFinalAst,
+    typecheck,
+  )
 import Inferno.ML.Types.Value (MlValue)
-import Inferno.Parse (parseExpr)
-import Inferno.Types.Syntax (Expr (App, TypeRep), SourcePos, collectArrs)
-import Inferno.Types.Type (ImplType, InfernoType, TCScheme, TypeClass)
+import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Value (ImplEnvM)
-import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
+import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Lens.Micro.Platform (each, (^.), (^..))
-import Servant (Handler, ServerError (errBody), err500)
+import Lens.Micro.Platform (view, (^.))
+import Servant (ServerError (errBody), err500)
+import System.Directory
+  ( getCurrentDirectory,
+    setCurrentDirectory,
+  )
 
--- FIXME
--- Use more descriptive types for this
-runInferenceHandler :: Script -> Handler EvalResult
-runInferenceHandler (Script src) =
-  fmap (coerce . renderPretty) . liftEither500
-    =<< liftIO . runEvalIO mkEnv mempty
-    =<< mkFinalAst
-    =<< typecheck src
+runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
+runInferenceHandler src = do
+  ast <- liftEither500 $ mkFinalAst =<< typecheck src
+  cwd <- liftIO getCurrentDirectory
+  asks (view #modelCache) >>= \case
+    Nothing -> do
+      unless (null (collectModelNames ast)) $
+        throwError $
+          err500
+            { errBody = "No model cache has been configured for this server"
+            }
+      runEval ast
+    Just cache -> do
+      traverse_ (`cacheAndUseModel` cache) $ collectModelNames ast
+      -- Change working directories to the model cache so that Hasktorch
+      -- can find the models using relative paths (otherwise the AST would need
+      -- to be updated to use an absolute path)
+      --
+      -- NOTE
+      -- We can't use `withCurrentDirectory` here because it expects an IO action
+      -- to run in between. And there's no `UnliftIO` instance for `Handler`
+      -- (because it uses `ExceptT`), so it's easier just to `bracket` it
+      -- directly
+      bracket_
+        (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
+        (cwd & liftIO . setCurrentDirectory)
+        $ runEval ast
   where
-    mkFinalAst ::
-      ( Expr (Pinned VCObjectHash) SourcePos,
-        TCScheme
-      ) ->
-      Handler (Expr (Maybe VCObjectHash) ())
-    mkFinalAst (ast, tcscheme) = mkFinal <$> liftEither500 (runtimeReps tys)
-      where
-        mkFinal :: [InfernoType] -> Expr (Maybe VCObjectHash) ()
-        mkFinal =
-          foldl' App (bimap pinnedToMaybe (const ()) ast)
-            . fmap (TypeRep ())
-
-        runtimeReps ::
-          ([InfernoType], InfernoType) ->
-          Either [TypeError SourcePos] [InfernoType]
-        runtimeReps = uncurry $ inferTypeReps allClasses tcscheme
-
-        tys :: ([InfernoType], InfernoType)
-        tys =
-          tcscheme ^. typed @ImplType . typed @InfernoType
-            & collectArrs
-            & (init &&& last)
-
-    typecheck ::
-      Text ->
-      Handler
-        ( Expr (Pinned VCObjectHash) SourcePos,
-          TCScheme
-        )
-    typecheck =
-      liftEither500 . fmap (fst3 &&& snd3) . inferExpr builtinModules
-        <=< liftEither500 . pinExpr builtinModulesPinMap
-        <=< liftEither500
-          . fmap fst
-          . parseExpr baseOpsTable builtinModulesOpsTable
-
-    allClasses :: Set TypeClass
-    allClasses = builtinModules ^.. each . #moduleTypeClasses & Set.unions
+    runEval :: Expr (Maybe VCObjectHash) () -> InfernoMlRemoteM EvalResult
+    runEval ast =
+      fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
+        =<< liftIO (runEvalIO mkEnv mempty ast)
 
     mkEnv ::
       ImplEnvM
@@ -97,11 +88,11 @@ runInferenceHandler (Script src) =
         )
     mkEnv = (mempty,) . snd <$> builtinModulesTerms
 
-liftEither500 :: forall e a. Show e => Either e a -> Handler a
+liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure
   where
     mk500 :: Show e => e -> ServerError
-    mk500 (ByteString.Lazy.Char8.pack . show -> e) =
+    mk500 (ByteString.Lazy.Char8.pack . displayException -> e) =
       err500
         { errBody = "Script evalution failed with: " <> e
         }
