@@ -21,7 +21,12 @@ import Inferno.ML.Remote.Types
     Script (Script),
     SomeInfernoError,
   )
-import Inferno.ML.Remote.Utils (cacheAndUseModel, collectModelNames, mkFinalAst, typecheck)
+import Inferno.ML.Remote.Utils
+  ( cacheAndUseModel,
+    collectModelNames,
+    mkFinalAst,
+    typecheck,
+  )
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform ((.~))
@@ -104,6 +109,18 @@ collectModelsSpec = Hspec.describe "collectModelNames" $ do
 
   Hspec.it "extracts multiple models from script" $ do
     mkAstTest "./test/contrived.inferno" $
+      (`Hspec.shouldBe` ["x.ts.pt", "y.ts.pt"]) . collectModelNames
+
+  Hspec.it "extracts a single model with non-literal name" $ do
+    mkAstTest "./test/contrived4.inferno" $
+      (`Hspec.shouldBe` ["x.ts.pt"]) . collectModelNames
+
+  Hspec.it "extracts multiple models with non-literal names" $ do
+    mkAstTest "./test/contrived2.inferno" $
+      (`Hspec.shouldBe` ["x.ts.pt", "y.ts.pt"]) . collectModelNames
+
+  Hspec.it "extracts multiple models with literal and non-literal names" $ do
+    mkAstTest "./test/contrived2.inferno" $
       (`Hspec.shouldBe` ["x.ts.pt", "y.ts.pt"]) . collectModelNames
   where
     mkAstTest :: FilePath -> (Expr (Maybe VCObjectHash) () -> IO ()) -> IO ()

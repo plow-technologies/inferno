@@ -6,6 +6,7 @@ module Inferno.ML.Remote.Utils
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadMask, MonadThrow (throwM), bracket)
 import Control.Monad.Extra (loopM, unlessM, whenM)
@@ -49,6 +50,7 @@ import Inferno.Types.Syntax
     ExtIdent (ExtIdent),
     ImplExpl (Expl),
     Lit (LText),
+    Scoped (LocalScope),
     SourcePos,
     collectArrs,
   )
@@ -220,18 +222,33 @@ modelsByATime dir =
     getATime (_, p) = (,p) <$> getAccessTime p
 
 -- Get the names of models used with @ML.loadModel@ so they can be cached
-collectModelNames :: Expr a () -> [Text]
-collectModelNames = collect mempty
+collectModelNames :: Expr a b -> [Text]
+collectModelNames x = collect mempty x
   where
-    collect :: [Text] -> Expr a () -> [Text]
+    collect :: [Text] -> Expr a b -> [Text]
     collect models = \case
-      OpenModule _ _ _ _ _ expr -> collect models expr
+      App (Var _ _ _ (Expl (ExtIdent (Right "loadModel")))) lhs -> case lhs of
+        Lit _ (LText model) -> model : models
+        -- In this case, the original literal text needs to be recovered from
+        -- the original AST
+        Var _ _ LocalScope (Expl (ExtIdent (Right var))) ->
+          maybe models (: models) $ findVar var x
+        _ -> models
+      App lhs rhs -> collect mempty lhs <> collect models rhs
       Let _ _ _ _ lhs _ rhs ->
         collect mempty lhs <> collect models rhs
-      App
-        (Var _ _ _ (Expl (ExtIdent (Right "loadModel"))))
-        (Lit _ (LText model)) ->
-          model : models
-      App lhs rhs -> collect mempty lhs <> collect models rhs
+      OpenModule _ _ _ _ _ expr -> collect models expr
       Bracketed _ expr _ -> collect models expr
       _ -> models
+
+    -- Get the literal text (i.e. the name of the model) from the let-binding
+    -- used subsequently with an application of `loadLodel`
+    findVar :: Text -> Expr a b -> Maybe Text
+    findVar var = \case
+      Let _ _ (Expl (ExtIdent (Right ext))) _ (Lit _ (LText model)) _ _
+        | ext == var -> pure model
+      Let _ _ _ _ lhs _ rhs -> findVar var lhs <|> findVar var rhs
+      App lhs rhs -> findVar var lhs <|> findVar var rhs
+      OpenModule _ _ _ _ _ expr -> findVar var expr
+      Bracketed _ expr _ -> findVar var expr
+      _ -> Nothing
