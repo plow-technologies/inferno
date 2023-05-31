@@ -17,7 +17,7 @@ import Inferno.ML.Remote.Types
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteError (CacheSizeExceeded),
     ModelCache (ModelCache),
-    ModelCacheOption (Paths, CompressedPaths),
+    ModelCacheOption (CompressedPaths, Paths),
     Script (Script),
     SomeInfernoError,
   )
@@ -49,7 +49,7 @@ main = Hspec.hspec $ do
 
 -- Tests `/inference` endpoint with various Inferno scripts with ML features
 inferenceSpec :: Spec
-inferenceSpec = Hspec.around withTestAppAndEnv $ do
+inferenceSpec = do
   baseUrl <- Hspec.runIO $ parseBaseUrl "http://localhost"
   manager <- Hspec.runIO $ newManager defaultManagerSettings
 
@@ -60,7 +60,7 @@ inferenceSpec = Hspec.around withTestAppAndEnv $ do
       inferenceClient = runInference api
 
       runClient :: Int -> ClientM a -> IO (Either ClientError a)
-      runClient port = flip runClientM (mkEnv port)
+      runClient port = flip runClientM $ mkEnv port
 
       mkEvalTest :: FilePath -> EvalResult -> SpecWith (Arg (Int -> IO ()))
       mkEvalTest fp expected =
@@ -70,20 +70,27 @@ inferenceSpec = Hspec.around withTestAppAndEnv $ do
               (Hspec.expectationFailure . show)
               (`Hspec.shouldBe` expected)
 
-  Hspec.describe "POST /inference" $ do
-    mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
+  Hspec.around (withTestAppAndEnv mkCacheOption) $ do
+    Hspec.describe "POST /inference" $ do
+      mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
-    mkEvalTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
-      Text.unlines
-        [ "[Tensor Float [1] [-6.7711e-5]",
-          ",Tensor Float [1] [ 1.0000   ]",
-          ",Tensor Float [1] [ 0.9999   ]",
-          ",Tensor Float [1] [-1.9073e-6]]"
-        ]
+      mkEvalTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
+        Text.unlines
+          [ "[Tensor Float [1] [-6.7711e-5]",
+            ",Tensor Float [1] [ 1.0000   ]",
+            ",Tensor Float [1] [ 0.9999   ]",
+            ",Tensor Float [1] [-1.9073e-6]]"
+          ]
 
-    mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
+      mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
-    mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
+      mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
+
+  -- This tests caching and using the model with the filesystem compression
+  -- option, the one above uses non-compressed paths
+  Hspec.around (withTestAppAndEnv mkCompressedCacheOption) $ do
+    Hspec.describe "POST /inference" $ do
+      mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
 
 collectModelsSpec :: Spec
 collectModelsSpec = Hspec.describe "collectModelNames" $ do
@@ -123,13 +130,17 @@ cacheModelsSpec =
       (`Hspec.shouldThrow` (== CacheSizeExceeded)) $
         cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
 
-withTestAppAndEnv :: (Int -> IO ()) -> IO ()
-withTestAppAndEnv f =
+withTestAppAndEnv ::
+  (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
+withTestAppAndEnv g f =
   withTempDir $
     (`withTestApp` f)
       . InfernoMlRemoteEnv
       . Just
-      . (`mkCacheOption` (10 * 1073741824))
+      . (`g` maxSize)
+  where
+    maxSize :: Word64
+    maxSize = 10 * 1073741824
 
 mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
 mkCacheOption fp = Paths "./test" . ModelCache fp
