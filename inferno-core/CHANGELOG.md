@@ -1,5 +1,8 @@
 # Revision History for inferno-core
 
+## 0.1.4 -- 2023-04-14
+* Added `toBCD` and `fromBCD` functions to Prelude
+
 ## 0.1.3 -- 2023-03-06
 * Update inferno-vc version
 

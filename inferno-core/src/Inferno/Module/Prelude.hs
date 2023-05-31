@@ -46,6 +46,7 @@ import Inferno.Module.Prelude.Defs
     foldlFun,
     foldrFun,
     formatTime,
+    fromBCDFun,
     fromWordFun,
     geqFun,
     gtFun,
@@ -101,6 +102,7 @@ import Inferno.Module.Prelude.Defs
     textSplitAt,
     timeIntervalFun,
     timeToInt,
+    toBCDFun,
     toWord16Fun,
     toWord32Fun,
     toWord64Fun,
@@ -588,6 +590,12 @@ module Word
 
   @doc Convert a word to an `int`;
   fromWord : forall 'a. {requires fromWord on 'a} => 'a -> int := ###fromWordFun###;
+
+  @doc Decode a BCD-encoded word64;
+  fromBCD : word64 -> option of word64 := ###fromBCDFun###;
+
+  @doc Encode a BCD-encoded word64;
+  toBCD : word64 -> word64 := ###toBCDFun###;
 
 module Base
 
