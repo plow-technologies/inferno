@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-lsp
-version:             0.1.1
+version:             0.1.2
 synopsis:            LSP for Inferno
 description:         A language server protocol implementation for the Inferno language
 category:            IDE,DSL,Scripting
@@ -33,7 +33,8 @@ library
     , bytestring                         >= 0.10.10 && < 0.12
     , co-log-core                        >= 0.3.1 && < 0.4
     , containers                         >= 0.6.2 && < 0.7
-    , inferno-core                       >= 0.1.0 && < 0.2
+    , exceptions                         >= 0.10.4 && < 0.11
+    , inferno-core                       >= 0.2.0 && < 0.3
     , inferno-types                      >= 0.1.0 && < 0.2
     , inferno-vc                         >= 0.2.0 && < 0.3
     , lsp                                >= 1.6.0 && < 1.7
@@ -73,4 +74,5 @@ executable inferno-lsp-server
       base >=4.7 && <5
     , inferno-core
     , inferno-lsp
+    , mtl
   default-language: Haskell2010

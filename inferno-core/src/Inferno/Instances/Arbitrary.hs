@@ -18,7 +18,6 @@
 --   we could move this module to test/ folder, but by providing the instances as part of the core, we allow others to re-use them.
 module Inferno.Instances.Arbitrary where
 
-import Control.Monad.Except (ExceptT)
 import Crypto.Hash (Digest, hash)
 import Crypto.Hash.Algorithms (SHA256)
 import qualified Data.ByteString as ByteString (pack)
@@ -29,7 +28,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Set as Set (fromList)
 import qualified Data.Text as Text (Text, all, null, pack)
 import GHC.Generics (Generic (..), Rep)
-import Inferno.Eval.Error (EvalError)
 import qualified Inferno.Module.Prelude as Prelude
 import qualified Inferno.Types.Module as Module (Module)
 import Inferno.Types.Syntax
@@ -97,7 +95,7 @@ instance (Generic a, GArbitrary ga, ga ~ Rep a) => Arbitrary (GenericArbitrary a
   arbitrary = GenericArbitrary <$> genericArbitrary
 
 baseOpsTable :: OpsTable
-baseOpsTable = Prelude.baseOpsTable @(ExceptT EvalError IO) @() $ Prelude.builtinModules @(ExceptT EvalError IO) @()
+baseOpsTable = Prelude.baseOpsTable @IO @() $ Prelude.builtinModules @IO @()
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Module
 deriving instance Arbitrary objs => ToADTArbitrary (Module.Module objs)

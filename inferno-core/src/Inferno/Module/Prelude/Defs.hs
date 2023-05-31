@@ -3,7 +3,8 @@
 module Inferno.Module.Prelude.Defs where
 
 import Control.Monad (foldM)
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Catch (MonadThrow (..))
+import Control.Monad.IO.Class (MonadIO)
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -41,6 +42,7 @@ import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
+import System.Random (randomIO)
 
 zeroVal :: Value c m
 zeroVal = VInt 0
@@ -117,7 +119,10 @@ formatTime t f =
   let t1 = posixSecondsToUTCTime $ realToFrac t
    in pack $ Time.Format.formatTime Time.Format.defaultTimeLocale (unpack f) t1
 
-keepSomesFun :: (MonadError EvalError m) => Value c m
+randomFun :: (MonadIO m) => Value c m
+randomFun = VFun $ \_ -> VDouble <$> randomIO
+
+keepSomesFun :: (MonadThrow m) => Value c m
 keepSomesFun =
   VFun $ \case
     VArray xs ->
@@ -130,9 +135,9 @@ keepSomesFun =
             )
             []
             xs
-    _ -> throwError $ RuntimeError "keepSomes: expecting an array"
+    _ -> throwM $ RuntimeError "keepSomes: expecting an array"
 
-foldlFun :: (MonadError EvalError m) => Value c m
+foldlFun :: (MonadThrow m) => Value c m
 foldlFun =
   VFun $ \case
     VFun f ->
@@ -144,14 +149,14 @@ foldlFun =
                 ( \acc x ->
                     f acc >>= \case
                       VFun f' -> f' x
-                      _ -> throwError $ RuntimeError "reduce: expecting a function when folding"
+                      _ -> throwM $ RuntimeError "reduce: expecting a function when folding"
                 )
                 z
                 xs
-            _ -> throwError $ RuntimeError "reduce: expecting an array in the third argument"
-    _ -> throwError $ RuntimeError "reduce: expecting a function in the first argument"
+            _ -> throwM $ RuntimeError "reduce: expecting an array in the third argument"
+    _ -> throwM $ RuntimeError "reduce: expecting a function in the first argument"
 
-foldrFun :: (MonadError EvalError m) => Value c m
+foldrFun :: (MonadThrow m) => Value c m
 foldrFun =
   VFun $ \case
     VFun f ->
@@ -163,12 +168,12 @@ foldrFun =
                 ( \x acc ->
                     f x >>= \case
                       VFun f' -> f' acc
-                      _ -> throwError $ RuntimeError "reduceRight: expecting a function when folding"
+                      _ -> throwM $ RuntimeError "reduceRight: expecting a function when folding"
                 )
                 z
                 xs
-            _ -> throwError $ RuntimeError "reduceRight: expecting an array in the third argument"
-    _ -> throwError $ RuntimeError "reduceRight: expecting a function in the first argument"
+            _ -> throwM $ RuntimeError "reduceRight: expecting an array in the third argument"
+    _ -> throwM $ RuntimeError "reduceRight: expecting a function in the first argument"
 
 traceFun :: (Monad m, Pretty c) => (Value c m)
 traceFun = VFun $ \msg -> trace ("TRACE: " <> unpack (renderPretty msg)) $ return idFun
@@ -395,7 +400,7 @@ toWord16Fun = either fromBool (either id (either (fromIntegral . (.&.) 0xFFFF) (
 fromWordFun :: Either4 Bool Word16 Word32 Word64 -> Int64
 fromWordFun = either fromBool (either fromIntegral (either fromIntegral fromIntegral))
 
-zeroFun :: MonadError EvalError m => (Value c m)
+zeroFun :: MonadThrow m => (Value c m)
 zeroFun = VFun $ \case
   VTypeRep (TBase TInt) -> return $ VInt 0
   VTypeRep (TBase TDouble) -> return $ VDouble 0
@@ -403,14 +408,14 @@ zeroFun = VFun $ \case
   VTypeRep (TBase TWord16) -> return $ VWord16 0
   VTypeRep (TBase TWord32) -> return $ VWord32 0
   VTypeRep (TBase TWord64) -> return $ VWord64 0
-  VTypeRep ty -> throwError $ RuntimeError $ "zeroFun: unexpected runtimeRep " <> show ty
-  _ -> throwError $ RuntimeError "zeroFun: expecting a runtimeRep"
+  VTypeRep ty -> throwM $ RuntimeError $ "zeroFun: unexpected runtimeRep " <> show ty
+  _ -> throwM $ RuntimeError "zeroFun: expecting a runtimeRep"
 
-lengthFun :: (MonadError EvalError m) => Value c m
+lengthFun :: (MonadThrow m) => Value c m
 lengthFun =
   VFun $ \case
     VArray xs -> pure $ VInt $ fromIntegral $ length xs
-    _ -> throwError $ RuntimeError "length: expecting an array"
+    _ -> throwM $ RuntimeError "length: expecting an array"
 
 -- | Convenience function for comparing numbered value
 -- in an array while maintaining the original value type
@@ -423,26 +428,26 @@ keepNumberValues =
         _ -> Nothing
     )
 
-minimumFun :: (MonadError EvalError m) => Value c m
+minimumFun :: (MonadThrow m) => Value c m
 minimumFun =
   VFun $ \case
-    VArray [] -> throwError $ RuntimeError "minimum: expecting a non-empty array"
+    VArray [] -> throwM $ RuntimeError "minimum: expecting a non-empty array"
     VArray xs -> return $ fst $ minimumBy (comparing snd) $ keepNumberValues xs
-    _ -> throwError $ RuntimeError "minimum: expecting an array"
+    _ -> throwM $ RuntimeError "minimum: expecting an array"
 
-maximumFun :: (MonadError EvalError m) => Value c m
+maximumFun :: (MonadThrow m) => Value c m
 maximumFun =
   VFun $ \case
-    VArray [] -> throwError $ RuntimeError "maximum: expecting a non-empty array"
+    VArray [] -> throwM $ RuntimeError "maximum: expecting a non-empty array"
     VArray xs -> return $ fst $ maximumBy (comparing snd) $ keepNumberValues xs
-    _ -> throwError $ RuntimeError "maximum: expecting an array"
+    _ -> throwM $ RuntimeError "maximum: expecting an array"
 
-averageFun :: (MonadError EvalError m) => Value c m
+averageFun :: (MonadThrow m) => Value c m
 averageFun =
   VFun $ \case
-    VArray [] -> throwError $ RuntimeError "average: expecting a non-empty array"
+    VArray [] -> throwM $ RuntimeError "average: expecting a non-empty array"
     VArray xs -> return $ VDouble $ sum (mapMaybe toDouble xs) / fromIntegral (length xs)
-    _ -> throwError $ RuntimeError "average: expecting an array"
+    _ -> throwM $ RuntimeError "average: expecting an array"
   where
     toDouble :: Value c m -> Maybe Double
     toDouble = \case
@@ -450,42 +455,42 @@ averageFun =
       VDouble v -> Just v
       _ -> Nothing
 
-argminFun :: (MonadError EvalError m) => Value c m
+argminFun :: (MonadThrow m) => Value c m
 argminFun =
   VFun $ \case
     VArray xs -> pure $ VInt $ fromIntegral $ argMin' $ map snd $ keepNumberValues xs
-    _ -> throwError $ RuntimeError "argmin: expecting an array"
+    _ -> throwM $ RuntimeError "argmin: expecting an array"
   where
     argMin' :: [Double] -> Int
     argMin' = fst . minimumBy (comparing snd) . zip [0 ..]
 
-argmaxFun :: (MonadError EvalError m) => Value c m
+argmaxFun :: (MonadThrow m) => Value c m
 argmaxFun =
   VFun $ \case
     VArray xs -> pure $ VInt $ fromIntegral $ argMax' $ map snd $ keepNumberValues xs
-    _ -> throwError $ RuntimeError "argmax: expecting an array"
+    _ -> throwM $ RuntimeError "argmax: expecting an array"
   where
     argMax' :: [Double] -> Int
     argMax' = fst . maximumBy (comparing snd) . zip [0 ..]
 
-argsortFun :: (MonadError EvalError m) => Value c m
+argsortFun :: (MonadThrow m) => Value c m
 argsortFun =
   VFun $ \case
     VArray xs -> pure $ VArray $ argsort' $ keepNumberValues xs
-    _ -> throwError $ RuntimeError "argsort: expecting an array"
+    _ -> throwM $ RuntimeError "argsort: expecting an array"
   where
     argsort' :: [(Value c m, Double)] -> [Value c m]
     argsort' xs = map (VInt . fst) $ sortOn (snd . snd) $ zip [0 ..] xs
 
-magnitudeFun :: (MonadError EvalError m) => Value c m
+magnitudeFun :: (MonadThrow m) => Value c m
 magnitudeFun =
   VFun $ \case
     VDouble x -> pure $ VDouble $ abs x
     VInt x -> pure $ VInt $ abs x
     VArray xs -> pure $ VDouble $ sqrt $ sum $ map (\x -> x ** 2) $ map snd (keepNumberValues xs)
-    _ -> throwError $ RuntimeError "magnitude: expecting a number"
+    _ -> throwM $ RuntimeError "magnitude: expecting a number"
 
-normFun :: (MonadError EvalError m) => Value c m
+normFun :: (MonadThrow m) => Value c m
 normFun = magnitudeFun
 
 appendText :: Text -> Text -> Text
@@ -497,7 +502,7 @@ textLength = fromIntegral . Text.length
 stripText :: Text -> Text
 stripText = Text.strip
 
-textSplitAt :: (MonadError EvalError m) => Value c m
+textSplitAt :: (MonadThrow m) => Value c m
 textSplitAt =
   VFun $ \case
     VInt n -> pure $
@@ -505,8 +510,8 @@ textSplitAt =
         VText txt ->
           let (a, b) = Text.splitAt (fromIntegral n) txt
            in pure $ VTuple [VText a, VText b]
-        _ -> throwError $ RuntimeError "splitAt: expecting text for the second argument"
-    _ -> throwError $ RuntimeError "splitAt: expecting an int for the first argument"
+        _ -> throwM $ RuntimeError "splitAt: expecting text for the second argument"
+    _ -> throwM $ RuntimeError "splitAt: expecting an int for the first argument"
 
 -- | Convert unsigned integer to binary-coded decimal.
 toBCD :: Word -> Word

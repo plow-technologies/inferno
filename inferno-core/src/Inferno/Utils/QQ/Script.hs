@@ -5,6 +5,8 @@
 
 module Inferno.Utils.QQ.Script where
 
+import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Writer (WriterT (..), appEndo)
 import qualified Crypto.Hash as Crypto
@@ -16,7 +18,6 @@ import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Maybe as Maybe
 import Data.Text (pack)
-import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap)
@@ -41,7 +42,7 @@ import Text.Megaparsec
     runParser',
   )
 
-inferno :: forall c. (Pretty c, Eq c) => QuasiQuoter
+inferno :: forall m c. (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => QuasiQuoter
 inferno =
   QuasiQuoter
     { quoteExp = \str -> do
@@ -71,7 +72,7 @@ inferno =
       quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
     }
   where
-    builtins = builtinModules @(Either EvalError) @c
+    builtins = builtinModules @m @c
     vcObjectHashToValue :: Crypto.Digest Crypto.SHA256 -> Maybe TH.ExpQ
     vcObjectHashToValue h =
       let str = (convert h) :: ByteString
