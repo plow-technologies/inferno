@@ -2,7 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Inferno.ML.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms) where
+module Inferno.ML.Module.Prelude (mlPrelude) where
 
 import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -14,16 +14,13 @@ import Inferno.Eval.Error (EvalError (..))
 import Inferno.ML.Types.Value
 import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
-import Inferno.Parse (OpsTable)
 import Inferno.Types.Module (PinnedModule)
 import Inferno.Types.Syntax
   ( Ident,
     ModuleName (..),
-    Scoped (..),
   )
-import Inferno.Types.Type (Namespace (..))
 import Inferno.Types.Value (ImplEnvM, Value (..))
-import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
+import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Torch
   ( Device (..),
@@ -234,43 +231,9 @@ module ML
 
 |]
 
-builtinModules :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
-builtinModules =
-  -- -- "Export" the TachDB module so that its functions can be used without a module prefix
-  -- case Map.lookup "Base" modules of
-  --   Nothing -> error "plow-inferno builtinModules: module Base not found"
-  --   Just Module {moduleName, moduleOpsTable = opsTable, moduleTypeClasses = tyCls, moduleObjects = (nsMap, tyMap, mTrmEnv)} ->
-  --     case Map.lookup "TachDB" modules of
-  --       Nothing -> error "plow-inferno builtinModules: module TachDB not found"
-  --       Just Module {moduleOpsTable = opsTable', moduleTypeClasses = tyCls', moduleObjects = (nsMap', tyMap', mTrmEnv')} ->
-  --         Map.insert
-  --           "Base"
-  --           Module
-  --             { moduleName,
-  --               moduleOpsTable = IntMap.unionWith (<>) opsTable opsTable',
-  --               moduleTypeClasses = tyCls <> tyCls',
-  --               moduleObjects = (nsMap <> nsMap', tyMap <> tyMap', mTrmEnv >>= \x -> mTrmEnv' >>= \y -> pure $ x <> y)
-  --             }
-  --           (Map.delete "TachDB" modules)
-  -- where
-  --   modules =
-  --     Map.unionWith
-  --       (error "Duplicate module name in builtinModules")
-  --       (Prelude.builtinModules @IO @PlowValue)
-  --       (plowModules @IO)
+mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
+mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")
     (Prelude.builtinModules @IO @MlValue)
     (mlModules @IO)
-
-baseOpsTable :: OpsTable
-baseOpsTable = Prelude.baseOpsTable @IO @MlValue builtinModules
-
-builtinModulesOpsTable :: Map.Map ModuleName OpsTable
-builtinModulesOpsTable = Prelude.builtinModulesOpsTable @IO @MlValue builtinModules
-
-builtinModulesPinMap :: Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
-builtinModulesPinMap = Prelude.builtinModulesPinMap @IO @MlValue builtinModules
-
-builtinModulesTerms :: ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))
-builtinModulesTerms = Prelude.builtinModulesTerms @IO @MlValue builtinModules

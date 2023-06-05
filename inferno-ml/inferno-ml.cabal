@@ -48,7 +48,6 @@ executable inferno-ml-exe
   ghc-options: -Wall -Werror -Wincomplete-uni-patterns -Wincomplete-record-updates -Wunused-packages -threaded -rtsopts -with-rtsopts=-T
   build-depends:
       base >=4.7 && <5
-    , containers
     , inferno-core
     , inferno-ml
     , inferno-types

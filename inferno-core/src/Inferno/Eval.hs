@@ -4,10 +4,7 @@
 module Inferno.Eval where
 
 import Control.Monad.Catch (MonadThrow (throwM), try)
-import Control.Monad.Except
-  ( Except,
-    forM,
-  )
+import Control.Monad.Except (forM)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.List.NonEmpty (NonEmpty (..), toList)
@@ -58,8 +55,6 @@ import Prettyprinter
 import Prettyprinter.Render.Text (renderStrict)
 
 type TermEnv hash c m = (Map.Map ExtIdent (Value c m), Map.Map hash (Value c m))
-
-type Interpreter t = Except EvalError t
 
 emptyTmenv :: TermEnv hash c m
 emptyTmenv = (Map.empty, Map.empty)
