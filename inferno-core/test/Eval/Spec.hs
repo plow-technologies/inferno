@@ -35,7 +35,7 @@ runtimeTypeRepsTests = describe "runtime type reps" $ do
     inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
     shouldEvaluateTo expr (v :: Value TestCustomValue IO) = do
       let expr' = bimap id (const $ initialPos "dummy") expr
-      eval inferno expr' >>= \case
+      evalInEnv inferno Map.empty Map.empty expr' >>= \case
         Left err -> expectationFailure $ "Failed eval with: " <> show err
         Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
 
