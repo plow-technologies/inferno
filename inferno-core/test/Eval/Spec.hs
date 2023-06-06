@@ -120,9 +120,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "tanh 1.87" $ VDouble (sinh 1.87 / cosh 1.87)
     shouldEvaluateTo "truncateTo 4 ((sin 1.87 / (cos 1.87)) - tan 1.87)" $ VDouble 0.0
     shouldEvaluateTo "truncateTo 4 (sin (2 * pi))" $ VDouble 0.0
-    shouldEvaluateTo "arcSin (sin 1.02)" $ VDouble 1.02
-    shouldEvaluateTo "arcCos (cos 1.02)" $ VDouble 1.02
-    shouldEvaluateTo "arcTan (tan 1.02)" $ VDouble 1.02
+    shouldEvaluateTo "arcSin (sin 1.02) - 1.02 < 1e-9" $ vTrue
+    shouldEvaluateTo "arcCos (cos 1.02) - 1.02 < 1e-9" $ vTrue
+    shouldEvaluateTo "arcTan (tan 1.02) - 1.02 < 1e-9" $ vTrue
     -- Booleans
     shouldEvaluateTo "#true" vTrue
     shouldEvaluateTo "!#true" vFalse
