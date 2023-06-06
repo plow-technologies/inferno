@@ -108,13 +108,10 @@ import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Serialize (Serialize)
-import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Encoding as Text
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -146,7 +143,7 @@ import Text.Read (readMaybe)
 
 newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Serialize)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable)
 
 data BaseType
   = TInt
@@ -160,38 +157,6 @@ data BaseType
   | TResolution
   | TEnum Text (Set.Set Ident)
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
-
-instance Serialize BaseType where
-  get =
-    Serialize.getInt8 >>= \case
-      0 -> pure TInt
-      1 -> pure TDouble
-      2 -> pure TWord16
-      3 -> pure TWord32
-      4 -> pure TWord64
-      5 -> pure TText
-      6 -> pure TTime
-      7 -> pure TTimeDiff
-      8 -> pure TResolution
-      _ -> do
-        nm <- Serialize.get
-        ids <- Serialize.get
-        pure $ TEnum (Text.decodeUtf8 nm) $ Set.fromList $ map (Ident . Text.decodeUtf8) ids
-
-  put = \case
-    TInt -> Serialize.putInt8 0
-    TDouble -> Serialize.putInt8 1
-    TWord16 -> Serialize.putInt8 2
-    TWord32 -> Serialize.putInt8 3
-    TWord64 -> Serialize.putInt8 4
-    TText -> Serialize.putInt8 5
-    TTime -> Serialize.putInt8 6
-    TTimeDiff -> Serialize.putInt8 7
-    TResolution -> Serialize.putInt8 8
-    TEnum nm ids -> do
-      Serialize.putInt8 9
-      Serialize.put $ Text.encodeUtf8 nm
-      Serialize.put $ map (Text.encodeUtf8 . unIdent) $ Set.toList ids
 
 instance Hashable BaseType where
   hashWithSalt s TInt = hashWithSalt s (1 :: Int)
@@ -215,7 +180,6 @@ data InfernoType
   | TTuple (TList InfernoType)
   | TRep InfernoType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
-  deriving anyclass (Serialize)
 
 punctuate' :: Doc ann -> [Doc ann] -> [Doc ann]
 punctuate' _ [] = []
@@ -393,7 +357,6 @@ instance ElementPosition Lit where
 
 data TList a = TNil | TCons a a [a]
   deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
-  deriving anyclass (Serialize)
 
 instance Traversable TList where
   {-# INLINE traverse #-} -- so that traverse can fuse
