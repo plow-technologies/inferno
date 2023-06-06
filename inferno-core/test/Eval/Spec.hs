@@ -8,7 +8,7 @@ import Data.Int (Int64)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Text (unpack)
-import Inferno.Core (Interpreter (..), mkInferno)
+import Inferno.Core (Interpreter (evalInEnv, parseAndInfer), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
@@ -336,16 +336,20 @@ evalTests = describe "evaluate" $
     inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
     shouldEvaluateInEnvTo localEnv implEnv str (v :: Value TestCustomValue IO) =
       it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
-        parseAndEvalInEnv inferno localEnv implEnv str >>= \case
-          Left (Left err) -> expectationFailure err
-          Left (Right err) -> expectationFailure $ "Failed eval with: " <> show err
-          Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+        case parseAndInfer inferno str of
+          Left err -> expectationFailure err
+          Right ast ->
+            evalInEnv inferno localEnv implEnv ast >>= \case
+              Left err -> expectationFailure $ "Failed eval with: " <> show err
+              Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
     shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty
     shouldThrowRuntimeError str merr =
       it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
-        parseAndEval inferno str >>= \case
-          Left (Left err) -> expectationFailure err
-          Left (Right err') -> case merr of
-            Nothing -> pure ()
-            Just err -> err' `shouldBe` err
-          Right _ -> expectationFailure $ "Should not evaluate."
+        case parseAndInfer inferno str of
+          Left err -> expectationFailure err
+          Right ast ->
+            evalInEnv inferno Map.empty Map.empty ast >>= \case
+              Left err' -> case merr of
+                Nothing -> pure ()
+                Just err -> err' `shouldBe` err
+              Right _ -> expectationFailure $ "Should not evaluate."
