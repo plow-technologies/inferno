@@ -5,37 +5,43 @@ module Eval.Spec where
 
 import Data.Bifunctor (bimap)
 import Data.Int (Int64)
-import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Text (unpack)
 import Inferno.Core (Interpreter (evalInEnv, parseAndInfer), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
-import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), ImplExpl (..), InfernoType (..), Lit (..), Scoped (..))
+import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
-import Text.Megaparsec (initialPos)
 import Utils (TestCustomValue)
 
 runtimeTypeRepsTests :: Spec
 runtimeTypeRepsTests = describe "runtime type reps" $ do
-  -- This is the expression after pinning and type checking for "3":
-  let expr_3 = Lam () (((), Just (ExtIdent (Left 1))) NEList.:| []) () (App (Lit () (LInt 3)) (Var () Nothing LocalScope (Expl (ExtIdent (Left 1)))))
+  let expr_3 =
+        case parseAndInfer inferno "3" of
+          Left err ->
+            error $ "parseAndInfer failed with: " <> show err
+          Right (App expr' _) ->
+            -- little hack: strip off the outermost App which is for runtime type rep
+            pure $ bimap id (const ()) expr'
+          Right expr' -> do
+            error $ unpack $ "Unexpected expression: " <> renderPretty expr'
 
   it "test int type rep" $ do
-    let expr_3_int = App expr_3 (TypeRep () (TBase TInt))
+    expr <- expr_3
+    let expr_3_int = App expr (TypeRep () (TBase TInt))
     shouldEvaluateTo expr_3_int (VInt 3)
 
   it "test double type rep" $ do
-    let expr_3_double = App expr_3 (TypeRep () (TBase TDouble))
+    expr <- expr_3
+    let expr_3_double = App expr (TypeRep () (TBase TDouble))
     shouldEvaluateTo expr_3_double (VDouble 3)
   where
     inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
     shouldEvaluateTo expr (v :: Value TestCustomValue IO) = do
-      let expr' = bimap id (const $ initialPos "dummy") expr
-      evalInEnv inferno Map.empty Map.empty expr' >>= \case
+      evalInEnv inferno Map.empty Map.empty expr >>= \case
         Left err -> expectationFailure $ "Failed eval with: " <> show err
         Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
 
