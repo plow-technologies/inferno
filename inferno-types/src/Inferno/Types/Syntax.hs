@@ -101,6 +101,7 @@ import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
 import Data.Functor.Foldable (ana, cata, project)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
+import Data.Hashable (Hashable (hashWithSalt))
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
@@ -145,7 +146,7 @@ import Text.Read (readMaybe)
 
 newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Serialize)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Serialize)
 
 data BaseType
   = TInt
@@ -192,6 +193,18 @@ instance Serialize BaseType where
       Serialize.put $ Text.encodeUtf8 nm
       Serialize.put $ map (Text.encodeUtf8 . unIdent) $ Set.toList ids
 
+instance Hashable BaseType where
+  hashWithSalt s TInt = hashWithSalt s (1 :: Int)
+  hashWithSalt s TDouble = hashWithSalt s (2 :: Int)
+  hashWithSalt s TWord16 = hashWithSalt s (3 :: Int)
+  hashWithSalt s TWord32 = hashWithSalt s (4 :: Int)
+  hashWithSalt s TWord64 = hashWithSalt s (5 :: Int)
+  hashWithSalt s TText = hashWithSalt s (6 :: Int)
+  hashWithSalt s TTime = hashWithSalt s (7 :: Int)
+  hashWithSalt s TTimeDiff = hashWithSalt s (8 :: Int)
+  hashWithSalt s TResolution = hashWithSalt s (9 :: Int)
+  hashWithSalt s (TEnum nm cs) = hashWithSalt s (10 :: Int, nm, Set.toList cs)
+
 data InfernoType
   = TVar TV
   | TBase BaseType
@@ -201,7 +214,7 @@ data InfernoType
   | TOptional InfernoType
   | TTuple (TList InfernoType)
   | TRep InfernoType
-  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
 
 punctuate' :: Doc ann -> [Doc ann] -> [Doc ann]
@@ -268,7 +281,7 @@ rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "No
 
 newtype Ident = Ident {unIdent :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
-  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData)
+  deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData, Hashable)
 
 newtype ModuleName = ModuleName {unModuleName :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
@@ -379,7 +392,7 @@ instance ElementPosition Lit where
   elementPosition pos l = (pos, incSourceCol pos $ length $ show $ pretty l)
 
 data TList a = TNil | TCons a a [a]
-  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData)
+  deriving (Show, Eq, Ord, Functor, Foldable, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
 
 instance Traversable TList where
