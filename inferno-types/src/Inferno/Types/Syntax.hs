@@ -161,6 +161,7 @@ data BaseType
   | TEnum Text (Set.Set Ident)
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
+-- Serialize is needed by VPDB to store runtime type reps
 instance Serialize BaseType where
   get =
     Serialize.getInt8 >>= \case
@@ -193,6 +194,7 @@ instance Serialize BaseType where
       Serialize.put $ Text.encodeUtf8 nm
       Serialize.put $ map (Text.encodeUtf8 . unIdent) $ Set.toList ids
 
+-- Hashable is needed by Haxl for requests
 instance Hashable BaseType where
   hashWithSalt s TInt = hashWithSalt s (1 :: Int)
   hashWithSalt s TDouble = hashWithSalt s (2 :: Int)
