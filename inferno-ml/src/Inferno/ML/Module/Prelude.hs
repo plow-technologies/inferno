@@ -21,7 +21,6 @@ import Inferno.Types.Syntax
   )
 import Inferno.Types.Value (ImplEnvM, Value (..))
 import Inferno.Types.VersionControl (VCObjectHash)
-import Inferno.Utils.QQ.Module (infernoModules)
 import Torch
   ( Device (..),
     DeviceType (..),
@@ -185,7 +184,7 @@ toDeviceFun d t =
 
 mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
 mlModules =
-  [infernoModules|
+  [mlQuoter|
 
 module ML
 

@@ -2,7 +2,10 @@ module Inferno.ML.Types.Value where
 
 import qualified Data.Text as Text
 import Inferno.Module.Cast (FromValue (..), ToValue (..), couldNotCast)
+import Inferno.Types.Syntax (CustomType)
 import Inferno.Types.Value (Value (VCustom))
+import Inferno.Utils.QQ.Module (moduleQuoter)
+import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Prettyprinter (Pretty (pretty), align)
 import qualified Torch as T
 
@@ -34,3 +37,9 @@ instance ToValue MlValue m T.ScriptModule where
 instance FromValue MlValue m T.ScriptModule where
   fromValue (VCustom (VModel t)) = pure t
   fromValue v = couldNotCast v
+
+customTypes :: [CustomType]
+customTypes = ["tensor", "model"]
+
+mlQuoter :: QuasiQuoter
+mlQuoter = moduleQuoter customTypes

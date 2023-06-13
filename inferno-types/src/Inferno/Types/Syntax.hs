@@ -40,6 +40,7 @@ module Inferno.Types.Syntax
     Pat (..),
     PatF (..),
     TV (..),
+    CustomType,
     BaseType (..),
     InfernoType (..),
     Expr
@@ -148,6 +149,9 @@ newtype TV = TV {unTV :: Int}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, NFData, Hashable, Serialize)
 
+-- | Custom type names
+type CustomType = String
+
 data BaseType
   = TInt
   | TDouble
@@ -157,12 +161,11 @@ data BaseType
   | TText
   | TTime
   | TTimeDiff
-  | TResolution
-  | TTensor
-  | TModel
+  | TCustom CustomType
   | TEnum Text (Set.Set Ident)
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
+-- Serialize is needed by VPDB to store runtime type reps
 instance Serialize BaseType where
   get =
     Serialize.getInt8 >>= \case
@@ -174,14 +177,14 @@ instance Serialize BaseType where
       5 -> pure TText
       6 -> pure TTime
       7 -> pure TTimeDiff
-      8 -> pure TResolution
-      -- TODO will this mess up reading existing scripts from inferno-vc?
-      10 -> pure TTensor
-      11 -> pure TModel
-      _ -> do
+      9 -> do
         nm <- Serialize.get
         ids <- Serialize.get
         pure $ TEnum (Text.decodeUtf8 nm) $ Set.fromList $ map (Ident . Text.decodeUtf8) ids
+      10 -> do
+        t <- Serialize.get
+        pure $ TCustom t
+      _ -> error "Unknown serialization of BaseType"
 
   put = \case
     TInt -> Serialize.putInt8 0
@@ -192,14 +195,15 @@ instance Serialize BaseType where
     TText -> Serialize.putInt8 5
     TTime -> Serialize.putInt8 6
     TTimeDiff -> Serialize.putInt8 7
-    TResolution -> Serialize.putInt8 8
-    TTensor -> Serialize.putInt8 10
-    TModel -> Serialize.putInt8 11
+    TCustom t -> do
+      Serialize.putInt8 10
+      Serialize.put t
     TEnum nm ids -> do
       Serialize.putInt8 9
       Serialize.put $ Text.encodeUtf8 nm
       Serialize.put $ map (Text.encodeUtf8 . unIdent) $ Set.toList ids
 
+-- Hashable is needed by Haxl for requests
 instance Hashable BaseType where
   hashWithSalt s TInt = hashWithSalt s (1 :: Int)
   hashWithSalt s TDouble = hashWithSalt s (2 :: Int)
@@ -209,10 +213,8 @@ instance Hashable BaseType where
   hashWithSalt s TText = hashWithSalt s (6 :: Int)
   hashWithSalt s TTime = hashWithSalt s (7 :: Int)
   hashWithSalt s TTimeDiff = hashWithSalt s (8 :: Int)
-  hashWithSalt s TResolution = hashWithSalt s (9 :: Int)
-  hashWithSalt s TTensor = hashWithSalt s (11 :: Int)
-  hashWithSalt s TModel = hashWithSalt s (12 :: Int)
   hashWithSalt s (TEnum nm cs) = hashWithSalt s (10 :: Int, nm, Set.toList cs)
+  hashWithSalt s (TCustom t) = hashWithSalt s (11 :: Int, t)
 
 data InfernoType
   = TVar TV
@@ -251,10 +253,8 @@ instance Pretty BaseType where
     TText -> "text"
     TTime -> "time"
     TTimeDiff -> "timeDiff"
-    TResolution -> "resolution"
-    TTensor -> "tensor"
-    TModel -> "model"
     TEnum t _ -> pretty t
+    TCustom t -> pretty t
 
 instance Pretty InfernoType where
   pretty = \case

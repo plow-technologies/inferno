@@ -2,8 +2,9 @@
 
 module Main where
 
+import qualified Data.Map as M
 import qualified Data.Text.IO as Text
-import Inferno.Core (Interpreter (parseAndEval), mkInferno)
+import Inferno.Core (Interpreter (evalInEnv, parseAndInfer), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Utils.Prettyprinter (showPretty)
@@ -14,6 +15,9 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   let inferno = mkInferno mlPrelude :: Interpreter MlValue
-  parseAndEval inferno src >>= \case
+  case parseAndInfer inferno src of
     Left err -> print err
-    Right res -> showPretty res
+    Right ast ->
+      evalInEnv inferno M.empty M.empty ast >>= \case
+        Left err -> print err
+        Right res -> showPretty res

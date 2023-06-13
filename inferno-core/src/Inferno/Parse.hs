@@ -44,6 +44,7 @@ import Inferno.Infer.Env (closeOver)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (..),
+    CustomType (),
     Expr (..),
     ExtIdent (ExtIdent),
     Fixity (..),
@@ -721,7 +722,7 @@ parseExpr opsTable modOpsTables s =
 
 -- parsing types
 
-type TyParser = ReaderT (Map.Map Text Int, OpsTable, Map.Map ModuleName OpsTable) (WriterT Comments (Parsec InfernoParsingError Text))
+type TyParser = ReaderT (Map.Map Text Int, OpsTable, Map.Map ModuleName OpsTable, [CustomType]) (WriterT Comments (Parsec InfernoParsingError Text))
 
 rws_type :: [Text] -- list of reserved type sig words
 rws_type = ["define", "on", "forall"]
@@ -736,7 +737,8 @@ typeIdent = try (p >>= check)
         else return x
 
 baseType :: TyParser InfernoType
-baseType =
+baseType = do
+  (_, _, _, customTypes) <- ask
   TBase
     <$> ( (symbol "int" *> pure TInt)
             <|> (symbol "double" *> pure TDouble)
@@ -746,10 +748,12 @@ baseType =
             <|> (symbol "text" *> pure TText)
             <|> try (symbol "timeDiff" *> pure TTimeDiff)
             <|> (symbol "time" *> pure TTime)
-            <|> (symbol "resolution" *> pure TResolution)
-            <|> (symbol "tensor" *> pure TTensor)
-            <|> (symbol "model" *> pure TModel)
+            <|> parseCustomTypes customTypes
         )
+  where
+    parseCustomTypes [] = fail "parseCustomTypes: nothing mached"
+    parseCustomTypes (t : ts) =
+      try (symbol (pack t) *> pure (TCustom t)) <|> parseCustomTypes ts
 
 type_variable_raw :: TyParser Text
 type_variable_raw = (char '\'' *> takeWhile1P Nothing isAlphaNum)
@@ -757,7 +761,7 @@ type_variable_raw = (char '\'' *> takeWhile1P Nothing isAlphaNum)
 type_variable :: TyParser Int
 type_variable = do
   nm <- type_variable_raw
-  (tys, _, _) <- ask
+  (tys, _, _, _) <- ask
   case Map.lookup nm tys of
     Just i -> return i
     Nothing -> customFailure $ UnboundTyVar nm
@@ -793,7 +797,7 @@ parseType ::
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     InfernoType
-parseType s = case runParser (runWriterT $ flip runReaderT (mempty, mempty, mempty) $ topLevel typeParser) "<stdin>" s of
+parseType s = case runParser (runWriterT $ flip runReaderT (mempty, mempty, mempty, []) $ topLevel typeParser) "<stdin>" s of
   Left (ParseErrorBundle errs pos) -> Left $ fst $ attachSourcePos errorOffset errs pos
   Right (e, _) -> Right e
 
@@ -822,12 +826,12 @@ typeClass :: TyParser TypeClass
 typeClass = TypeClass <$> (lexeme typeIdent <* symbol "on") <*> (many typeParser)
 
 tyContextSingle :: TyParser (Either TypeClass (Text, InfernoType))
-tyContextSingle = (Left <$> (symbol "requires" *> typeClass)) <|> (Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m) -> (ops, m)) variable)) <*> (symbol ":" *> typeParser)))
+tyContextSingle = (Left <$> (symbol "requires" *> typeClass)) <|> (Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m, _) -> (ops, m)) variable)) <*> (symbol ":" *> typeParser)))
 
 schemeParser :: TyParser TCScheme
 schemeParser = do
   vars <- try (rword "forall" *> (many $ lexeme $ type_variable_raw) <* rword ".") <|> pure mempty
-  withReaderT (\(_, ops, m) -> (Map.fromList $ zip vars [0 ..], ops, m)) $
+  withReaderT (\(_, ops, m, ts) -> (Map.fromList $ zip vars [0 ..], ops, m, ts)) $
     constructScheme <$> (try tyContext <|> pure []) <*> typeParser
   where
     constructScheme :: [Either TypeClass (Text, InfernoType)] -> InfernoType -> TCScheme
@@ -888,12 +892,12 @@ exprOrBuiltin =
     <|> try ((QQRawDef . unpack) <$> lexeme (string "###!" *> withReaderT (const (mempty, mempty)) variable <* string "###"))
     <|> (InlineDef <$> expr)
 
-sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
-sigParser =
-  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m)) schemeParser))) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
+sigParser :: [CustomType] -> Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
+sigParser customTys =
+  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, customTys)) schemeParser))) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
       <|> try (EnumDef <$> (Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
       <|> (EnumDef Nothing <$> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
-      <|> TypeClassInstance <$> (symbol "define" *> (withReaderT (\(ops, m) -> (mempty, ops, m)) typeClass))
+      <|> TypeClassInstance <$> (symbol "define" *> (withReaderT (\(ops, m) -> (mempty, ops, m, customTys)) typeClass))
       <|> Export <$> (symbol "export" *> (ModuleName <$> lexeme variable))
   )
     <* symbol ";"
@@ -916,17 +920,17 @@ fixityLvl = try (lexeme Lexer.decimal >>= check)
         then return x
         else fail $ "Fixity level annotation must be between 0 and 19 (inclusive)"
 
-sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-sigsParser =
-  try (opDeclP >>= \opsTable' -> withReaderT (const opsTable') sigsParser)
+sigsParser :: [CustomType] -> Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
+sigsParser customTys =
+  try (opDeclP >>= \opsTable' -> withReaderT (const opsTable') $ sigsParser customTys)
     <|> try
       ( do
-          def <- sigParser
-          (opsTable, defs) <- sigsParser
+          def <- sigParser customTys
+          (opsTable, defs) <- sigsParser customTys
           return (opsTable, def : defs)
       )
     <|> try ((,[]) . fst <$> opDeclP)
-    <|> (sigParser >>= \r -> ask >>= \(opsTable, _) -> return (opsTable, [r]))
+    <|> (sigParser customTys >>= \r -> ask >>= \(opsTable, _) -> return (opsTable, [r]))
   where
     opDeclP = ask >>= \(opsTable, modOpsTables) -> (\f l o -> (insertIntoOpsTable opsTable f l o, modOpsTables)) <$> fixityP <*> fixityLvl <*> (operatorP <* symbol ";")
     operatorP = lexeme $ takeWhile1P (Just "operator") (\c -> c /= ';' && not (isSpace c))
@@ -941,15 +945,15 @@ insertIntoOpsTable opsTable fixity lvl op =
     lvl
     opsTable
 
-modulesParser :: Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
-modulesParser = do
+modulesParser :: [CustomType] -> Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
+modulesParser customTys = do
   symbol "module"
   moduleNm <- ModuleName <$> lexeme variable
-  (ops, sigs) <- sigsParser
+  (ops, sigs) <- sigsParser customTys
   let opsQualified = IntMap.map (map (\(fix, _, t) -> (fix, Scope moduleNm, t))) ops
   try
     ( do
-        ms <- withReaderT (\(prevOps, modOpsTables) -> (IntMap.unionWith (<>) prevOps opsQualified, Map.insert moduleNm ops modOpsTables)) modulesParser
+        ms <- withReaderT (\(prevOps, modOpsTables) -> (IntMap.unionWith (<>) prevOps opsQualified, Map.insert moduleNm ops modOpsTables)) (modulesParser customTys)
         pure $ (moduleNm, ops, sigs) : ms
     )
     <|> pure [(moduleNm, ops, sigs)]

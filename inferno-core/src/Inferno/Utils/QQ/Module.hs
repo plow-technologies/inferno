@@ -16,6 +16,7 @@ import Inferno.Parse
     modulesParser,
     topLevel,
   )
+import Inferno.Types.Syntax (CustomType)
 import qualified Inferno.Types.Type as Type
 import Inferno.Utils.QQ.Common
   ( liftText,
@@ -48,13 +49,18 @@ metaToValue = \case
   (sch, InlineDef e) ->
     Just [|Right ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(dataToExpQ (\a -> liftText <$> cast a) e))|]
 
+-- | QuasiQuoter for builtin Inferno modules. TH dictates that QQs have to be imported,
+-- not defined locally, so this instantiation is done in this module.
 infernoModules :: QuasiQuoter
-infernoModules =
+infernoModules = moduleQuoter []
+
+moduleQuoter :: [CustomType] -> QuasiQuoter
+moduleQuoter customTys =
   QuasiQuoter
     { quoteExp = \str -> do
         l <- location'
         let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (mempty, mempty) $ topLevel $ modulesParser) $
+              runParser' (runWriterT $ flip runReaderT (mempty, mempty) $ topLevel $ modulesParser customTys) $
                 State
                   (pack str)
                   0
@@ -66,7 +72,7 @@ infernoModules =
              in fail $ intercalate "\n\n" errs'
           Right (modules, _comments) ->
             [|buildPinnedQQModules $(dataToExpQ ((\a -> liftText <$> cast a) `extQ` metaToValue) modules)|],
-      quotePat = error "infernoModule: Invalid use of this quasi-quoter in pattern context.",
-      quoteType = error "infernoModule: Invalid use of this quasi-quoter in type context.",
-      quoteDec = error "infernoModule: Invalid use of this quasi-quoter in top-level declaration context."
+      quotePat = error "moduleQuoter: Invalid use of this quasi-quoter in pattern context.",
+      quoteType = error "moduleQuoter: Invalid use of this quasi-quoter in type context.",
+      quoteDec = error "moduleQuoter: Invalid use of this quasi-quoter in top-level declaration context."
     }
