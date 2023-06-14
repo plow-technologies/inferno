@@ -3,11 +3,10 @@
 module Infer.Spec where
 
 import Data.List (intercalate)
-import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (unpack)
-import Inferno.Infer (inferExpr)
+import Inferno.Core (InfernoError (..), Interpreter (parseAndInfer), mkInferno)
 import Inferno.Infer.Exhaustiveness
   ( Pattern (W),
     cEmpty,
@@ -18,14 +17,12 @@ import Inferno.Infer.Exhaustiveness
     checkUsefullness,
     exhaustive,
   )
-import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Parse (parseExpr, prettyError)
+import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldNotBe)
-import Utils (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap)
 
 inferTests :: Spec
 inferTests = describe "infer" $
@@ -151,30 +148,21 @@ inferTests = describe "infer" $
   where
     t_hash = vcHash ("true" :: Ident, enumBoolHash)
     f_hash = vcHash ("false" :: Ident, enumBoolHash)
+    inferno = mkInferno Prelude.builtinModules :: Interpreter ()
 
     shouldInferTypeFor str t =
       it ("should infer type of \"" <> unpack str <> "\"") $
-        case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed parsing with: " <> (prettyError $ fst $ NEList.head err)
-          Right (ast, _) ->
-            case pinExpr builtinModulesPinMap ast of
-              Left err -> expectationFailure $ "Failed inference with: " <> show err
-              Right pinnedAST ->
-                case inferExpr builtinModules pinnedAST of
-                  Left err -> expectationFailure $ "Failed inference with: " <> show err
-                  Right (_expr, t', _tyMap) -> t' `shouldBe` t
+        case parseAndInfer inferno str of
+          Left err -> expectationFailure $ show err
+          Right (_ast, t') -> t' `shouldBe` t
 
     shouldFailToInferTypeFor str =
       it ("should fail to infer type of \"" <> unpack str <> "\"") $
-        case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed parsing with: " <> (prettyError $ fst $ NEList.head err)
-          Right (ast, _) ->
-            case pinExpr builtinModulesPinMap ast of
-              Left _err -> pure ()
-              Right pinnedAST ->
-                case inferExpr builtinModules pinnedAST of
-                  Left _err -> pure ()
-                  Right _ -> expectationFailure $ "Should fail to infer a type"
+        case parseAndInfer inferno str of
+          Left (ParseError err) -> expectationFailure err
+          Left (PinError _err) -> pure ()
+          Left (InferenceError _err) -> pure ()
+          Right _ -> expectationFailure $ "Should fail to infer a type"
 
     enum_sigs =
       Map.fromList

@@ -7,15 +7,17 @@ import Data.Bifunctor (bimap)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (unpack)
-import Inferno.Core (Interpreter (evalInEnv, parseAndInfer), mkInferno)
+import Inferno.Core (Interpreter (evalInEnv, parseAndInfer, parseAndInferTypeReps), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
+import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
-import Utils (TestCustomValue)
+
+type TestCustomValue = ()
 
 runtimeTypeRepsTests :: Spec
 runtimeTypeRepsTests = describe "runtime type reps" $ do
@@ -23,11 +25,8 @@ runtimeTypeRepsTests = describe "runtime type reps" $ do
         case parseAndInfer inferno "3" of
           Left err ->
             error $ "parseAndInfer failed with: " <> show err
-          Right (App expr' _) ->
-            -- little hack: strip off the outermost App which is for runtime type rep
-            pure $ bimap id (const ()) expr'
-          Right expr' -> do
-            error $ unpack $ "Unexpected expression: " <> renderPretty expr'
+          Right (expr', _typ) ->
+            pure $ bimap pinnedToMaybe (const ()) expr'
 
   it "test int type rep" $ do
     expr <- expr_3
@@ -342,8 +341,8 @@ evalTests = describe "evaluate" $
     inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
     shouldEvaluateInEnvTo localEnv implEnv str (v :: Value TestCustomValue IO) =
       it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
-        case parseAndInfer inferno str of
-          Left err -> expectationFailure err
+        case parseAndInferTypeReps inferno str of
+          Left err -> expectationFailure $ show err
           Right ast ->
             evalInEnv inferno localEnv implEnv ast >>= \case
               Left err -> expectationFailure $ "Failed eval with: " <> show err
@@ -351,8 +350,8 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty
     shouldThrowRuntimeError str merr =
       it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
-        case parseAndInfer inferno str of
-          Left err -> expectationFailure err
+        case parseAndInferTypeReps inferno str of
+          Left err -> expectationFailure $ show err
           Right ast ->
             evalInEnv inferno Map.empty Map.empty ast >>= \case
               Left err' -> case merr of

@@ -95,7 +95,6 @@ test-suite inferno-tests
     , Golden.Spec
     , Infer.Spec
     , Parse.Spec
-    , Utils
   build-depends:
       base >=4.7 && <5
     , containers
