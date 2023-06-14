@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0 -- 2023-06-14
+* Introduce Interpreter API to make Inferno parametric on types, values, and primitives
+
 ## 0.2.0 -- 2023-05-30
 * Add MonadIO to prelude and monad stack and add random primitive
 
