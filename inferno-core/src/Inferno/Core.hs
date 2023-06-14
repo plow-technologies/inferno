@@ -15,12 +15,12 @@ import Inferno.Eval (TermEnv, eval, runEvalIO)
 import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr, inferTypeReps)
 import Inferno.Infer.Pinned (pinExpr)
-import Inferno.Module (Module (..), pinnedModuleNameToHash)
+import Inferno.Module (Module (..))
 import Inferno.Module.Builtin (builtinModule)
 import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms)
 import Inferno.Parse (parseExpr, prettyError)
-import Inferno.Types.Syntax (Expr (App, TypeRep), ExtIdent, Ident, SourcePos, collectArrs)
-import Inferno.Types.Type (ImplType (ImplType), Namespace (FunNamespace), TCScheme (ForallTC))
+import Inferno.Types.Syntax (Expr (App, TypeRep), ExtIdent, SourcePos, collectArrs)
+import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
 import Inferno.Types.Value (ImplEnvM, Value)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
@@ -53,10 +53,10 @@ data Interpreter c = Interpreter
     parseAndInfer ::
       Text ->
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme),
-    mkTermEnvWithOverrides ::
-      Map.Map VCObjectHash VCObject ->
+    -- | Evaluates all functions in given closure and creates a pinned env containing them
+    mkPinnedEnvFromClosure ::
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
-      [(Ident, Value c (ImplEnvM IO c))] ->
+      Map.Map VCObjectHash VCObject ->
       ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c))
   }
 
@@ -67,7 +67,7 @@ mkInferno prelude =
       evalInImplEnvM = evalInImplEnvM,
       parseAndInferTypeReps = parseAndInferTypeReps,
       parseAndInfer = parseAndInfer,
-      mkTermEnvWithOverrides = mkTermEnvWithOverrides -- TODO remove
+      mkPinnedEnvFromClosure = mkPinnedEnvFromClosure
     }
   where
     evalInImplEnvM termEnv implEnv = runEvalIO @c termEnv implEnv
@@ -109,6 +109,9 @@ mkInferno prelude =
 
     mkTermEnv localEnv = ((localEnv, mempty) <>) <$> builtinModulesTerms prelude
 
+    -- TODO at some point: instead of evaluating closure and putting into pinned env,
+    -- add closure into the expression being evaluated by using let bindings.
+    -- Also, assert that `fst <$> builtinModulesTerms prelude` is empty before discarding
     mkPinnedEnvFromClosure localEnv closure = do
       pinnedEnv <- snd <$> builtinModulesTerms prelude
       mdo
@@ -126,35 +129,3 @@ mkInferno prelude =
             pinnedEnv
             (Map.toList closure)
         pure (localEnv, pinnedEnv')
-
-    mkTermEnvWithOverrides closure localEnv overrides = do
-      let baseHashMap = pinnedModuleNameToHash (prelude Map.! "Base")
-      pinnedEnv <- snd <$> builtinModulesTerms prelude
-      let pinnedEnvOverridden =
-            foldr
-              ( \(name, val) env ->
-                  Map.insert (baseHashMap Map.! (FunNamespace name)) val env
-              )
-              pinnedEnv
-              overrides
-      mdo
-        pinnedEnv <-
-          foldM
-            ( \env (hash, obj) -> case obj of
-                VCFunction expr _ -> do
-                  eval
-                    (localEnv, pinnedEnv)
-                    (bimap pinnedToMaybe id expr)
-                    >>= \val ->
-                      pure $ Map.insert hash val env
-                _ -> pure env
-            )
-            pinnedEnvOverridden
-            (Map.toList closure)
-        pure (localEnv, pinnedEnv)
-
--- TODO ask Sam if mkTermEnv above is the same as:
--- mkEnv :: ImplEnvM IO () (TermEnv VCObjectHash () (ImplEnvM IO ()))
--- mkEnv = do
---   pinnedEnv <- snd <$> (builtinModulesTerms builtinModules)
---   pure (mempty, pinnedEnv)
