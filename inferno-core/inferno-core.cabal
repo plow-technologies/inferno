@@ -46,7 +46,7 @@ library
     , Inferno.Utils.QQ.Common
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
       base                      >= 4.13 && < 4.17
     , bimap                     >= 0.5.0 && < 0.6
@@ -98,19 +98,14 @@ test-suite inferno-tests
   build-depends:
       base >=4.7 && <5
     , containers
-    , exceptions
     , hspec
     , hspec-golden-aeson
     , hspec-golden-cereal
     , inferno-core
     , inferno-types
     , inferno-vc
-    , megaparsec
-    , mtl
-    , prettyprinter
     , pretty-simple
     , QuickCheck
-    , quickcheck-instances
     , recursion-schemes
     , text
   default-language:    Haskell2010
@@ -124,19 +119,17 @@ test-suite inferno-tests
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
 
 executable inferno
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
   build-depends:
       base >=4.7 && <5
     , containers
     , inferno-core
     , inferno-types
     , text
-    , megaparsec
-    , mtl
   default-language: Haskell2010

@@ -31,7 +31,7 @@ library
     , Inferno.VersionControl.Types
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
       aeson                              >= 2.1.1 && < 2.2
     , async                              >= 2.2.4 && < 2.3
