@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.3 -- 2023-06-14
+* Add TCustom to make Inferno parametric on custom types
+
 ## 0.1.2 -- 2023-02-00
 * Remove Arbitrary and ToADTArbitrary instances
 

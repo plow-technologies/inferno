@@ -114,6 +114,7 @@ instance Arbitrary BaseType where
   arbitrary =
     oneof $
       (TEnum <$> (Text.pack <$> arbitrary) <*> (Set.fromList <$> listOf arbitrary))
+        : (TCustom <$> arbitrary)
         : ( map
               pure
               [ TInt,

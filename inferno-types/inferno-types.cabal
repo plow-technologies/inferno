@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-types
-version:             0.1.2
+version:             0.1.3
 synopsis:            Core types for Inferno
 description:         Core types for the Inferno language
 category:            DSL,Scripting
@@ -28,7 +28,7 @@ library
     , Inferno.Utils.Prettyprinter
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
     aeson                                >= 2.1.1 && < 2.2
     , base                               >= 4.13 && < 4.17

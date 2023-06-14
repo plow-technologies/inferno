@@ -119,6 +119,8 @@ instance Show a => VCHashUpdate (VCHashUpdateViaShow a) where
 
 deriving via (VCHashUpdateViaShow ()) instance VCHashUpdate ()
 
+deriving via (VCHashUpdateViaShow Char) instance VCHashUpdate Char
+
 deriving via (VCHashUpdateViaShow Int) instance VCHashUpdate Int
 
 deriving via (VCHashUpdateViaShow InfixFixity) instance VCHashUpdate InfixFixity

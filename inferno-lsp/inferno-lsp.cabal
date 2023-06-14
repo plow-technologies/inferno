@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-lsp
-version:             0.1.2
+version:             0.1.3
 synopsis:            LSP for Inferno
 description:         A language server protocol implementation for the Inferno language
 category:            IDE,DSL,Scripting
@@ -26,22 +26,20 @@ library
     , Inferno.LSP.ParseInfer
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
-      aeson
-    , base                               >= 4.13 && < 4.17
+      base                               >= 4.13 && < 4.17
     , bytestring                         >= 0.10.10 && < 0.12
     , co-log-core                        >= 0.3.1 && < 0.4
     , containers                         >= 0.6.2 && < 0.7
     , exceptions                         >= 0.10.4 && < 0.11
-    , inferno-core                       >= 0.2.0 && < 0.3
+    , inferno-core                       >= 0.3.0 && < 0.4
     , inferno-types                      >= 0.1.0 && < 0.2
     , inferno-vc                         >= 0.2.0 && < 0.3
     , lsp                                >= 1.6.0 && < 1.7
     , lsp-types                          >= 1.6.0 && < 1.7
     , megaparsec                         >= 9.2.1 && < 9.3
     , microlens                          >= 0.4.13 && < 0.5
-    , mtl                                >= 2.2.2 && < 2.3
     , plow-log                           >= 0.1.6 && < 0.2
     , plow-log-async                     >= 0.1.4 && < 0.2
     , prettyprinter                      >= 1.7.1 && < 1.8
@@ -69,10 +67,9 @@ executable inferno-lsp-server
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
   build-depends:
       base >=4.7 && <5
     , inferno-core
     , inferno-lsp
-    , mtl
   default-language: Haskell2010

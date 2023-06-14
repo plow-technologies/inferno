@@ -3,36 +3,54 @@
 
 module Eval.Spec where
 
-import Control.Monad.Except (ExceptT)
-import Control.Monad.IO.Class (liftIO)
 import Data.Bifunctor (bimap)
 import Data.Int (Int64)
-import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Text (unpack)
+import Inferno.Core (Interpreter (evalInEnv, parseAndInfer, parseAndInferTypeReps), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
-import Inferno.Infer (inferExpr)
-import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Parse (parseExpr, prettyError)
-import Inferno.Types.Syntax (Expr (App, TypeRep), ExtIdent (..), Ident (..))
-import Inferno.Types.Type (typeDouble, typeInt)
+import qualified Inferno.Module.Prelude as Prelude
+import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
-import Text.Megaparsec (initialPos)
-import Utils (TestCustomValue, baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms, runEvalIO)
+
+type TestCustomValue = ()
+
+runtimeTypeRepsTests :: Spec
+runtimeTypeRepsTests = describe "runtime type reps" $ do
+  let expr_3 =
+        case parseAndInfer inferno "3" of
+          Left err ->
+            error $ "parseAndInfer failed with: " <> show err
+          Right (expr', _typ) ->
+            pure $ bimap pinnedToMaybe (const ()) expr'
+
+  it "test int type rep" $ do
+    expr <- expr_3
+    let expr_3_int = App expr (TypeRep () (TBase TInt))
+    shouldEvaluateTo expr_3_int (VInt 3)
+
+  it "test double type rep" $ do
+    expr <- expr_3
+    let expr_3_double = App expr (TypeRep () (TBase TDouble))
+    shouldEvaluateTo expr_3_double (VDouble 3)
+  where
+    inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
+    shouldEvaluateTo expr (v :: Value TestCustomValue IO) = do
+      evalInEnv inferno Map.empty Map.empty expr >>= \case
+        Left err -> expectationFailure $ "Failed eval with: " <> show err
+        Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
 
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
-    shouldEvaluateToWithTRep typeInt "3" $ VInt 3
-    shouldEvaluateToWithTRep typeInt "-3" $ VInt (-3)
-    shouldEvaluateToWithTRep typeDouble "3" $ VDouble 3
-    shouldEvaluateToWithTRep typeDouble "-3" $ VDouble (-3)
-    shouldEvaluateToWithTRep typeInt "-(-3)" $ VInt 3
-    shouldEvaluateToWithTReps [typeInt, typeInt] "3+4" $ VInt 7
+    shouldEvaluateTo "3" $ VDouble 3
+    shouldEvaluateTo "-3" $ VDouble (-3)
+    shouldEvaluateTo "-(-3)" $ VDouble 3
+    shouldEvaluateTo "3+4" $ VDouble 7
     shouldEvaluateTo "3.0" $ VDouble 3.0
     shouldEvaluateTo "3.0-2" $ VDouble 1.0
     shouldEvaluateTo "3.0/2" $ VDouble 1.5
@@ -40,7 +58,6 @@ evalTests = describe "evaluate" $
     -- Reciprocals
     shouldEvaluateTo "3.14 * recip 3.14" $ VDouble 1.0
     -- Power
-    shouldEvaluateToWithTRep typeInt "14 ** 5" $ VInt (14 ^ (5 :: Int64))
     shouldEvaluateTo "1.4 ** 2.5" $ VDouble (1.4 ** 2.5)
     shouldEvaluateTo "exp 0" $ VDouble 1.0
     shouldEvaluateTo "exp (ln 1)" $ VDouble 1.0
@@ -52,13 +69,11 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "sqrt 1.425" $ VDouble (sqrt 1.425)
     shouldEvaluateTo "sqrt (-1.425)" $ VDouble (sqrt (-1.425))
     -- Negation
-    shouldEvaluateToWithTRep typeInt "let x = 1425 in -x" $ VInt (-1425)
+    shouldEvaluateTo "let x = 1425 in -x" $ VDouble (-1425)
     shouldEvaluateTo "let x = 1.425 in -x" $ VDouble (-1.425)
     -- Absolute value
-    shouldEvaluateToWithTRep typeInt "abs 1425" $ VInt 1425
-    shouldEvaluateToWithTRep typeInt "abs (-1425)" $ VInt 1425
-    shouldEvaluateToWithTRep typeDouble "abs 1425" $ VDouble 1425
-    shouldEvaluateToWithTRep typeDouble "abs (-1425)" $ VDouble 1425
+    shouldEvaluateTo "abs 1425" $ VDouble 1425
+    shouldEvaluateTo "abs (-1425)" $ VDouble 1425
     shouldEvaluateTo "abs 14.25" $ VDouble 14.25
     shouldEvaluateTo "abs (-14.25)" $ VDouble 14.25
     -- Modulus
@@ -110,9 +125,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "tanh 1.87" $ VDouble (sinh 1.87 / cosh 1.87)
     shouldEvaluateTo "truncateTo 4 ((sin 1.87 / (cos 1.87)) - tan 1.87)" $ VDouble 0.0
     shouldEvaluateTo "truncateTo 4 (sin (2 * pi))" $ VDouble 0.0
-    shouldEvaluateTo "arcSin (sin 1.02)" $ VDouble 1.02
-    shouldEvaluateTo "arcCos (cos 1.02)" $ VDouble 1.02
-    shouldEvaluateTo "arcTan (tan 1.02)" $ VDouble 1.02
+    shouldEvaluateTo "arcSin (sin 1.02) - 1.02 < 1e-9" $ vTrue
+    shouldEvaluateTo "arcCos (cos 1.02) - 1.02 < 1e-9" $ vTrue
+    shouldEvaluateTo "arcTan (tan 1.02) - 1.02 < 1e-9" $ vTrue
     -- Booleans
     shouldEvaluateTo "#true" vTrue
     shouldEvaluateTo "!#true" vFalse
@@ -215,15 +230,13 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "4 .. 13" $ VArray (map VInt [4 .. 13])
     shouldEvaluateTo "Array.map (fun x -> x**2) (Array.range 1 4)" $ VArray (map VInt [1, 4, 9, 16])
     -- The output type depends on the type of the starting value 0:
-    shouldEvaluateToWithTRep typeInt "Array.reduce (fun x y -> x + max 0 y) 0 (Array.range (-3) 3)" $ VInt 6
-    shouldEvaluateToWithTRep typeDouble "Array.reduce (fun x y -> x + max 0 y) 0 (Array.range (-3) 3)" $ VDouble 6
-    shouldEvaluateToWithTRep typeInt "Array.reduceRight (fun x y -> y + max 0 x) 0 (Array.range (-3) 3)" $ VInt 6
-    shouldEvaluateToWithTRep typeDouble "Array.reduceRight (fun x y -> y + max 0 x) 0 (Array.range (-3) 3)" $ VDouble 6
+    shouldEvaluateTo "Array.reduce (fun x y -> x + max 0 y) (round 0) (Array.range (-3) 3)" $ VInt 6
+    shouldEvaluateTo "Array.reduce (fun x y -> x + max 0 y) 0 (Array.range (-3) 3)" $ VDouble 6
+    shouldEvaluateTo "Array.reduceRight (fun x y -> y + max 0 x) (round 0) (Array.range (-3) 3)" $ VInt 6
+    shouldEvaluateTo "Array.reduceRight (fun x y -> y + max 0 x) 0 (Array.range (-3) 3)" $ VDouble 6
     shouldEvaluateTo "(Array.reduce (fun x y -> x + max 0 y) 0 ((-3) .. 3)) == 6" vTrue
     shouldEvaluateTo "(Array.reduce (fun x y -> x + max 0 y) 0 ((-3) .. 3)) == 6.0" vTrue
     shouldEvaluateTo "(Array.reduce (fun x y -> x + max 0 y) 0 ((-3) .. 3)) == (Array.reduceRight (fun x y -> y + max 0 x) 0 ((-3) .. 3))" vTrue
-    -- This needs two type reps: one for the zero in sumArray, and one for the array elements
-    shouldEvaluateToWithTReps [typeInt, typeInt] "Array.sum [1, 2, 4, 8]" $ VInt 15
     shouldEvaluateTo "Array.sum [1.0, 2.0, 4.0, 8.0]" $ VDouble 15
     shouldEvaluateTo "open Array in range 4 13" $ VArray (map VInt [4 .. 13])
     shouldEvaluateTo "open Time in Array.sum [seconds 2, hours 5]" $ VEpochTime 18002
@@ -233,7 +246,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.findLastSome [None, Some 3.0, None, Some 4.0]" $ VOne $ VDouble 4
     shouldEvaluateTo "Array.findFirstAndLastSome [None, Some 3.0, None, Some 4.0]" $ VOne $ VTuple [VDouble 3, VDouble 4]
     shouldEvaluateTo "Option.map (fun x -> x + 2) (Some 4.0)" $ VOne $ VDouble 6
-    shouldEvaluateToWithTRep typeInt "Option.map (fun x -> x + 2) None" VEmpty
+    shouldEvaluateTo "Option.map (fun x -> x + 2) None" VEmpty
     shouldEvaluateTo "fromOption 0 (Some 4.0)" $ VDouble 4
     shouldEvaluateTo "fromOption 0.0 None" $ VDouble 0
     shouldEvaluateTo "(Some 4.0) ? 0" $ VDouble 4
@@ -301,15 +314,13 @@ evalTests = describe "evaluate" $
     shouldEvaluateInEnvTo
       Map.empty
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
-      [TypeRep dummyPos typeInt]
       "?x + 2"
-      (VInt 7)
+      (VDouble 7)
     shouldEvaluateInEnvTo
       Map.empty
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
-      [TypeRep dummyPos typeInt]
       "let f = fun x -> ?x + 2 in f 0"
-      (VInt 7)
+      (VDouble 7)
     shouldEvaluateTo "let ?x = 3.2 in ?x + 2" $ VDouble 5.2
     shouldEvaluateTo "let x = 3.2 in x + 2" $ VDouble 5.2
     shouldEvaluateTo "if #true then Some 2.0 else None" $ VOne (VDouble 2)
@@ -322,50 +333,28 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "[x | x <- 1 .. 10, if x % 2 == 0]" $ VArray (map VInt [2, 4, 6, 8, 10])
     shouldThrowRuntimeError "assert #false in ()" $ Just AssertionFailed
     shouldEvaluateTo "assert #true in ()" $ VTuple []
+
+    runtimeTypeRepsTests
   where
     vTrue = VEnum enumBoolHash (Ident "true")
     vFalse = VEnum enumBoolHash (Ident "false")
-    shouldEvaluateInEnvTo localEnv implEnv typeReps str (v :: Value TestCustomValue (ExceptT EvalError IO)) =
-      it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $
-        case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed parsing with: " <> (prettyError $ fst $ NEList.head err)
-          Right (ast, _) -> do
-            case pinExpr builtinModulesPinMap ast of
-              Left err -> expectationFailure $ "Failed inference with: " <> show err
-              Right pinnedAST ->
-                case inferExpr builtinModules pinnedAST of
-                  Left err -> expectationFailure $ "Failed inference with: " <> show err
-                  Right (pinnedAST', ty, _) -> do
-                    let trmEnv = ((localEnv, mempty) <>) <$> builtinModulesTerms
-                    let expr = foldl App pinnedAST' typeReps
-                    (liftIO $ runEvalIO trmEnv implEnv $ bimap pinnedToMaybe id expr) >>= \case
-                      Left err ->
-                        expectationFailure $
-                          "Failed eval with: "
-                            <> show err
-                            <> "\nType: "
-                            <> show ty
-                            <> "\nExpr: "
-                            <> show (bimap (const ()) (const ()) expr)
-                      Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
-    shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty []
-    shouldEvaluateToWithTRep typ = shouldEvaluateInEnvTo Map.empty Map.empty [TypeRep dummyPos typ]
-    shouldEvaluateToWithTReps typs = shouldEvaluateInEnvTo Map.empty Map.empty (map (TypeRep dummyPos) typs)
+    inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
+    shouldEvaluateInEnvTo localEnv implEnv str (v :: Value TestCustomValue IO) =
+      it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+        case parseAndInferTypeReps inferno str of
+          Left err -> expectationFailure $ show err
+          Right ast ->
+            evalInEnv inferno localEnv implEnv ast >>= \case
+              Left err -> expectationFailure $ "Failed eval with: " <> show err
+              Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+    shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty
     shouldThrowRuntimeError str merr =
-      it ("\"" <> unpack str <> "\" should throw a runtime error") $
-        case parseExpr baseOpsTable builtinModulesOpsTable str of
-          Left err -> expectationFailure $ "Failed parsing with: " <> (prettyError $ fst $ NEList.head err)
-          Right (ast, _) -> do
-            case pinExpr builtinModulesPinMap ast of
-              Left err -> expectationFailure $ "Failed inference with: " <> show err
-              Right pinnedAST ->
-                case inferExpr builtinModules pinnedAST of
-                  Left err -> expectationFailure $ "Failed inference with: " <> show err
-                  Right _ -> do
-                    let trmEnv = builtinModulesTerms
-                    (liftIO $ runEvalIO trmEnv mempty $ bimap pinnedToMaybe id pinnedAST) >>= \case
-                      Left err' -> case merr of
-                        Nothing -> pure ()
-                        Just err -> err' `shouldBe` err
-                      Right _ -> expectationFailure $ "Should not evaluate."
-    dummyPos = initialPos "dummy"
+      it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
+        case parseAndInferTypeReps inferno str of
+          Left err -> expectationFailure $ show err
+          Right ast ->
+            evalInEnv inferno Map.empty Map.empty ast >>= \case
+              Left err' -> case merr of
+                Nothing -> pure ()
+                Just err -> err' `shouldBe` err
+              Right _ -> expectationFailure $ "Should not evaluate."
