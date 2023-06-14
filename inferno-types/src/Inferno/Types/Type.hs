@@ -28,6 +28,7 @@ module Inferno.Types.Type
     typeWord32,
     typeWord64,
     typeText,
+    typeResolution,
     typeTimeDiff,
     typeTime,
     punctuate',
@@ -69,7 +70,7 @@ data ImplType = ImplType (Map ExtIdent InfernoType) InfernoType
 data Scheme = Forall [TV] ImplType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
 
-typeInt, typeBool, typeDouble, typeWord16, typeWord32, typeWord64, typeText, typeTimeDiff, typeTime :: InfernoType
+typeInt, typeBool, typeDouble, typeWord16, typeWord32, typeWord64, typeText, typeResolution, typeTimeDiff, typeTime :: InfernoType
 typeInt = TBase TInt
 typeBool = TBase $ TEnum "bool" $ Set.fromList ["true", "false"]
 typeDouble = TBase TDouble
@@ -79,6 +80,7 @@ typeWord64 = TBase TWord64
 typeText = TBase TText
 typeTimeDiff = TBase TTimeDiff
 typeTime = TBase TTime
+typeResolution = TBase TResolution
 
 sch :: InfernoType -> Scheme
 sch = Forall [] . ImplType empty

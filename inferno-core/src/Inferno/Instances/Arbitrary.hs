@@ -124,7 +124,8 @@ instance Arbitrary BaseType where
                 TWord64,
                 TText,
                 TTime,
-                TTimeDiff
+                TTimeDiff,
+                TResolution
               ]
           )
 

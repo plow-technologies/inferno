@@ -161,8 +161,9 @@ data BaseType
   | TText
   | TTime
   | TTimeDiff
-  | TCustom CustomType
+  | TResolution
   | TEnum Text (Set.Set Ident)
+  | TCustom CustomType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData)
 
 -- Serialize is needed by VPDB to store runtime type reps
@@ -177,6 +178,7 @@ instance Serialize BaseType where
       5 -> pure TText
       6 -> pure TTime
       7 -> pure TTimeDiff
+      8 -> pure TResolution
       9 -> do
         nm <- Serialize.get
         ids <- Serialize.get
@@ -195,13 +197,14 @@ instance Serialize BaseType where
     TText -> Serialize.putInt8 5
     TTime -> Serialize.putInt8 6
     TTimeDiff -> Serialize.putInt8 7
-    TCustom t -> do
-      Serialize.putInt8 10
-      Serialize.put t
+    TResolution -> Serialize.putInt8 8
     TEnum nm ids -> do
       Serialize.putInt8 9
       Serialize.put $ Text.encodeUtf8 nm
       Serialize.put $ map (Text.encodeUtf8 . unIdent) $ Set.toList ids
+    TCustom t -> do
+      Serialize.putInt8 10
+      Serialize.put t
 
 -- Hashable is needed by Haxl for requests
 instance Hashable BaseType where
@@ -213,6 +216,7 @@ instance Hashable BaseType where
   hashWithSalt s TText = hashWithSalt s (6 :: Int)
   hashWithSalt s TTime = hashWithSalt s (7 :: Int)
   hashWithSalt s TTimeDiff = hashWithSalt s (8 :: Int)
+  hashWithSalt s TResolution = hashWithSalt s (9 :: Int)
   hashWithSalt s (TEnum nm cs) = hashWithSalt s (10 :: Int, nm, Set.toList cs)
   hashWithSalt s (TCustom t) = hashWithSalt s (11 :: Int, t)
 
@@ -253,6 +257,7 @@ instance Pretty BaseType where
     TText -> "text"
     TTime -> "time"
     TTimeDiff -> "timeDiff"
+    TResolution -> "resolution"
     TEnum t _ -> pretty t
     TCustom t -> pretty t
 
