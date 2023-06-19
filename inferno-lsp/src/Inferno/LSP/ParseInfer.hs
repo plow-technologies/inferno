@@ -25,7 +25,7 @@ import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, 
 import Inferno.Parse (InfernoParsingError, parseExpr, parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (Comment, Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), getIdentifierPositions, hideInternalIdents)
+import Inferno.Types.Syntax (Comment, Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
 import Inferno.Types.Type
   ( BaseType (..),
     ImplType (ImplType),
@@ -508,77 +508,55 @@ parseAndInfer prelude idents txt validateInput = do
   -- let trace = const $ pure () --traceWith tracer
   case (parseExprInBaseModule prelude) input of
     Left err -> do
-      -- liftIO $ debugM "reactor.handle" $ "Parsing error: " ++ show err
       return $ Left $ fmap parseErrorDiagnostic $ NEList.toList err
     Right (ast, comments) -> do
-      -- liftIO $ debugM "reactor.handle" $ "Finished parsing"
       case pinExpr (builtinModulesPinMap prelude) ast of
         Left err -> do
-          -- liftIO $ debugM "reactor.handle" $ "Pinning error: " ++ show err
           return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
         Right pinnedAST -> do
-          -- liftIO $ debugM "reactor.handle" $ "Finished pinning"
           case inferExpr prelude pinnedAST of
             Left err -> do
-              -- liftIO $ debugM "reactor.handle" $ "Infer error: " ++ show err
               return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
             Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap) -> do
-              -- liftIO $ print typSig
-              let possibleInputErrors = validateInputs typSig
-              case find isLeft possibleInputErrors of
-                Just (Left err) -> do
-                  -- Get the idents that correspond to the indices
-                  let indices = findIndices isLeft possibleInputErrors
-                  let badIdent = listToMaybe $ catMaybes (mapMaybe (Safe.atMay idents) indices)
-                  case badIdent of
-                    Nothing -> return $ Left [errorDiagnosticInfer 0 0 0 0 $ renderPretty ["Could not find the input that caused the error. " `Text.append` err]]
-                    Just ident@(Ident _i) -> do
-                      let mIdentPos = listToMaybe $ getIdentifierPositions ident pinnedAST'
-                      case mIdentPos of
-                        Nothing -> return $ Left [errorDiagnosticInfer 0 0 0 2 $ renderDoc $ vsep ["Could not find the input that caused the error"]]
-                        Just (s, e) -> return $ Left [errorDiagnosticInfer (unPos $ sourceLine s) (unPos $ sourceColumn s) (unPos $ sourceLine e) (unPos $ sourceColumn e) err]
-                _ -> do
-                  -- liftIO $ debugM "reactor.handle" $ "Finished inferring"
-                  let final = insertCommentsIntoExpr comments pinnedAST'
-                  return $
-                    Right
-                      ( fmap (const ()) final,
-                        tcSch,
-                        Map.foldrWithKey (\k v xs -> (mkHover prelude currentClasses k v) : xs) mempty tyMap
-                      )
+              let signature = collectArrs typSig
+              -- Check that script isn't itself a function
+              case checkScriptIsNotAFunction signature idents of
+                Left errors -> return $ Left errors
+                Right () ->
+                  -- Validate input types
+                  case checkScriptInputTypes signature pinnedAST' of
+                    Left errors -> return $ Left errors
+                    Right () -> do
+                      let final = insertCommentsIntoExpr comments pinnedAST'
+                      return $
+                        Right
+                          ( fmap (const ()) final,
+                            tcSch,
+                            Map.foldrWithKey (\k v xs -> (mkHover prelude currentClasses k v) : xs) mempty tyMap
+                          )
   where
-    -- Example: The type signature has the format for 3 inputs:
-    -- TArr
-    --   Input1
-    --   TArr
-    --     Input2
-    --     TArr
-    --       Input3
-    --       Output
-    --
-    -- Therefore we need to check the type of the first value in each TArr to see if it is a valid input type
-    -- The final output value will be ignored
-    validateInputs :: InfernoType -> [Either Text ()]
-    validateInputs = \case
-      -- Ignore validation if the final output is an array
-      typSig | isOutputAnArray typSig -> [Right ()]
-      -- Head is input, tail *could* be other inputs
-      TArr h t | isTArr t -> validateInput h : validateInputs t
-      -- Tail of this would be the output
-      TArr h _t | not (isTArr h) -> [validateInput h]
-      -- Top level is not an arr, assume it is correct to prevent errors
-      _ -> [Right ()]
+    checkScriptIsNotAFunction signature parameters =
+      -- A function with N parameters should have a signature a_1 -> a_2 -> ... -> a_{N+1}
+      if length signature > (length parameters + 1)
+        then Left [errorDiagnosticInfer 0 0 0 2 $ renderDoc $ vsep ["This script evaluates to a function. Did you mean to add input parameters instead?"]]
+        else Right ()
 
-    isTArr :: InfernoType -> Bool
-    isTArr = \case
-      TArr _ _ -> True
-      _ -> False
-
-    isOutputAnArray :: InfernoType -> Bool
-    isOutputAnArray = \case
-      TArr _h t -> isOutputAnArray t
-      TArray _ -> True
-      _ -> False
+    checkScriptInputTypes signature expr =
+      -- The last element of signature is the output, so don't validate that
+      let possibleInputErrors = map validateInput $ init signature
+       in case find isLeft possibleInputErrors of
+            Just (Left err) ->
+              -- Get the idents that correspond to the indices
+              let indices = findIndices isLeft possibleInputErrors
+               in let badIdent = listToMaybe $ catMaybes (mapMaybe (Safe.atMay idents) indices)
+                   in case badIdent of
+                        Nothing -> Left [errorDiagnosticInfer 0 0 0 0 $ renderPretty ["Could not find the input that caused the error. " `Text.append` err]]
+                        Just ident@(Ident _i) ->
+                          let mIdentPos = listToMaybe $ getIdentifierPositions ident expr
+                           in case mIdentPos of
+                                Nothing -> Left [errorDiagnosticInfer 0 0 0 2 $ renderDoc $ vsep ["Could not find the input that caused the error"]]
+                                Just (s, e) -> Left [errorDiagnosticInfer (unPos $ sourceLine s) (unPos $ sourceColumn s) (unPos $ sourceLine e) (unPos $ sourceColumn e) err]
+            _ -> Right ()
 
 parseAndInferPretty :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> IO ()
 parseAndInferPretty prelude txt =
