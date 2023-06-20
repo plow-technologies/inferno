@@ -13,6 +13,7 @@ import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
+import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
 
@@ -24,11 +25,12 @@ runtimeTypeRepsTests = describe "runtime type reps" $ do
         case parseAndInfer inferno "3" of
           Left err ->
             error $ "parseAndInfer failed with: " <> show err
-          Right (App expr' _) ->
-            -- little hack: strip off the outermost App which is for runtime type rep
-            pure $ bimap id (const ()) expr'
+          Right (expr', _typ) ->
+            pure $ bimap pinnedToMaybe (const ()) expr'
+
   it "test int type rep" $ do
     expr <- expr_3
+    let expr_3_int = App expr (TypeRep () (TBase TInt))
     shouldEvaluateTo expr_3_int (VInt 3)
 
   it "test double type rep" $ do
@@ -349,6 +351,10 @@ evalTests = describe "evaluate" $
     shouldThrowRuntimeError str merr =
       it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
         case parseAndInferTypeReps inferno str of
-          Left err' -> case merr of
-            Nothing -> pure ()
-          Right _ -> expectationFailure $ "Should not evaluate."
+          Left err -> expectationFailure $ show err
+          Right ast ->
+            evalInEnv inferno Map.empty Map.empty ast >>= \case
+              Left err' -> case merr of
+                Nothing -> pure ()
+                Just err -> err' `shouldBe` err
+              Right _ -> expectationFailure $ "Should not evaluate."
