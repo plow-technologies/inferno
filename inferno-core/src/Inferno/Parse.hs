@@ -748,6 +748,7 @@ baseType = do
             <|> (symbol "text" *> pure TText)
             <|> try (symbol "timeDiff" *> pure TTimeDiff)
             <|> (symbol "time" *> pure TTime)
+            <|> (symbol "resolution" *> pure TResolution)
             <|> parseCustomTypes customTypes
         )
   where
