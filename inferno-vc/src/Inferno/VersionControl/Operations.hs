@@ -33,9 +33,9 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy as BL
+import Data.Foldable (foldrM)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
-import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (pack)
@@ -340,87 +340,60 @@ fetchVCObjectHistory h = do
     head_h <- fetchCurrentHead h
     let head_fp = storePath </> "heads" </> show head_h
     preds <- readVCObjectHashTxt head_fp
-    pure $ head_h : preds
-  -- When we fold the history, we check if they exist in two places
-  -- 1. in 'vc_store' for available scripts
-  -- 2. then in 'vc_store/removed' for scripts that have been deleted
-  -- If a script has been deleted, we track its hash.
-  -- Since objects can never be modified, only deleted, we don't need to hold a lock here
-  let f acc hsh = do
-        existsInRoot <- liftIO $ doesFileExist $ storePath </> show hsh
-        existsInRemoved <- liftIO $ doesFileExist $ storePath </> "removed" </> show hsh
-
-        if existsInRoot
-          then do
-            obj <- fmap (const hsh) <$> fetchVCObject hsh
-            pure ((obj : fst acc), snd acc)
-          else do
-            if existsInRemoved
-              then do
-                obj <- fmap (const hsh) <$> fetchRemovedVCObject hsh
-                pure ((obj : fst acc), (hsh : snd acc))
-              else -- This script no longer exists even in 'removed' directory. The directory might get cleaned up by accident or something.
-              -- There are two choices we can make,
-              -- 1. Return a `VCMeta VCObjectHash` with dummy data
-              -- 2. Ignore this meta.
-              -- Approach no. 2 is taken here by just returning the accumulator.
-                pure acc
-  (metas, removeds) <- foldM f ([], []) history
-  -- The rest of this function handles the case when this script history was obtained by
-  -- cloning, and adds the original script to the returned history, if it still exists:
-  case removeds of
-    [] ->
-      -- if it is a clone, we would like to prepend source of the cloned script as part of the history.
-      -- it is fine to only do this once since we only show the last source of the clone
-      -- i.e. original -> cloneof orignal = cloned -> cloneof cloned = cloned'
-      -- when viewing cloned' history, it will only show up to cloned.
-      case metas of
-        all'@(x : _) ->
-          case Inferno.VersionControl.Types.pred x of
+    -- Order: oldest to newest (lazy evaluation should mean this isn't expensive concatenation)
+    pure $ preds ++ [head_h]
+  -- The fold goes from right to left (newest to oldest), but the accumulator is reversed
+  -- so the result is oldest to newest:
+  foldrM getHistory [] history
+  where
+    -- Recurse through history, newest to oldest, and stop when we find a clone
+    getHistory hsh acc = do
+      getObj hsh >>= \case
+        Nothing -> pure acc
+        Just eObj -> do
+          -- Assuming either the entire history of a script is deleted, or none of it,
+          -- we only care about whether a script has been deleted when we look up the
+          -- source of a clone
+          let obj = either id id eObj
+          case Inferno.VersionControl.Types.pred obj of
             CloneOf hsh' -> do
-              existsInRoot <- liftIO $ doesFileExist $ storePath </> show hsh'
-              existsInRemoved <- liftIO $ doesFileExist $ storePath </> "removed" </> show hsh'
+              -- if it is a clone, we would like to prepend source of the cloned script as part of the history.
+              -- it is fine to only do this once since we only show the last source of the clone
+              -- i.e. original -> cloneof orignal = cloned -> cloneof cloned = cloned'
+              -- when viewing cloned' history, it will only show up to cloned.
+              getObj hsh' >>= \case
+                Just (Right ori) ->
+                  pure $ ori : obj : acc
+                Just (Left ori) ->
+                  -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
+                  -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
+                  -- source that is still available and no longer available.
+                  -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
+                  -- See 'CloneOfRemoved' for details.
+                  pure $ ori : obj {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'} : acc
+                Nothing ->
+                  -- This script no longer exists even in 'removed' directory. The directory might get cleaned up by accident or something.
+                  -- There are two choices we can make,
+                  -- 1. Return a `VCMeta VCObjectHash` with dummy data
+                  -- 2. Ignore this meta.
+                  -- Approach no. 2 is taken here
+                  pure $ obj : acc
+            _ -> pure $ obj : acc
 
-              if existsInRoot
-                then do
-                  original <- fmap (const hsh') <$> fetchVCObject hsh'
-                  -- 'nubBy' is needed for backward compatibility with current scripts. Clone scripts' head look like this,
-                  --
-                  -- x_0 (init)
-                  -- x_1 (clone)
-                  -- x_1_1
-                  --
-                  -- However, for new script (anything after this PR landed,https://github.com/plow-technologies/all/pull/9801),
-                  -- clone scripts' head are stored like this,
-                  --
-                  -- x_1 (clone)
-                  -- x_1_1
-                  --
-                  -- Note that it is missing the init object. When we fetch for histories, we look for pred of clone and add it to the history, but for existing scripts this means it adds init object twice
-                  pure $ List.nubBy (\a b -> obj a == obj b) $ original : all'
-                else do
-                  if existsInRemoved
-                    then do
-                      original <- fmap (const hsh') <$> fetchRemovedVCObject hsh'
-                      pure $ List.nubBy (\a b -> obj a == obj b) $ original {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'} : all'
-                    else pure all'
-            _ -> pure all'
-        _ -> pure metas
-    _ ->
-      pure $
-        fmap
-          ( \meta -> case Inferno.VersionControl.Types.pred meta of
-              CloneOf hsh'
-                | List.elem hsh' removeds ->
-                    -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
-                    -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
-                    -- source that is still available and no longer available.
-                    -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
-                    -- See 'CloneOfRemoved' for details.
-                    meta {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}
-              _ -> meta
-          )
-          metas
+    getObj hsh = do
+      VCStorePath storePath <- asks getTyped
+      existsInRoot <- liftIO $ doesFileExist $ storePath </> show hsh
+      if existsInRoot
+        then do
+          obj <- fmap (const hsh) <$> fetchVCObject hsh
+          pure $ Just $ Right obj
+        else do
+          existsInRemoved <- liftIO $ doesFileExist $ storePath </> "removed" </> show hsh
+          if existsInRemoved
+            then do
+              obj <- fmap (const hsh) <$> fetchRemovedVCObject hsh
+              pure $ Just $ Left obj
+            else pure Nothing
 
 getAllHeads :: (VCStoreLogM env m, VCStoreEnvM env m) => m [VCObjectHash]
 getAllHeads = do
