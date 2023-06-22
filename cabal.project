@@ -25,4 +25,4 @@ source-repository-package
 -- All Hasktorch-related things need to go into this separate cabal.project,
 -- otherwise we can't build with GHC 8.x
 if impl(ghc >= 9)
-   import: /home/rory/work/inferno/nix/ml.cabal.project
+   import: nix/ml.cabal.project
