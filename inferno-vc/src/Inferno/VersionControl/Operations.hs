@@ -33,7 +33,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy as BL
-import Data.Foldable (foldrM)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
 import qualified Data.Map as Map
@@ -340,16 +339,18 @@ fetchVCObjectHistory h = do
     head_h <- fetchCurrentHead h
     let head_fp = storePath </> "heads" </> show head_h
     preds <- readVCObjectHashTxt head_fp
-    -- Order: oldest to newest (lazy evaluation should mean this isn't expensive concatenation)
-    pure $ preds ++ [head_h]
-  -- The fold goes from right to left (newest to oldest), but the accumulator is reversed
+    -- Order: newest to oldest
+    pure $ head_h : reverse preds
+  -- We recruse through history newest to oldest, but the accumulator gets reversed
   -- so the result is oldest to newest:
-  foldrM getHistory [] history
+  res <- getHistory [] history
+  trace $ DeleteFile $ show $ map Inferno.VersionControl.Types.obj res
+  pure res
   where
     -- Recurse through history, newest to oldest, and stop when we find a clone
-    getHistory hsh acc = do
+    getHistory acc (hsh : history) = do
       getObj hsh >>= \case
-        Nothing -> pure acc
+        Nothing -> getHistory acc history
         Just eObj -> do
           -- Assuming either the entire history of a script is deleted, or none of it,
           -- we only care about whether a script has been deleted when we look up the
@@ -377,8 +378,9 @@ fetchVCObjectHistory h = do
                   -- 1. Return a `VCMeta VCObjectHash` with dummy data
                   -- 2. Ignore this meta.
                   -- Approach no. 2 is taken here
-                  pure $ obj : acc
-            _ -> pure $ obj : acc
+                  getHistory (obj : acc) history
+            _ -> getHistory (obj : acc) history
+    getHistory acc [] = pure acc
 
     getObj hsh = do
       VCStorePath storePath <- asks getTyped
