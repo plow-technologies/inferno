@@ -1,50 +1,58 @@
 module Inferno.ML.Remote.Server
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteServer,
+    api,
     main,
     infernoMlRemote,
-    infernoMlRemoteAPI,
   )
 where
 
+import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
-    InfernoMlRemoteServer,
+    InfernoMlRemoteEnv (InfernoMlRemoteEnv),
+    InfernoMlRemoteM,
     Options,
-    parseOptions,
+    mkOptions,
   )
 import Lens.Micro.Platform ((^.))
+import Network.HTTP.Types (Status)
+import Network.Wai (Request)
 import Network.Wai.Handler.Warp
-  ( defaultSettings,
+  ( Settings,
+    defaultSettings,
     runSettings,
     setLogger,
     setPort,
   )
 import Network.Wai.Logger (withStdoutLogger)
-import Servant (Application, serve)
+import Servant (Application, ServerT, hoistServer, serve)
 
 main :: IO ()
-main = runServer =<< parseOptions
+main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
     runServer options =
       withStdoutLogger $
-        (`runSettings` infernoMlRemote) . mkSettings
+        (`runSettings` infernoMlRemote mkEnv) . mkSettings
       where
+        mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
           defaultSettings
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
 
-infernoMlRemote :: Application
-infernoMlRemote = serve infernoMlRemoteAPI server
+        mkEnv :: InfernoMlRemoteEnv
+        mkEnv = InfernoMlRemoteEnv $ options ^. #modelCache
 
-infernoMlRemoteAPI :: Proxy InfernoMlRemoteAPI
-infernoMlRemoteAPI = Proxy
+infernoMlRemote :: InfernoMlRemoteEnv -> Application
+infernoMlRemote env = serve api $ hoistServer api (`runReaderT` env) server
 
-server :: InfernoMlRemoteServer
+api :: Proxy InfernoMlRemoteAPI
+api = Proxy
+
+server :: ServerT InfernoMlRemoteAPI InfernoMlRemoteM
 server = runInferenceHandler

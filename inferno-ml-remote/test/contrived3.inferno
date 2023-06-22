@@ -1,0 +1,5 @@
+open ML in
+let x = "x.ts.pt" in
+let model1 = loadModel x in
+let model2 = loadModel "y.ts.pt" in
+()

@@ -10,7 +10,9 @@ license:            MIT
 author:             Rory Tyler hayford
 maintainer:         rory.hayford@plowtech.net
 build-type:         Simple
-extra-source-files: CHANGELOG.md
+extra-source-files:
+  ../inferno-ml/test/*.inferno
+  CHANGELOG.md
 
 source-repository head
   type:     git
@@ -53,14 +55,21 @@ library
     Inferno.ML.Remote.Handler
     Inferno.ML.Remote.Server
     Inferno.ML.Remote.Types
+    Inferno.ML.Remote.Utils
 
   hs-source-dirs:  src
   build-depends:
+    , aeson
     , base
     , bytestring
     , containers
+    , directory
+    , exceptions
     , extra
+    , filepath
     , generic-lens
+    , http-client
+    , http-types
     , inferno-core
     , inferno-ml
     , inferno-types
@@ -69,7 +78,12 @@ library
     , optparse-applicative
     , servant-client
     , servant-server
+    , temporary
     , text
+    , time
+    , typed-process
+    , unix
+    , wai
     , wai-logger
     , warp
 
@@ -89,6 +103,8 @@ test-suite tests
   type:           exitcode-stdio-1.0
   build-depends:
     , base
+    , directory
+    , filepath
     , generic-lens
     , hspec
     , http-client
@@ -98,5 +114,6 @@ test-suite tests
     , microlens-platform
     , mtl
     , servant-client
+    , temporary
     , text
     , warp

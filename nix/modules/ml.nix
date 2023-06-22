@@ -1,7 +1,23 @@
-{ pkgs, cudaSupport, ... }:
+{ pkgs, lib, cudaSupport, ... }:
 
 {
   packages = {
+    inferno-ml-remote.components =
+      let
+        wrap = bin: {
+          pkgconfig = [ [ pkgs.makeWrapper ] ];
+          postInstall = ''
+            wrapProgram $out/bin/${bin} \
+              --prefix PATH : "${lib.makeBinPath [ pkgs.zstd ]}"
+          '';
+
+        };
+      in
+      {
+        exes.inferno-ml-remote = wrap "inferno-ml-remote";
+        tests.tests = wrap "tests";
+      };
+
     libtorch-ffi = {
       configureFlags = [
         "--extra-lib-dirs=${pkgs.torch.out}/lib"
