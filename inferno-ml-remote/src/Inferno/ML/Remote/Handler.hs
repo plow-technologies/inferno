@@ -8,7 +8,7 @@ where
 import Control.Exception (Exception (displayException))
 import Control.Monad (unless)
 import Control.Monad.Catch (bracket_)
-import Control.Monad.Except (ExceptT, MonadError (throwError))
+import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader.Class (asks)
 import Data.Bifunctor (Bifunctor (first))
@@ -18,10 +18,9 @@ import Data.Foldable (traverse_)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
+import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Inferno.Eval (TermEnv, runEvalIO)
-import Inferno.Eval.Error (EvalError)
-import Inferno.ML.Module.Prelude (builtinModulesTerms)
+import Inferno.Core (Interpreter (Interpreter, evalInEnv))
 import Inferno.ML.Remote.Types
   ( EvalResult (EvalResult),
     InfernoMlRemoteM,
@@ -33,11 +32,9 @@ import Inferno.ML.Remote.Utils
   ( cacheAndUseModel,
     collectModelNames,
     mkFinalAst,
-    typecheck,
   )
 import Inferno.ML.Types.Value (MlValue)
-import Inferno.Types.Syntax (Expr)
-import Inferno.Types.Value (ImplEnvM)
+import Inferno.Types.Syntax (Expr, SourcePos)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (view, (^.))
@@ -49,7 +46,7 @@ import System.Directory
 
 runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
 runInferenceHandler src = do
-  ast <- liftEither500 $ mkFinalAst =<< typecheck src
+  (interpreter, ast) <- liftEither500 $ mkFinalAst src
   cwd <- liftIO getCurrentDirectory
   asks (view #modelCache) >>= \case
     Nothing -> do
@@ -58,7 +55,7 @@ runInferenceHandler src = do
           err500
             { errBody = "No model cache has been configured for this server"
             }
-      runEval ast
+      runEval interpreter ast
     Just cache -> do
       traverse_ (`cacheAndUseModel` cache) $ collectModelNames ast
       -- Change working directories to the model cache so that Hasktorch
@@ -73,20 +70,15 @@ runInferenceHandler src = do
       bracket_
         (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
         (cwd & liftIO . setCurrentDirectory)
-        $ runEval ast
+        $ runEval interpreter ast
   where
-    runEval :: Expr (Maybe VCObjectHash) () -> InfernoMlRemoteM EvalResult
-    runEval ast =
+    runEval ::
+      Interpreter MlValue ->
+      Expr (Maybe VCObjectHash) SourcePos ->
+      InfernoMlRemoteM EvalResult
+    runEval Interpreter {evalInEnv} ast =
       fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
-        =<< liftIO (runEvalIO mkEnv mempty ast)
-
-    mkEnv ::
-      ImplEnvM
-        IO
-        MlValue
-        ( TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue)
-        )
-    mkEnv = (mempty,) . snd <$> builtinModulesTerms
+        =<< liftIO (evalInEnv Map.empty Map.empty ast)
 
 liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure

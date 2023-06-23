@@ -1,6 +1,5 @@
 module Inferno.ML.Remote.Utils
   ( mkFinalAst,
-    typecheck,
     cacheAndUseModel,
     collectModelNames,
   )
@@ -11,28 +10,17 @@ import Control.Monad ((<=<))
 import Control.Monad.Catch (MonadMask, MonadThrow (throwM), bracket)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Bifunctor (Bifunctor (bimap, first))
-import Data.Coerce (coerce)
-import Data.Foldable (foldl')
+import Data.Bifunctor (Bifunctor (first))
 import Data.Function ((&))
 import Data.Generics.Labels ()
-import Data.Generics.Product (HasType (typed))
 import Data.List (sortOn)
-import Data.Set (Set)
-import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
-import Data.Tuple.Extra (dupe, fst3, snd3, (&&&))
+import Data.Tuple.Extra (dupe)
 import Data.Word (Word64)
-import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
-import Inferno.Infer.Pinned (pinExpr)
-import Inferno.ML.Module.Prelude
-  ( baseOpsTable,
-    builtinModules,
-    builtinModulesOpsTable,
-    builtinModulesPinMap,
-  )
+import Inferno.Core (Interpreter (Interpreter, parseAndInferTypeReps), mkInferno)
+import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteError
       ( CacheSizeExceeded,
@@ -44,19 +32,17 @@ import Inferno.ML.Remote.Types
     Script (Script),
     SomeInfernoError (SomeInfernoError),
   )
-import Inferno.Parse (parseExpr)
+import Inferno.ML.Types.Value (MlValue)
 import Inferno.Types.Syntax
-  ( Expr (App, Bracketed, Let, Lit, OpenModule, TypeRep, Var),
+  ( Expr (App, Bracketed, Let, Lit, OpenModule, Var),
     ExtIdent (ExtIdent),
     ImplExpl (Expl),
     Lit (LText),
     Scoped (LocalScope),
     SourcePos,
-    collectArrs,
   )
-import Inferno.Types.Type (ImplType, InfernoType, TCScheme, TypeClass)
-import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
-import Lens.Micro.Platform (each, view, (^.), (^..))
+import Inferno.Types.VersionControl (VCObjectHash)
+import Lens.Micro.Platform (view, (^.))
 import System.Directory
   ( copyFile,
     createDirectoryIfMissing,
@@ -74,44 +60,21 @@ import System.IO.Temp (createTempDirectory)
 import System.Process.Typed (proc, runProcess)
 
 mkFinalAst ::
-  ( Expr (Pinned VCObjectHash) SourcePos,
-    TCScheme
-  ) ->
-  Either SomeInfernoError (Expr (Maybe VCObjectHash) ())
-mkFinalAst (ast, tcscheme) = mkFinal <$> first SomeInfernoError (runtimeReps tys)
-  where
-    mkFinal :: [InfernoType] -> Expr (Maybe VCObjectHash) ()
-    mkFinal =
-      foldl' App (bimap pinnedToMaybe (const ()) ast)
-        . fmap (TypeRep ())
-
-    runtimeReps ::
-      ([InfernoType], InfernoType) ->
-      Either [TypeError SourcePos] [InfernoType]
-    runtimeReps = uncurry $ inferTypeReps allClasses tcscheme
-
-    tys :: ([InfernoType], InfernoType)
-    tys =
-      tcscheme ^. typed @ImplType . typed @InfernoType
-        & collectArrs
-        & (init &&& last)
-    allClasses :: Set TypeClass
-    allClasses = builtinModules ^.. each . #moduleTypeClasses & Set.unions
-
-typecheck ::
   Script ->
   Either
     SomeInfernoError
-    ( Expr (Pinned VCObjectHash) SourcePos,
-      TCScheme
+    ( Interpreter MlValue,
+      Expr (Maybe VCObjectHash) SourcePos
     )
-typecheck =
-  first SomeInfernoError . fmap (fst3 &&& snd3) . inferExpr builtinModules
-    <=< first SomeInfernoError . pinExpr builtinModulesPinMap
-    <=< first SomeInfernoError
-      . fmap fst
-      . parseExpr baseOpsTable builtinModulesOpsTable
-      . coerce
+mkFinalAst (Script src) =
+  traverse
+    (first SomeInfernoError . parseAndInferTypeReps)
+    ( inferno,
+      src
+    )
+  where
+    inferno :: Interpreter MlValue
+    inferno@Interpreter {parseAndInferTypeReps} = mkInferno mlPrelude
 
 -- | Takes a model from the model store specified by name and adds it to the model
 -- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
