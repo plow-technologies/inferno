@@ -1,7 +1,6 @@
 module Main (main) where
 
 import Control.Exception (Exception (displayException))
-import Control.Monad ((<=<))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Coerce (coerce)
 import Data.Function ((&))
@@ -25,9 +24,8 @@ import Inferno.ML.Remote.Utils
   ( cacheAndUseModel,
     collectModelNames,
     mkFinalAst,
-    typecheck,
   )
-import Inferno.Types.Syntax (Expr)
+import Inferno.Types.Syntax (Expr, SourcePos)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform ((.~))
 import Network.HTTP.Client (defaultManagerSettings, newManager)
@@ -123,14 +121,14 @@ collectModelsSpec = Hspec.describe "collectModelNames" $ do
     mkAstTest "./test/contrived2.inferno" $
       (`Hspec.shouldBe` ["x.ts.pt", "y.ts.pt"]) . collectModelNames
   where
-    mkAstTest :: FilePath -> (Expr (Maybe VCObjectHash) () -> IO ()) -> IO ()
+    mkAstTest :: FilePath -> (Expr (Maybe VCObjectHash) SourcePos -> IO ()) -> IO ()
     mkAstTest fp f =
       either (Hspec.expectationFailure . displayException) f
         =<< astFromScript fp
 
     astFromScript ::
-      FilePath -> IO (Either SomeInfernoError (Expr (Maybe VCObjectHash) ()))
-    astFromScript = fmap (mkFinalAst <=< typecheck) . readScript
+      FilePath -> IO (Either SomeInfernoError (Expr (Maybe VCObjectHash) SourcePos))
+    astFromScript = fmap (fmap snd . mkFinalAst) . readScript
 
 cacheModelsSpec :: Spec
 cacheModelsSpec =
