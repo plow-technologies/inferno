@@ -227,7 +227,6 @@
                 };
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
-              inferno-ml-remote = "inferno-ml-remote:exe:inferno-ml-remote";
             in
             ps // {
               vscode-inferno = pkgs.runCommand "vscode-inferno"
@@ -242,10 +241,6 @@
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
-              inferno-ml-remote = packages.${inferno-ml-remote};
-              inferno-ml-remote-cpu = packages.${inferno-ml-remote};
-              inferno-ml-remote-cuda =
-                flakes."${defaultCompiler}-cuda".packages.${inferno-ml-remote};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "everything"
                 {
@@ -338,13 +333,6 @@
           (import ./nix/overlays/compat.nix)
           (import ./nix/overlays/torch.nix)
         ];
-        inferno-ml = prev: _: {
-          inherit (self.packages.${prev.system})
-            inferno-ml-remote
-            inferno-ml-remote-cpu
-            inferno-ml-remote-cuda
-            ;
-        };
       };
     };
 }
