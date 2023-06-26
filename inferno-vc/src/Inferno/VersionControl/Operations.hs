@@ -341,16 +341,15 @@ fetchVCObjectHistory h = do
     preds <- readVCObjectHashTxt head_fp
     -- Order: newest to oldest
     pure $ head_h : reverse preds
-  -- We recruse through history newest to oldest, but the accumulator gets reversed
-  -- so the result is oldest to newest:
-  res <- getHistory [] history
+  -- We recruse through history newest to oldest, and return the history in the same order:
+  res <- getHistory history
   trace $ DeleteFile $ show $ map Inferno.VersionControl.Types.obj res
   pure res
   where
     -- Recurse through history, newest to oldest, and stop when we find a clone
-    getHistory acc (hsh : history) = do
+    getHistory (hsh : history) = do
       getObj hsh >>= \case
-        Nothing -> getHistory acc history
+        Nothing -> getHistory history -- TODO error?
         Just eObj -> do
           -- Assuming either the entire history of a script is deleted, or none of it,
           -- we only care about whether a script has been deleted when we look up the
@@ -364,23 +363,24 @@ fetchVCObjectHistory h = do
               -- when viewing cloned' history, it will only show up to cloned.
               getObj hsh' >>= \case
                 Just (Right ori) ->
-                  pure $ ori : obj : acc
+                  pure [obj, ori]
                 Just (Left ori) ->
                   -- The source of the clone script has been deleted, so we alter its 'pred' field as 'CloneOfRemoved' but
                   -- with the same hash. This way the upstream system (e.g. onping/frontend) can differentiate between
                   -- source that is still available and no longer available.
                   -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
                   -- See 'CloneOfRemoved' for details.
-                  pure $ ori : obj {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'} : acc
+                  pure [obj {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}, ori]
                 Nothing ->
                   -- This script no longer exists even in 'removed' directory. The directory might get cleaned up by accident or something.
                   -- There are two choices we can make,
                   -- 1. Return a `VCMeta VCObjectHash` with dummy data
                   -- 2. Ignore this meta.
                   -- Approach no. 2 is taken here
-                  getHistory (obj : acc) history
-            _ -> getHistory (obj : acc) history
-    getHistory acc [] = pure acc
+                  -- TODO error?
+                  getHistory history >>= \res -> pure $ obj : res
+            _ -> getHistory history >>= \res -> pure $ obj : res
+    getHistory [] = pure []
 
     getObj hsh = do
       VCStorePath storePath <- asks getTyped
