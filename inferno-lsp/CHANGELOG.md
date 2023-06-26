@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.5 -- 2023-06-26
+* Update inferno-vc version
+
 ## 0.1.4 -- 2023-06-19
 * Raise error if script evaluates to a function (and suggest adding input parameters instead)
 
