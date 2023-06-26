@@ -342,14 +342,12 @@ fetchVCObjectHistory h = do
     -- Order: newest to oldest
     pure $ head_h : reverse preds
   -- We recruse through history newest to oldest, and return the history in the same order:
-  res <- getHistory history
-  trace $ DeleteFile $ show $ map Inferno.VersionControl.Types.obj res
-  pure res
+  getHistory history
   where
     -- Recurse through history, newest to oldest, and stop when we find a clone
     getHistory (hsh : history) = do
       getObj hsh >>= \case
-        Nothing -> getHistory history -- TODO error?
+        Nothing -> getHistory history
         Just eObj -> do
           -- Assuming either the entire history of a script is deleted, or none of it,
           -- we only care about whether a script has been deleted when we look up the
@@ -377,7 +375,6 @@ fetchVCObjectHistory h = do
                   -- 1. Return a `VCMeta VCObjectHash` with dummy data
                   -- 2. Ignore this meta.
                   -- Approach no. 2 is taken here
-                  -- TODO error?
                   getHistory history >>= \res -> pure $ obj : res
             _ -> getHistory history >>= \res -> pure $ obj : res
     getHistory [] = pure []
