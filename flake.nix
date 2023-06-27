@@ -144,6 +144,8 @@
                   packages = {
                     # This takes forever to build
                     ghc.components.library.doHaddock = false;
+                    # Broken
+                    temporary.components.library.doHaddock = false;
                   };
                   packages.inferno-core = {
                     enableLibraryProfiling = profiling;
