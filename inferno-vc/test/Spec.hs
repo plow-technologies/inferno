@@ -11,7 +11,6 @@ import qualified Data.Set as Set
 import Data.Time.Clock (getCurrentTime)
 import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Foreign.C (CTime (..))
-import GHC.Utils.TmpFs (withSystemTempDirectory)
 import Inferno.Types.Syntax (Expr (Lit), Lit (LDouble), TV (TV))
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC), typeDouble)
 import Inferno.VersionControl.Client (ClientMWithVCStoreError, api, mkVCClientEnv)
@@ -23,6 +22,7 @@ import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant ((:<|>) (..))
 import Servant.Client (BaseUrl (..), ClientEnv, Scheme (..), client)
 import Servant.Typed.Error (runTypedClientM, typedClient)
+import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 import Test.QuickCheck (arbitrary, generate)
 

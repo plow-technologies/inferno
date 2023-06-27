@@ -83,7 +83,6 @@ test-suite inferno-vc-tests
   build-depends:
       base >=4.7 && <5
     , containers
-    , ghc
     , hspec
     , http-client
     , inferno-types
@@ -92,6 +91,7 @@ test-suite inferno-vc-tests
     , servant-client
     , servant-server
     , servant-typed-error
+    , temporary
     , time
   default-language:    Haskell2010
   default-extensions:
