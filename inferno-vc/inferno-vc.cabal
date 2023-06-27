@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-vc
-version:             0.2.1
+version:             0.3.0
 synopsis:            Version control server for Inferno
 description:         A version control server for Inferno scripts
 category:            DSL,Scripting
@@ -75,6 +75,36 @@ library
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
+
+test-suite inferno-vc-tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , hspec
+    , http-client
+    , inferno-types
+    , inferno-vc
+    , QuickCheck
+    , servant-client
+    , servant-server
+    , servant-typed-error
+    , temporary
+    , time
+  default-language:    Haskell2010
+  default-extensions:
+      DeriveDataTypeable
+    , DeriveFunctor
+    , DeriveGeneric
+    , FlexibleContexts
+    , FlexibleInstances
+    , LambdaCase
+    , OverloadedStrings
+    , TupleSections
+    , RecordWildCards
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded
 
 -- An example executable definition, needs instantation of author/group types:
 -- executable inferno-vc-server
