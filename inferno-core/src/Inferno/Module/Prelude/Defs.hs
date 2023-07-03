@@ -36,7 +36,7 @@ import Foreign.C.Types (CTime (..))
 import Foreign.Marshal.Utils (fromBool)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Cast (Either3, Either4, Either5, Either6)
+import Inferno.Module.Cast (Either3, Either4, Either5, Either6, FromValue (fromValue))
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -354,6 +354,16 @@ minFun = bimap (min) (bimap (min) (min))
 
 maxFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
 maxFun = bimap (max) (bimap (max) (max))
+
+arrayIndexFun :: (MonadThrow m, Pretty c) => Value c m
+arrayIndexFun =
+  VFun $ \case
+    VArray a -> pure $ VFun $ \v -> do
+      i <- fromValue v
+      if 0 <= i && i < length a
+        then pure $ a !! i
+        else throwM $ RuntimeError "Array index out of bounds"
+    _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
 singletonFun :: Monad m => (Value c m)
 singletonFun = VFun $ \v -> return $ VArray [v]

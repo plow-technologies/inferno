@@ -26,6 +26,7 @@ import Inferno.Module.Prelude.Defs
     argmaxFun,
     argminFun,
     argsortFun,
+    arrayIndexFun,
     averageFun,
     ceilingFun,
     clearBitFun,
@@ -172,6 +173,8 @@ module Number
 
   @doc The identity function;
   id : forall 'a. 'a -> 'a := ###!idFun###;
+
+  infixl 12 !!;
 
   infixr 11 **;
 
@@ -368,6 +371,9 @@ module Option
     };
 
 module Array
+
+  @doc Array indexing: an infix operator to get the ith element of an array. Throws a RuntimeError if i is out of bounds.;
+  (!!) : forall 'a. array of 'a -> int -> 'a := ###!arrayIndexFun###;
 
   @doc This function can be used to create an array with a single element:
   ~~~inferno
