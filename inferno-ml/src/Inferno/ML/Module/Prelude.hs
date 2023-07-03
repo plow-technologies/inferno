@@ -44,6 +44,7 @@ import Torch.Functional
   ( Dim (Dim),
     add,
     matmul,
+    mseLoss,
     pow,
     softmax,
     sumAll,
@@ -134,6 +135,9 @@ asTensor4Fun =
       VArray xs -> mapM getDoubleListList xs
       _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
 
+asScalar :: Tensor -> Double
+asScalar t = asValue $ toType TD.Double t
+
 asArray1Fun :: Tensor -> [Double]
 asArray1Fun t = asValue $ toType TD.Double t
 
@@ -202,6 +206,8 @@ module ML
 
   asTensor4 : array of (array of (array of (array of double))) -> tensor := ###!asTensor4Fun###;
 
+  asScalar : tensor -> double := ###asScalar###;
+
   asArray1 : tensor -> array of double := ###asArray1Fun###;
 
   asArray2 : tensor -> array of (array of double) := ###asArray2Fun###;
@@ -217,6 +223,8 @@ module ML
   transpose2D : tensor -> tensor := ###transpose2D###;
 
   matmul : tensor -> tensor -> tensor := ###matmul###;
+
+  mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
 
   @doc An impure (pseudo)random tensor generator;
   randomTensorI : array of int -> tensor := ###!randomTensorIFun###;
