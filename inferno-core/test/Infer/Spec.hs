@@ -113,6 +113,7 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [3.2, \"d\", 3] -> 2 }"
     shouldFailToInferTypeFor "fun a -> match a with { | [x, y, z] -> truncateTo x y | _ -> 3 }"
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [1] -> 2 | _ -> 3 }"
+    shouldFailToInferTypeFor "match [1, 2] with { | [x, x] -> 2*x | [x] -> 0 | _ -> 2 }"
 
     -- Non-exhaustive array patterns:
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [] -> 0 | [x, y] -> 2 }"

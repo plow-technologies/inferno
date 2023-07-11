@@ -1115,6 +1115,7 @@ infer expr =
                       Just loc' -> throwError [VarMultipleOccurrence x patLoc loc']
                       Nothing -> return $ Map.insert x patLoc vars
                     POne _ p -> checkVariableOverlap vars p
+                    PArray _ ps _ -> foldM checkVariableOverlap vars $ map fst ps
                     PTuple _ ps _ -> foldM checkVariableOverlap vars $ map fst $ tListToList ps
                     _ -> return vars
         CommentAbove p e -> do
