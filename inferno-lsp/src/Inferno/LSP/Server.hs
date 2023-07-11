@@ -3,6 +3,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -221,9 +222,10 @@ parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateI
   liftIO $ beforeParse (uuid, ts)
   result <- do
     -- Timeout parsing and type checking after 10 seconds
-    mResult <- liftIO $ timeout (10 * 1000000) $ parseAndInfer @m1 @_ @c prelude idents doc_txt validateInput
+    let timeLimit = 10
+    mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInfer @m1 @_ @c prelude idents doc_txt validateInput
     case mResult of
-      Nothing -> pure $ Left $ [errorDiagnostic 0 0 0 1 (Just "inferno.lsp") "Inferno parseAndInfer timed out"]
+      Nothing -> pure $ Left $ [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
       Just res -> pure res
   liftIO $ afterParse (uuid, ts) result
 
