@@ -1094,7 +1094,7 @@ instance Pretty (Pat hash a) where
     PVar _ Nothing -> "_"
     PEnum _ _ ns (Ident n) -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
     PLit _ l -> pretty l
-    -- TODO check pretty of empty array pattern
+    PArray _ [] _ -> "[]"
     PArray _ ps _ -> group $ (flatAlt "[ " "[") <> prettyElems True "]" ps
     PTuple _ TNil _ -> "()"
     PTuple _ ps _ -> group $ (flatAlt "( " "(") <> prettyElems True ")" (tListToList ps)
