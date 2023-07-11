@@ -372,8 +372,8 @@ module Option
 
 module Array
 
-  @doc Array indexing: an infix operator to get the ith element of an array. Throws a RuntimeError if i is out of bounds.;
-  (!!) : forall 'a. array of 'a -> int -> 'a := ###!arrayIndexFun###;
+  @doc Array indexing: gets the ith element of an array. Throws a RuntimeError if i is out of bounds.;
+  get : forall 'a. array of 'a -> int -> 'a := ###!arrayIndexFun###;
 
   @doc This function can be used to create an array with a single element:
   ~~~inferno
@@ -646,6 +646,8 @@ module Base
   export Number;
   export Word;
 
+  @doc Array indexing: an infix operator to get the ith element of an array. Throws a RuntimeError if i is out of bounds.;
+  (!!) : forall 'a. array of 'a -> int -> 'a := Array.get;
 
   @doc The `fromOption` function unwraps an optional value, if given a default value to fall back on in case the value of the optional is `None`.
   ~~~inferno

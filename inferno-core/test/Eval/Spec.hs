@@ -310,11 +310,16 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Text.strip \" hello \"" $ VText "hello"
     shouldEvaluateTo "Text.splitAt 5 \"hello world\"" $ VTuple [VText "hello", VText " world"]
     -- Array indexing
-    shouldEvaluateTo "open Array in [0, 1, 2] !! 0" $ VDouble 0
-    shouldEvaluateTo "open Array in [0, 1, 2] !! 1" $ VDouble 1
-    shouldEvaluateTo "open Array in [0, 1, 2] !! 2" $ VDouble 2
-    shouldThrowRuntimeError "open Array in [0, 1, 2] !! -9" Nothing
-    shouldThrowRuntimeError "open Array in [0, 1, 2] !! 3" Nothing
+    shouldEvaluateTo "Array.get [0, 1, 2] 0" $ VDouble 0
+    shouldEvaluateTo "Array.get [0, 1, 2] 1" $ VDouble 1
+    shouldEvaluateTo "Array.get [0, 1, 2] 2" $ VDouble 2
+    shouldThrowRuntimeError "Array.get [0, 1, 2] (-9)" Nothing
+    shouldThrowRuntimeError "Array.get [0, 1, 2] 3" Nothing
+    shouldEvaluateTo "[0, 1, 2] !! 0" $ VDouble 0
+    shouldEvaluateTo "[0, 1, 2] !! 1" $ VDouble 1
+    shouldEvaluateTo "[0, 1, 2] !! 2" $ VDouble 2
+    shouldThrowRuntimeError "[0, 1, 2] !! -9" Nothing
+    shouldThrowRuntimeError "[0, 1, 2] !! 3" Nothing
     -- Array pattern matching
     shouldEvaluateTo "match [] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 0
     shouldEvaluateTo "match [1] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 1
