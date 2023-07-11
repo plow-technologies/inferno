@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.6 -- 2023-07-11
+* Add a timeout to parseAndInfer
+
 ## 0.1.5 -- 2023-06-26
 * Update inferno-vc version
 

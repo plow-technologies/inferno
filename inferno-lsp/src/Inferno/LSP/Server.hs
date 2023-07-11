@@ -3,6 +3,7 @@
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -31,7 +32,7 @@ import qualified Data.Text.Utf16.Rope as Rope
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import qualified Data.UUID.V4 as UUID.V4
 import Inferno.LSP.Completion (completionQueryAt, filterModuleNameCompletionItems, findInPrelude, identifierCompletionItems, mkCompletionItem, rwsCompletionItems)
-import Inferno.LSP.ParseInfer (parseAndInfer)
+import Inferno.LSP.ParseInfer (errorDiagnostic, parseAndInfer)
 import Inferno.Module.Prelude (ModuleMap, preludeNameToTypeMap)
 import Inferno.Types.Syntax (Expr, Ident (..), InfernoType)
 import Inferno.Types.Type (TCScheme)
@@ -64,6 +65,7 @@ import Plow.Logging (IOTracer (..), traceWith)
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Prettyprinter (Pretty)
 import System.IO (BufferMode (NoBuffering), hFlush, hSetBuffering, hSetEncoding, stderr, stdin, stdout, utf8)
+import System.Timeout (timeout)
 
 -- This is the entry point for launching an LSP server, explicitly passing in handles for input and output
 -- the `getIdents` parameter is a handle for input parameters, only used by the frontend.
@@ -161,15 +163,6 @@ lspOptions =
 -- | Helper type to reduce typing
 type ParsedResult = Either [J.Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(J.Range, J.MarkupContent)])
 
-withParseAndInfer :: MonadIO m => ((UUID, UTCTime) -> m ()) -> ((UUID, UTCTime) -> ParsedResult -> m ParsedResult) -> m ParsedResult -> m ParsedResult
-withParseAndInfer before after action = do
-  ts <- liftIO getCurrentTime
-  uuid <- UUID <$> liftIO UUID.V4.nextRandom
-
-  before (uuid, ts)
-  result <- action
-  after (uuid, ts) result
-
 data InfernoEnv = InfernoEnv
   { hovers :: TVar (Map (J.NormalizedUri, J.Int32) [(J.Range, J.MarkupContent)]),
     tracer :: IOTracer T.Text,
@@ -212,6 +205,30 @@ sendDiagnostics :: J.NormalizedUri -> J.TextDocumentVersion -> [J.Diagnostic] ->
 sendDiagnostics fileUri version diags =
   publishDiagnostics 100 fileUri version (partitionBySource diags)
 
+parseAndInferWithTimeout ::
+  forall m1 m2 c.
+  (MonadIO m2, MonadThrow m1, Pretty c, Eq c) =>
+  ((UUID, UTCTime) -> IO ()) ->
+  ((UUID, UTCTime) -> ParsedResult -> IO ParsedResult) ->
+  ModuleMap m1 c ->
+  [Maybe Ident] ->
+  T.Text ->
+  (InfernoType -> Either T.Text ()) ->
+  m2 ParsedResult
+parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateInput = do
+  ts <- liftIO getCurrentTime
+  uuid <- UUID <$> liftIO UUID.V4.nextRandom
+
+  liftIO $ beforeParse (uuid, ts)
+  result <- do
+    -- Timeout parsing and type checking after 10 seconds
+    let timeLimit = 10
+    mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInfer @m1 @_ @c prelude idents doc_txt validateInput
+    case mResult of
+      Nothing -> pure $ Left $ [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
+      Just res -> pure res
+  liftIO $ afterParse (uuid, ts) result
+
 -- | Check if we have a handler, and if we create a haskell-lsp handler to pass it as
 -- input into the reactor
 lspHandlers :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> TChan ReactorInput -> Handlers InfernoLspM
@@ -232,6 +249,8 @@ lspHandlers prelude rin = mapHandlers goReq goNot (handle @m @c prelude)
 -- | Where the actual logic resides for handling requests and notifications.
 handle :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Handlers InfernoLspM
 handle prelude =
+  -- Note: at some point we should handle CancelReqest and cancel a previous parseAndInfer if a new one superceeds it. E.g.:
+  -- https://github.com/haskell/haskell-language-server/blob/baf2fecfa1384dd18e869a837ee2768d9bce18bd/ghcide/src/Development/IDE/LSP/LanguageServer.hs#L266
   mconcat
     [ notificationHandler J.STextDocumentDidOpen $ \msg -> do
         InfernoEnv {hovers = hoversTV, getIdents, beforeParse, afterParse, validateInput} <- getInfernoEnv
@@ -240,7 +259,7 @@ handle prelude =
         idents <- liftIO getIdents
         trace $ "Processing DidOpenTextDocument for: " ++ show doc_uri
         hovers <-
-          withParseAndInfer (liftIO . beforeParse) (\x y -> liftIO $ afterParse x y) (parseAndInfer @m @_ @c prelude idents doc_txt validateInput) >>= \case
+          parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateInput >>= \case
             Left errs -> do
               sendDiagnostics doc_uri (Just 0) errs
               pure mempty
@@ -268,7 +287,7 @@ handle prelude =
             trace $ "Processing DidChangeTextDocument for: " ++ show doc_uri ++ " - " ++ show doc_version
             idents <- liftIO getIdents
             hovers <-
-              withParseAndInfer (liftIO . beforeParse) (\x y -> liftIO $ afterParse x y) (parseAndInfer @m @_ @c prelude idents txt validateInput) >>= \case
+              parseAndInferWithTimeout beforeParse afterParse prelude idents txt validateInput >>= \case
                 Left errs -> do
                   trace $ "Sending errs: " ++ show errs
                   sendDiagnostics doc_uri (Just doc_version) errs
