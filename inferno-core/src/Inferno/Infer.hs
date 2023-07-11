@@ -63,6 +63,7 @@ import Inferno.Infer.Exhaustiveness
     cTuple,
     checkUsefullness,
     exhaustive,
+    mkEnumArrayPat,
     mkEnumText,
   )
 import Inferno.Module.Builtin (builtinModule, emptyHash, oneHash)
@@ -165,7 +166,7 @@ instance Substitutable Constraint where
 filterInstantiatedTypeClasses :: Set.Set TypeClass -> Set.Set TypeClass
 filterInstantiatedTypeClasses = Set.filter $ not . Set.null . ftv
 
-mkPattern :: Pat (Pinned VCObjectHash) a -> Pattern
+mkPattern :: Pat (Pinned VCObjectHash) SourcePos -> Pattern
 mkPattern = \case
   PVar _ _ -> W
   PEnum _ Local _ns _ident -> error $ "internal error. cannot convert unpinned enum into a pattern"
@@ -177,6 +178,7 @@ mkPattern = \case
     LText v -> cInf $ mkEnumText v
   POne _ p -> cOne $ mkPattern p
   PEmpty _ -> cEmpty
+  PArray _ ps _ -> cInf $ mkEnumArrayPat ps
   PTuple _ ps _ -> cTuple $ map (mkPattern . fst) $ tListToList ps
   PCommentAbove _ p -> mkPattern p
   PCommentAfter p _ -> mkPattern p
@@ -949,8 +951,8 @@ infer expr =
         Case p1 e p2 patExprs' p3 -> do
           let patExprs = NEList.toList patExprs'
           (e', ImplType i_e t_e, cs_e) <- infer e
-          (patTys, patVars) <-
-            unzip
+          (patTys, patVars, patConstraints) <-
+            unzip3
               <$> mapM
                 (\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p)
                 (map (\(_, p, _, _) -> p) patExprs)
@@ -988,13 +990,14 @@ infer expr =
               ImplType isMerged $ head ts_res,
               (Set.fromList ics)
                 `Set.union` cs_e
+                `Set.union` (Set.unions patConstraints)
                 `Set.union` patTysEqConstraints
                 `Set.union` patTysMustEqCaseExprTy t_e
                 `Set.union` patExpTysEqConstraints (zip (map (\(_, ty, _) -> ty) res) (map (\(_, _p, _, e'') -> e'') patExprs))
                 `Set.union` (Set.unions cs_res)
             )
           where
-            mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)])
+            mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)], Set.Set Constraint)
             mkPatConstraint pattern =
               let patLoc = blockPosition pattern
                in case pattern of
@@ -1013,13 +1016,13 @@ infer expr =
                                 ty = ForallTC [] Set.empty $ ImplType Map.empty tv,
                                 docs = Nothing
                               }
-                      return (tv, [(Ident x, meta)])
+                      return (tv, [(Ident x, meta)], Set.empty)
                     PEnum _ Local _ _ -> error "internal error, malformed pattern enum must be pinned"
                     PEnum _ hash sc i -> do
                       meta <- lookupEnv patLoc $ Left $ fromJust $ pinnedToMaybe hash
                       let (_, ImplType _ t) = ty meta
                       attachTypeToPosition patLoc meta {identExpr = Enum () () sc i}
-                      return (t, [])
+                      return (t, [], Set.empty)
                     PLit _ l ->
                       inferPatLit
                         patLoc
@@ -1031,17 +1034,50 @@ infer expr =
                             LText _ -> typeText
                         )
                     POne _ p -> do
-                      (t, vars) <- mkPatConstraint p
+                      (t, vars, cs) <- mkPatConstraint p
                       meta <- lookupEnv patLoc $ Left oneHash
                       attachTypeToPosition patLoc meta {ty = (Set.empty, ImplType Map.empty $ t .-> TOptional t)}
-                      return (TOptional t, vars)
+                      return (TOptional t, vars, cs)
                     PEmpty _ -> do
                       meta <- lookupEnv patLoc $ Left emptyHash
                       let (_, ImplType _ t) = ty meta
                       attachTypeToPosition patLoc meta
-                      return (t, [])
+                      return (t, [], Set.empty)
+                    PArray _ [] _ -> do
+                      tv <- fresh
+                      let t = TArray tv
+                      attachTypeToPosition
+                        patLoc
+                        TypeMetadata
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                            ty = (Set.empty, ImplType Map.empty $ t),
+                            docs = Nothing
+                          }
+                      return (t, [], Set.empty)
+                    PArray _ ((p, _) : ps) _ -> do
+                      (t, vars1, csP) <- mkPatConstraint p
+                      (vars2, csPs) <- aux t ps
+                      let inferredTy = TArray t
+                      attachTypeToPosition
+                        patLoc
+                        TypeMetadata
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                            ty = (Set.empty, ImplType Map.empty $ inferredTy),
+                            docs = Nothing
+                          }
+                      return (inferredTy, vars1 ++ vars2, csP `Set.union` csPs)
+                      where
+                        aux _t [] = return ([], Set.empty)
+                        aux t ((p', _) : ps') = do
+                          (t', vars', cs') <- mkPatConstraint p'
+                          (vars, cs) <- aux t ps'
+                          let tIst' = tyConstr t t' [UnificationFail Set.empty t t' $ blockPosition p']
+                          return
+                            ( vars' ++ vars,
+                              cs' `Set.union` cs `Set.union` Set.singleton tIst'
+                            )
                     PTuple _ ps _ -> do
-                      (ts, cs) <- aux $ tListToList ps
+                      (ts, vars, cs) <- aux $ tListToList ps
                       let inferredTy = TTuple $ tListFromList ts
                       attachTypeToPosition
                         patLoc
@@ -1050,13 +1086,13 @@ infer expr =
                             ty = (Set.empty, ImplType Map.empty $ inferredTy),
                             docs = Nothing
                           }
-                      return (inferredTy, cs)
+                      return (inferredTy, vars, cs)
                       where
-                        aux [] = return ([], [])
+                        aux [] = return ([], [], Set.empty)
                         aux ((p', _l) : ps') = do
-                          (t, vars1) <- mkPatConstraint p'
-                          (ts, vars2) <- aux ps'
-                          return (t : ts, vars1 ++ vars2)
+                          (t, vars1, cs1) <- mkPatConstraint p'
+                          (ts, vars2, cs2) <- aux ps'
+                          return (t : ts, vars1 ++ vars2, cs1 `Set.union` cs2)
                     PVar _ Nothing -> do
                       tv <- fresh
                       let meta =
@@ -1066,7 +1102,7 @@ infer expr =
                                 docs = Nothing
                               }
                       attachTypeToPosition patLoc meta
-                      return (tv, [])
+                      return (tv, [], Set.empty)
                     PCommentAbove _ p -> mkPatConstraint p
                     PCommentAfter p _ -> mkPatConstraint p
                     PCommentBelow p _ -> mkPatConstraint p
@@ -1111,7 +1147,7 @@ infer expr =
               (e', ty, cs) <- infer e
               return (OpenModule l1 mHash modNm imports p e', ty, cs)
 
-inferPatLit :: Location SourcePos -> Lit -> InfernoType -> Infer (InfernoType, [b])
+inferPatLit :: Location SourcePos -> Lit -> InfernoType -> Infer (InfernoType, [b], Set.Set c)
 inferPatLit loc n t =
   attachTypeToPosition
     loc
@@ -1120,7 +1156,7 @@ inferPatLit loc n t =
         ty = (Set.empty, ImplType Map.empty t),
         docs = Nothing
       }
-    >> return (t, [])
+    >> return (t, [], Set.empty)
 
 -------------------------------------------------------------------------------
 -- Constraint Solver
