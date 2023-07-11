@@ -342,7 +342,6 @@ array p = label "array\nfor example: [1,2,3,4,5]" $
     char ']'
     return (startPos, args, endPos)
   where
-    -- argsE :: Parser [(Expr () SourcePos, Maybe SourcePos)]
     argsE =
       try
         ( do

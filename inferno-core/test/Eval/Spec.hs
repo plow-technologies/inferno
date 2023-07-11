@@ -309,6 +309,21 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Text.length \"hello\"" $ VInt 5
     shouldEvaluateTo "Text.strip \" hello \"" $ VText "hello"
     shouldEvaluateTo "Text.splitAt 5 \"hello world\"" $ VTuple [VText "hello", VText " world"]
+    -- Array indexing
+    shouldEvaluateTo "open Array in [0, 1, 2] !! 0" $ VDouble 0
+    shouldEvaluateTo "open Array in [0, 1, 2] !! 1" $ VDouble 1
+    shouldEvaluateTo "open Array in [0, 1, 2] !! 2" $ VDouble 2
+    shouldThrowRuntimeError "open Array in [0, 1, 2] !! -9" Nothing
+    shouldThrowRuntimeError "open Array in [0, 1, 2] !! 3" Nothing
+    -- Array pattern matching
+    shouldEvaluateTo "match [] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 0
+    shouldEvaluateTo "match [1] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 1
+    shouldEvaluateTo "match [1, 2] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 2
+    shouldEvaluateTo "match [1, 2, 3] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 3
+    shouldEvaluateTo "match [1, 3, 3] with { | [1] -> 2 | _ -> 3 }" $ VDouble 3
+    shouldEvaluateTo "match [1, 3] with { | [1, _] -> 2 | _ -> 3 }" $ VDouble 2
+    shouldEvaluateTo "match [1.2, 3, 3] with { | [x, y, z] -> 2*x+3*y+z | _ -> 3 }" $ VDouble 14.4
+    shouldEvaluateTo "(fun a -> match a with { | [x, y, z] -> truncateTo x 1.1 | _ -> 3 }) [1, 2, 3]" $ VDouble 1.1
     -- Miscellaneous
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo
