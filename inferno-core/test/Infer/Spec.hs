@@ -120,6 +120,9 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [x] -> 1 | [x, y] -> 2 }"
     shouldFailToInferTypeFor "match [1, 3] with { | [1] -> 2 | [x] -> 4 | [] -> 3 }"
 
+    -- Redundant array patterns:
+    shouldFailToInferTypeFor "match [1, 2] with { | [x, z] -> 1 | [x, y] -> 1 | _ -> 2 }"
+
     describe "exhaustiveness checker" $
       do
         let boolsPattern =
