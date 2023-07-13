@@ -2,9 +2,9 @@
 
 module Inferno.Module.Prelude.Defs where
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Control.Monad.Catch (MonadThrow (..))
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -356,21 +356,23 @@ minFun = bimap (min) (bimap (min) (min))
 maxFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
 maxFun = bimap (max) (bimap (max) (max))
 
-arrayIndexOptFun :: (MonadThrow m, Pretty c) => Value c m
+arrayIndexOptFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
 arrayIndexOptFun =
   VFun $ \case
     VArray a -> pure $ VFun $ \v -> do
       i <- fromValue v
+      when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
       case a !? i of
         Just x -> pure $ VOne x
         Nothing -> pure VEmpty
     _ -> throwM $ RuntimeError "arrayIndexOptFun: expecting an array"
 
-arrayIndexFun :: (MonadThrow m, Pretty c) => Value c m
+arrayIndexFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
 arrayIndexFun =
   VFun $ \case
     VArray a -> pure $ VFun $ \v -> do
       i <- fromValue v
+      when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
       case a !? i of
         Just x -> pure x
         Nothing -> throwM $ RuntimeError "Array index out of bounds"
