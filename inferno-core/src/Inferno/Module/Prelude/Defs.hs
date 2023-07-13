@@ -22,6 +22,7 @@ import Data.Bits
 import Data.Foldable (foldrM, maximumBy, minimumBy)
 import Data.Int (Int64)
 import Data.List (sortOn)
+import Data.List.Extra ((!?))
 import Data.Maybe (mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text, pack, unpack)
@@ -355,14 +356,24 @@ minFun = bimap (min) (bimap (min) (min))
 maxFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
 maxFun = bimap (max) (bimap (max) (max))
 
+arrayIndexOptFun :: (MonadThrow m, Pretty c) => Value c m
+arrayIndexOptFun =
+  VFun $ \case
+    VArray a -> pure $ VFun $ \v -> do
+      i <- fromValue v
+      case a !? i of
+        Just x -> pure $ VOne x
+        Nothing -> pure VEmpty
+    _ -> throwM $ RuntimeError "arrayIndexOptFun: expecting an array"
+
 arrayIndexFun :: (MonadThrow m, Pretty c) => Value c m
 arrayIndexFun =
   VFun $ \case
     VArray a -> pure $ VFun $ \v -> do
       i <- fromValue v
-      if 0 <= i && i < length a
-        then pure $ a !! i
-        else throwM $ RuntimeError "Array index out of bounds"
+      case a !? i of
+        Just x -> pure x
+        Nothing -> throwM $ RuntimeError "Array index out of bounds"
     _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
 singletonFun :: Monad m => (Value c m)

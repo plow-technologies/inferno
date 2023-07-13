@@ -320,6 +320,16 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "[0, 1, 2] !! 2" $ VDouble 2
     shouldThrowRuntimeError "[0, 1, 2] !! -9" Nothing
     shouldThrowRuntimeError "[0, 1, 2] !! 3" Nothing
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 0" $ VOne $ VDouble 0
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 1" $ VOne $ VDouble 1
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 2" $ VOne $ VDouble 2
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] (-9)" VEmpty
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 3" VEmpty
+    shouldEvaluateTo "[0, 1, 2] !? 0" $ VOne $ VDouble 0
+    shouldEvaluateTo "[0, 1, 2] !? 1" $ VOne $ VDouble 1
+    shouldEvaluateTo "[0, 1, 2] !? 2" $ VOne $ VDouble 2
+    shouldEvaluateTo "[0, 1, 2] !? -9" VEmpty
+    shouldEvaluateTo "[0, 1, 2] !? 3" VEmpty
     -- Array pattern matching
     shouldEvaluateTo "match [] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 0
     shouldEvaluateTo "match [1] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 1

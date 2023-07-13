@@ -27,6 +27,7 @@ import Inferno.Module.Prelude.Defs
     argminFun,
     argsortFun,
     arrayIndexFun,
+    arrayIndexOptFun,
     averageFun,
     ceilingFun,
     clearBitFun,
@@ -175,6 +176,7 @@ module Number
   id : forall 'a. 'a -> 'a := ###!idFun###;
 
   infixl 12 !!;
+  infixl 12 !?;
 
   infixr 11 **;
 
@@ -374,6 +376,9 @@ module Array
 
   @doc Array indexing: gets the ith element of an array. Throws a RuntimeError if i is out of bounds.;
   get : forall 'a. array of 'a -> int -> 'a := ###!arrayIndexFun###;
+
+  @doc Safe array indexing: gets the ith element of an array. Returns None if i is out of bounds.;
+  getOpt : forall 'a. array of 'a -> int -> option of 'a := ###!arrayIndexOptFun###;
 
   @doc This function can be used to create an array with a single element:
   ~~~inferno
@@ -648,6 +653,9 @@ module Base
 
   @doc Array indexing: an infix operator to get the ith element of an array. Throws a RuntimeError if i is out of bounds.;
   (!!) : forall 'a. array of 'a -> int -> 'a := Array.get;
+
+  @doc Safe array indexing: an infix operator to get the ith element of an array. Returns None if i is out of bounds.;
+  (!?) : forall 'a. array of 'a -> int -> option of 'a := Array.getOpt;
 
   @doc The `fromOption` function unwraps an optional value, if given a default value to fall back on in case the value of the optional is `None`.
   ~~~inferno
