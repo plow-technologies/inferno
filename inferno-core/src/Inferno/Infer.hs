@@ -998,9 +998,9 @@ infer expr =
             )
           where
             mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)], Set.Set Constraint)
-            mkPatConstraint pattern =
-              let patLoc = blockPosition pattern
-               in case pattern of
+            mkPatConstraint pat =
+              let patLoc = blockPosition pat
+               in case pat of
                     PVar _ (Just (Ident x)) -> do
                       tv <- fresh
                       attachTypeToPosition
@@ -1049,7 +1049,7 @@ infer expr =
                       attachTypeToPosition
                         patLoc
                         TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
                             ty = (Set.empty, ImplType Map.empty $ t),
                             docs = Nothing
                           }
@@ -1061,7 +1061,7 @@ infer expr =
                       attachTypeToPosition
                         patLoc
                         TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
                             ty = (Set.empty, ImplType Map.empty $ inferredTy),
                             docs = Nothing
                           }
@@ -1082,7 +1082,7 @@ infer expr =
                       attachTypeToPosition
                         patLoc
                         TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
                             ty = (Set.empty, ImplType Map.empty $ inferredTy),
                             docs = Nothing
                           }
@@ -1097,7 +1097,7 @@ infer expr =
                       tv <- fresh
                       let meta =
                             TypeMetadata
-                              { identExpr = patternToExpr $ bimap (const ()) (const ()) pattern,
+                              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
                                 ty = (Set.empty, ImplType Map.empty tv),
                                 docs = Nothing
                               }
@@ -1108,9 +1108,9 @@ infer expr =
                     PCommentBelow p _ -> mkPatConstraint p
 
             checkVariableOverlap :: Map.Map Ident (Location SourcePos) -> Pat (Pinned VCObjectHash) SourcePos -> Infer (Map.Map Ident (Location SourcePos))
-            checkVariableOverlap vars pattern =
-              let patLoc = blockPosition pattern
-               in case pattern of
+            checkVariableOverlap vars pat =
+              let patLoc = blockPosition pat
+               in case pat of
                     PVar _ (Just x) -> case Map.lookup x vars of
                       Just loc' -> throwError [VarMultipleOccurrence x patLoc loc']
                       Nothing -> return $ Map.insert x patLoc vars
