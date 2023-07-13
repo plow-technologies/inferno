@@ -261,7 +261,8 @@ mkEnumArrayPat = EnumArrayPat . length
 
 instance Pretty EnumArrayPat where
   pretty (EnumArrayPat n) =
-    pretty $ PArray undefined (take n $ repeat $ (PVar (initialPos "") Nothing, Nothing)) undefined
+    -- Since SourcePos is ignored when pretty printing, we use an undefined SourcePos
+    pretty $ PArray undefined (replicate n $ (PVar (initialPos "") Nothing, Nothing)) undefined
 
 instance Enum EnumArrayPat where
   toEnum = EnumArrayPat
