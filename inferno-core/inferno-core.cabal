@@ -54,7 +54,7 @@ library
     , containers                >= 0.6.2 && < 0.7
     , cryptonite                >= 0.30 && < 0.31
     , exceptions                >= 0.10.4 && < 0.11
-    , extra                     >= 1.7.13 && < 1.8
+    , extra                     >= 1.7.12 && < 1.8
     , generic-lens              >= 2.2.1 && < 2.3
     , inferno-vc                >= 0.3.0 && < 0.4
     , inferno-types             >= 0.2.0 && < 0.3
