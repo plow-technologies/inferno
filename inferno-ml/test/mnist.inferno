@@ -31,8 +31,8 @@ let input = ML.asTensor4 [[[
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]]] in
 let model = ML.loadModel "mnist.ts.pt" in
-// let scores = ML.forward model input in
-// Array.map Array.argmax (ML.asArray2 scores)
-let scores = ML.forward model [input] in
-Array.map (Array.map Array.argmax) (Array.map ML.asArray2 scores)
-// Expected: [[7]]
+match ML.forward model [input] with {
+  | [scores] -> ML.asScalar (ML.argmax 1 #false scores)
+  | _ -> 999999.9 // TODO error "Unexpected number of outputs from model"
+}
+// Expected: 7.0

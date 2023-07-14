@@ -26,10 +26,12 @@ import Torch
     DeviceType (..),
     HasForward (forward),
     IValue (..),
+    KeepDim (KeepDim, RemoveDim),
     ScriptModule,
     Tensor,
     TensorLike (asTensor),
     TensorOptions,
+    argmax,
     asValue,
     defaultOpts,
     ones,
@@ -144,6 +146,9 @@ asArray1Fun t = asValue $ toType TD.Double t
 asArray2Fun :: Tensor -> [[Double]]
 asArray2Fun t = asValue $ toType TD.Double t
 
+argmaxFun :: Int -> Bool -> Tensor -> Tensor
+argmaxFun i keepDim t = argmax (Dim i) (if keepDim then KeepDim else RemoveDim) t
+
 softmaxFun :: Int -> Tensor -> Tensor
 softmaxFun i t = softmax (Dim i) t
 
@@ -217,6 +222,9 @@ module ML
   powT : int -> tensor -> tensor := ###powTFun###;
 
   tanH : tensor -> tensor := ###tanHTFun###;
+
+  @doc `argmax i k t` is the argmax of tensor `t` along dimension `i`. `k` denotes whether the output tensor has dim retained or not.;
+  argmax : int -> bool{#true, #false} -> tensor -> tensor := ###argmaxFun###;
 
   softmax : int -> tensor -> tensor := ###softmaxFun###;
 

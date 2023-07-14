@@ -1,5 +1,3 @@
-// NOTE: first run the python script to obtain
-// downhole_autoencoder.ts.pt
 let good_input = ML.asTensor2 [
   [1.4700e+02, 0.0000e+00, 1.5400e+02, 0.0000e+00, 1.5100e+02, 0.0000e+00,
   1.6900e+02, 1.0000e-01, 2.1800e+02, 3.0000e-01, 3.0700e+02, 5.0000e-01,
@@ -55,10 +53,11 @@ in
 let bad_input = ML.asTensor2 [[if x == 1 then 1234 else 0 | x <- 1 .. 295]] in
 let model = ML.loadModel "downhole_autoencoder.ts.pt" in
 let get_model_loss = fun input ->
-  let outputs = ML.forward model [input] in
-  let losses = Array.map (ML.mseLoss input) outputs in
-  // TODO this is a really roundabout way of just extracting losses[0]:
-  Array.sum (Array.map ML.asScalar losses)
+  match ML.forward model [input] with {
+    | [output] ->
+      ML.asScalar (ML.mseLoss input output)
+    | _ -> 999999.9 // TODO error "Unexpected number of outputs from model"
+  }
 in
 let threshold = 50 in
 let anomaly_check = fun input ->
