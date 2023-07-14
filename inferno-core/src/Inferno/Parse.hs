@@ -270,7 +270,7 @@ stringE f = label "a string\nfor example: \"hello world\"" $ do
   where
     charNoNewline = notFollowedBy (char '\n') *> Lexer.charLiteral
 
-interpolatedStringE, arrayComprE, arrayE :: Parser (Expr () SourcePos)
+interpolatedStringE, arrayComprE :: Parser (Expr () SourcePos)
 interpolatedStringE = label "an interpolated string\nfor example: `hello ${1 + 2}`" $
   lexeme $ do
     startPos@(SourcePos _ _ col) <- getSourcePos
@@ -331,20 +331,21 @@ arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, i
     condE = do
       ifPos <- getSourcePos
       (ifPos,) <$> (rword "if" *> expr)
-arrayE = label "array\nfor example: [1,2,3,4,5]" $
+
+array :: SomeParser r a -> SomeParser r (SourcePos, [(a, Maybe SourcePos)], SourcePos)
+array p = label "array\nfor example: [1,2,3,4,5]" $
   lexeme $ do
     startPos <- getSourcePos
     symbol "["
     args <- argsE
     endPos <- getSourcePos
     char ']'
-    return $ Array startPos args endPos
+    return (startPos, args, endPos)
   where
-    argsE :: Parser [(Expr () SourcePos, Maybe SourcePos)]
     argsE =
       try
         ( do
-            e <- expr
+            e <- p
             commaPos <- getSourcePos
             symbol ","
             es <- argsE
@@ -352,7 +353,7 @@ arrayE = label "array\nfor example: [1,2,3,4,5]" $
         )
         <|> try
           ( do
-              e1 <- expr
+              e1 <- p
               return [(e1, Nothing)]
           )
         <|> pure []
@@ -478,7 +479,8 @@ letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
 
 pat :: Parser (Pat () SourcePos)
 pat =
-  try (uncurry3 PTuple <$> tuple pat)
+  (uncurry3 PArray <$> array pat)
+    <|> try (uncurry3 PTuple <$> tuple pat)
     <|> parens pat
     <|> try (hexadecimal PLit)
     <|> try (signedDoubleE PLit)
@@ -665,7 +667,7 @@ term =
     <|> try implVarE
     <|> stringE Lit
     <|> interpolatedStringE
-    <|> try arrayE
+    <|> (try (uncurry3 Array <$> array expr))
     <|> arrayComprE
 
 app :: Parser (Expr () SourcePos)

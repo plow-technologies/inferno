@@ -309,6 +309,36 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Text.length \"hello\"" $ VInt 5
     shouldEvaluateTo "Text.strip \" hello \"" $ VText "hello"
     shouldEvaluateTo "Text.splitAt 5 \"hello world\"" $ VTuple [VText "hello", VText " world"]
+    -- Array indexing
+    shouldEvaluateTo "Array.get [0, 1, 2] 0" $ VDouble 0
+    shouldEvaluateTo "Array.get [0, 1, 2] 1" $ VDouble 1
+    shouldEvaluateTo "Array.get [0, 1, 2] 2" $ VDouble 2
+    shouldThrowRuntimeError "Array.get [0, 1, 2] (-9)" Nothing
+    shouldThrowRuntimeError "Array.get [0, 1, 2] 3" Nothing
+    shouldEvaluateTo "[0, 1, 2] !! 0" $ VDouble 0
+    shouldEvaluateTo "[0, 1, 2] !! 1" $ VDouble 1
+    shouldEvaluateTo "[0, 1, 2] !! 2" $ VDouble 2
+    shouldThrowRuntimeError "[0, 1, 2] !! -9" Nothing
+    shouldThrowRuntimeError "[0, 1, 2] !! 3" Nothing
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 0" $ VOne $ VDouble 0
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 1" $ VOne $ VDouble 1
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 2" $ VOne $ VDouble 2
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] (-9)" VEmpty
+    shouldEvaluateTo "Array.getOpt [0, 1, 2] 3" VEmpty
+    shouldEvaluateTo "[0, 1, 2] !? 0" $ VOne $ VDouble 0
+    shouldEvaluateTo "[0, 1, 2] !? 1" $ VOne $ VDouble 1
+    shouldEvaluateTo "[0, 1, 2] !? 2" $ VOne $ VDouble 2
+    shouldEvaluateTo "[0, 1, 2] !? -9" VEmpty
+    shouldEvaluateTo "[0, 1, 2] !? 3" VEmpty
+    -- Array pattern matching
+    shouldEvaluateTo "match [] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 0
+    shouldEvaluateTo "match [1] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 1
+    shouldEvaluateTo "match [1, 2] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 2
+    shouldEvaluateTo "match [1, 2, 3] with { | [] -> 0 | [x] -> 1 | [x, y] -> 2 | _ -> 3 }" $ VDouble 3
+    shouldEvaluateTo "match [1, 3, 3] with { | [1] -> 2 | _ -> 3 }" $ VDouble 3
+    shouldEvaluateTo "match [1, 3] with { | [1, _] -> 2 | _ -> 3 }" $ VDouble 2
+    shouldEvaluateTo "match [1.2, 3, 3] with { | [x, y, z] -> 2*x+3*y+z | _ -> 3 }" $ VDouble 14.4
+    shouldEvaluateTo "(fun a -> match a with { | [x, y, z] -> truncateTo x 1.1 | _ -> 3 }) [1, 2, 3]" $ VDouble 1.1
     -- Miscellaneous
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo

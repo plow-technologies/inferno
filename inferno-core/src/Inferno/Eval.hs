@@ -240,18 +240,19 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
             else Nothing
         (VOne v', POne _ p') -> match v' p'
         (VEmpty, PEmpty _) -> Just mempty
-        (VTuple vs, PTuple _ ps _) -> matchTuple vs $ tListToList ps
+        (VArray vs, PArray _ ps _) -> matchElems vs ps
+        (VTuple vs, PTuple _ ps _) -> matchElems vs $ tListToList ps
         _ -> Nothing
 
-      matchTuple [] [] = Just mempty
-      matchTuple (v' : vs) ((p', _) : ps) = do
+      matchElems [] [] = Just mempty
+      matchElems (v' : vs) ((p', _) : ps) = do
         env1 <- match v' p'
-        env2 <- matchTuple vs ps
+        env2 <- matchElems vs ps
         -- since variables in patterns must be linear,
         -- env1 and env2 should not overlap, so it doesn't
         -- matter which way around we combine
         return $ env1 <> env2
-      matchTuple _ _ = Nothing
+      matchElems _ _ = Nothing
   CommentAbove _ e -> eval env e
   CommentAfter e _ -> eval env e
   CommentBelow e _ -> eval env e
