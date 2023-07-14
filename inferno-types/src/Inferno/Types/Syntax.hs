@@ -823,6 +823,7 @@ data Pat hash pos
   | PLit pos Lit
   | POne pos (Pat hash pos)
   | PEmpty pos
+  | PArray pos [(Pat hash pos, Maybe pos)] pos
   | PTuple pos (TList (Pat hash pos, Maybe pos)) pos
   | PCommentAbove
       (Comment pos)
@@ -851,6 +852,7 @@ patternToExpr = \case
   PLit _ l -> Lit () l
   POne _ p -> One () $ patternToExpr p
   PEmpty _ -> Empty ()
+  PArray _ ps _ -> Array () (fmap (\(pat, pos) -> (patternToExpr pat, pos)) ps) ()
   PTuple _ ps _ -> Tuple () (fmap (\(pat, pos) -> (patternToExpr pat, pos)) ps) ()
   PCommentAbove c p -> CommentAbove c $ patternToExpr p
   PCommentAfter p c -> CommentAfter (patternToExpr p) c
@@ -922,6 +924,7 @@ instance BlockUtils (Pat hash) where
         PLitF pos l -> elementPosition pos l
         PEmptyF pos -> (pos, incSourceCol pos 5)
         POneF pos1 (_, pos2) -> (pos1, pos2)
+        PArrayF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         PTupleF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         PCommentAboveF c (_, pos2) -> let (pos1, _) = blockPosition c in (pos1, pos2)
         PCommentAfterF (pos1, _) c -> let (_, pos2) = blockPosition c in (pos1, pos2)
@@ -1091,25 +1094,30 @@ instance Pretty (Pat hash a) where
     PVar _ Nothing -> "_"
     PEnum _ _ ns (Ident n) -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
     PLit _ l -> pretty l
+    PArray _ [] _ -> "[]"
+    PArray _ ps _ -> group $ (flatAlt "[ " "[") <> prettyElems True "]" ps
     PTuple _ TNil _ -> "()"
-    PTuple _ ps _ -> group $ (flatAlt "( " "(") <> prettyTuple True (tListToList ps)
+    PTuple _ ps _ -> group $ (flatAlt "( " "(") <> prettyElems True ")" (tListToList ps)
     POne _ e -> "Some" <+> align (pretty e)
     PEmpty _ -> "None"
     PCommentAbove c e -> pretty c <> hardline <> pretty e
     PCommentAfter e c -> pretty e <+> pretty c
     PCommentBelow e c -> pretty e <> line <> pretty c
     where
-      prettyTuple firstElement = \case
+      prettyElems firstElement closingParen = \case
         [] -> mempty
         [(e, _)] ->
           align (pretty e)
-            <> (if hasTrailingComment e then hardline <> ")" else flatAlt " )" ")")
+            <> ( if hasTrailingComment e
+                   then hardline <> ")"
+                   else flatAlt " " "" <> closingParen
+               )
         (e, _) : es ->
           (if not firstElement && hasLeadingComment e then line else mempty)
             <> align (pretty e)
             <> (if hasTrailingComment e then hardline else line')
             <> ", "
-            <> prettyTuple False es
+            <> prettyElems False closingParen es
 
 instance Pretty (Expr hash pos) where
   pretty = prettyPrec False 0

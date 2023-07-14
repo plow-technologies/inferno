@@ -2,9 +2,9 @@
 
 module Inferno.Module.Prelude.Defs where
 
-import Control.Monad (foldM)
+import Control.Monad (foldM, when)
 import Control.Monad.Catch (MonadThrow (..))
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (bimap)
 import Data.Bits
   ( clearBit,
@@ -22,6 +22,7 @@ import Data.Bits
 import Data.Foldable (foldrM, maximumBy, minimumBy)
 import Data.Int (Int64)
 import Data.List (sortOn)
+import Data.List.Extra ((!?))
 import Data.Maybe (mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text, pack, unpack)
@@ -36,7 +37,7 @@ import Foreign.C.Types (CTime (..))
 import Foreign.Marshal.Utils (fromBool)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Cast (Either3, Either4, Either5, Either6)
+import Inferno.Module.Cast (Either3, Either4, Either5, Either6, FromValue (fromValue))
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -354,6 +355,28 @@ minFun = bimap (min) (bimap (min) (min))
 
 maxFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
 maxFun = bimap (max) (bimap (max) (max))
+
+arrayIndexOptFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
+arrayIndexOptFun =
+  VFun $ \case
+    VArray a -> pure $ VFun $ \v -> do
+      i <- fromValue v
+      when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
+      case a !? i of
+        Just x -> pure $ VOne x
+        Nothing -> pure VEmpty
+    _ -> throwM $ RuntimeError "arrayIndexOptFun: expecting an array"
+
+arrayIndexFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
+arrayIndexFun =
+  VFun $ \case
+    VArray a -> pure $ VFun $ \v -> do
+      i <- fromValue v
+      when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
+      case a !? i of
+        Just x -> pure x
+        Nothing -> throwM $ RuntimeError "Array index out of bounds"
+    _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
 singletonFun :: Monad m => (Value c m)
 singletonFun = VFun $ \v -> return $ VArray [v]

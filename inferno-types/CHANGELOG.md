@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.0 -- 2023-07-11
+* Add Array pattern matching syntax
+
 ## 0.1.3 -- 2023-06-14
 * Add TCustom to make Inferno parametric on custom types
 

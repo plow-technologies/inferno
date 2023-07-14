@@ -92,6 +92,9 @@ pinPat m pat =
         PLit p l -> pure $ PLit p l
         POne p e -> POne p <$> pinPat m e
         PEmpty p -> pure $ PEmpty p
+        PArray p1 es p2 -> do
+          es' <- mapM (\(e, p3) -> (,p3) <$> pinPat m e) es
+          pure $ PArray p1 es' p2
         PTuple p1 es p2 -> do
           es' <- mapM (\(e, p3) -> (,p3) <$> pinPat m e) es
           pure $ PTuple p1 es' p2
