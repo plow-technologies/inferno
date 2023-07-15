@@ -40,8 +40,7 @@ zerosFun =
       opts <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        t <- toValue $ zeros shp opts
-        return t
+        toValue $ zeros shp opts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
 onesFun :: (MonadThrow m) => Value MlValue m
@@ -51,8 +50,7 @@ onesFun =
       opts <- getDtype "ones" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        t <- toValue $ ones shp opts
-        return t
+        toValue $ ones shp opts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
 asTensor1Fun :: (MonadThrow m) => Value MlValue m
@@ -60,7 +58,6 @@ asTensor1Fun =
   VFun $ \case
     VArray xs -> do
       fs <- getDoubleList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
   where
@@ -74,7 +71,6 @@ asTensor2Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
   where
@@ -91,7 +87,6 @@ asTensor4Fun =
   VFun $ \case
     VArray xs -> do
       fs <- mapM getDoubleListListList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
       pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
     _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array"
   where
@@ -134,8 +129,6 @@ loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack
 
 forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
 forwardFun m ts =
-  -- let mkIVT t = IVTensor $ toType TD.Float t in
-  -- let ivts = IVTensorList $ map mkIVT ts in
   unIV $ forward m (map IVTensor ts)
   where
     unIV = \case
@@ -145,14 +138,16 @@ forwardFun m ts =
         concat $ map unIV ivs
       res -> error $ "expected tensor result, got " ++ (show res)
 
-randomTensorIFun :: (MonadThrow m, MonadIO m) => Value MlValue m
-randomTensorIFun = VFun $ \xs -> do
-  -- TODO also allow choosing dtype
-  -- TODO if this works also use this in toTensor functions above
-  shp <- fromValue xs
-  t <- liftIO $ randnIO' shp
-  -- t <- liftIO $ randnIO shp (withDType TD.Double defaultOpts)
-  pure $ VCustom $ VTensor t
+randnIOFun :: (MonadThrow m, MonadIO m) => Value MlValue m
+randnIOFun =
+  VFun $ \case
+    VEnum _ e -> do
+      opts <- getDtype "randnIO" e
+      pure $ VFun $ \xs -> do
+        shp <- fromValue xs
+        t <- liftIO $ randnIO shp opts
+        pure $ VCustom $ VTensor t
+    _ -> throwM $ RuntimeError "randnIOFun: expecting a dtype enum"
 
 toDeviceFun :: Text -> Tensor -> Tensor
 toDeviceFun d t =
@@ -206,7 +201,7 @@ module ML
   mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
 
   @doc An impure (pseudo)random tensor generator;
-  randomTensorI : array of int -> tensor := ###!randomTensorIFun###;
+  randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;
 
   @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
   toDevice : text -> tensor -> tensor := ###toDeviceFun###;
