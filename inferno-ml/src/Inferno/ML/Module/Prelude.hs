@@ -22,37 +22,8 @@ import Inferno.Types.Syntax
 import Inferno.Types.Value (ImplEnvM, Value (..))
 import Inferno.Types.VersionControl (VCObjectHash)
 import Torch
-  ( Device (..),
-    DeviceType (..),
-    HasForward (forward),
-    IValue (..),
-    KeepDim (KeepDim, RemoveDim),
-    ScriptModule,
-    Tensor,
-    TensorLike (asTensor),
-    TensorOptions,
-    argmax,
-    asValue,
-    defaultOpts,
-    ones,
-    randnIO',
-    toDevice,
-    toType,
-    withDType,
-    zeros,
-  )
 import qualified Torch.DType as TD
 import Torch.Functional
-  ( Dim (Dim),
-    add,
-    matmul,
-    mseLoss,
-    pow,
-    softmax,
-    sumAll,
-    tanh,
-    transpose2D,
-  )
 import qualified Torch.Script as TS
 
 getDtype :: (MonadThrow m) => String -> Ident -> m TensorOptions
@@ -68,8 +39,8 @@ zerosFun =
     VEnum _ e -> do
       opts <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
-        shape <- fromValue vShape
-        t <- toValue $ zeros shape opts
+        shp <- fromValue vShape
+        t <- toValue $ zeros shp opts
         return t
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
@@ -79,8 +50,8 @@ onesFun =
     VEnum _ e -> do
       opts <- getDtype "ones" e
       return $ VFun $ \vShape -> do
-        shape <- fromValue vShape
-        t <- toValue $ ones shape opts
+        shp <- fromValue vShape
+        t <- toValue $ ones shp opts
         return t
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
@@ -178,18 +149,18 @@ randomTensorIFun :: (MonadThrow m, MonadIO m) => Value MlValue m
 randomTensorIFun = VFun $ \xs -> do
   -- TODO also allow choosing dtype
   -- TODO if this works also use this in toTensor functions above
-  size <- fromValue xs
-  t <- liftIO $ randnIO' size
-  -- t <- liftIO $ randnIO size (withDType TD.Double defaultOpts)
+  shp <- fromValue xs
+  t <- liftIO $ randnIO' shp
+  -- t <- liftIO $ randnIO shp (withDType TD.Double defaultOpts)
   pure $ VCustom $ VTensor t
 
 toDeviceFun :: Text -> Tensor -> Tensor
 toDeviceFun d t =
-  let device = case d of
+  let dev = case d of
         "cpu" -> Device CPU 0
         "cuda:0" -> Device CUDA 0
         device' -> error $ "Unknown device setting: " ++ unpack device'
-   in toDevice device t
+   in toDevice dev t
 
 mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
 mlModules =
