@@ -71,30 +71,14 @@ test-suite inferno-ml-tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
-  -- other-modules:
   build-depends:
       base >=4.7 && <5
     , containers
     , hasktorch
     , hspec
-    -- , hspec-golden-aeson
-    -- , hspec-golden-cereal
     , inferno-core
     , inferno-types
     , inferno-ml
-    -- , pretty-simple
-    -- , QuickCheck
-    -- , recursion-schemes
     , text
   default-language:    Haskell2010
-  -- default-extensions:
-  --     DeriveDataTypeable
-  --   , DeriveFunctor
-  --   , DeriveGeneric
-  --   , FlexibleContexts
-  --   , FlexibleInstances
-  --   , LambdaCase
-  --   , OverloadedStrings
-  --   , TupleSections
-  --   , RecordWildCards
   ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
