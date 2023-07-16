@@ -55,7 +55,7 @@ let model = ML.loadModel "downhole_autoencoder.ts.pt" in
 let get_model_loss = fun input ->
   match ML.forward model [input] with {
     | [output] ->
-      ML.asScalar (ML.mseLoss input output)
+      ML.asDouble (ML.mseLoss input output)
     | _ -> 999999.9 // TODO error "Unexpected number of outputs from model"
   }
 in

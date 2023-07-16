@@ -12,7 +12,6 @@ import qualified Torch as T
 data MlValue
   = VTensor T.Tensor
   | VModel T.ScriptModule
-  | VCustom2 -- TODO is this the only way we can extend to both MlValue and PlowValue?
 
 instance Eq MlValue where
   (VTensor t1) == (VTensor t2) = t1 == t2
@@ -22,7 +21,6 @@ instance Pretty MlValue where
   pretty = \case
     VTensor t -> align (pretty $ Text.pack $ show t)
     VModel m -> align (pretty $ Text.pack $ show m)
-    VCustom2 -> "custom"
 
 instance ToValue MlValue m T.Tensor where
   toValue = pure . VCustom . VTensor
