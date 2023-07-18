@@ -75,7 +75,7 @@ asTensor3Fun :: (MonadThrow m) => Value MlValue m
 asTensor3Fun = asTensorFun "asTensor3" (Proxy :: Proxy [[[Double]]])
 
 asTensor4Fun :: (MonadThrow m) => Value MlValue m
-asTensor4Fun = asTensorFun "asTensor4" (Proxy :: Proxy [[[Double]]])
+asTensor4Fun = asTensorFun "asTensor4" (Proxy :: Proxy [[[[Double]]]])
 
 asDouble :: Tensor -> Double
 asDouble t = asValue $ toType TD.Double t
