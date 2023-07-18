@@ -64,5 +64,8 @@ let anomaly_check = fun input ->
   let loss = get_model_loss input in
   (loss, if loss > threshold then "ANOMALY" else "OK")
 in
-(anomaly_check bad_input, anomaly_check good_input)
-// Expected: ANOMALY, OK
+match (anomaly_check bad_input, anomaly_check good_input) with {
+  | ((bad_loss, bad_res), (good_loss, good_res)) ->
+    assert bad_res == "ANOMALY" && good_res == "OK" in
+    (bad_loss, good_loss)
+}

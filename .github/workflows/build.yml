@@ -66,5 +66,5 @@ jobs:
       - name: Download and run downhole autoencode model
         working-directory: inferno-ml/test/
         run: |
-          wget https://www.dropbox.com/s/gshxebydlwqvspj/downhole_autoencoder.ts.pt?dl=1
+          wget https://www.dropbox.com/s/gshxebydlwqvspj/downhole_autoencoder.ts.pt?dl=1 -O downhole_autoencoder.ts.pt
           nix run .#inferno-ml -- downhole-autoencoder.inferno
