@@ -52,14 +52,14 @@ jobs:
           wget https://github.com/hasktorch/hasktorch/raw/${MNIST_COMMIT}/examples/model-serving/04-python-torchscript/mnist.py
           python mnist.py
       - name: Run inferno on MNIST
-        working-directory: ${GITHUB_WORKSPACE}/inferno-ml/test/
+        working-directory: ${{ GITHUB_WORKSPACE }}/inferno-ml/test/
         run: |
           cp ${MNIST_FNAME} ./
           nix run .#inferno-ml-exe -- mnist.inferno
 
       # Downhole autoencoder example
       - name: Download and run downhole autoencode model
-        working-directory: ${GITHUB_WORKSPACE}/inferno-ml/test/
+        working-directory: ${{ GITHUB_WORKSPACE }}/inferno-ml/test/
         run: |
           wget https://www.dropbox.com/s/gshxebydlwqvspj/downhole_autoencoder.ts.pt?dl=1
           nix run .#inferno-ml-exe -- downhole-autoencoder.inferno
