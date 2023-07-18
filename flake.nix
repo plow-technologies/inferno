@@ -227,8 +227,6 @@
                 };
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
-            in
-            ps // {
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -237,25 +235,28 @@
                   ln -s ${ps.vscode-inferno-lsp-server} $out/vscode/lsp-server
                   ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
                 '';
+            in
+            ps // {
+              inherit vscode-inferno;
               inferno = packages.${inferno};
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
               # Build all `packages`, `checks`, and `devShells`
-              default = pkgs.runCommand "everything"
+              default = pkgs.runCommand "almost-everything"
                 {
                   combined =
-                    let
-                      # This will ensure that `treefmt-check` builds first, before
-                      # any other `packages` or `checks`. This way CI will fail
-                      # early in case formatting errors are detected
-                      putTreefmtFirst = builtins.sort
-                        (x: _: if x.name == "treefmt-check" then true else false);
-                    in
                     builtins.concatLists [
-                      (putTreefmtFirst (builtins.attrValues self.checks.${system}))
-                      (builtins.attrValues ps)
-                      (lib.mapAttrsToList (_: v: v.inputDerivation) self.devShells.${system})
+                      [
+                        self.checks.${system}.treefmt
+                        flakes.${defaultCompiler}.devShell
+                      ]
+                      (builtins.attrValues flakes.${defaultCompiler}.checks)
+                      (
+                        builtins.attrValues (
+                          packages // { inherit vscode-inferno; }
+                        )
+                      )
                     ];
                 }
                 ''
