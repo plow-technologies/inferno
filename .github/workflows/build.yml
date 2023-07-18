@@ -35,9 +35,9 @@ jobs:
 
       # Download and train MNIST model to test Inferno's torchscript model loader
 
-      - name: Cache MNIST model
+      - name: Restore cached MNIST model
         id: cache-mnist
-        uses: actions/cache@v3
+        uses: actions/cache/restore@v3
         with:
           path: ${{ env.MNIST_FNAME }}
           key: ${{ env.MNIST_COMMIT }}
@@ -51,15 +51,20 @@ jobs:
           pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cpu
           wget https://github.com/hasktorch/hasktorch/raw/${MNIST_COMMIT}/examples/model-serving/04-python-torchscript/mnist.py
           python mnist.py
+      - name: Cache MNIST model
+        uses: actions/cache/save@v3
+        with:
+          path: ${{ env.MNIST_FNAME }}
+          key: ${{ steps.cache-mnist.outputs.cache-primary-key }}
       - name: Run inferno on MNIST
         working-directory: inferno-ml/test/
         run: |
           cp ${MNIST_FNAME} ./
-          nix run .#inferno-ml-exe -- mnist.inferno
+          nix run .#inferno-ml -- mnist.inferno
 
       # Downhole autoencoder example
       - name: Download and run downhole autoencode model
         working-directory: inferno-ml/test/
         run: |
           wget https://www.dropbox.com/s/gshxebydlwqvspj/downhole_autoencoder.ts.pt?dl=1
-          nix run .#inferno-ml-exe -- downhole-autoencoder.inferno
+          nix run .#inferno-ml -- downhole-autoencoder.inferno
