@@ -188,6 +188,18 @@ $ cd ./vscode-inferno-syntax-highlighting
 
 `npm` and all of the JS dependencies are available in the shell. The `NODE_PATH` points to generated `node_modules` in the Nix store and the environment variable `NPM_CONFIG_PACKAGE_LOCK_ONLY` is enabled. This is to ensure that the same dependencies are used everywhere (i.e. in the flake's `packages` as well as the corresponding `devShells`). Accordingly, `npm install` will only update the `package-lock.json`. After modifying dependencies listed in the `package.json`, update the lockfile, exit the shell, and then re-enter it using `nix develop`.
 
+#### Building/running Inferno-ML on GPU
+
+To build/run Inferno on GPU machines, use the
+```
+nix develop .#ghc924-cuda
+```
+dev-shell. You can run a test on the GPU with
+```
+cabal run inferno-ml-exe inferno-ml/test/test-gpu.inferno
+```
+(expected output `Tensor Float []  8.5899e9`)
+
 ### Formatting all sources
 
 To format all of the Nix and Haskell sources, run `nix fmt`. Alternately, running `nix develop` and then the command `treefmt` in the development shell will perform the same formatting.
