@@ -67,7 +67,7 @@ pkgs.haskell-nix.cabalProject {
       ${snipped}
       ${
         lib.optionalString isAtLeastGhc924
-          (builtins.readFile "${src}/nix/ml.cabal.project")
+          (builtins.readFile "${src}/nix/ghc9.cabal.project")
       }
     '';
   shell = {
