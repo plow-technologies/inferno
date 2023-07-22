@@ -177,6 +177,8 @@ $ cabal repl inferno-core
 
 Do note that building with Cabal directly outside of this Nix environment (that is, by installing the package set directly with a version of Cabal installed on your system) _will not work_.
 
+Additionally, if you are developing in an enviornment that can't support hasktorch. You should use nix develop .#inferno to get into a haskell enviornment that
+you can use to work on the inferno-core.
 #### Developing frontend packages
 
 There are two flake packages that build VS Code extensions for Inferno, `vscode-inferno-syntax-highlighting` and `vscode-inferno-lsp-server`. Two identically named `devShells` correspond to these packages and can be entered to work on them. After entering the development environment, `cd` to the directory containing the sources for the extension; for example:
