@@ -3,11 +3,9 @@ name: build
 on:
   workflow_dispatch:
   push:
-    branches:
-      - "main"
+    branches: [main]
   pull_request:
-    branches:
-      - "main"
+    branches: [main]
 
 concurrency:
   group: "${{ github.workflow }}-${{ github.ref }}"
@@ -17,6 +15,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      MNIST_FNAME: /tmp/mnist/mnist.ts.pt
+      MNIST_COMMIT: 94b288a631362aa44edc219eb8f54a7c39891169
     steps:
       - uses: actions/checkout@v3
       - uses: cachix/install-nix-action@v18
@@ -31,3 +32,39 @@ jobs:
           authToken: "${{ secrets.CACHIX_TOKEN }}"
       - run: |
           nix build -L .#
+
+      # Download and train MNIST model to test Inferno's torchscript model loader
+
+      - name: Restore cached MNIST model
+        id: cache-mnist
+        uses: actions/cache/restore@v3
+        with:
+          path: ${{ env.MNIST_FNAME }}
+          key: ${{ env.MNIST_COMMIT }}
+      - name: Download and train MNIST (if not cached)
+        if: steps.cache-mnist.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$(dirname ${MNIST_FNAME})"
+          cd "$(dirname ${MNIST_FNAME})"
+          python -m pip install --upgrade pip
+          # Need specific torch version for the serialized torchscript models (e.g. Bert) to be compatible with hasktorch:
+          pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cpu
+          wget https://github.com/hasktorch/hasktorch/raw/${MNIST_COMMIT}/examples/model-serving/04-python-torchscript/mnist.py
+          python mnist.py
+      - name: Cache MNIST model
+        uses: actions/cache/save@v3
+        with:
+          path: ${{ env.MNIST_FNAME }}
+          key: ${{ steps.cache-mnist.outputs.cache-primary-key }}
+      - name: Run inferno on MNIST
+        working-directory: inferno-ml/test/
+        run: |
+          cp ${MNIST_FNAME} ./
+          nix run .#inferno-ml -- mnist.inferno
+
+      # Downhole autoencoder example
+      - name: Download and run downhole autoencode model
+        working-directory: inferno-ml/test/
+        run: |
+          wget https://www.dropbox.com/s/gshxebydlwqvspj/downhole_autoencoder.ts.pt?dl=1 -O downhole_autoencoder.ts.pt
+          nix run .#inferno-ml -- downhole-autoencoder.inferno

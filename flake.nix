@@ -28,6 +28,17 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+
+    # Needed for the `hasktorch` integration
+    hasktorch = {
+      url = "github:hasktorch/hasktorch";
+      # NOTE: `hasktorch` does have its own flake, but none of its outputs are
+      # useful to us. We just need the source for `libtorch`
+      flake = false;
+    };
+    tokenizers = {
+      url = "github:hasktorch/tokenizers/flakes";
+    };
   };
 
   outputs =
@@ -61,10 +72,8 @@
           outputsByCompiler = lib.mapAttrsToList
             (compiler: flake: { "${compiler}" = flake.${attr} or { }; })
             flakes;
-          addSuffix = compiler: lib.attrsets.mapAttrs'
-            (output: drv:
-              lib.attrsets.nameValuePair "${output}-${compiler}" drv
-            );
+          addSuffix = compiler: lib.mapAttrs'
+            (output: drv: lib.attrsets.nameValuePair "${output}-${compiler}" drv);
           withSuffixes = builtins.map
             (builtins.mapAttrs addSuffix)
             outputsByCompiler;
@@ -87,10 +96,12 @@
           flakes = {
             "${defaultCompiler}-prof" = (
               infernoFor {
-                compiler = defaultCompiler;
                 profiling = true;
                 ghcOptions = [ "-eventlog" ];
               }
+            ).flake { };
+            "${defaultCompiler}-cuda" = (
+              infernoFor { torchConfig.device = "cuda-11"; }
             ).flake { };
           }
           // builtins.listToAttrs
@@ -114,47 +125,7 @@
           # want users who get packages from our `overlays.default` to be able to
           # use their own `nixpkgs` without having to instantiate ours as well
           # (which would happen if we just use `self.packages` directly in the overlay)
-          infernoFor = { compiler, ghcOptions ? [ ], profiling ? false }:
-            pkgs.haskell-nix.cabalProject {
-              name = "inferno";
-              compiler-nix-name = compiler;
-              src = builtins.path {
-                path = ./.;
-                filter = path: _:
-                  builtins.any
-                    (ext: !lib.hasSuffix ext path)
-                    [ ".nix" ".md" ".yml" ];
-              };
-              shell = {
-                withHoogle = true;
-                tools = {
-                  cabal = { };
-                  # FIXME
-                  # See https://github.com/plow-technologies/inferno/issues/25
-                  #
-                  # # This is the final supported version for our current compilers
-                  # haskell-language-server = "1.8.0.0";
-                };
-                buildInputs = [ config.treefmt.build.wrapper ]
-                  ++ builtins.attrValues config.treefmt.build.programs;
-              };
-              modules = [
-                {
-                  enableLibraryProfiling = profiling;
-                  packages = {
-                    # This takes forever to build
-                    ghc.components.library.doHaddock = false;
-                    # Broken
-                    temporary.components.library.doHaddock = false;
-                  };
-                  packages.inferno-core = {
-                    enableLibraryProfiling = profiling;
-                    enableProfiling = profiling;
-                    inherit ghcOptions;
-                  };
-                }
-              ];
-            };
+          infernoFor = args: import ./nix ({ inherit pkgs config inputs; } // args);
 
           # Inferno's VSCode packages
           vsCodeInferno =
@@ -194,32 +165,10 @@
           _module.args.pkgs = import nixpkgs {
             inherit (haskell-nix) config;
             inherit system;
-            overlays = [
-              haskell-nix.overlays.combined
-              inputs.npm-buildpackage.overlays.default
-              (_: _:
-                {
-                  lib = nixpkgs.lib.extend (final: _:
-                    {
-                      # Adapted from: NixOS/nixpkgs/f993f8a18659bb15bc5697b6875caf0cba8b1825
-                      #
-                      # Needed by `treefmt-nix`, but missing from `nixpkgs`
-                      # revision from `haskell.nix`. We can't just use upstream
-                      # `nixpkgs` or we'll get cache misses from `haskell.nix`
-                      concatMapAttrs = f:
-                        final.trivial.flip
-                          final.trivial.pipe
-                          [
-                            (final.mapAttrs f)
-                            final.attrValues
-                            (builtins.foldl' final.mergeAttrs { })
-                          ];
-                    }
-                  );
-                }
-              )
-            ];
+            overlays = [ self.overlays.combined ];
           };
+
+          legacyPackages = pkgs // infernoFor { compiler = defaultCompiler; };
 
           # To enter a development environment for a particular GHC version, use
           # the compiler name, e.g. `nix develop .#ghc8107`
@@ -248,11 +197,21 @@
                   '';
                 };
             in
-            lib.attrsets.mapAttrs (_: v: v.devShell) flakes
+            builtins.mapAttrs (_: v: v.devShell) flakes
             // {
               default = flakes.${defaultCompiler}.devShell;
               vscode-inferno-lsp-server = mkNodeDevShell "vscode-inferno-lsp-server";
               vscode-inferno-syntax-highlighting = mkNodeDevShell "vscode-inferno-syntax-highlighting";
+              pytorch =
+                pkgs.mkShell {
+                  packages = [
+                    (
+                      pkgs.python3.withPackages (
+                        ps: with ps; [ torch torchvision ]
+                      )
+                    )
+                  ];
+                };
             };
 
           packages =
@@ -266,23 +225,38 @@
                     vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
                   inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
                 };
+              inferno = "inferno-core:exe:inferno";
+              inferno-ml = "inferno-ml:exe:inferno-ml-exe";
+              vscode-inferno = pkgs.runCommand "vscode-inferno"
+                { }
+                ''
+                  mkdir -p $out/{vscode,bin}
+                  ln -s ${ps.vscode-inferno-syntax-highlighting} $out/vscode/syntax-highlighting
+                  ln -s ${ps.vscode-inferno-lsp-server} $out/vscode/lsp-server
+                  ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
+                '';
             in
             ps // {
+              inherit vscode-inferno;
+              inferno = packages.${inferno};
+              inferno-ml = packages.${inferno-ml};
+              inferno-ml-cpu = packages.${inferno-ml};
+              inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
               # Build all `packages`, `checks`, and `devShells`
-              default = pkgs.runCommand "everything"
+              default = pkgs.runCommand "almost-everything"
                 {
                   combined =
-                    let
-                      # This will ensure that `treefmt-check` builds first, before
-                      # any other `packages` or `checks`. This way CI will fail
-                      # early in case formatting errors are detected
-                      putTreefmtFirst = builtins.sort
-                        (x: _: if x.name == "treefmt-check" then true else false);
-                    in
                     builtins.concatLists [
-                      (putTreefmtFirst (builtins.attrValues self.checks.${system}))
-                      (builtins.attrValues ps)
-                      (lib.mapAttrsToList (_: v: v.inputDerivation) self.devShells.${system})
+                      [
+                        self.checks.${system}.treefmt
+                        flakes.${defaultCompiler}.devShell
+                      ]
+                      (builtins.attrValues flakes.${defaultCompiler}.checks)
+                      (
+                        builtins.attrValues (
+                          packages // { inherit vscode-inferno; }
+                        )
+                      )
                     ];
                 }
                 ''
@@ -350,5 +324,16 @@
               };
           };
         };
+
+      flake.overlays = {
+        combined = lib.composeManyExtensions [
+          haskell-nix.overlays.combined
+          inputs.npm-buildpackage.overlays.default
+          inputs.tokenizers.overlay
+          (_:_: { inherit (inputs) hasktorch; })
+          (import ./nix/overlays/compat.nix)
+          (import ./nix/overlays/torch.nix)
+        ];
+      };
     };
 }
