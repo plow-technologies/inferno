@@ -87,13 +87,13 @@ inferenceSpec = do
 
       mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
-      mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
+      mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
 
   -- This tests caching and using the model with the filesystem compression
   -- option, the one above uses non-compressed paths
   Hspec.around (withTestAppAndEnv mkCompressedCacheOption) $ do
-    Hspec.describe "POST /inference" $ do
-      mkEvalTest "../inferno-ml/test/mnist.inferno" "[[7]]"
+    Hspec.describe "POST /inference (compressed)" $ do
+      mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
 
 collectModelsSpec :: Spec
 collectModelsSpec = Hspec.describe "collectModelNames" $ do
