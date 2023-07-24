@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Inferno.ML.Remote.Utils
   ( mkFinalAst,
     cacheAndUseModel,

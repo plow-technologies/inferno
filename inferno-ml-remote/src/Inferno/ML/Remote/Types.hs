@@ -1,14 +1,21 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
-    Options (..),
-    Script (..),
-    EvalResult (..),
+    Options (Options),
+    Script (Script),
+    EvalResult (EvalResult),
     InfernoMlRemoteM,
-    InfernoMlRemoteEnv (..),
+    InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     ModelCacheOption (..),
-    ModelCache (..),
+    ModelCache (ModelCache),
     SomeInfernoError (..),
     InfernoMlRemoteError (..),
     parseOptions,
