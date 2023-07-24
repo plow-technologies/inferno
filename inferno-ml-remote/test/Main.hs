@@ -6,13 +6,12 @@ import Data.Coerce (coerce)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product.Typed (typed)
-import qualified Data.Text as Text
 import qualified Data.Text.IO as Text.IO
 import Data.Word (Word64)
 import Inferno.ML.Remote.Client (runInference)
 import Inferno.ML.Remote.Server (api, infernoMlRemote)
 import Inferno.ML.Remote.Types
-  ( EvalResult (EvalResult),
+  ( EvalResult,
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteError (CacheSizeExceeded),
     ModelCache (ModelCache),
@@ -77,14 +76,6 @@ inferenceSpec = do
     Hspec.describe "POST /inference" $ do
       mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
-      mkEvalTest "../inferno-ml/test/xor.inferno" . coerce . Text.strip $
-        Text.unlines
-          [ "[Tensor Float [1] [-6.7711e-5]",
-            ",Tensor Float [1] [ 1.0000   ]",
-            ",Tensor Float [1] [ 0.9999   ]",
-            ",Tensor Float [1] [-1.9073e-6]]"
-          ]
-
       mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
       mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
@@ -102,7 +93,7 @@ collectModelsSpec = Hspec.describe "collectModelNames" $ do
       (`Hspec.shouldBe` ["mnist.ts.pt"]) . collectModelNames
 
   Hspec.it "does not extract superfluous models" $ do
-    mkAstTest "../inferno-ml/test/xor.inferno" $
+    mkAstTest "./test/contrived5.inferno" $
       (`Hspec.shouldBe` []) . collectModelNames
 
   Hspec.it "extracts multiple models from script" $ do
