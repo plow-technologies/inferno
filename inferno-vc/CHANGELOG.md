@@ -1,6 +1,12 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.1 -- 2023-07-11
+* Update inferno-types version
+
+## 0.3.0 -- 2023-06-26
+* Fix the order returned by `fetchVCObjectHistory`. BREAKING CHANGE: history is now returned in newest to oldest order.
+
 ## 0.2.1 -- 2023-04-26
 * Fixes an issue in `fetchVCObjectHistory` that occurred when deleting the source script immediately after cloning it
 

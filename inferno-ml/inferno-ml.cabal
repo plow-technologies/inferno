@@ -55,3 +55,30 @@ executable inferno-ml-exe
     , inferno-types
     , text
   default-language: Haskell2010
+
+executable inferno-ml-lsp-server
+  main-is: Main.hs
+  hs-source-dirs:
+      lsp
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
+  build-depends:
+      base >=4.7 && <5
+    , inferno-lsp
+    , inferno-ml
+  default-language: Haskell2010
+
+test-suite inferno-ml-tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , hasktorch
+    , hspec
+    , inferno-core
+    , inferno-types
+    , inferno-ml
+    , text
+  default-language:    Haskell2010
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates

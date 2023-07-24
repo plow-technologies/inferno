@@ -7,6 +7,7 @@
 
 module Inferno.Infer.Exhaustiveness
   ( mkEnumText,
+    mkEnumArrayPat,
     Pattern (W),
     exhaustive,
     checkUsefullness,
@@ -25,8 +26,10 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Inferno.Types.Syntax (Pat (PArray, PVar))
 import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), align, tupled, (<+>))
+import Text.Megaparsec (SourcePos, initialPos)
 
 data Con = COne | CEmpty | CTuple Int | forall a. (Show a, Pretty a, Enum a) => CInf a | CEnum VCObjectHash Text
 
@@ -49,7 +52,7 @@ instance Ord Con where
         CInf v -> show v
         CEnum _ e -> show e
 
--- We define a more abstract type of a pattern here, which only deals with (C)onstructors and
+-- | We define a more abstract type of a pattern here, which only deals with (C)onstructors and
 -- holes/(W)ildcards, as we do not need to make a distinction between a variable and a wildcard
 -- in the setting of exhaustiveness checking.
 data Pattern = C Con [Pattern] | W deriving (Eq, Ord)
@@ -223,7 +226,7 @@ checkUsefullness enum_sigs p = go 0 [] p
         then findOverlap p_i (n + 1) xs
         else n
 
--- DO NOT export the constructor EnumText or use EnumText for anything else
+-- | DO NOT export the constructor EnumText or use EnumText for anything else
 -- It is used purely as a hack to give Text a half defined Enum instance,
 -- specifically we abuse the `succ` function to be able to generate an
 -- example of an incomplete match on text
@@ -246,3 +249,21 @@ instance Enum EnumText where
       if Text.null t
         then "a"
         else t <> t
+
+-- | A type for array patterns. Since this is used only for its Enum instance, in order to
+-- generate counter-examples for incomplete pattern matches, we map any array pattern to the
+-- number of items in it.  For any pattern [<bla>], succ generates the pattern [<bla>, _].
+newtype EnumArrayPat = EnumArrayPat Int
+  deriving (Show)
+
+mkEnumArrayPat :: [(Pat a SourcePos, Maybe SourcePos)] -> EnumArrayPat
+mkEnumArrayPat = EnumArrayPat . length
+
+instance Pretty EnumArrayPat where
+  pretty (EnumArrayPat n) =
+    -- Since SourcePos is ignored when pretty printing, we use an undefined SourcePos
+    pretty $ PArray undefined (replicate n $ (PVar (initialPos "") Nothing, Nothing)) undefined
+
+instance Enum EnumArrayPat where
+  toEnum = EnumArrayPat
+  fromEnum (EnumArrayPat n) = n

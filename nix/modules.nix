@@ -13,5 +13,7 @@
 
     # This takes forever to build
     ghc.components.library.doHaddock = false;
+    # Broken
+    temporary.components.library.doHaddock = false;
   };
 }

@@ -1,6 +1,6 @@
 // NOTE: first run examples/model-serving/04-python-torchscript/mnist.py to obtain
 // mnist.ts.pt
-let input = ML.asTensor4 [[[
+let input = ML.asTensor4 ML.#float [[[
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -31,8 +31,9 @@ let input = ML.asTensor4 [[[
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]]] in
 let model = ML.loadModel "mnist.ts.pt" in
-// let scores = ML.forward model input in
-// Array.map Array.argmax (ML.asArray2 scores)
-let scores = ML.forward model [input] in
-Array.map (Array.map Array.argmax) (Array.map ML.asArray2 scores)
-// Expected: [[7]]
+let prediction =
+  match ML.forward model [input] with {
+    | [scores] -> ML.asDouble (ML.argmax 1 #false scores)
+    | _ -> 999999.9 // TODO error "Unexpected number of outputs from model"
+  }
+in assert prediction == 7.0 in ()

@@ -1,5 +1,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
@@ -7,6 +8,7 @@ module Inferno.ML.Module.Prelude (mlPrelude) where
 import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
+import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
 import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval as Eval (TermEnv)
@@ -22,123 +24,76 @@ import Inferno.Types.Syntax
 import Inferno.Types.Value (ImplEnvM, Value (..))
 import Inferno.Types.VersionControl (VCObjectHash)
 import Torch
-  ( Device (..),
-    DeviceType (..),
-    HasForward (forward),
-    IValue (..),
-    ScriptModule,
-    Tensor,
-    TensorLike (asTensor),
-    TensorOptions,
-    asValue,
-    defaultOpts,
-    ones,
-    randnIO',
-    toDevice,
-    toType,
-    withDType,
-    zeros,
-  )
 import qualified Torch.DType as TD
 import Torch.Functional
-  ( Dim (Dim),
-    add,
-    matmul,
-    pow,
-    softmax,
-    sumAll,
-    tanh,
-    transpose2D,
-  )
 import qualified Torch.Script as TS
 
-getDtype :: (MonadThrow m) => String -> Ident -> m TensorOptions
+getDtype :: (MonadThrow m) => String -> Ident -> m DType
 getDtype funName = \case
-  "int" -> return $ withDType TD.Int64 defaultOpts
-  "float" -> return $ withDType TD.Float defaultOpts
-  "double" -> return $ withDType TD.Double defaultOpts
+  "int" -> return TD.Int64
+  "float" -> return TD.Float
+  "double" -> return TD.Double
   s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
 
 zerosFun :: (MonadThrow m) => Value MlValue m
 zerosFun =
   VFun $ \case
     VEnum _ e -> do
-      opts <- getDtype "zeros" e
+      dType <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
-        shape <- fromValue vShape
-        t <- toValue $ zeros shape opts
-        return t
+        shp <- fromValue vShape
+        toValue $ zeros shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
 onesFun :: (MonadThrow m) => Value MlValue m
 onesFun =
   VFun $ \case
     VEnum _ e -> do
-      opts <- getDtype "ones" e
+      dType <- getDtype "ones" e
       return $ VFun $ \vShape -> do
-        shape <- fromValue vShape
-        t <- toValue $ ones shape opts
-        return t
+        shp <- fromValue vShape
+        toValue $ ones shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
-asTensor1Fun :: (MonadThrow m) => Value MlValue m
-asTensor1Fun =
+asTensorFun :: forall a m. (TensorLike a, FromValue MlValue m a, MonadThrow m) => String -> Proxy a -> Value MlValue m
+asTensorFun funName _proxy =
   VFun $ \case
-    VArray xs -> do
-      fs <- getDoubleList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
-      pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwM $ RuntimeError "asTensor2Fun: expecting double values"
-    getDoubleList xs = mapM getDouble xs
+    VEnum _ e -> do
+      dType <- getDtype funName e
+      pure $ VFun $ \v -> do
+        xs :: a <- fromValue v
+        pure $ VCustom $ VTensor $ toType dType $ asTensor $ xs
+    _ -> throwM $ RuntimeError $ funName ++ ": expecting a dtype enum"
+
+asTensor1Fun :: (MonadThrow m) => Value MlValue m
+asTensor1Fun = asTensorFun "asTensor1" (Proxy :: Proxy [Double])
 
 asTensor2Fun :: (MonadThrow m) => Value MlValue m
-asTensor2Fun =
-  VFun $ \case
-    VArray xs -> do
-      fs <- mapM getDoubleList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
-      pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwM $ RuntimeError "asTensor2Fun: expecting double values"
-    getDoubleList = \case
-      VArray xs -> mapM getDouble xs
-      _ -> throwM $ RuntimeError "asTensor2Fun: expecting an array of arrays"
+asTensor2Fun = asTensorFun "asTensor2" (Proxy :: Proxy [[Double]])
 
--- TODO clean up
+asTensor3Fun :: (MonadThrow m) => Value MlValue m
+asTensor3Fun = asTensorFun "asTensor3" (Proxy :: Proxy [[[Double]]])
+
 asTensor4Fun :: (MonadThrow m) => Value MlValue m
-asTensor4Fun =
-  VFun $ \case
-    VArray xs -> do
-      fs <- mapM getDoubleListListList xs
-      -- pure $ VCustom $ VTensor $ asTensor $ fs
-      pure $ VCustom $ VTensor $ toType TD.Float $ asTensor $ fs
-    _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array"
-  where
-    getDouble v = case v of
-      VDouble x -> pure x
-      _ -> throwM $ RuntimeError "asTensor4Fun: expecting double values"
-    getDoubleList = \case
-      VArray xs -> mapM getDouble xs
-      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
-    getDoubleListList = \case
-      VArray xs -> mapM getDoubleList xs
-      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
-    getDoubleListListList = \case
-      VArray xs -> mapM getDoubleListList xs
-      _ -> throwM $ RuntimeError "asTensor4Fun: expecting an array of arrays"
+asTensor4Fun = asTensorFun "asTensor4" (Proxy :: Proxy [[[[Double]]]])
+
+asDouble :: Tensor -> Double
+asDouble t = asValue $ toType TD.Double t
 
 asArray1Fun :: Tensor -> [Double]
 asArray1Fun t = asValue $ toType TD.Double t
 
 asArray2Fun :: Tensor -> [[Double]]
 asArray2Fun t = asValue $ toType TD.Double t
+
+asArray3Fun :: Tensor -> [[[Double]]]
+asArray3Fun t = asValue $ toType TD.Double t
+
+asArray4Fun :: Tensor -> [[[[Double]]]]
+asArray4Fun t = asValue $ toType TD.Double t
+
+argmaxFun :: Int -> Bool -> Tensor -> Tensor
+argmaxFun i keepDim t = argmax (Dim i) (if keepDim then KeepDim else RemoveDim) t
 
 softmaxFun :: Int -> Tensor -> Tensor
 softmaxFun i t = softmax (Dim i) t
@@ -154,8 +109,6 @@ loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack
 
 forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
 forwardFun m ts =
-  -- let mkIVT t = IVTensor $ toType TD.Float t in
-  -- let ivts = IVTensorList $ map mkIVT ts in
   unIV $ forward m (map IVTensor ts)
   where
     unIV = \case
@@ -165,22 +118,24 @@ forwardFun m ts =
         concat $ map unIV ivs
       res -> error $ "expected tensor result, got " ++ (show res)
 
-randomTensorIFun :: (MonadThrow m, MonadIO m) => Value MlValue m
-randomTensorIFun = VFun $ \xs -> do
-  -- TODO also allow choosing dtype
-  -- TODO if this works also use this in toTensor functions above
-  size <- fromValue xs
-  t <- liftIO $ randnIO' size
-  -- t <- liftIO $ randnIO size (withDType TD.Double defaultOpts)
-  pure $ VCustom $ VTensor t
+randnIOFun :: (MonadThrow m, MonadIO m) => Value MlValue m
+randnIOFun =
+  VFun $ \case
+    VEnum _ e -> do
+      dType <- getDtype "randnIO" e
+      pure $ VFun $ \xs -> do
+        shp <- fromValue xs
+        t <- liftIO $ randnIO shp $ withDType dType defaultOpts
+        pure $ VCustom $ VTensor t
+    _ -> throwM $ RuntimeError "randnIOFun: expecting a dtype enum"
 
 toDeviceFun :: Text -> Tensor -> Tensor
 toDeviceFun d t =
-  let device = case d of
+  let dev = case d of
         "cpu" -> Device CPU 0
         "cuda:0" -> Device CUDA 0
         device' -> error $ "Unknown device setting: " ++ unpack device'
-   in toDevice device t
+   in toDevice dev t
 
 mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
 mlModules =
@@ -196,15 +151,23 @@ module ML
 
   add : tensor -> tensor -> tensor := ###add###;
 
-  asTensor1 : array of double -> tensor := ###!asTensor1Fun###;
+  asTensor1 : dtype{#int, #float, #double} -> array of double -> tensor := ###!asTensor1Fun###;
 
-  asTensor2 : array of (array of double) -> tensor := ###!asTensor2Fun###;
+  asTensor2 : dtype{#int, #float, #double} -> array of (array of double) -> tensor := ###!asTensor2Fun###;
 
-  asTensor4 : array of (array of (array of (array of double))) -> tensor := ###!asTensor4Fun###;
+  asTensor3 : dtype{#int, #float, #double} -> array of (array of (array of double)) -> tensor := ###!asTensor3Fun###;
+
+  asTensor4 : dtype{#int, #float, #double} -> array of (array of (array of (array of double))) -> tensor := ###!asTensor4Fun###;
+
+  asDouble : tensor -> double := ###asDouble###;
 
   asArray1 : tensor -> array of double := ###asArray1Fun###;
 
   asArray2 : tensor -> array of (array of double) := ###asArray2Fun###;
+
+  asArray3 : tensor -> array of (array of (array of double)) := ###asArray3Fun###;
+
+  asArray4 : tensor -> array of (array of (array of (array of double))) := ###asArray4Fun###;
 
   sumAll : tensor -> tensor := ###sumAll###;
 
@@ -212,14 +175,19 @@ module ML
 
   tanH : tensor -> tensor := ###tanHTFun###;
 
+  @doc `argmax i k t` is the argmax of tensor `t` along dimension `i`. `k` denotes whether the output tensor has dim retained or not.;
+  argmax : int -> bool{#true, #false} -> tensor -> tensor := ###argmaxFun###;
+
   softmax : int -> tensor -> tensor := ###softmaxFun###;
 
   transpose2D : tensor -> tensor := ###transpose2D###;
 
   matmul : tensor -> tensor -> tensor := ###matmul###;
 
+  mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
+
   @doc An impure (pseudo)random tensor generator;
-  randomTensorI : array of int -> tensor := ###!randomTensorIFun###;
+  randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;
 
   @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
   toDevice : text -> tensor -> tensor := ###toDeviceFun###;

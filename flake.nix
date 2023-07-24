@@ -228,8 +228,6 @@
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
               inferno-ml-remote = "inferno-ml-remote:exe:inferno-ml-remote";
-            in
-            ps // {
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -238,6 +236,9 @@
                   ln -s ${ps.vscode-inferno-lsp-server} $out/vscode/lsp-server
                   ln -s ${ps.inferno-lsp-server} $out/bin/inferno-lsp-server
                 '';
+            in
+            ps // {
+              inherit vscode-inferno;
               inferno = packages.${inferno};
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
@@ -247,20 +248,20 @@
               inferno-ml-remote-cuda =
                 flakes."${defaultCompiler}-cuda".packages.${inferno-ml-remote};
               # Build all `packages`, `checks`, and `devShells`
-              default = pkgs.runCommand "everything"
+              default = pkgs.runCommand "almost-everything"
                 {
                   combined =
-                    let
-                      # This will ensure that `treefmt-check` builds first, before
-                      # any other `packages` or `checks`. This way CI will fail
-                      # early in case formatting errors are detected
-                      putTreefmtFirst = builtins.sort
-                        (x: _: if x.name == "treefmt-check" then true else false);
-                    in
                     builtins.concatLists [
-                      (putTreefmtFirst (builtins.attrValues self.checks.${system}))
-                      (builtins.attrValues ps)
-                      (lib.mapAttrsToList (_: v: v.inputDerivation) self.devShells.${system})
+                      [
+                        self.checks.${system}.treefmt
+                        flakes.${defaultCompiler}.devShell
+                      ]
+                      (builtins.attrValues flakes.${defaultCompiler}.checks)
+                      (
+                        builtins.attrValues (
+                          packages // { inherit vscode-inferno; }
+                        )
+                      )
                     ];
                 }
                 ''
@@ -282,15 +283,17 @@
           # name with the GHC version, e.g.
           #
           # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924`
-          checks =
-            flakes.${defaultCompiler}.checks // collectOutputs "checks" flakes;
+          checks = flakes.${defaultCompiler}.checks
+            // collectOutputs "checks" flakes;
 
           formatter = treefmt-nix.lib.mkWrapper pkgs treefmt.config;
 
           # Defined packages included in the generated `overlays.default`
           overlayAttrs = {
             inherit (config.packages)
-              inferno-lsp-server vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
+              inferno-lsp-server
+              vscode-inferno-syntax-highlighting
+              vscode-inferno-lsp-server;
           };
 
           # NOTE

@@ -50,6 +50,12 @@ pkgs.haskell-nix.cabalProject {
   inherit src;
   name = "inferno";
   compiler-nix-name = compiler;
+  # This is necessary to support GHC 9 conditionally. Although the conditional
+  # import works with Cabal directly, it doesn't seem to work with haskell.nix.
+  # The workaround is to remote the part of the cabal.project referencing the
+  # import; if we want to include the GHC 9 configuration, it can be read in
+  # directly into the generated cabal.project instead of using the original
+  # `import` stanza. If we're building for GHC 8, it's omitted entirely
   cabalProject =
     let
       magicComment = "-- *SNIP*";
@@ -61,7 +67,7 @@ pkgs.haskell-nix.cabalProject {
       ${snipped}
       ${
         lib.optionalString isAtLeastGhc924
-          (builtins.readFile "${src}/nix/ml.cabal.project")
+          (builtins.readFile "${src}/nix/ghc9.cabal.project")
       }
     '';
   shell = {

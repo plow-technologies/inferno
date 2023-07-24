@@ -107,6 +107,22 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "round -1425"
     shouldInferTypeFor "round (-1425)" $ simpleType typeInt
 
+    -- Array pattern matching:
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [_, (x, y), _] -> 3 | _ -> 9 }"
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [x, [y]] -> 2 | _ -> 9 }"
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [3.2, \"d\", 3] -> 2 }"
+    shouldFailToInferTypeFor "fun a -> match a with { | [x, y, z] -> truncateTo x y | _ -> 3 }"
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [1] -> 2 | _ -> 3 }"
+    shouldFailToInferTypeFor "match [1, 2] with { | [x, x] -> 2*x | [x] -> 0 | _ -> 2 }"
+
+    -- Non-exhaustive array patterns:
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [] -> 0 | [x, y] -> 2 }"
+    shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [x] -> 1 | [x, y] -> 2 }"
+    shouldFailToInferTypeFor "match [1, 3] with { | [1] -> 2 | [x] -> 4 | [] -> 3 }"
+
+    -- Redundant array patterns:
+    shouldFailToInferTypeFor "match [1, 2] with { | [x, z] -> 1 | [x, y] -> 1 | _ -> 2 }"
+
     describe "exhaustiveness checker" $
       do
         let boolsPattern =
