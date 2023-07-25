@@ -227,6 +227,7 @@
                 };
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
+              inferno-ml-remote = "inferno-ml-remote:exe:inferno-ml-remote";
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -242,6 +243,10 @@
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
+              inferno-ml-remote = packages.${inferno-ml-remote};
+              inferno-ml-remote-cpu = packages.${inferno-ml-remote};
+              inferno-ml-remote-cuda =
+                flakes."${defaultCompiler}-cuda".packages.${inferno-ml-remote};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "almost-everything"
                 {
@@ -278,15 +283,17 @@
           # name with the GHC version, e.g.
           #
           # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924`
-          checks =
-            flakes.${defaultCompiler}.checks // collectOutputs "checks" flakes;
+          checks = flakes.${defaultCompiler}.checks
+            // collectOutputs "checks" flakes;
 
           formatter = treefmt-nix.lib.mkWrapper pkgs treefmt.config;
 
           # Defined packages included in the generated `overlays.default`
           overlayAttrs = {
             inherit (config.packages)
-              inferno-lsp-server vscode-inferno-syntax-highlighting vscode-inferno-lsp-server;
+              inferno-lsp-server
+              vscode-inferno-syntax-highlighting
+              vscode-inferno-lsp-server;
           };
 
           # NOTE
@@ -334,6 +341,13 @@
           (import ./nix/overlays/compat.nix)
           (import ./nix/overlays/torch.nix)
         ];
+        inferno-ml = prev: _: {
+          inherit (self.packages.${prev.system})
+            inferno-ml-remote
+            inferno-ml-remote-cpu
+            inferno-ml-remote-cuda
+            ;
+        };
       };
     };
 }
