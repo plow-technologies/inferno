@@ -282,7 +282,7 @@
           # To run a check for a particular compiler version, suffix the derivation
           # name with the GHC version, e.g.
           #
-          # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924`
+          # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc925`
           checks = flakes.${defaultCompiler}.checks
             // collectOutputs "checks" flakes;
 
