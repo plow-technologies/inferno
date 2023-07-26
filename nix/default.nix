@@ -74,10 +74,8 @@ pkgs.haskell-nix.cabalProject {
     withHoogle = false;
     tools = {
       cabal = { };
-      # FIXME
-      # See https://github.com/plow-technologies/inferno/issues/25
-      #
-      # # This is the final supported version for our current compilers
+      # We can't have HLS for both compiler versions
+    } // lib.optionalAttrs isAtLeastGhc924 {
       haskell-language-server = {
         # This is broken and we don't need it as a plugin
         configureArgs = "-f-stylishHaskell";
