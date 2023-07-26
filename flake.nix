@@ -52,7 +52,7 @@
     let
       inherit (nixpkgs) lib;
 
-      defaultCompiler = "ghc924";
+      defaultCompiler = "ghc925";
 
       # Takes an attribute set mapping compiler versions to `flake`s generated
       # by `haskell.nix` and suffixes each derivation in all flake outputs

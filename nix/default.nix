@@ -1,4 +1,4 @@
-{ compiler ? "ghc924"
+{ compiler ? "ghc925"
 , config
 , ghcOptions ? [ ]
 , profiling ? false
@@ -78,7 +78,10 @@ pkgs.haskell-nix.cabalProject {
       # See https://github.com/plow-technologies/inferno/issues/25
       #
       # # This is the final supported version for our current compilers
-      # haskell-language-server = "1.8.0.0";
+      haskell-language-server = {
+        # This is broken and we don't need it as a plugin
+        configureArgs = "-f-stylishHaskell";
+      };
     };
     buildInputs = [ config.treefmt.build.wrapper ]
       ++ builtins.attrValues config.treefmt.build.programs;
