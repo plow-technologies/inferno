@@ -254,7 +254,6 @@
                     builtins.concatLists [
                       [
                         self.checks.${system}.treefmt
-                        flakes.${defaultCompiler}.devShell
                       ]
                       (builtins.attrValues flakes.${defaultCompiler}.checks)
                       (
