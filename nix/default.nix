@@ -77,10 +77,10 @@ pkgs.haskell-nix.cabalProject {
       cabal = { };
       # We can't have HLS for both compiler versions
     } // lib.optionalAttrs isAtLeastGhc924 {
-      haskell-language-server = {
-        # This is broken and we don't need it as a plugin
-        configureArgs = "-f-stylishHaskell";
-      };
+      # haskell-language-server = {
+      #   # This is broken and we don't need it as a plugin
+      #   configureArgs = "-f-stylishHaskell";
+      # };
     };
     buildInputs = [ config.treefmt.build.wrapper ]
       ++ builtins.attrValues config.treefmt.build.programs;
