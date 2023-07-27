@@ -13,6 +13,7 @@ let
   # Some things, notably the Hasktorch integration, will not work if the compiler
   # version is older than GHC 9.2.4
   isAtLeastGhc924 = builtins.compareVersions compiler "ghc924" != -1;
+  hasktorchSupport = isAtLeastGhc924 && args.pkgs.stdenv.isx86_64;
   cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
@@ -30,7 +31,7 @@ let
             # `libtorch` to the package set
             torch = prev.torch.override torchConfig;
           in
-          lib.optionalAttrs (prev.stdenv.isx86_64 && isAtLeastGhc924) (
+          lib.optionalAttrs hasktorchSupport (
             {
               # These should always be the same as `torch`
               c10 = torch;
@@ -66,7 +67,7 @@ pkgs.haskell-nix.cabalProject {
     ''
       ${snipped}
       ${
-        lib.optionalString isAtLeastGhc924
+        lib.optionalString hasktorchSupport
           (builtins.readFile "${src}/nix/ghc9.cabal.project")
       }
     '';
@@ -101,7 +102,7 @@ pkgs.haskell-nix.cabalProject {
               export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
             '';
       in
-      lib.optionalString isAtLeastGhc924
+      lib.optionalString (hasktorchSupport && pkgs.stdenv.isLinux)
         ''
           ${setpath}
           export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
@@ -118,7 +119,7 @@ pkgs.haskell-nix.cabalProject {
     }
     (import ./modules.nix)
   ]
-  ++ lib.optionals isAtLeastGhc924
+  ++ lib.optionals hasktorchSupport
     [
       (import ./modules/ml.nix)
     ];
