@@ -81,12 +81,16 @@ pkgs.haskell-nix.cabalProject {
         # This is broken and we don't need it as a plugin
         configureArgs = "-f-stylishHaskell";
         version = "1.9.0.0";
-        src = pkgs.lib.mkForce (pkgs.fetchFromGitHub {
-          owner = "haskell";
-          repo = "haskell-language-server";
-          rev = "2598fcec399835a3ac83e76e8b3451f1dd9a86a1";
-          sha256 = "sha256-5ylyv4reSVCz2xCrNVsHF3MfcuSbju8cKUbQmZa04ns=";
-        });
+        # It seems that HLS from our hackage.nix has some issues. Rather than
+        # upgrading hackage.nix, we can just override the source
+        src = pkgs.lib.mkForce (
+          pkgs.fetchFromGitHub {
+            owner = "haskell";
+            repo = "haskell-language-server";
+            rev = "2598fcec399835a3ac83e76e8b3451f1dd9a86a1";
+            sha256 = "sha256-5ylyv4reSVCz2xCrNVsHF3MfcuSbju8cKUbQmZa04ns=";
+          }
+        );
       };
     };
     buildInputs = [ config.treefmt.build.wrapper ]
