@@ -1,4 +1,4 @@
-{ compiler ? "ghc924"
+{ compiler ? "ghc925"
 , config
 , ghcOptions ? [ ]
 , profiling ? false
@@ -75,11 +75,23 @@ pkgs.haskell-nix.cabalProject {
     withHoogle = false;
     tools = {
       cabal = { };
-      # FIXME
-      # See https://github.com/plow-technologies/inferno/issues/25
-      #
-      # # This is the final supported version for our current compilers
-      # haskell-language-server = "1.8.0.0";
+      # We can't have HLS for both compiler versions
+    } // lib.optionalAttrs isAtLeastGhc924 {
+      haskell-language-server = {
+        # This is broken and we don't need it as a plugin
+        configureArgs = "-f-stylishHaskell";
+        version = "1.9.0.0";
+        # It seems that HLS from our hackage.nix has some issues. Rather than
+        # upgrading hackage.nix, we can just override the source
+        src = pkgs.lib.mkForce (
+          pkgs.fetchFromGitHub {
+            owner = "haskell";
+            repo = "haskell-language-server";
+            rev = "2598fcec399835a3ac83e76e8b3451f1dd9a86a1";
+            sha256 = "sha256-5ylyv4reSVCz2xCrNVsHF3MfcuSbju8cKUbQmZa04ns=";
+          }
+        );
+      };
     };
     buildInputs = [ config.treefmt.build.wrapper ]
       ++ builtins.attrValues config.treefmt.build.programs;

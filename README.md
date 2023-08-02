@@ -192,7 +192,7 @@ $ cd ./vscode-inferno-syntax-highlighting
 
 To build/run Inferno on GPU machines, use the
 ```
-nix develop .#ghc924-cuda
+nix develop .#ghc925-cuda
 ```
 dev-shell. You can run a test on the GPU with
 ```
@@ -213,13 +213,13 @@ To run a formatting check that will fail if any files are not formatted, run `ni
 We have a profiling build of the inferno binary, which can be used via:
 
 ```
-$ nix run .#inferno-core:exe:inferno-ghc924-prof 
+$ nix run .#inferno-core:exe:inferno-ghc925-prof
 ```
 
 Or equivalently:
 
 ```
-$ nix build .#inferno-core:exe:inferno-ghc924-prof
+$ nix build .#inferno-core:exe:inferno-ghc925-prof
 $ ./result/bin/inferno
 ```
 One can also obtain a shell with profiling enabled:
