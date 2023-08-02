@@ -98,6 +98,9 @@ argmaxFun i keepDim t = argmax (Dim i) (if keepDim then KeepDim else RemoveDim) 
 softmaxFun :: Int -> Tensor -> Tensor
 softmaxFun i t = softmax (Dim i) t
 
+stackFun :: Int -> [Tensor] -> Tensor
+stackFun i t = Torch.stack (Dim i) t
+
 tanHTFun :: Tensor -> Tensor
 tanHTFun = Torch.Functional.tanh
 
@@ -179,6 +182,8 @@ module ML
   argmax : int -> bool{#true, #false} -> tensor -> tensor := ###argmaxFun###;
 
   softmax : int -> tensor -> tensor := ###softmaxFun###;
+
+  stack : int -> array of tensor -> tensor := ###stackFun###;
 
   transpose2D : tensor -> tensor := ###transpose2D###;
 

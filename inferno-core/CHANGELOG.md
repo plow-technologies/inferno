@@ -1,6 +1,10 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.3 -- 2023-08-02
+* Added stack function to inferno-ml
+* Added instructions for creating and compiling scripts locally with vscode to the README
+
 ## 0.3.2 -- 2023-07-11
 * Add array indexing and pattern matching support
 
