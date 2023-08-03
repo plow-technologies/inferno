@@ -207,7 +207,7 @@
                   packages = [
                     (
                       pkgs.python3.withPackages (
-                        ps: with ps; [ torch torchvision ]
+                        ps: with ps; [ torch torchvision matplotlib ]
                       )
                     )
                   ];

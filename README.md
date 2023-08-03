@@ -302,7 +302,7 @@ Pretty stnadard, we simply collect all the hashes and the associated types for t
 
 As discusssed in the pinning section, evaluation is done on a fully typechecked and pinned `Expr`ession.
 
-#### Developing Inferno scripts with VScode
+## Developing Inferno scripts with VScode
 
 In a shell go to /inferno and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to /inferno/result and select `inferno-lsp-server.vsix`.
 
@@ -350,7 +350,9 @@ let sum = Array.sum arr in
 sum
 ```
 
-The file should compile and output 10.0
+The file should compile and output 
+
+`10.0`
 
 ### Inferno-ML
 
@@ -395,5 +397,7 @@ arr3
 
 The file should compile and output 
 
+```
 Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
                      [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1]]
+```

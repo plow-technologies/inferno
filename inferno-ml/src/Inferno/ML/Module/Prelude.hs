@@ -65,6 +65,9 @@ asTensorFun funName _proxy =
         pure $ VCustom $ VTensor $ toType dType $ asTensor $ xs
     _ -> throwM $ RuntimeError $ funName ++ ": expecting a dtype enum"
 
+asTensor0Fun :: (MonadThrow m) => Value MlValue m
+asTensor0Fun = asTensorFun "asTensor0" (Proxy :: Proxy Double)
+
 asTensor1Fun :: (MonadThrow m) => Value MlValue m
 asTensor1Fun = asTensorFun "asTensor1" (Proxy :: Proxy [Double])
 
@@ -154,6 +157,8 @@ module ML
 
   add : tensor -> tensor -> tensor := ###add###;
 
+  asTensor0 : dtype{#int, #float, #double} -> double -> tensor := ###!asTensor0Fun###;
+
   asTensor1 : dtype{#int, #float, #double} -> array of double -> tensor := ###!asTensor1Fun###;
 
   asTensor2 : dtype{#int, #float, #double} -> array of (array of double) -> tensor := ###!asTensor2Fun###;
@@ -183,6 +188,7 @@ module ML
 
   softmax : int -> tensor -> tensor := ###softmaxFun###;
 
+  @doc `stack i [t]` takes an array of tensors `t` and appends them along the dimension i in a new tensor;
   stack : int -> array of tensor -> tensor := ###stackFun###;
 
   transpose2D : tensor -> tensor := ###transpose2D###;
