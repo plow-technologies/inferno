@@ -310,9 +310,9 @@ Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-
 
 ### Regular Inferno
 
-in a shell go to /inferno and run `nix build .#inferno-lsp-server`
-run ls -al result
-copy the nix/store ... directory to your clipboard. Open VScode, press ctrl + shift + P and search for Open User Settings. Search for Inferno,
+In a shell go to /inferno and run `nix build .#inferno-lsp-server`
+Run `ls -al result`
+Copy the nix/store ... directory to your clipboard. Open VScode, press ctrl + shift + P and search for Open User Settings. Search for Inferno,
 find the inferno LSP extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
 
 Be sure to append `/bin/inferno-lsp-server` to the end of the directory, then restart VScode.
