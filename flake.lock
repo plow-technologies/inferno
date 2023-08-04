@@ -910,6 +910,10 @@
           "nixpkgs-unstable"
         ],
         "npm-buildpackage": "npm-buildpackage",
+        "stable": [
+          "haskell-nix",
+          "nixpkgs-2205"
+        ],
         "tokenizers": "tokenizers",
         "treefmt-nix": "treefmt-nix"
       }
