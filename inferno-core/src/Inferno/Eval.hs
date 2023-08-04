@@ -218,8 +218,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       match v p = case (v, p) of
         (_, PVar _ (Just (Ident x))) -> Just $ (Map.singleton (ExtIdent $ Right x) v, mempty)
         (_, PVar _ Nothing) -> Just mempty
-        (VEnum h1 _, PEnum _ (Just h2) _ _) ->
-          if h1 == h2
+        (VEnum h1 i1, PEnum _ (Just h2) _ i2) ->
+          if h1 == h2 && i1 == i2
             then Just mempty
             else Nothing
         (VInt i1, PLit _ (LInt i2)) ->
