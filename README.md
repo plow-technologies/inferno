@@ -306,8 +306,78 @@ However, the main advantage of this approach comes from the fact that we can kee
 
 ### Typechecking
 
-Pretty stnadard, we simply collect all the hashes and the associated types for the modules in scope and then proceed with typechecking
+Pretty standard, we simply collect all the hashes and the associated types for the modules in scope and then proceed with typechecking
 
 ### Evaluation
 
 As discusssed in the pinning section, evaluation is done on a fully typechecked and pinned `Expr`ession.
+
+## Developing Inferno scripts with VScode
+
+In a shell go to `~/inferno` (unless you cloned inferno into a different location) and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to `~/inferno/result` and select `inferno-lsp-server.vsix`.
+
+Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-highlighting`.
+
+In a shell go to `~/inferno` and run `nix build .#inferno-lsp-server` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
+Run `ls -al result`
+Copy the `nix/store ...` directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for `Inferno`,
+find the `Inferno LSP` extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
+
+Be sure to append `/bin/inferno-lsp-server` (`/bin/inferno-ml-lsp-server` for inferno-ml) to the end of the directory, then restart VScode.
+
+Create a new file with the `.inferno` extension. If you begin typing an inferno command such as `Array.argmax`, the autocomplete box should appear.
+
+Next, add
+
+```
+"tasks": [
+        {
+            "label": "inferno",
+            "type": "shell",
+            "command": "cd ~/inferno; nix run .#inferno -- ${file}",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+```
+
+to your tasks.json file in VScode.
+
+Change `"command": "cd ~/inferno;` if your inferno location is different
+
+Change `nix run .#inferno -- ${file}` to `nix run .#inferno-ml -- ${file}` for inferno-ml
+
+You should now be able to build .inferno scripts using `ctrl + shift + B` in VScode
+
+### examples
+
+Try saving the following into an .inferno file and compiling it.
+
+```
+let arr = [1, 2, 3, 4] in
+let sum = Array.sum arr in
+sum
+```
+
+The file should compile and output 
+
+`10.0`
+
+if you're using inferno-ml, you can also try the following
+
+```
+let arr = ML.ones ML.#int [10] in
+let arr2 = ML.ones ML.#int [10] in
+let arr3 = ML.stack 0 [arr, arr2] in
+arr3
+```
+
+The file should compile and output 
+
+```
+Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
+                     [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1]]
+```
