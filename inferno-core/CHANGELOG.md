@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.3 -- 2023-08-04
+* Fix bug in evaluation of enum pattern matches
+
 ## 0.3.2 -- 2023-07-11
 * Add array indexing and pattern matching support
 
