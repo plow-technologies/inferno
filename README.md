@@ -384,7 +384,11 @@ Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
 
 ## Importing a torchscript model into inferno
 
-In an inferno file, you can load the model into a variable by assigning it to `ML.loadModel "path/to/model/<model_name>.ts.pt"`. For instance
+In an inferno file, you can load the model into a variable by assigning it to 
+
+`ML.loadModel "path/to/model/<model_name>.ts.pt"`
+
+For instance
 
 `let model = ML.loadModel "~/myModel.ts.pt" in`
 
