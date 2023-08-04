@@ -314,7 +314,7 @@ As discusssed in the pinning section, evaluation is done on a fully typechecked 
 
 ## Developing Inferno scripts with VScode
 
-In a shell go to `~/inferno` (unless you cloned inferno into a different location) and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to ~/inferno/result and select `inferno-lsp-server.vsix`.
+In a shell go to `~/inferno` (unless you cloned inferno into a different location) and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to `~/inferno/result` and select `inferno-lsp-server.vsix`.
 
 Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-highlighting`.
 
