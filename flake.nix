@@ -252,10 +252,7 @@
                 {
                   combined =
                     builtins.concatLists [
-                      [
-                        self.checks.${system}.treefmt
-                        flakes.${defaultCompiler}.devShell
-                      ]
+                      [ self.checks.${system}.treefmt ]
                       (builtins.attrValues flakes.${defaultCompiler}.checks)
                       (
                         builtins.attrValues (
