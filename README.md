@@ -346,10 +346,13 @@ Next, add
     ]
 ```
 
-Change `"command": "cd ~/inferno; to cd into your inferno directory location`
+to your tasks.json folder in VScode.
+
+Change `"command": "cd ~/inferno;` if your inferno location is different
+
 Change `nix run .#inferno -- ${file}` to `nix run .#inferno-ml -- ${file}` for inferno-ml
 
-to your tasks.json folder in VScode.
+
 
 You should now be able to build .inferno scripts using `ctrl + shift + B` in VScode
 
