@@ -392,7 +392,7 @@ like
 
 `let model = ML.loadModel "~/myModel.ts.pt" in`
 
-You can pass arguments of type `array of tensor` to the model by passing them into ML.forward along with your model.
+You can pass arguments of type `array of tensor` to the model by passing them into `ML.forward` along with your model.
 
 like
 
