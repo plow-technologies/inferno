@@ -356,6 +356,8 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "if #true then Some 2.0 else None" $ VOne (VDouble 2)
     shouldEvaluateTo "match #true with { | #true -> #false | _ -> #true}" vFalse
     shouldEvaluateTo "match 3.9 - 2.2 with { 0.0 -> #false | _ -> #true}" vTrue
+    shouldEvaluateTo "match 1 < 2 with { | #true -> 1.1 | #false -> 2.2}" $ VDouble 1.1
+    shouldEvaluateTo "match 1 > 2 with { | #true -> 1.1 | #false -> 2.2}" $ VDouble 2.2
     shouldEvaluateTo "`hello ${Array.range 1 10}`" $ VText "hello [1,2,3,4,5,6,7,8,9,10]"
     shouldEvaluateTo "`${id}`" $ VText "<<function>>"
     shouldEvaluateTo "`hello\nworld${`I am ${\"nested\"}`}`" $ VText "hello\nworldI am nested"
