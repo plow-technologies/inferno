@@ -320,14 +320,14 @@ Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-
 
 ### Regular Inferno
 
-In a shell go to ~/inferno and run `nix build .#inferno-lsp-server` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
+In a shell go to `~/inferno` and run `nix build .#inferno-lsp-server` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
 Run `ls -al result`
-Copy the nix/store ... directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for Inferno,
-find the inferno LSP extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
+Copy the `nix/store ...` directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for Inferno,
+find the `Inferno LSP` extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
 
 Be sure to append `/bin/inferno-lsp-server` (`/bin/inferno-ml-lsp-server` for inferno-ml) to the end of the directory, then restart VScode.
 
-Create a new file with the .inferno extension. If you begin typing an inferno command such as Array.argmax, the autocomplete box should appear.
+Create a new file with the `.inferno` extension. If you begin typing an inferno command such as `Array.argmax`, the autocomplete box should appear.
 
 Next, add
 
@@ -383,10 +383,10 @@ Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
 
 ### Inferno-ML
 
-in a shell go to ~/inferno run `nix build inferno-ml:exe:inferno-ml-lsp-server-ghc925`
+in a shell go to `~/inferno` and run `nix build inferno-ml:exe:inferno-ml-lsp-server-ghc925`
 run `ls -al result`
 copy the nix/store ... directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for Inferno,
-find the Inferno LSP extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
+find the `Inferno LSP extension` tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
 
 Be sure to append `/bin/inferno-ml-lsp-server` to the end of the directory. Then, restart VScode.
 
