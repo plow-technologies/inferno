@@ -314,24 +314,22 @@ As discusssed in the pinning section, evaluation is done on a fully typechecked 
 
 ## Developing Inferno scripts with VScode
 
-In a shell go to /inferno and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to /inferno/result and select `inferno-lsp-server.vsix`.
+In a shell go to ~/inferno (unless you cloned inferno into a different location) and run `nix build .#vscode-inferno-lsp-server`. Then in VScode press `ctrl+shift+P` and run `Install from VSIX`. In the window, navigate to ~/inferno/result and select `inferno-lsp-server.vsix`.
 
 Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-highlighting`.
 
 ### Regular Inferno
 
-In a shell go to /inferno and run `nix build .#inferno-lsp-server`
+In a shell go to ~/inferno and run `nix build .#inferno-lsp-server` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
 Run `ls -al result`
-Copy the nix/store ... directory to your clipboard. Open VScode, press ctrl + shift + P and search for Open User Settings. Search for Inferno,
+Copy the nix/store ... directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for Inferno,
 find the inferno LSP extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
 
-Be sure to append `/bin/inferno-lsp-server` to the end of the directory, then restart VScode.
+Be sure to append `/bin/inferno-lsp-server` (`/bin/inferno-ml-lsp-server` for inferno-ml) to the end of the directory, then restart VScode.
 
 Create a new file with the .inferno extension. If you begin typing an inferno command such as Array.argmax, the autocomplete box should appear.
 
-Next, if you have the inferno repo cloned into ~/inferno
-
-add
+Next, add
 
 ```
 "tasks": [
@@ -348,7 +346,10 @@ add
     ]
 ```
 
-to your tasks.json folder in VScode. Otherwise you will need to change `cd ~/inferno;` to the directory where you stored the repo.
+Change `"command": "cd ~/inferno; to cd into your inferno directory location`
+Change `nix run .#inferno -- ${file}` to `nix run .#inferno-ml -- ${file}` for inferno-ml
+
+to your tasks.json folder in VScode.
 
 You should now be able to build .inferno scripts using `ctrl + shift + B` in VScode
 
@@ -364,9 +365,25 @@ The file should compile and output
 
 `10.0`
 
+if you're using inferno-ml, you can also try the following
+
+```
+let arr = ML.ones ML.#int [10] in
+let arr2 = ML.ones ML.#int [10] in
+let arr3 = ML.stack 0 [arr, arr2] in
+arr3
+```
+
+The file should compile and output 
+
+```
+Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
+                     [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1]]
+```
+
 ### Inferno-ML
 
-in a shell go to /inferno run `nix build .#packages.x86_64-linux.inferno-ml:exe:inferno-ml-lsp-server-ghc924`
+in a shell go to ~/inferno run `nix build inferno-ml:exe:inferno-ml-lsp-server-ghc925`
 run `ls -al result`
 copy the nix/store ... directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for Inferno,
 find the Inferno LSP extension tab and open it. Paste the directory you copied into the `Path to the inferno-lsp-server executable` field. 
