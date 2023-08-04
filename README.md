@@ -200,6 +200,16 @@ cabal run inferno-ml-exe inferno-ml/test/test-gpu.inferno
 ```
 (expected output `Tensor Float []  8.5899e9`)
 
+#### Development with `pytorch`
+
+When working with `inferno-ml`, there may be cases where you need to use `pytorch` directly. `devShells..pytorch` can be used to obtain a development environment with the `torch-bin` package and dependencies and a Python interpreter:
+
+```
+nix develop .#pytorch
+```
+
+The `torch` version and its dependencies are the same as those used in Inferno's Hasktorch integration and should be compatible with `inferno-ml`.
+
 ### Formatting all sources
 
 To format all of the Nix and Haskell sources, run `nix fmt`. Alternately, running `nix develop` and then the command `treefmt` in the development shell will perform the same formatting.
