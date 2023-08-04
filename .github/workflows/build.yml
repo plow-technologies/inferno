@@ -45,11 +45,7 @@ jobs:
       - name: Download and train MNIST (if not cached)
         if: steps.cache-mnist.outputs.cache-hit != 'true'
         run: |
-          mkdir -p "$(dirname ${MNIST_FNAME})"
-          cd "$(dirname ${MNIST_FNAME})"
-          nix develop .#pytorch
-          wget https://github.com/hasktorch/hasktorch/raw/${MNIST_COMMIT}/examples/model-serving/04-python-torchscript/mnist.py
-          python mnist.py
+          nix develop .#pytorch -c .github/torch.sh
       - name: Cache MNIST model
         uses: actions/cache/save@v3
         with:
