@@ -346,7 +346,7 @@ Next, add
     ]
 ```
 
-to your tasks.json folder in VScode.
+to your tasks.json file in VScode.
 
 Change `"command": "cd ~/inferno;` if your inferno location is different
 
