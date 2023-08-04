@@ -318,8 +318,6 @@ In a shell go to `~/inferno` (unless you cloned inferno into a different locatio
 
 Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-highlighting`.
 
-### Regular Inferno
-
 In a shell go to `~/inferno` and run `nix build .#inferno-lsp-server` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
 Run `ls -al result`
 Copy the `nix/store ...` directory to your clipboard. Open VScode, press `ctrl + shift + P` and search for `Open User Settings`. Search for `Inferno`,
@@ -353,6 +351,8 @@ Change `"command": "cd ~/inferno;` if your inferno location is different
 Change `nix run .#inferno -- ${file}` to `nix run .#inferno-ml -- ${file}` for inferno-ml
 
 You should now be able to build .inferno scripts using `ctrl + shift + B` in VScode
+
+### examples
 
 Try saving the following into an .inferno file and compiling it.
 
