@@ -169,10 +169,10 @@
             overlays = [ self.overlays.combined ];
           };
 
-          legacyPackages = pkgs // infernoFor {
-            compiler = defaultCompiler;
-          } // {
+          legacyPackages = pkgs // {
             stable = inputs.stable.legacyPackages.${system};
+          } // infernoFor {
+            compiler = defaultCompiler;
           };
 
           # To enter a development environment for a particular GHC version, use
@@ -211,8 +211,12 @@
                 pkgs.mkShell {
                   packages = [
                     (
-                      pkgs.python3.withPackages (
-                        ps: with ps; [ torch torchvision ]
+                      legacyPackages.stable.python3.withPackages (
+                        ps: with ps; [
+                          pytorch-bin
+                          torchvision-bin
+                          torchaudio-bin
+                        ]
                       )
                     )
                   ];
