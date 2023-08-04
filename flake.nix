@@ -18,6 +18,7 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
+    stable.follows = "haskell-nix/nixpkgs-2205";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
@@ -168,7 +169,11 @@
             overlays = [ self.overlays.combined ];
           };
 
-          legacyPackages = pkgs // infernoFor { compiler = defaultCompiler; };
+          legacyPackages = pkgs // {
+            stable = inputs.stable.legacyPackages.${system};
+          } // infernoFor {
+            compiler = defaultCompiler;
+          };
 
           # To enter a development environment for a particular GHC version, use
           # the compiler name, e.g. `nix develop .#ghc8107`
@@ -206,8 +211,12 @@
                 pkgs.mkShell {
                   packages = [
                     (
-                      pkgs.python3.withPackages (
-                        ps: with ps; [ torch torchvision ]
+                      legacyPackages.stable.python3.withPackages (
+                        ps: with ps; [
+                          pytorch-bin
+                          torchvision-bin
+                          torchaudio-bin
+                        ]
                       )
                     )
                   ];
@@ -252,10 +261,7 @@
                 {
                   combined =
                     builtins.concatLists [
-                      [
-                        self.checks.${system}.treefmt
-                        flakes.${defaultCompiler}.devShell
-                      ]
+                      [ self.checks.${system}.treefmt ]
                       (builtins.attrValues flakes.${defaultCompiler}.checks)
                       (
                         builtins.attrValues (

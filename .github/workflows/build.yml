@@ -45,13 +45,7 @@ jobs:
       - name: Download and train MNIST (if not cached)
         if: steps.cache-mnist.outputs.cache-hit != 'true'
         run: |
-          mkdir -p "$(dirname ${MNIST_FNAME})"
-          cd "$(dirname ${MNIST_FNAME})"
-          python -m pip install --upgrade pip
-          # Need specific torch version for the serialized torchscript models (e.g. Bert) to be compatible with hasktorch:
-          pip install torch==1.11.0+cpu torchvision==0.12.0+cpu torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cpu
-          wget https://github.com/hasktorch/hasktorch/raw/${MNIST_COMMIT}/examples/model-serving/04-python-torchscript/mnist.py
-          python mnist.py
+          nix develop .#pytorch -c .github/torch.sh
       - name: Cache MNIST model
         uses: actions/cache/save@v3
         with:
