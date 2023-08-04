@@ -352,8 +352,6 @@ Change `"command": "cd ~/inferno;` if your inferno location is different
 
 Change `nix run .#inferno -- ${file}` to `nix run .#inferno-ml -- ${file}` for inferno-ml
 
-
-
 You should now be able to build .inferno scripts using `ctrl + shift + B` in VScode
 
 Try saving the following into an .inferno file and compiling it.
