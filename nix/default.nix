@@ -52,25 +52,18 @@ pkgs.haskell-nix.cabalProject {
   name = "inferno";
   compiler-nix-name = compiler;
   # This is necessary to support GHC 9 conditionally. Although the conditional
-  # import works with Cabal directly, it doesn't seem to work with haskell.nix.
-  # The workaround is to remote the part of the cabal.project referencing the
-  # import; if we want to include the GHC 9 configuration, it can be read in
-  # directly into the generated cabal.project instead of using the original
-  # `import` stanza. If we're building for GHC 8, it's omitted entirely
-  cabalProject =
-    let
-      magicComment = "-- *SNIP*";
-      snipped = builtins.elemAt
-        (lib.splitString magicComment (builtins.readFile "${src}/cabal.project"))
-        0;
-    in
-    ''
-      ${snipped}
-      ${
-        lib.optionalString hasktorchSupport
-          (builtins.readFile "${src}/nix/ghc9.cabal.project")
-      }
-    '';
+  # import works with Cabal directly, it doesn't seem to work with haskell.nix
+
+  # If we want to include the GHC 9 configuration, it can be read in directly
+  # into the generated cabal.project instead of using an `import` stanza.
+  # If we're building for GHC 8, it's omitted entirely
+  cabalProject = ''
+    ${builtins.readFile "${src}/cabal.project"}
+    ${
+      lib.optionalString hasktorchSupport
+        (builtins.readFile "${src}/nix/ghc9.cabal.project")
+    }
+  '';
   shell = {
     withHoogle = false;
     tools = {
@@ -97,27 +90,46 @@ pkgs.haskell-nix.cabalProject {
       ++ builtins.attrValues config.treefmt.build.programs;
     shellHook =
       let
-        setpath =
-          lib.optionalString cudaSupport
-            ''
-              os=$(awk -F= '$1=="ID" { print $2 ;}' /etc/os-release)
-              llp=""
-              case "$os" in
-                  "nixos")
-                      llp="/run/opengl-driver/lib"
-                      ;;
-                  *)
-                      llp="/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu"
-                      ;;
-              esac
-              export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
-            '';
-      in
-      lib.optionalString (hasktorchSupport && pkgs.stdenv.isLinux)
-        ''
+        setpath = lib.optionalString cudaSupport
+          ''
+            os=$(awk -F= '$1=="ID" { print $2 ;}' /etc/os-release)
+            llp=""
+            case "$os" in
+                "nixos")
+                    llp="/run/opengl-driver/lib"
+                    ;;
+                *)
+                    llp="/usr/lib/nvidia:/usr/lib/x86_64-linux-gnu"
+                    ;;
+            esac
+            export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
+          '';
+        torchHook = ''
           ${setpath}
           export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
         '';
+        # This inserts the `import` stanza into a `cabal.project.local`, removing
+        # the need to include the stanza in the actual `cabal.project` (which
+        # doesn't work with haskell.nix, see above) and also allowing us to use
+        # an absolute path to the extra configuration (meaning that `cabal` will
+        # work when invoked from anywhere in the repository)
+        cabalHook = ''
+          top=$(git rev-parse --show-toplevel)
+          path=$top/cabal.project.local
+          if [[ ! -f $path ]]; then
+              cat <<EOF >$path
+          if impl(ghc >= 9)
+            import: $top/nix/ghc9.cabal.project
+          EOF
+          else
+              echo 'Refusing to overwrite cabal.project.local'
+          fi
+        '';
+      in
+      ''
+        ${cabalHook}
+        ${lib.optionalString (hasktorchSupport && pkgs.stdenv.isLinux) torchHook}
+      '';
   };
   modules = [
     {

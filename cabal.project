@@ -15,14 +15,3 @@ source-repository-package
     location: https://github.com/plow-technologies/hspec-golden-cereal.git
     tag: f9e3e485409c5a1de1de99a8ec0f35226c79da79
     --sha256: j+SZk5AZsNP674fb+1aiA7vrsk6Eq5BQM2losQSnaeE=
-
--- NOTE
--- Do not remove or change the following comment! It's necessary to make
--- haskell.nix work with the conditional below!
-
--- *SNIP*
-
--- All Hasktorch-related things need to go into this separate cabal.project,
--- otherwise we can't build with GHC 8.x
-if impl(ghc >= 9)
-   import: nix/ghc9.cabal.project
