@@ -1062,9 +1062,11 @@ extractArgsAndPrettyPrint expr =
     extract foundLam args = \case
       Lam _ (x :| xs) _ e -> extract True (args <> map snd (x : xs)) e
       e | foundLam -> Right (mapMaybe extIdentToIdent args, renderPretty e)
-      e -> Left $
-        "Corrupted script. Expected a Lam but got "
-        ++ take 20 (show $ bimap (const ()) (const ()) e) ++ "..."
+      e ->
+        Left $
+          "Corrupted script. Expected a Lam but got "
+            ++ take 20 (show $ bimap (const ()) (const ()) e)
+            ++ "..."
     -- Strip the runtime type rep arguments, and convert others to Ident
     extIdentToIdent = \case
       (Just (ExtIdent (Left _))) -> Nothing
