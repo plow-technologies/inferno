@@ -393,7 +393,7 @@ like
 
 `let outputs = ML.forward model inputs in` 
 
-where `inputs` is an array of tensors. This line would assign the return value to `outputs`, but any other assignment (type matching on the return value, for instance) would also work.
+where `inputs` is an array of tensors. This line would assign the return value to `outputs`, but any other assignment (pattern matching on the return value, for instance) would also work.
 
 ### Guidelines for model compatability with inferno
 For general information on how you should convert your python files to torchscript models, please see the online documentation for torchscript: https://pytorch.org/docs/stable/jit.html
