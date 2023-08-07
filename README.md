@@ -381,3 +381,38 @@ The file should compile and output
 Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
                      [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1]]
 ```
+
+## Importing a torchscript model into inferno
+
+In an inferno script, you can load the model using the `ML.loadModel` function. For instance,
+`let model = ML.loadModel "path/to/model/<model_name>.ts.pt" in ...`
+
+You can pass arguments of type `array of tensor` to the model by passing them to `ML.forward` along with your model.
+
+like
+
+`let outputs = ML.forward model inputs in` 
+
+where `inputs` is an array of tensors. This line would assign the return value to `outputs`, but any other assignment (pattern matching on the return value, for instance) would also work.
+
+### Guidelines for model compatability with inferno
+For general information on how you should convert your python files to torchscript models, please see the online documentation for torchscript: https://pytorch.org/docs/stable/jit.html
+
+Inferno's only extra requirement is that a torchscript model should only take tensors in or out. Standard non-tensor python types are only allowed internally.
+
+Be sure to use the correct version of torchscript. You can get this by building the python interpreter by running `nix build .#pytorch` and selecting it in VScode. To do this open VScode and press `ctrl + shift + P` and search `Python: select interpreter`. Choose the one with a `nix/store/` path. If you have other python libraries that you'd like included in your nix build, you can add them to `flake.nix` in the `pytorch` section in this list 
+
+```
+ps: with ps; [
+pytorch-bin
+torchvision-bin
+torchaudio-bin
+<-- add library name here
+]
+```
+
+The correct version of torchscript can also be found here 
+
+`https://github.com/plow-technologies/inferno/blob/8d1a5eee65fab73afc28c185199b44ece9b97b30/.github/workflows/build.yml#L50-L51` 
+
+if you'd like to install it locally. 

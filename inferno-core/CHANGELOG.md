@@ -1,5 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
+
+## 0.3.5 -- 2023-08-07
+* Created documentation for importing torchscript models
+
 ## 0.3.4 -- 2023-08-02
 * Added stack function to inferno-ml
 * Added asTensor0 function to inferno-ml
