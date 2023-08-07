@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.1 -- 2023-08-07
+* Nicer error message when extractArgsAndPrettyPrint fails
+
 ## 0.2.0 -- 2023-07-11
 * Add Array pattern matching syntax
 
