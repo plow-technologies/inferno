@@ -519,22 +519,31 @@ parseAndInfer prelude idents txt validateInput = do
               return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
             Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap) -> do
               let signature = collectArrs typSig
-              -- Check that script isn't itself a function
-              case checkScriptIsNotAFunction signature idents of
+              -- Validate input types
+              case checkScriptInputTypes signature pinnedAST' of
                 Left errors -> return $ Left errors
-                Right () ->
-                  -- Validate input types
-                  case checkScriptInputTypes signature pinnedAST' of
+                Right () -> do
+                  -- Check that script isn't itself a function, and extract outermost Lam
+                  let (lams, lamBody) = extractLams [] pinnedAST'
+                  case checkScriptIsNotAFunction signature idents of
                     Left errors -> return $ Left errors
                     Right () -> do
-                      let final = insertCommentsIntoExpr comments pinnedAST'
+                      -- Insert comments into Lam body
+                      let final = putBackLams lams $ fmap (const ()) $ insertCommentsIntoExpr comments lamBody
                       return $
                         Right
-                          ( fmap (const ()) final,
+                          ( final,
                             tcSch,
                             Map.foldrWithKey (\k v xs -> (mkHover prelude currentClasses k v) : xs) mempty tyMap
                           )
   where
+    -- Extract and replace outermost Lams so that comments can be inserted into script body.
+    -- We want the final expression to look like: Lam (...)
+    extractLams lams = \case
+      Lam _ xs _ e -> extractLams (fmap snd xs : lams) e
+      e -> (lams, e)
+    putBackLams = flip $ foldr (\xs e -> Lam () (fmap (\x -> ((), x)) xs) () e)
+
     checkScriptIsNotAFunction signature parameters =
       -- A function with N parameters should have a signature a_1 -> a_2 -> ... -> a_{N+1}
       if length signature > (length parameters + 1)

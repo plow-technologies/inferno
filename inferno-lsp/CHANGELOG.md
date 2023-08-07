@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.8 -- 2023-08-07
+* Ensure parsed Expr looks like: Lam (...)
+
 ## 0.1.7 -- 2023-07-11
 * Update inferno-types version
 

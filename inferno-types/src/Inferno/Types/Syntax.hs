@@ -97,6 +97,7 @@ import Control.DeepSeq (NFData (..))
 import Control.Monad (replicateM)
 import Data.Aeson (FromJSON (..), FromJSONKey (..), FromJSONKeyFunction (FromJSONKeyTextParser), ToJSON (..), ToJSONKey (..))
 import Data.Aeson.Types (toJSONKeyText)
+import Data.Bifunctor (bimap)
 import Data.Bifunctor.TH (deriveBifunctor)
 import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
@@ -1056,11 +1057,16 @@ hideInternalIdents = ana $ \case
 -- This hides the internal variable arguments.
 extractArgsAndPrettyPrint :: Expr hash pos -> ([Maybe Ident], Text)
 extractArgsAndPrettyPrint expr =
-  extract [] (hideInternalIdents expr)
+  extract False [] (hideInternalIdents expr)
   where
-    extract args = \case
-      Lam _ (x :| xs) _ e -> extract (args <> map snd (x : xs)) e
-      e -> (mapMaybe extIdentToIdent args, renderPretty e)
+    extract foundLam args = \case
+      Lam _ (x :| xs) _ e -> extract True (args <> map snd (x : xs)) e
+      e | foundLam -> (mapMaybe extIdentToIdent args, renderPretty e)
+      e ->
+        error $
+          "Corrupted script. Expected a Lam but got "
+            ++ take 20 (show $ bimap (const ()) (const ()) e)
+            ++ "..."
     -- Strip the runtime type rep arguments, and convert others to Ident
     extIdentToIdent = \case
       (Just (ExtIdent (Left _))) -> Nothing
