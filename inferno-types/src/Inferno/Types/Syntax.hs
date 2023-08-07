@@ -1055,15 +1055,15 @@ hideInternalIdents = ana $ \case
 
 -- | Extract the arguments of a script and pretty print the script body.
 -- This hides the internal variable arguments.
-extractArgsAndPrettyPrint :: Expr hash pos -> Either String ([Maybe Ident], Text)
+extractArgsAndPrettyPrint :: Expr hash pos -> ([Maybe Ident], Text)
 extractArgsAndPrettyPrint expr =
   extract False [] (hideInternalIdents expr)
   where
     extract foundLam args = \case
       Lam _ (x :| xs) _ e -> extract True (args <> map snd (x : xs)) e
-      e | foundLam -> Right (mapMaybe extIdentToIdent args, renderPretty e)
+      e | foundLam -> (mapMaybe extIdentToIdent args, renderPretty e)
       e ->
-        Left $
+        error $
           "Corrupted script. Expected a Lam but got "
             ++ take 20 (show $ bimap (const ()) (const ()) e)
             ++ "..."
