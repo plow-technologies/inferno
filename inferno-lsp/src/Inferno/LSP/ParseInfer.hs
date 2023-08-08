@@ -9,7 +9,7 @@ import Control.Monad (forM_)
 import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
-import Data.List (find, findIndices, nub, sort)
+import Data.List (find, findIndices, foldl', nub, sort)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
@@ -542,7 +542,7 @@ parseAndInfer prelude idents txt validateInput = do
     extractLams lams = \case
       Lam _ xs _ e -> extractLams (fmap snd xs : lams) e
       e -> (lams, e)
-    putBackLams = flip $ foldr (\xs e -> Lam () (fmap (\x -> ((), x)) xs) () e)
+    putBackLams = flip $ foldl' (\e xs -> Lam () (fmap (\x -> ((), x)) xs) () e)
 
     checkScriptIsNotAFunction signature parameters =
       -- A function with N parameters should have a signature a_1 -> a_2 -> ... -> a_{N+1}
