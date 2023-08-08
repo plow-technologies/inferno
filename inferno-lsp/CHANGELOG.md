@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.9 -- 2023-08-08
+* Fix order of input parameters in last commit
+
 ## 0.1.8 -- 2023-08-07
 * Ensure parsed Expr looks like: Lam (...)
 
