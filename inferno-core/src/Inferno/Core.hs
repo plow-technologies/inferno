@@ -64,8 +64,9 @@ mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> Interpreter c
 mkInferno prelude =
   Interpreter
     { evalInEnv =
-        \localEnv env expr -> mkTermEnv localEnv >>=
-           \lenv -> runEvalIO lenv env expr,
+        \localEnv env expr ->
+          mkTermEnv localEnv
+            >>= \lenv -> runEvalIO lenv env expr,
       evalInImplEnvM = runEvalIO,
       parseAndInferTypeReps = parseAndInferTypeReps,
       parseAndInfer = parseAndInfer,
