@@ -21,7 +21,7 @@ import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, 
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax (Expr (App, TypeRep), ExtIdent, SourcePos, collectArrs)
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
-import Inferno.Types.Value (ImplEnvM, Value)
+import Inferno.Types.Value (ImplEnvM, Value, runImplEnvM)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
 import Prettyprinter (Pretty)
@@ -43,7 +43,7 @@ data Interpreter c = Interpreter
       IO (Either EvalError (Value c (ImplEnvM IO c))),
     evalInImplEnvM ::
       forall a.
-      ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c)) ->
+      TermEnv VCObjectHash c (ImplEnvM IO c) ->
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Expr (Maybe VCObjectHash) a ->
       IO (Either EvalError (Value c (ImplEnvM IO c))),
@@ -63,15 +63,15 @@ data Interpreter c = Interpreter
 mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> Interpreter c
 mkInferno prelude =
   Interpreter
-    { evalInEnv = \localEnv -> evalInImplEnvM (mkTermEnv localEnv),
-      evalInImplEnvM = evalInImplEnvM,
+    { evalInEnv =
+        \localEnv env expr -> mkTermEnv localEnv >>=
+           \lenv -> runEvalIO lenv env expr,
+      evalInImplEnvM = runEvalIO,
       parseAndInferTypeReps = parseAndInferTypeReps,
       parseAndInfer = parseAndInfer,
       mkPinnedEnvFromClosure = mkPinnedEnvFromClosure
     }
   where
-    evalInImplEnvM termEnv implEnv = runEvalIO @c termEnv implEnv
-
     parseAndInfer src =
       -- parse
       case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) src of
@@ -107,7 +107,7 @@ mkInferno prelude =
 
     allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
 
-    mkTermEnv localEnv = ((localEnv, mempty) <>) <$> builtinModulesTerms prelude
+    mkTermEnv localEnv = runImplEnvM localEnv $ builtinModulesTerms prelude
 
     -- TODO at some point: instead of evaluating closure and putting into pinned env,
     -- add closure into the expression being evaluated by using let bindings.
