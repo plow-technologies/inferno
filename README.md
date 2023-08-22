@@ -106,6 +106,8 @@ If you find yourself building GHC despite having set the required configuration 
 - If you set the cache values manually, make sure that you restarted the Nix daemon on non-NixOS systems
 - If you accepted the prompts from the flake, you may not have permissions to set these values. Either set them manually in your system-wide configuration or continue reading below
 
+**Note**: There's currently something strange going on that causes nix cache misses even when caches are configured properly on your computer, or on GitHub Actions. If you find your PR's CI is building GHC, try cancelling and re-running it.
+
 ### Building or working on the project
 
 Once you have completed the steps above, you can use the `nix` command to build or work on the project.
