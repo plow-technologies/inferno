@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.0.0 -- 2023-08-15
+* Pass environments directly, instead of functions (breaking change).
+
 ## 0.3.5 -- 2023-08-07
 * Created documentation for importing torchscript models
 
