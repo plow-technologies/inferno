@@ -45,8 +45,6 @@ import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
 import qualified Data.Set as Set
 import Data.Text (pack)
-import Data.Time.Clock.POSIX (getPOSIXTime)
-import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Dependencies (..))
 import Inferno.VersionControl.Log (VCServerTrace (..))
@@ -182,24 +180,6 @@ instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperation
         trace $ DeleteFile fp
         liftIO $ removeFile fp
 
-  -- \| Deletes all stale autosaved objects from the VC.
-  -- As this is a non-critical maintenance operation, we do not hold the lock around the
-  -- entire operation.
-  deleteStaleAutosavedVCObjects = do
-    -- We know that all autosaves must be heads:
-    heads <- getAllHeads
-    forM_
-      heads
-      ( \h -> do
-          -- fetch object, check name and timestamp
-          (VCMeta {name, timestamp} :: VCMeta Value Value VCObject) <- fetchVCObject h
-          now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
-          if name == pack "<AUTOSAVE>" && timestamp < now - 60 * 60
-            then -- delete the stale ones (> 1hr old)
-              deleteAutosavedVCObject h
-            else pure ()
-      )
-
   -- \| Soft delete script and its history (both predecessors and successors).
   -- All scripts and their references are moved to "removed" directory
   deleteVCObjects obj_hash = do
@@ -318,12 +298,51 @@ instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperation
                 pure $ Just $ Left obj
               else pure Nothing
 
-  -- \| Fetch all dependencies of an object.
   -- NOTE: this is done without holding a lock, as dependencies are never modified.
   fetchVCObjectClosureHashes h = do
     VCStorePath storePath <- asks getTyped
     let fp = storePath </> "deps" </> show h
     readVCObjectHashTxt fp
+
+  getAllHeads = do
+    VCStorePath storePath <- getTyped <$> ask
+    -- We don't need a lock here because this only lists the heads/ directory, it doesn't
+    -- read any file contents (and I assume the `ls` is atomic)
+    headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
+    pure $
+      foldr
+        ( \hd xs ->
+            case (either (const Nothing) Just $ Base64.decode $ Char8.pack hd) >>= digestFromByteString of
+              Just hsh -> (VCObjectHash hsh) : xs
+              Nothing -> xs
+        )
+        []
+        (map takeFileName headsRaw)
+
+fetchCurrentHead ::
+  ( MonadError err m,
+    AsType VCStoreError err,
+    HasType (IOTracer VCServerTrace) env,
+    HasType VCStorePath env,
+    HasType RWLock env,
+    MonadMask m,
+    MonadIO m,
+    MonadReader env m
+  ) =>
+  VCObjectHash ->
+  m VCObjectHash
+fetchCurrentHead h = do
+  VCStorePath storePath <- asks getTyped
+  lock <- asks getTyped
+  let fp = storePath </> "to_head" </> show h
+  withRead lock $ do
+    exists <- liftIO $ doesFileExist fp
+    if exists
+      then
+        readVCObjectHashTxt fp >>= \case
+          [h'] -> pure h'
+          _ -> throwError $ CouldNotFindHead h
+      else throwError $ CouldNotFindHead h
 
 newtype VCStorePath = VCStorePath FilePath deriving (Generic)
 
@@ -408,33 +427,3 @@ fetchVCObject' mprefix h = do
     checkPathExists fp
     trace $ ReadJSON fp
     either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
-
-fetchCurrentHead :: (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCStoreLockM env m) => VCObjectHash -> m VCObjectHash
-fetchCurrentHead h = do
-  VCStorePath storePath <- asks getTyped
-  lock <- asks getTyped
-  let fp = storePath </> "to_head" </> show h
-  withRead lock $ do
-    exists <- liftIO $ doesFileExist fp
-    if exists
-      then
-        readVCObjectHashTxt fp >>= \case
-          [h'] -> pure h'
-          _ -> throwError $ CouldNotFindHead h
-      else throwError $ CouldNotFindHead h
-
-getAllHeads :: (VCStoreLogM env m, VCStoreEnvM env m) => m [VCObjectHash]
-getAllHeads = do
-  VCStorePath storePath <- getTyped <$> ask
-  -- We don't need a lock here because this only lists the heads/ directory, it doesn't
-  -- read any file contents (and I assume the `ls` is atomic)
-  headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
-  pure $
-    foldr
-      ( \hd xs ->
-          case (either (const $ Nothing) Just $ Base64.decode $ Char8.pack hd) >>= digestFromByteString of
-            Just hsh -> (VCObjectHash hsh) : xs
-            Nothing -> xs
-      )
-      []
-      (map takeFileName headsRaw)

@@ -40,11 +40,6 @@ class (AsType VCStoreError err, MonadError err m) => InfernoVCOperations err m w
   -- and to run tests against unsaved scripts
   deleteAutosavedVCObject :: VCObjectHash -> m ()
 
-  -- | Deletes all stale autosaved objects from the VC.
-  -- As this is a non-critical maintenance operation, we do not hold the lock around the
-  -- entire operation.
-  deleteStaleAutosavedVCObjects :: m ()
-
   -- | Soft delete script and its history (both predecessors and successors).
   -- All scripts and their references are moved to "removed" directory
   deleteVCObjects :: VCObjectHash -> m ()
@@ -52,7 +47,6 @@ class (AsType VCStoreError err, MonadError err m) => InfernoVCOperations err m w
   fetchVCObject :: (Deserializable m a, Deserializable m g) => VCObjectHash -> m (VCMeta a g VCObject)
 
   -- | Fetch all dependencies of an object.
-  -- NOTE: this is done without holding a lock, as dependencies are never modified.
   fetchVCObjectClosureHashes :: VCObjectHash -> m [VCObjectHash]
 
   fetchVCObjectHistory :: (Deserializable m a, Deserializable m g) => VCObjectHash -> m [VCMeta a g VCObjectHash]
@@ -63,3 +57,5 @@ class (AsType VCStoreError err, MonadError err m) => InfernoVCOperations err m w
   -- This means the returned list does not necessarily reflect the state of the store at any
   -- point in time.
   fetchFunctionsForGroups :: (Ord g, Deserializable m a, Deserializable m g) => Set.Set g -> m [VCMeta a g VCObjectHash]
+
+  getAllHeads :: m [VCObjectHash]

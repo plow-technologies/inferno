@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -19,7 +20,7 @@ where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
-import Control.Monad (forM, forever)
+import Control.Monad (forM, forM_, forever)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON)
@@ -29,6 +30,8 @@ import Data.Proxy (Proxy (..))
 import Data.Set (Set)
 import Data.String (fromString)
 import qualified Data.Text as T
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
@@ -173,8 +176,9 @@ runServerConfig _ _ initEnv runOp serverConfig = do
       tracer = contramap vcServerTraceToString $ IOTracer simpleStdOutTracer
 
   env <- initEnv vcPath tracer
-  let cleanup =
-        runExceptT (runOp Ops.deleteStaleAutosavedVCObjects env) >>= \case
+  let cleanup = do
+        now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
+        runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
           Left (VCServerError {serverError}) ->
             traceWith @IOTracer tracer (ThrownVCStoreError serverError)
           Right _ -> pure ()
@@ -187,6 +191,31 @@ runServerConfig _ _ initEnv runOp serverConfig = do
         gzip def $
           serve (Proxy :: Proxy (VersionControlAPI a g)) $
             vcServer (liftIO . liftTypedError . flip runOp env)
+
+-- | Deletes all stale autosaved objects from the VC.
+-- As this is a non-critical maintenance operation, we do not hold the lock around the
+-- entire operation.
+deleteStaleAutosavedVCObjects ::
+  forall a g m err.
+  ( Ops.InfernoVCOperations err m,
+    Ops.Deserializable m a,
+    Ops.Deserializable m g
+  ) =>
+  CTime ->
+  m ()
+deleteStaleAutosavedVCObjects now = do
+  -- We know that all autosaves must be heads:
+  heads <- Ops.getAllHeads
+  forM_
+    heads
+    ( \h -> do
+        -- fetch object, check name and timestamp
+        (VCMeta {name, timestamp} :: VCMeta a g VCObject) <- Ops.fetchVCObject h
+        if name == T.pack "<AUTOSAVE>" && timestamp < now - 60 * 60
+          then -- delete the stale ones (> 1hr old)
+            Ops.deleteAutosavedVCObject h
+          else pure ()
+    )
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g
