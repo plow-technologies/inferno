@@ -15,6 +15,7 @@ import Inferno.Types.Syntax (Expr (Lit), Lit (LDouble), TV (TV))
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC), typeDouble)
 import Inferno.VersionControl.Client (ClientMWithVCStoreError, api, mkVCClientEnv)
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
+import qualified Inferno.VersionControl.Operations.Filesystem as FSOps
 import Inferno.VersionControl.Server (VCServerError (VCServerError), runServerConfig)
 import Inferno.VersionControl.Server.Types (ServerConfig (..))
 import Inferno.VersionControl.Types (Pinned, VCMeta (..), VCObject (VCFunction), VCObjectHash, VCObjectPred (CloneOf, Init, MarkedBreakingWithPred), VCObjectVisibility (VCObjectPublic))
@@ -76,7 +77,7 @@ createObj predecessor = do
         description = "",
         Inferno.VersionControl.Types.pred = predecessor,
         visibility = VCObjectPublic,
-        obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty $ typeDouble)
+        obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
       }
 
 spec :: ClientEnv -> Spec
@@ -206,6 +207,8 @@ main =
         runServerConfig
           (Proxy :: Proxy Int)
           (Proxy :: Proxy Int)
+          FSOps.initVCStore
+          FSOps.runInfernoVCFilesystemM
           ServerConfig
             { _serverHost = "127.0.0.1",
               _serverPort = 13077,
