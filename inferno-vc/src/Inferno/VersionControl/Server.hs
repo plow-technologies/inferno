@@ -9,7 +9,13 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Inferno.VersionControl.Server (VCServerError, VersionControlAPI, runServer) where
+module Inferno.VersionControl.Server
+  ( VCServerError,
+    VersionControlAPI,
+    runServer,
+    runServerConfig,
+  )
+where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
