@@ -14,8 +14,8 @@ module Inferno.VersionControl.Server (VCServerError, VersionControlAPI, runServe
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
 import Control.Monad (forM, forever)
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Except (runExceptT, throwError, ExceptT)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Contravariant (contramap)
 import qualified Data.Map as Map

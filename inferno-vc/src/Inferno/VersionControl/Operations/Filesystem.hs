@@ -95,7 +95,7 @@ initVCStore storePath tracer = do
   createDirectoryIfMissing True $ storePath </> "to_head"
   createDirectoryIfMissing True $ storePath </> "deps"
   lock <- RWL.new
-  pure InfernoVCFilesystemEnv {storePath=VCStorePath storePath, tracer, lock}
+  pure InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
 
 instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperations err (InfernoVCFilesystemM err m) where
   type Serializable (InfernoVCFilesystemM err m) = ToJSON
@@ -350,7 +350,6 @@ throwError :: (VCStoreLogM env m, VCStoreErrM err m) => VCStoreError -> m a
 throwError e = do
   trace $ ThrownVCStoreError e
   throwing _Typed e
-
 
 checkPathExists :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> m ()
 checkPathExists fp =

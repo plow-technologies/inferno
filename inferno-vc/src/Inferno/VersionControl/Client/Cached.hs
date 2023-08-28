@@ -17,7 +17,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy as BL
-import System.AtomicWrite.Writer.LazyByteString (atomicWriteFile)
 import Data.Either (partitionEithers)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
@@ -34,6 +33,7 @@ import Inferno.VersionControl.Types
   )
 import Servant.Client (ClientEnv, ClientError)
 import Servant.Typed.Error (TypedClientM, runTypedClientM)
+import System.AtomicWrite.Writer.LazyByteString (atomicWriteFile)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath.Posix ((</>))
 
@@ -48,7 +48,6 @@ data CachedVCClientError
 initVCCachedClient :: VCCachePath -> IO ()
 initVCCachedClient (VCCachePath storePath) =
   createDirectoryIfMissing True $ storePath </> "deps"
-
 
 fetchVCObjectClosure ::
   ( MonadError err m,
