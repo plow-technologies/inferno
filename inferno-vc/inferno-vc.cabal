@@ -30,6 +30,7 @@ library
     , Inferno.VersionControl.Server.Types
     , Inferno.VersionControl.Server.UnzipRequest
     , Inferno.VersionControl.Types
+    , Inferno.VersionControl.Testing
   hs-source-dirs:
       src
   ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
@@ -64,6 +65,8 @@ library
     , yaml                               >= 0.11.8 && < 0.12
     , zlib                               >= 0.6.3 && < 0.7
     , atomic-write                       >= 0.2   && < 0.3
+    , hspec
+    , QuickCheck
 
   default-language: Haskell2010
   default-extensions:
@@ -84,17 +87,11 @@ test-suite inferno-vc-tests
   main-is:             Spec.hs
   build-depends:
       base >=4.7 && <5
-    , containers
     , hspec
     , http-client
-    , inferno-types
     , inferno-vc
-    , QuickCheck
     , servant-client
-    , servant-server
-    , servant-typed-error
     , temporary
-    , time
   default-language:    Haskell2010
   default-extensions:
       DeriveDataTypeable
