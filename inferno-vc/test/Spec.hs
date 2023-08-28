@@ -5,12 +5,10 @@ module Main (main) where
 
 import Control.Concurrent (forkIO)
 import Data.Proxy (Proxy (..))
-import Inferno.VersionControl.Client (mkVCClientEnv)
 import qualified Inferno.VersionControl.Operations.Filesystem as FSOps
 import Inferno.VersionControl.Server (runServerConfig)
 import Inferno.VersionControl.Server.Types (ServerConfig (..))
 import Inferno.VersionControl.Testing (vcServerSpec)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant.Client (BaseUrl (..), Scheme (..))
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -33,15 +31,13 @@ main =
               _serverPort = 13077,
               _vcPath = vcPath
             }
-    man <- newManager defaultManagerSettings
-    let vcClientEnv =
-          mkVCClientEnv man $
-            BaseUrl
-              { baseUrlScheme = Http,
-                baseUrlHost = "127.0.0.1",
-                baseUrlPort = 13077,
-                baseUrlPath = []
-              }
     putStrLn "  Done."
 
-    hspec $ vcServerSpec vcClientEnv
+    hspec $
+      vcServerSpec
+        BaseUrl
+          { baseUrlScheme = Http,
+            baseUrlHost = "127.0.0.1",
+            baseUrlPort = 13077,
+            baseUrlPath = []
+          }

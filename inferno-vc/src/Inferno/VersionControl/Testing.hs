@@ -11,12 +11,13 @@ import Data.Time.Clock.POSIX (utcTimeToPOSIXSeconds)
 import Foreign.C (CTime (..))
 import Inferno.Types.Syntax (Expr (Lit), Lit (LDouble), TV (TV))
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC), typeDouble)
-import Inferno.VersionControl.Client (ClientMWithVCStoreError, api)
+import Inferno.VersionControl.Client (ClientMWithVCStoreError, api, mkVCClientEnv)
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Server (VCServerError (VCServerError))
 import Inferno.VersionControl.Types (Pinned, VCMeta (..), VCObject (VCFunction), VCObjectHash, VCObjectPred (CloneOf, Init, MarkedBreakingWithPred), VCObjectVisibility (VCObjectPublic))
+import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant ((:<|>) (..))
-import Servant.Client (ClientEnv, client)
+import Servant.Client (BaseUrl, ClientEnv, client)
 import Servant.Typed.Error (runTypedClientM, typedClient)
 import Test.Hspec
 import Test.QuickCheck (arbitrary, generate)
@@ -74,8 +75,12 @@ createObj predecessor = do
         obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
       }
 
-vcServerSpec :: ClientEnv -> Spec
-vcServerSpec vcClientEnv =
+vcServerSpec :: BaseUrl -> Spec
+vcServerSpec url = do
+  vcClientEnv <- runIO $ do
+    man <- newManager defaultManagerSettings
+    pure $ mkVCClientEnv man url
+
   describe "inferno-vc server" $ do
     it "basics" $ do
       o1 <- createObj Init

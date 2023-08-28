@@ -88,7 +88,6 @@ test-suite inferno-vc-tests
   build-depends:
       base >=4.7 && <5
     , hspec
-    , http-client
     , inferno-vc
     , servant-client
     , temporary
