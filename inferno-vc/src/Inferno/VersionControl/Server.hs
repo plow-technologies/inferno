@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeOperators #-}
 
 module Inferno.VersionControl.Server
-  ( VCServerError,
+  ( VCServerError (..),
     VersionControlAPI,
     runServer,
     runServerConfig,
