@@ -23,6 +23,7 @@ library
       Inferno.VersionControl.Client
     , Inferno.VersionControl.Client.Cached
     , Inferno.VersionControl.Operations
+    , Inferno.VersionControl.Operations.Filesystem
     , Inferno.VersionControl.Operations.Error
     , Inferno.VersionControl.Log
     , Inferno.VersionControl.Server
@@ -62,6 +63,7 @@ library
     , warp                               >= 3.3.23 && < 3.4
     , yaml                               >= 0.11.8 && < 0.12
     , zlib                               >= 0.6.3 && < 0.7
+    , atomic-write                       >= 0.2   && < 0.3
 
   default-language: Haskell2010
   default-extensions:
