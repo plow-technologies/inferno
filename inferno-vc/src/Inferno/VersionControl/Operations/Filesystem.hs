@@ -41,13 +41,14 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy as BL
+import Data.Functor.Contravariant (contramap)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
 import qualified Data.Set as Set
-import Data.Text (pack)
+import Data.Text (Text, pack)
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Dependencies (..))
-import Inferno.VersionControl.Log (VCServerTrace (..))
+import Inferno.VersionControl.Log (VCServerTrace (..), vcServerTraceToText)
 import Inferno.VersionControl.Operations (InfernoVCOperations (..))
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Types
@@ -87,12 +88,13 @@ newtype InfernoVCFilesystemM err m a = InfernoVCFilesystemM (ReaderT InfernoVCFi
 runInfernoVCFilesystemM :: InfernoVCFilesystemM err m a -> InfernoVCFilesystemEnv -> ExceptT err m a
 runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
-initVCStore :: FilePath -> IOTracer VCServerTrace -> IO InfernoVCFilesystemEnv
-initVCStore storePath tracer = do
+initVCStore :: FilePath -> IOTracer Text -> IO InfernoVCFilesystemEnv
+initVCStore storePath txtTracer = do
   createDirectoryIfMissing True $ storePath </> "heads"
   createDirectoryIfMissing True $ storePath </> "to_head"
   createDirectoryIfMissing True $ storePath </> "deps"
   lock <- RWL.new
+  let tracer = contramap vcServerTraceToText txtTracer
   pure InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
 
 instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperations err (InfernoVCFilesystemM err m) where

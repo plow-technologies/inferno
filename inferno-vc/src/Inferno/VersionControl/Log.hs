@@ -1,6 +1,8 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Inferno.VersionControl.Log where
 
 import Inferno.VersionControl.Operations.Error (VCStoreError, vcStoreErrorToString)
+import Data.Text (Text, pack)
 
 data VCServerTrace
   = ThrownVCStoreError VCStoreError
@@ -11,12 +13,12 @@ data VCServerTrace
   | ReadTxt FilePath
   | DeleteFile FilePath
 
-vcServerTraceToString :: VCServerTrace -> String
-vcServerTraceToString = \case
-  WriteJSON fp -> "Writing JSON at: " <> fp
-  WriteTxt fp -> "Writing TXT at: " <> fp
-  AlreadyExistsJSON fp -> "JSON already exists at: " <> fp
-  ReadJSON fp -> "Reading JSON at: " <> fp
-  ReadTxt fp -> "Reading TXT at: " <> fp
-  ThrownVCStoreError e -> vcStoreErrorToString e
-  DeleteFile fp -> "Deleting file: " <> fp
+vcServerTraceToText :: VCServerTrace -> Text
+vcServerTraceToText = \case
+  WriteJSON fp -> "Writing JSON at: " <> pack fp
+  WriteTxt fp -> "Writing TXT at: " <> pack fp
+  AlreadyExistsJSON fp -> "JSON already exists at: " <> pack fp
+  ReadJSON fp -> "Reading JSON at: " <> pack fp
+  ReadTxt fp -> "Reading TXT at: " <> pack fp
+  ThrownVCStoreError e -> pack (vcStoreErrorToString e)
+  DeleteFile fp -> "Deleting file: " <> pack fp

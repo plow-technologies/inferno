@@ -35,7 +35,7 @@ import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToString)
+import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (ServerConfig (..), readServerConfig)
@@ -139,7 +139,7 @@ runServer ::
   ) =>
   proxy a ->
   proxy g ->
-  (FilePath -> IOTracer VCServerTrace -> IO env) ->
+  (FilePath -> IOTracer T.Text -> IO env) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   IO ()
 runServer proxyA proxyG initEnv runOp = do
@@ -164,7 +164,7 @@ runServerConfig ::
   ) =>
   proxy a ->
   proxy g ->
-  (FilePath -> IOTracer VCServerTrace -> IO env) ->
+  (FilePath -> IOTracer T.Text -> IO env) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   ServerConfig ->
   IO ()
@@ -173,14 +173,15 @@ runServerConfig _ _ initEnv runOp serverConfig = do
       port = _serverPort serverConfig
       vcPath = _vcPath serverConfig
       settingsWithTimeout = setTimeout 300 defaultSettings
-      tracer = contramap vcServerTraceToString $ IOTracer simpleStdOutTracer
 
+  let tracer = IOTracer (contramap T.unpack simpleStdOutTracer)
+      serverTracer = contramap vcServerTraceToText tracer
   env <- initEnv vcPath tracer
   let cleanup = do
         now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
         runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
           Left (VCServerError {serverError}) ->
-            traceWith @IOTracer tracer (ThrownVCStoreError serverError)
+            traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
           Right _ -> pure ()
   print ("running..." :: String)
   -- Cleanup stale autosave scripts in a separate thread every hour:
