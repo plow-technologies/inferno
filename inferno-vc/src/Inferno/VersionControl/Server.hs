@@ -139,13 +139,13 @@ runServer ::
   ) =>
   proxy a ->
   proxy g ->
-  (FilePath -> IOTracer T.Text -> IO env) ->
+  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   IO ()
-runServer proxyA proxyG initEnv runOp = do
+runServer proxyA proxyG withEnv runOp = do
   readServerConfig "config.yml" >>= \case
     Left err -> putStrLn err
-    Right serverConfig -> runServerConfig proxyA proxyG initEnv runOp serverConfig
+    Right serverConfig -> runServerConfig proxyA proxyG withEnv runOp serverConfig
 
 runServerConfig ::
   forall proxy m a g env.
@@ -164,11 +164,11 @@ runServerConfig ::
   ) =>
   proxy a ->
   proxy g ->
-  (FilePath -> IOTracer T.Text -> IO env) ->
+  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   ServerConfig ->
   IO ()
-runServerConfig _ _ initEnv runOp serverConfig = do
+runServerConfig _ _ withEnv runOp serverConfig = do
   let host = fromString . T.unpack . _serverHost $ serverConfig
       port = _serverPort serverConfig
       vcPath = _vcPath serverConfig
@@ -176,22 +176,22 @@ runServerConfig _ _ initEnv runOp serverConfig = do
 
   let tracer = IOTracer (contramap T.unpack simpleStdOutTracer)
       serverTracer = contramap vcServerTraceToText tracer
-  env <- initEnv vcPath tracer
-  let cleanup = do
-        now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
-        runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
-          Left (VCServerError {serverError}) ->
-            traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
-          Right _ -> pure ()
-  print ("running..." :: String)
-  -- Cleanup stale autosave scripts in a separate thread every hour:
-  withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
-    -- And run the server:
-    runSettings (setPort port $ setHost host settingsWithTimeout) $
-      ungzipRequest $
-        gzip def $
-          serve (Proxy :: Proxy (VersionControlAPI a g)) $
-            vcServer (liftIO . liftTypedError . flip runOp env)
+  withEnv vcPath tracer $ \env -> do
+    let cleanup = do
+          now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
+          runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
+            Left (VCServerError {serverError}) ->
+              traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
+            Right _ -> pure ()
+    print ("running..." :: String)
+    -- Cleanup stale autosave scripts in a separate thread every hour:
+    withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
+      -- And run the server:
+      runSettings (setPort port $ setHost host settingsWithTimeout) $
+        ungzipRequest $
+          gzip def $
+            serve (Proxy :: Proxy (VersionControlAPI a g)) $
+              vcServer (liftIO . liftTypedError . flip runOp env)
 
 -- | Deletes all stale autosaved objects from the VC.
 -- As this is a non-critical maintenance operation, we do not hold the lock around the

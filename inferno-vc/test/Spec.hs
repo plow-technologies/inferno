@@ -24,7 +24,7 @@ main =
         runServerConfig
           (Proxy :: Proxy Int)
           (Proxy :: Proxy Int)
-          FSOps.initVCStore
+          FSOps.withEnv
           FSOps.runInfernoVCFilesystemM
           ServerConfig
             { _serverHost = "127.0.0.1",

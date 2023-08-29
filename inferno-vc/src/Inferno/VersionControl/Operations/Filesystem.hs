@@ -22,7 +22,7 @@ module Inferno.VersionControl.Operations.Filesystem
   ( InfernoVCFilesystemEnv (..),
     InfernoVCFilesystemM,
     runInfernoVCFilesystemM,
-    initVCStore,
+    withEnv,
   )
 where
 
@@ -88,14 +88,14 @@ newtype InfernoVCFilesystemM err m a = InfernoVCFilesystemM (ReaderT InfernoVCFi
 runInfernoVCFilesystemM :: InfernoVCFilesystemM err m a -> InfernoVCFilesystemEnv -> ExceptT err m a
 runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
-initVCStore :: FilePath -> IOTracer Text -> IO InfernoVCFilesystemEnv
-initVCStore storePath txtTracer = do
+withEnv :: FilePath -> IOTracer Text -> (InfernoVCFilesystemEnv -> IO a) -> IO a
+withEnv storePath txtTracer f = do
   createDirectoryIfMissing True $ storePath </> "heads"
   createDirectoryIfMissing True $ storePath </> "to_head"
   createDirectoryIfMissing True $ storePath </> "deps"
   lock <- RWL.new
   let tracer = contramap vcServerTraceToText txtTracer
-  pure InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
+  f InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
 
 instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperations err (InfernoVCFilesystemM err m) where
   type Serializable (InfernoVCFilesystemM err m) = ToJSON

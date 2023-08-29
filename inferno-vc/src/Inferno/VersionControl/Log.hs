@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+
 module Inferno.VersionControl.Log where
 
-import Inferno.VersionControl.Operations.Error (VCStoreError, vcStoreErrorToString)
 import Data.Text (Text, pack)
+import Inferno.VersionControl.Operations.Error (VCStoreError, vcStoreErrorToString)
 
 data VCServerTrace
   = ThrownVCStoreError VCStoreError
