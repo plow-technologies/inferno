@@ -91,6 +91,7 @@ runInfernoVCFilesystemM :: InfernoVCFilesystemM err m a -> InfernoVCFilesystemEn
 runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
 withEnv ::
+  forall config a.
   HasField "vcPath" config config FilePath FilePath =>
   config ->
   IOTracer Text ->
