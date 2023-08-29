@@ -11,10 +11,8 @@ module Inferno.VersionControl.Operations
 where
 
 import Control.Monad.Except (MonadError)
-import Data.Generics.Sum (AsType (..))
 import Data.Kind (Constraint, Type)
 import qualified Data.Set as Set
-import Inferno.VersionControl.Operations.Error (VCStoreError)
 import Inferno.VersionControl.Types
   ( VCHashUpdate,
     VCMeta (..),
@@ -22,7 +20,7 @@ import Inferno.VersionControl.Types
     VCObjectHash (..),
   )
 
-class (AsType VCStoreError err, MonadError err m) => InfernoVCOperations err m where
+class MonadError err m => InfernoVCOperations err m where
   type Serializable m :: Type -> Constraint
   type Deserializable m :: Type -> Constraint
 
