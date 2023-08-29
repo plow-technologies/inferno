@@ -35,7 +35,7 @@ import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
+import Inferno.VersionControl.Log (VCServerTrace (Running, ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (ServerConfig (..), readServerConfig)
@@ -56,7 +56,7 @@ import Network.Wai.Handler.Warp
     setTimeout,
   )
 import Network.Wai.Middleware.Gzip (def, gzip)
-import Plow.Logging (IOTracer (..), simpleStdOutTracer, traceWith)
+import Plow.Logging (IOTracer (..), traceWith)
 import Servant.API (Capture, JSON, ReqBody, Union, (:<|>) (..), (:>))
 import Servant.Server (Handler, Server, serve)
 import Servant.Typed.Error
@@ -123,7 +123,7 @@ vcServer toHandler =
       Map.fromList <$> (forM hs $ \h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
-  forall proxy m a g env.
+  forall proxy m a g.
   ( VCHashUpdate a,
     VCHashUpdate g,
     FromJSON a,
@@ -139,16 +139,16 @@ runServer ::
   ) =>
   proxy a ->
   proxy g ->
-  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
-  (forall x. m x -> env -> ExceptT VCServerError IO x) ->
+  IOTracer T.Text ->
+  (forall x. m x -> ExceptT VCServerError IO x) ->
   IO ()
-runServer proxyA proxyG withEnv runOp = do
+runServer proxyA proxyG tracer runOp = do
   readServerConfig "config.yml" >>= \case
-    Left err -> putStrLn err
-    Right serverConfig -> runServerConfig proxyA proxyG withEnv runOp serverConfig
+    Left err -> traceWith tracer (T.pack err)
+    Right serverConfig -> runServerConfig proxyA proxyG tracer runOp serverConfig
 
 runServerConfig ::
-  forall proxy m a g env.
+  forall proxy m a g.
   ( VCHashUpdate a,
     VCHashUpdate g,
     FromJSON a,
@@ -164,34 +164,31 @@ runServerConfig ::
   ) =>
   proxy a ->
   proxy g ->
-  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
-  (forall x. m x -> env -> ExceptT VCServerError IO x) ->
+  IOTracer T.Text ->
+  (forall x. m x -> ExceptT VCServerError IO x) ->
   ServerConfig ->
   IO ()
-runServerConfig _ _ withEnv runOp serverConfig = do
+runServerConfig _ _ tracer runOp serverConfig = do
   let host = fromString . T.unpack . _serverHost $ serverConfig
       port = _serverPort serverConfig
-      vcPath = _vcPath serverConfig
       settingsWithTimeout = setTimeout 300 defaultSettings
 
-  let tracer = IOTracer (contramap T.unpack simpleStdOutTracer)
-      serverTracer = contramap vcServerTraceToText tracer
-  withEnv vcPath tracer $ \env -> do
-    let cleanup = do
-          now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
-          runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
-            Left (VCServerError {serverError}) ->
-              traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
-            Right _ -> pure ()
-    print ("running..." :: String)
-    -- Cleanup stale autosave scripts in a separate thread every hour:
-    withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
-      -- And run the server:
-      runSettings (setPort port $ setHost host settingsWithTimeout) $
-        ungzipRequest $
-          gzip def $
-            serve (Proxy :: Proxy (VersionControlAPI a g)) $
-              vcServer (liftIO . liftTypedError . flip runOp env)
+  let serverTracer = contramap vcServerTraceToText tracer
+  let cleanup = do
+        now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
+        runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now)) >>= \case
+          Left (VCServerError {serverError}) ->
+            traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
+          Right _ -> pure ()
+  traceWith @IOTracer serverTracer Running
+  -- Cleanup stale autosave scripts in a separate thread every hour:
+  withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
+    -- And run the server:
+    runSettings (setPort port $ setHost host settingsWithTimeout) $
+      ungzipRequest $
+        gzip def $
+          serve (Proxy :: Proxy (VersionControlAPI a g)) $
+            vcServer (liftIO . liftTypedError . runOp)
 
 -- | Deletes all stale autosaved objects from the VC.
 -- As this is a non-critical maintenance operation, we do not hold the lock around the
