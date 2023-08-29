@@ -13,7 +13,6 @@ data VCServerTrace
   | ReadJSON FilePath
   | ReadTxt FilePath
   | DeleteFile FilePath
-  | Running
 
 vcServerTraceToText :: VCServerTrace -> Text
 vcServerTraceToText = \case
@@ -24,4 +23,3 @@ vcServerTraceToText = \case
   ReadTxt fp -> "Reading TXT at: " <> pack fp
   ThrownVCStoreError e -> pack (vcStoreErrorToString e)
   DeleteFile fp -> "Deleting file: " <> pack fp
-  Running -> "running..."
