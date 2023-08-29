@@ -20,11 +20,13 @@ where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
+import Control.Lens (to, (^.))
 import Control.Monad (forM, forM_, forever)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Contravariant (contramap)
+import Data.Generics.Product (HasField, the)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (..))
 import Data.Set (Set)
@@ -38,7 +40,7 @@ import Inferno.Types.Type (TCScheme)
 import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
-import Inferno.VersionControl.Server.Types (ServerConfig (..), readServerConfig)
+import Inferno.VersionControl.Server.Types (readServerConfig)
 import Inferno.VersionControl.Server.UnzipRequest (ungzipRequest)
 import Inferno.VersionControl.Types
   ( Pinned,
@@ -123,9 +125,12 @@ vcServer toHandler =
       Map.fromList <$> (forM hs $ \h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
-  forall proxy m a g env.
-  ( VCHashUpdate a,
+  forall proxy m a g env config.
+  ( HasField "serverHost" config config T.Text T.Text,
+    HasField "serverPort" config config Int Int,
+    VCHashUpdate a,
     VCHashUpdate g,
+    FromJSON config,
     FromJSON a,
     FromJSON g,
     ToJSON a,
@@ -139,7 +144,7 @@ runServer ::
   ) =>
   proxy a ->
   proxy g ->
-  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
+  (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   IO ()
 runServer proxyA proxyG withEnv runOp = do
@@ -148,8 +153,11 @@ runServer proxyA proxyG withEnv runOp = do
     Right serverConfig -> runServerConfig proxyA proxyG withEnv runOp serverConfig
 
 runServerConfig ::
-  forall proxy m a g env.
-  ( VCHashUpdate a,
+  forall proxy m a g env config.
+  ( HasField "serverHost" config config T.Text T.Text,
+    HasField "serverPort" config config Int Int,
+    FromJSON config,
+    VCHashUpdate a,
     VCHashUpdate g,
     FromJSON a,
     FromJSON g,
@@ -164,19 +172,18 @@ runServerConfig ::
   ) =>
   proxy a ->
   proxy g ->
-  (forall x. FilePath -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
+  (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
-  ServerConfig ->
+  config ->
   IO ()
 runServerConfig _ _ withEnv runOp serverConfig = do
-  let host = fromString . T.unpack . _serverHost $ serverConfig
-      port = _serverPort serverConfig
-      vcPath = _vcPath serverConfig
+  let host = serverConfig ^. the @"serverHost" . to T.unpack . to fromString
+      port = serverConfig ^. the @"serverPort"
       settingsWithTimeout = setTimeout 300 defaultSettings
 
   let tracer = IOTracer (contramap T.unpack simpleStdOutTracer)
       serverTracer = contramap vcServerTraceToText tracer
-  withEnv vcPath tracer $ \env -> do
+  withEnv serverConfig tracer $ \env -> do
     let cleanup = do
           now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
           runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case

@@ -1,4 +1,5 @@
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -29,6 +30,7 @@ where
 import Control.Concurrent.FairRWLock (RWLock)
 import qualified Control.Concurrent.FairRWLock as RWL
 import Control.Exception (throwIO)
+import Control.Lens ((^.))
 import Control.Monad (foldM, forM, forM_)
 import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow, bracket_)
 import Control.Monad.Error.Lens (catching, throwing)
@@ -42,7 +44,7 @@ import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy as BL
 import Data.Functor.Contravariant (contramap)
-import Data.Generics.Product (HasType, getTyped)
+import Data.Generics.Product (HasField, HasType, getTyped, the)
 import Data.Generics.Sum (AsType (..))
 import qualified Data.Set as Set
 import Data.Text (Text, pack)
@@ -88,14 +90,21 @@ newtype InfernoVCFilesystemM err m a = InfernoVCFilesystemM (ReaderT InfernoVCFi
 runInfernoVCFilesystemM :: InfernoVCFilesystemM err m a -> InfernoVCFilesystemEnv -> ExceptT err m a
 runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
-withEnv :: FilePath -> IOTracer Text -> (InfernoVCFilesystemEnv -> IO a) -> IO a
-withEnv storePath txtTracer f = do
+withEnv ::
+  HasField "vcPath" config config FilePath FilePath =>
+  config ->
+  IOTracer Text ->
+  (InfernoVCFilesystemEnv -> IO a) ->
+  IO a
+withEnv config txtTracer f = do
   createDirectoryIfMissing True $ storePath </> "heads"
   createDirectoryIfMissing True $ storePath </> "to_head"
   createDirectoryIfMissing True $ storePath </> "deps"
   lock <- RWL.new
   let tracer = contramap vcServerTraceToText txtTracer
   f InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
+  where
+    storePath = config ^. the @"vcPath"
 
 instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperations err (InfernoVCFilesystemM err m) where
   type Serializable (InfernoVCFilesystemM err m) = ToJSON

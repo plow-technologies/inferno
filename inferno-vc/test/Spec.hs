@@ -27,9 +27,9 @@ main =
           FSOps.withEnv
           FSOps.runInfernoVCFilesystemM
           ServerConfig
-            { _serverHost = "127.0.0.1",
-              _serverPort = 13077,
-              _vcPath = vcPath
+            { serverHost = "127.0.0.1",
+              serverPort = 13077,
+              vcPath = vcPath
             }
     putStrLn "  Done."
 
