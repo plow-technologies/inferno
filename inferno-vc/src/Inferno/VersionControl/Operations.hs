@@ -53,7 +53,7 @@ import Inferno.VersionControl.Types
     vcObjectHashToByteString,
   )
 import Plow.Logging (IOTracer, traceWith)
-import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile, renameFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryContents, removeFile, renameFile, removePathForcibly)
 import System.FilePath.Posix (takeFileName, (</>))
 
 newtype VCStorePath = VCStorePath FilePath deriving (Generic)
@@ -127,6 +127,14 @@ readVCObjectHashTxt fp = do
   forM deps $ \dep -> do
     decoded <- either (const $ throwError $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
     maybe (throwError $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
+
+-- | RESET the VC store: deletes all objects permanently and resets to initial state.
+-- Intended to be used for testing only.
+resetVC :: VCStoreEnvM env m => m ()
+resetVC = do
+  VCStorePath storePath <- getTyped <$> ask
+  liftIO $ removePathForcibly storePath
+  initVCStore
 
 storeVCObject :: forall env err m a g. (VCStoreLogM env m, VCStoreErrM err m, VCStoreEnvM env m, VCHashUpdate a, VCHashUpdate g, ToJSON a, ToJSON g, FromJSON a, FromJSON g) => VCMeta a g VCObject -> m VCObjectHash
 storeVCObject obj@VCMeta {obj = ast, pred = p} = do
