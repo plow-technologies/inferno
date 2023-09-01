@@ -38,7 +38,7 @@ import Control.Monad.Except (ExceptT, MonadError)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), ReaderT, asks, runReaderT)
 import Crypto.Hash (digestFromByteString)
-import Data.Aeson (FromJSON, ToJSON, Value, eitherDecode, encode)
+import Data.Aeson (FromJSON, ToJSON, eitherDecode, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
@@ -48,6 +48,7 @@ import Data.Generics.Product (HasField, HasType, getTyped, the)
 import Data.Generics.Sum (AsType (..))
 import qualified Data.Set as Set
 import Data.Text (Text, pack)
+import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Dependencies (..))
 import Inferno.VersionControl.Log (VCServerTrace (..), vcServerTraceToText)
@@ -74,7 +75,7 @@ data InfernoVCFilesystemEnv = InfernoVCFilesystemEnv
   }
   deriving (Generic)
 
-newtype InfernoVCFilesystemM err m a = InfernoVCFilesystemM (ReaderT InfernoVCFilesystemEnv (ExceptT err m) a)
+newtype InfernoVCFilesystemM g a err m x = InfernoVCFilesystemM (ReaderT InfernoVCFilesystemEnv (ExceptT err m) x)
   deriving
     ( Functor,
       Applicative,
@@ -87,7 +88,7 @@ newtype InfernoVCFilesystemM err m a = InfernoVCFilesystemM (ReaderT InfernoVCFi
       MonadMask
     )
 
-runInfernoVCFilesystemM :: InfernoVCFilesystemM err m a -> InfernoVCFilesystemEnv -> ExceptT err m a
+runInfernoVCFilesystemM :: forall g a err m x. InfernoVCFilesystemM g a err m x -> InfernoVCFilesystemEnv -> ExceptT err m x
 runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
 withEnv ::
@@ -107,9 +108,22 @@ withEnv config txtTracer f = do
   where
     storePath = config ^. the @"vcPath"
 
-instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperations err (InfernoVCFilesystemM err m) where
-  type Serializable (InfernoVCFilesystemM err m) = ToJSON
-  type Deserializable (InfernoVCFilesystemM err m) = FromJSON
+instance
+  ( MonadIO m,
+    MonadMask m,
+    AsType VCStoreError err,
+    Ord g,
+    VCHashUpdate g,
+    VCHashUpdate a,
+    ToJSON g,
+    ToJSON a,
+    FromJSON a,
+    FromJSON g
+  ) =>
+  InfernoVCOperations err (InfernoVCFilesystemM g a err m)
+  where
+  type Author (InfernoVCFilesystemM g a err m) = a
+  type Group (InfernoVCFilesystemM g a err m) = g
 
   storeVCObject obj@VCMeta {obj = ast, pred = p} = do
     VCStorePath storePath <- asks getTyped
@@ -177,7 +191,7 @@ instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperation
     lock <- asks getTyped
     withWrite lock $ do
       -- check if object meta exists with hash meta_hash, and get meta
-      (VCMeta {name = obj_name} :: VCMeta Value Value VCObject) <- fetchVCObject obj_hash
+      VCMeta {name = obj_name} <- fetchVCObject obj_hash
       -- check that it is safe to delete
       if obj_name == pack "<AUTOSAVE>"
         then do
@@ -204,7 +218,7 @@ instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperation
       createDirectoryIfMissing True $ storePath </> "removed" </> "deps"
 
     withWrite lock $ do
-      (metas :: [VCMeta Value Value VCObjectHash]) <- fetchVCObjectHistory obj_hash
+      metas <- fetchVCObjectHistory obj_hash
       forM_ metas $ \VCMeta {obj = hash} -> do
         forM_
           [ show hash,
@@ -316,20 +330,35 @@ instance (MonadIO m, MonadMask m, AsType VCStoreError err) => InfernoVCOperation
     let fp = storePath </> "deps" </> show h
     readVCObjectHashTxt fp
 
-  getAllHeads = do
-    VCStorePath storePath <- getTyped <$> ask
-    -- We don't need a lock here because this only lists the heads/ directory, it doesn't
-    -- read any file contents (and I assume the `ls` is atomic)
-    headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
-    pure $
-      foldr
-        ( \hd xs ->
-            case (either (const Nothing) Just $ Base64.decode $ Char8.pack hd) >>= digestFromByteString of
-              Just hsh -> (VCObjectHash hsh) : xs
-              Nothing -> xs
-        )
-        []
-        (map takeFileName headsRaw)
+  deleteAutosavedVCObjectsOlderThan t = do
+    -- We know that all autosaves must be heads:
+    heads <- getAllHeads
+    forM_
+      heads
+      ( \h -> do
+          -- fetch object, check name and timestamp
+          (VCMeta {name, timestamp} :: VCMeta a g VCObject) <- fetchVCObject h
+          if name == "<AUTOSAVE>" && timestamp < CTime (truncate t)
+            then -- delete the stale ones (> t old)
+              deleteAutosavedVCObject h
+            else pure ()
+      )
+
+getAllHeads :: VCStoreEnvM err m => m [VCObjectHash]
+getAllHeads = do
+  VCStorePath storePath <- getTyped <$> ask
+  -- We don't need a lock here because this only lists the heads/ directory, it doesn't
+  -- read any file contents (and I assume the `ls` is atomic)
+  headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
+  pure $
+    foldr
+      ( \hd xs ->
+          case (either (const Nothing) Just $ Base64.decode $ Char8.pack hd) >>= digestFromByteString of
+            Just hsh -> (VCObjectHash hsh) : xs
+            Nothing -> xs
+      )
+      []
+      (map takeFileName headsRaw)
 
 fetchCurrentHead ::
   ( MonadError err m,
