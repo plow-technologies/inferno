@@ -1,36 +1,46 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Inferno.VersionControl.Server where
+module Inferno.VersionControl.Server
+  ( VCServerError (..),
+    VersionControlAPI,
+    runServer,
+    runServerConfig,
+  )
+where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
-import Control.Concurrent.FairRWLock (RWLock)
-import qualified Control.Concurrent.FairRWLock as RWL
-import Control.Monad (forever)
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.Reader (ReaderT, runReaderT)
+import Control.Lens (to, (^.))
+import Control.Monad (forM, forM_, forever)
+import Control.Monad.Except (ExceptT, runExceptT, throwError)
+import Control.Monad.IO.Class (liftIO)
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Contravariant (contramap)
+import Data.Generics.Product (HasField, the)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (..))
 import Data.Set (Set)
 import Data.String (fromString)
 import qualified Data.Text as T
+import Data.Time.Clock.POSIX (getPOSIXTime)
+import Foreign.C.Types (CTime (..))
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToString)
+import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
-import Inferno.VersionControl.Server.Types (ServerConfig (..), readServerConfig)
+import Inferno.VersionControl.Server.Types (readServerConfig)
 import Inferno.VersionControl.Server.UnzipRequest (ungzipRequest)
 import Inferno.VersionControl.Types
   ( Pinned,
@@ -80,13 +90,24 @@ type VersionControlAPI a g =
     :<|> "delete" :> "autosave" :> "function" :> ReqBody '[JSON] VCObjectHash :> DeleteThrowingVCStoreError '[JSON] ()
     :<|> "delete" :> "scripts" :> Capture "hash" VCObjectHash :> DeleteThrowingVCStoreError '[JSON] ()
 
-vcServer :: (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => FilePath -> IOTracer VCServerTrace -> RWLock -> Server (VersionControlAPI a g)
-vcServer config tracer lock =
+vcServer ::
+  ( VCHashUpdate a,
+    VCHashUpdate g,
+    Ops.InfernoVCOperations VCServerError m,
+    Ops.Deserializable m a,
+    Ops.Deserializable m g,
+    Ops.Serializable m a,
+    Ops.Serializable m g,
+    Ord g
+  ) =>
+  (forall x. m x -> Handler (Union (WithError VCServerError x))) ->
+  Server (VersionControlAPI a g)
+vcServer toHandler =
   toHandler . fetchFunctionH
     :<|> toHandler . Ops.fetchFunctionsForGroups
     :<|> toHandler . Ops.fetchVCObject
     :<|> toHandler . Ops.fetchVCObjectHistory
-    :<|> toHandler . Ops.fetchVCObjects
+    :<|> toHandler . fetchVCObjects
     :<|> toHandler . Ops.fetchVCObjectClosureHashes
     :<|> toHandler . pushFunctionH
     :<|> toHandler . Ops.deleteAutosavedVCObject
@@ -96,44 +117,113 @@ vcServer config tracer lock =
       om@VCMeta {obj} <- Ops.fetchVCObject h
       case obj of
         VCFunction f t -> pure om {obj = (f, t)}
-        _ -> Ops.throwError $ Ops.UnexpectedObjectType h $ showVCObjectType obj
+        _ -> throwError $ VCServerError $ Ops.UnexpectedObjectType h $ showVCObjectType obj
 
     pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
 
-    toHandler :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace, RWLock) (ExceptT VCServerError Handler) a -> Handler (Union (WithError VCServerError a))
-    toHandler = liftTypedError . flip runReaderT (Ops.VCStorePath config, tracer, lock)
+    fetchVCObjects hs =
+      Map.fromList <$> (forM hs $ \h -> (h,) <$> Ops.fetchVCObject h)
 
-runServer :: forall proxy a g. (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => proxy a -> proxy g -> IO ()
-runServer proxyA proxyG = do
+runServer ::
+  forall proxy m a g env config.
+  ( HasField "serverHost" config config T.Text T.Text,
+    HasField "serverPort" config config Int Int,
+    VCHashUpdate a,
+    VCHashUpdate g,
+    FromJSON config,
+    FromJSON a,
+    FromJSON g,
+    ToJSON a,
+    ToJSON g,
+    Ops.Deserializable m a,
+    Ops.Deserializable m g,
+    Ops.Serializable m a,
+    Ops.Serializable m g,
+    Ops.InfernoVCOperations VCServerError m,
+    Ord g
+  ) =>
+  proxy a ->
+  proxy g ->
+  (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
+  (forall x. m x -> env -> ExceptT VCServerError IO x) ->
+  IO ()
+runServer proxyA proxyG withEnv runOp = do
   readServerConfig "config.yml" >>= \case
     Left err -> putStrLn err
-    Right serverConfig -> runServerConfig proxyA proxyG serverConfig
+    Right serverConfig -> runServerConfig proxyA proxyG withEnv runOp serverConfig
 
-runServerConfig :: forall proxy a g. (VCHashUpdate a, VCHashUpdate g, FromJSON a, FromJSON g, ToJSON a, ToJSON g, Ord g) => proxy a -> proxy g -> ServerConfig -> IO ()
-runServerConfig _ _ serverConfig = do
-  let host = fromString . T.unpack . _serverHost $ serverConfig
-      port = _serverPort serverConfig
-      vcPath = _vcPath serverConfig
+runServerConfig ::
+  forall proxy m a g env config.
+  ( HasField "serverHost" config config T.Text T.Text,
+    HasField "serverPort" config config Int Int,
+    FromJSON config,
+    VCHashUpdate a,
+    VCHashUpdate g,
+    FromJSON a,
+    FromJSON g,
+    ToJSON a,
+    ToJSON g,
+    Ops.Deserializable m a,
+    Ops.Deserializable m g,
+    Ops.Serializable m a,
+    Ops.Serializable m g,
+    Ops.InfernoVCOperations VCServerError m,
+    Ord g
+  ) =>
+  proxy a ->
+  proxy g ->
+  (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
+  (forall x. m x -> env -> ExceptT VCServerError IO x) ->
+  config ->
+  IO ()
+runServerConfig _ _ withEnv runOp serverConfig = do
+  let host = serverConfig ^. the @"serverHost" . to T.unpack . to fromString
+      port = serverConfig ^. the @"serverPort"
       settingsWithTimeout = setTimeout 300 defaultSettings
-      tracer = contramap vcServerTraceToString $ IOTracer $ simpleStdOutTracer
-      deleteOp = Ops.deleteStaleAutosavedVCObjects :: ReaderT (Ops.VCStorePath, IOTracer VCServerTrace, RWLock) (ExceptT VCServerError IO) ()
-      cleanup lock =
-        runExceptT (runReaderT deleteOp (Ops.VCStorePath vcPath, tracer, lock)) >>= \case
-          Left (VCServerError {serverError}) ->
-            traceWith @IOTracer tracer (ThrownVCStoreError serverError)
-          Right _ -> pure ()
 
-  runReaderT Ops.initVCStore $ Ops.VCStorePath vcPath
-  lock <- RWL.new
-  print ("running..." :: String)
-  -- Cleanup stale autosave scripts in a separate thread every hour:
-  withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup lock) $
-    -- And run the server:
-    runSettings (setPort port $ setHost host settingsWithTimeout) $
-      ungzipRequest $
-        gzip def $
-          serve (Proxy :: Proxy (VersionControlAPI a g)) $
-            vcServer vcPath tracer lock
+  let tracer = IOTracer (contramap T.unpack simpleStdOutTracer)
+      serverTracer = contramap vcServerTraceToText tracer
+  withEnv serverConfig tracer $ \env -> do
+    let cleanup = do
+          now <- liftIO $ CTime . round . toRational <$> getPOSIXTime
+          runExceptT (runOp (deleteStaleAutosavedVCObjects @a @g now) env) >>= \case
+            Left (VCServerError {serverError}) ->
+              traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
+            Right _ -> pure ()
+    print ("running..." :: String)
+    -- Cleanup stale autosave scripts in a separate thread every hour:
+    withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
+      -- And run the server:
+      runSettings (setPort port $ setHost host settingsWithTimeout) $
+        ungzipRequest $
+          gzip def $
+            serve (Proxy :: Proxy (VersionControlAPI a g)) $
+              vcServer (liftIO . liftTypedError . flip runOp env)
+
+-- | Deletes all stale autosaved objects from the VC.
+-- As this is a non-critical maintenance operation, we do not hold the lock around the
+-- entire operation.
+deleteStaleAutosavedVCObjects ::
+  forall a g m err.
+  ( Ops.InfernoVCOperations err m,
+    Ops.Deserializable m a,
+    Ops.Deserializable m g
+  ) =>
+  CTime ->
+  m ()
+deleteStaleAutosavedVCObjects now = do
+  -- We know that all autosaves must be heads:
+  heads <- Ops.getAllHeads
+  forM_
+    heads
+    ( \h -> do
+        -- fetch object, check name and timestamp
+        (VCMeta {name, timestamp} :: VCMeta a g VCObject) <- Ops.fetchVCObject h
+        if name == T.pack "<AUTOSAVE>" && timestamp < now - 60 * 60
+          then -- delete the stale ones (> 1hr old)
+            Ops.deleteAutosavedVCObject h
+          else pure ()
+    )
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g
