@@ -144,10 +144,8 @@ runServerConfig ::
   forall m env config.
   ( HasField "serverHost" config config T.Text T.Text,
     HasField "serverPort" config config Int Int,
-    FromJSON config,
     VCHashUpdate (Ops.Author m),
     VCHashUpdate (Ops.Group m),
-    FromJSON config,
     FromJSON (Ops.Author m),
     FromJSON (Ops.Group m),
     ToJSON (Ops.Author m),
