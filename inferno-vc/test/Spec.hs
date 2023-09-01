@@ -31,7 +31,7 @@ main =
     putStrLn "  Done."
 
     hspec $
-      vcServerSpec
+      vcServerSpec @Int @Int
         BaseUrl
           { baseUrlScheme = Http,
             baseUrlHost = "127.0.0.1",

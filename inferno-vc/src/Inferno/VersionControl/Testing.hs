@@ -1,9 +1,13 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Inferno.VersionControl.Testing (vcServerSpec) where
 
 import Control.Monad (forM_)
+import Data.Aeson (FromJSON, ToJSON)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Time.Clock (getCurrentTime)
@@ -20,26 +24,7 @@ import Servant ((:<|>) (..))
 import Servant.Client (BaseUrl, ClientEnv, client)
 import Servant.Typed.Error (runTypedClientM, typedClient)
 import Test.Hspec
-import Test.QuickCheck (arbitrary, generate)
-
-fetchFunction :: VCObjectHash -> ClientMWithVCStoreError (VCMeta Int Int (Expr (Pinned VCObjectHash) (), TCScheme))
-fetchFunctionsForGroups :: Set.Set Int -> ClientMWithVCStoreError [VCMeta Int Int VCObjectHash]
-fetchVCObject :: VCObjectHash -> ClientMWithVCStoreError (VCMeta Int Int VCObject)
-fetchVCObjectHistory :: VCObjectHash -> ClientMWithVCStoreError [VCMeta Int Int VCObjectHash]
-fetchVCObjects :: [VCObjectHash] -> ClientMWithVCStoreError (Map.Map VCObjectHash (VCMeta Int Int VCObject))
-fetchVCObjectClosureHashes :: VCObjectHash -> ClientMWithVCStoreError [VCObjectHash]
-pushFunction :: VCMeta Int Int (Expr (Pinned VCObjectHash) (), TCScheme) -> ClientMWithVCStoreError VCObjectHash
-deleteAutosavedFunction :: VCObjectHash -> ClientMWithVCStoreError ()
-deleteVCObject :: VCObjectHash -> ClientMWithVCStoreError ()
-fetchFunction
-  :<|> fetchFunctionsForGroups
-  :<|> fetchVCObject
-  :<|> fetchVCObjectHistory
-  :<|> fetchVCObjects
-  :<|> fetchVCObjectClosureHashes
-  :<|> pushFunction
-  :<|> deleteAutosavedFunction
-  :<|> deleteVCObject = typedClient $ client $ api @Int @Int
+import Test.QuickCheck (Arbitrary, arbitrary, generate)
 
 runOperation :: ClientEnv -> ClientMWithVCStoreError a -> (a -> IO ()) -> IO ()
 runOperation vcClientEnv op check = do
@@ -59,15 +44,28 @@ runOperationFail vcClientEnv op check = do
     Right res -> do
       expectationFailure $ "Expected this operation to fail but it returned " <> show res
 
-createObj :: VCObjectPred -> IO (VCMeta Int Int (Expr (Pinned VCObjectHash) (), TCScheme))
+createObj ::
+  (Arbitrary a, Arbitrary g) =>
+  VCObjectPred ->
+  IO (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
 createObj predecessor = do
+  g <- generate arbitrary
+  createObjForGroup g predecessor
+
+createObjForGroup ::
+  (Arbitrary a) =>
+  g ->
+  VCObjectPred ->
+  IO (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
+createObjForGroup group predecessor = do
   ctime <- CTime . round . toRational . utcTimeToPOSIXSeconds <$> getCurrentTime
   d <- generate arbitrary
+  author <- generate arbitrary
   pure
     VCMeta
       { timestamp = ctime,
-        author = 432,
-        group = 432,
+        author,
+        group,
         name = "Test",
         description = "",
         Inferno.VersionControl.Types.pred = predecessor,
@@ -75,7 +73,19 @@ createObj predecessor = do
         obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
       }
 
-vcServerSpec :: BaseUrl -> Spec
+vcServerSpec ::
+  forall a g.
+  ( Arbitrary a,
+    Show a,
+    FromJSON a,
+    ToJSON a,
+    Arbitrary g,
+    Show g,
+    FromJSON g,
+    ToJSON g
+  ) =>
+  BaseUrl ->
+  Spec
 vcServerSpec url = do
   vcClientEnv <- runIO $ do
     man <- newManager defaultManagerSettings
@@ -83,13 +93,14 @@ vcServerSpec url = do
 
   describe "inferno-vc server" $ do
     it "basics" $ do
-      o1 <- createObj Init
+      g <- generate arbitrary
+      o1 <- createObjForGroup g Init
       runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj $ MarkedBreakingWithPred h1
+        o2 <- createObjForGroup g $ MarkedBreakingWithPred h1
         runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj $ MarkedBreakingWithPred h2
+          o3 <- createObjForGroup g $ MarkedBreakingWithPred h2
           runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObj $ MarkedBreakingWithPred h3
+            o4 <- createObjForGroup g $ MarkedBreakingWithPred h3
             runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
               -- Test fetchFunction:
               forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) ->
@@ -116,7 +127,7 @@ vcServerSpec url = do
                     Nothing -> expectationFailure "impossible"
 
               -- fetchFunctionsForGroups only returns the head h4:
-              runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton 432)) $ \metas -> do
+              runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g)) $ \metas -> do
                 map obj metas `shouldBe` [h4]
 
               -- The closure of h4 should be empty as it has no dependencies:
@@ -194,3 +205,22 @@ vcServerSpec url = do
             runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
               runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas ->
                 (map obj metas) `shouldBe` [h4, h3, h2]
+  where
+    fetchFunction :: VCObjectHash -> ClientMWithVCStoreError (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
+    fetchFunctionsForGroups :: Set.Set g -> ClientMWithVCStoreError [VCMeta a g VCObjectHash]
+    fetchVCObject :: VCObjectHash -> ClientMWithVCStoreError (VCMeta a g VCObject)
+    fetchVCObjectHistory :: VCObjectHash -> ClientMWithVCStoreError [VCMeta a g VCObjectHash]
+    fetchVCObjects :: [VCObjectHash] -> ClientMWithVCStoreError (Map.Map VCObjectHash (VCMeta a g VCObject))
+    fetchVCObjectClosureHashes :: VCObjectHash -> ClientMWithVCStoreError [VCObjectHash]
+    pushFunction :: VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme) -> ClientMWithVCStoreError VCObjectHash
+    deleteAutosavedFunction :: VCObjectHash -> ClientMWithVCStoreError ()
+    deleteVCObject :: VCObjectHash -> ClientMWithVCStoreError ()
+    fetchFunction
+      :<|> fetchFunctionsForGroups
+      :<|> fetchVCObject
+      :<|> fetchVCObjectHistory
+      :<|> fetchVCObjects
+      :<|> fetchVCObjectClosureHashes
+      :<|> pushFunction
+      :<|> deleteAutosavedFunction
+      :<|> deleteVCObject = typedClient $ client $ api @a @g
