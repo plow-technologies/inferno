@@ -18,7 +18,14 @@ import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC), typeDouble)
 import Inferno.VersionControl.Client (ClientMWithVCStoreError, api, mkVCClientEnv)
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Server (VCServerError (VCServerError))
-import Inferno.VersionControl.Types (Pinned, VCMeta (..), VCObject (VCFunction), VCObjectHash, VCObjectPred (CloneOf, Init, MarkedBreakingWithPred), VCObjectVisibility (VCObjectPublic))
+import Inferno.VersionControl.Types
+  ( Pinned,
+    VCMeta (..),
+    VCObject (VCFunction),
+    VCObjectHash,
+    VCObjectPred (..),
+    VCObjectVisibility (VCObjectPublic),
+  )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant ((:<|>) (..))
 import Servant.Client (BaseUrl, ClientEnv, client)
@@ -205,6 +212,21 @@ vcServerSpec url = do
             runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
               runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas ->
                 (map obj metas) `shouldBe` [h4, h3, h2]
+
+    it "history of clone of deleted" $ do
+      o1 <- createObj Init
+      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
+        o2 <- createObj $ CloneOf h1
+        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
+          o3 <- createObj $ CloneOf h2
+          runOperation vcClientEnv (deleteVCObject h2) $ \() -> do
+            runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
+              o4 <- createObj $ MarkedBreakingWithPred h3
+              runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
+                runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas -> do
+                  (map obj metas) `shouldBe` [h4, h3, h2]
+                  let [_, o3', _] = metas
+                  Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
   where
     fetchFunction :: VCObjectHash -> ClientMWithVCStoreError (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
     fetchFunctionsForGroups :: Set.Set g -> ClientMWithVCStoreError [VCMeta a g VCObjectHash]
