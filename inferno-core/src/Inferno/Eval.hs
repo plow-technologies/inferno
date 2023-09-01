@@ -75,6 +75,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
     where
       toText (VText t) = t
       toText e = renderStrict $ layoutPretty (LayoutOptions Unbounded) $ pretty e
+  -- ok
   Array_ es ->
     foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] es >>= return . VArray
   ArrayComp_ e srcs mCond -> do
