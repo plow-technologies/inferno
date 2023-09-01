@@ -24,10 +24,10 @@ import Inferno.VersionControl.Types
   )
 
 class
-  ( Ord (Group m),
-    VCHashUpdate (Author m),
+  ( Ord (Group m), -- This constraint is for fetchFunctionsForGroups's Set argument
+    VCHashUpdate (Author m), -- These ones so we can hash a VCMeta
     VCHashUpdate (Group m),
-    MonadError err m,
+    MonadError err m, -- These so implementors can throw VCStoreError when appropiate
     AsType VCStoreError err
   ) =>
   InfernoVCOperations err m
@@ -36,7 +36,7 @@ class
   type Author m :: Type
 
   -- | Store an object and return its hash. hash is the object's primary key
-  --   The following always holds:
+  --   The following always holds (modulo errors):
   --   @
   --     x' <- storeVCObject x >>= fetchVCObject
   --     x == x'
@@ -52,7 +52,7 @@ class
 
   -- | Fetch an object by its hash.
   --
-  --   The following always holds:
+  --   The following always holds (modulo errors):
   --   @
   --     x' <- storeVCObject x >>= fetchVCObject
   --     x == x'
@@ -63,7 +63,7 @@ class
   fetchVCObjectClosureHashes :: VCObjectHash -> m [VCObjectHash]
 
   -- | Retrieves the full history of the chain which the given hash belongs to.
-  -- History is given from newest (head) to oldest
+  -- History is given from newest (head) to oldest (root)
   fetchVCObjectHistory :: VCObjectHash -> m [VCMeta (Author m) (Group m) VCObjectHash]
 
   -- | Fetch all objects that are public or that belong to the given set of groups.

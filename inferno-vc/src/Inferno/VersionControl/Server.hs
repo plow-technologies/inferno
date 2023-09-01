@@ -167,8 +167,9 @@ runServerConfig withEnv runOp serverConfig = do
       serverTracer = contramap vcServerTraceToText tracer
   withEnv serverConfig tracer $ \env -> do
     let cleanup = do
-          now <- liftIO getPOSIXTime
-          runExceptT (runOp (Ops.deleteAutosavedVCObjectsOlderThan now) env) >>= \case
+          -- cutoff is an hour ago
+          cutoff <- subtract (60 * 60) <$> liftIO getPOSIXTime
+          runExceptT (runOp (Ops.deleteAutosavedVCObjectsOlderThan cutoff) env) >>= \case
             Left (VCServerError {serverError}) ->
               traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
             Right _ -> pure ()
