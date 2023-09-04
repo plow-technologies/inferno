@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -33,23 +34,26 @@ import Servant.Typed.Error (runTypedClientM, typedClient)
 import Test.Hspec
 import Test.QuickCheck (Arbitrary, arbitrary, generate)
 
-runOperation :: ClientEnv -> ClientMWithVCStoreError a -> (a -> IO ()) -> IO ()
-runOperation vcClientEnv op check = do
+runOperation :: ClientEnv -> ClientMWithVCStoreError a -> IO a
+runOperation vcClientEnv op =
   (flip runTypedClientM vcClientEnv op) >>= \case
     Left err -> do
       expectationFailure $ show err
-    Right res -> do
-      check res
+      pure $ error "i shouldn't be evaluated"
+    Right res ->
+      pure res
 
-runOperationFail :: (Show a) => ClientEnv -> ClientMWithVCStoreError a -> (VCServerError -> IO ()) -> IO ()
-runOperationFail vcClientEnv op check = do
+runOperationFail :: (Show a) => ClientEnv -> ClientMWithVCStoreError a -> IO VCServerError
+runOperationFail vcClientEnv op =
   (flip runTypedClientM vcClientEnv op) >>= \case
-    Left (Right err) -> do
-      check err
+    Left (Right err) ->
+      pure err
     Left (Left err) -> do
       expectationFailure $ "Expected VCServerError but failed with " <> show err
+      pure $ error "i shouldn't be evaluated"
     Right res -> do
       expectationFailure $ "Expected this operation to fail but it returned " <> show res
+      pure $ error "i shouldn't be evaluated"
 
 createObj ::
   (Arbitrary a, Arbitrary g) =>
@@ -102,64 +106,65 @@ vcServerSpec url = do
     it "basics" $ do
       g <- generate arbitrary
       o1 <- createObjForGroup g Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObjForGroup g $ MarkedBreakingWithPred h1
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObjForGroup g $ MarkedBreakingWithPred h2
-          runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObjForGroup g $ MarkedBreakingWithPred h3
-            runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-              -- Test fetchFunction:
-              forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) ->
-                runOperation vcClientEnv (fetchFunction h) $ \o' -> do
-                  timestamp o' `shouldBe` timestamp o
-                  obj o' `shouldBe` obj o
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObjForGroup g $ MarkedBreakingWithPred h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObjForGroup g $ MarkedBreakingWithPred h2
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObjForGroup g $ MarkedBreakingWithPred h3
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      
+      -- Test fetchFunction:
+      forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) -> do
+        o' <-  runOperation vcClientEnv (fetchFunction h)
+        timestamp o' `shouldBe` timestamp o
+        obj o' `shouldBe` obj o
 
-              -- Test fetchVCObject:
-              forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) ->
-                runOperation vcClientEnv (fetchVCObject h) $ \o' ->
-                  case obj o' of
-                    VCFunction e t -> do
-                      timestamp o' `shouldBe` timestamp o
-                      (e, t) `shouldBe` (obj o)
-                    _ -> expectationFailure "Expected to get a VCFunction"
+      -- Test fetchVCObject:
+      forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) -> do
+        o' <-  runOperation vcClientEnv (fetchVCObject h)
+        case obj o' of
+          VCFunction e t -> do
+            timestamp o' `shouldBe` timestamp o
+            (e, t) `shouldBe` (obj o)
+          _ -> expectationFailure "Expected to get a VCFunction"
 
-              -- Test fetchVCObjects:
-              runOperation vcClientEnv (fetchVCObjects [h1, h3, h4]) $ \hashToMeta -> do
-                Set.fromList (Map.keys hashToMeta) `shouldBe` Set.fromList [h1, h3, h4]
-                forM_ [(o1, h1), (o3, h3), (o4, h4)] $ \(o, h) ->
-                  case Map.lookup h hashToMeta of
-                    Just meta ->
-                      timestamp meta `shouldBe` timestamp o
-                    Nothing -> expectationFailure "impossible"
+      -- Test fetchVCObjects:
+      hashToMeta <- runOperation vcClientEnv (fetchVCObjects [h1, h3, h4])
+      Set.fromList (Map.keys hashToMeta) `shouldBe` Set.fromList [h1, h3, h4]
+      forM_ [(o1, h1), (o3, h3), (o4, h4)] $ \(o, h) ->
+        case Map.lookup h hashToMeta of
+          Just meta ->
+            timestamp meta `shouldBe` timestamp o
+          Nothing -> expectationFailure "impossible"
 
-              -- fetchFunctionsForGroups only returns the head h4:
-              runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g)) $ \metas -> do
-                map obj metas `shouldBe` [h4]
+      -- fetchFunctionsForGroups only returns the head h4:
+      metas <- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g))
+      map obj metas `shouldBe` [h4]
 
-              -- The closure of h4 should be empty as it has no dependencies:
-              runOperation vcClientEnv (fetchVCObjectClosureHashes h4) $ \metas -> do
-                metas `shouldBe` []
+      -- The closure of h4 should be empty as it has no dependencies:
+      metas' <- runOperation vcClientEnv (fetchVCObjectClosureHashes h4)
+      metas' `shouldBe` []
 
     it "deletion" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj Init
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj Init
-          runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObj Init
-            runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-              runOperation vcClientEnv (deleteVCObject h3) $ \() -> do
-                -- Fetching h3 should fail:
-                runOperationFail vcClientEnv (fetchFunction h3) $ \case
-                  VCServerError (CouldNotFindPath _) -> pure ()
-                  _ -> expectationFailure ""
-                -- Others should fetch:
-                forM_ [(o1, h1), (o2, h2), (o4, h4)] $ \(o, h) ->
-                  runOperation vcClientEnv (fetchFunction h) $ \o' -> do
-                    timestamp o' `shouldBe` timestamp o
-                    obj o' `shouldBe` obj o
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj Init
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj Init
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObj Init
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      runOperation vcClientEnv (deleteVCObject h3)
+      -- Fetching h3 should fail:
+      runOperationFail vcClientEnv (fetchFunction h3) >>= \case
+        VCServerError (CouldNotFindPath _) -> pure ()
+        _ -> expectationFailure ""
+      -- Others should fetch:
+      forM_ [(o1, h1), (o2, h2), (o4, h4)] $ \(o, h) -> do
+        o' <- runOperation vcClientEnv (fetchFunction h)
+        timestamp o' `shouldBe` timestamp o
+        obj o' `shouldBe` obj o
 
     -- -- TODO is fetchFunctionsForGRoups wrong? It is returning deleted scripts:
     -- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton 432)) $ \metas -> do
@@ -167,66 +172,90 @@ vcServerSpec url = do
 
     it "deletion of autosave" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj Init
-        runOperation vcClientEnv (pushFunction (o2 {name = "<AUTOSAVE>"})) $ \h2 -> do
-          -- h1 isn't an autosave so can't delete it:
-          runOperationFail vcClientEnv (deleteAutosavedFunction h1) $ \case
-            VCServerError (TryingToDeleteNonAutosave _) -> pure ()
-            _ -> expectationFailure ""
-          -- h2 is an autosave so it's fine
-          runOperation vcClientEnv (deleteAutosavedFunction h2) $ \() -> pure ()
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj Init
+      h2 <- runOperation vcClientEnv (pushFunction (o2 {name = "<AUTOSAVE>"}))
+      -- h1 isn't an autosave so can't delete it:
+      runOperationFail vcClientEnv (deleteAutosavedFunction h1) >>= \case
+        VCServerError (TryingToDeleteNonAutosave _) -> pure ()
+        _ -> expectationFailure ""
+      -- h2 is an autosave so it's fine
+      runOperation vcClientEnv (deleteAutosavedFunction h2)
 
     it "history" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj $ MarkedBreakingWithPred h1
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj $ MarkedBreakingWithPred h2
-          runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObj $ MarkedBreakingWithPred h3
-            runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-              runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas ->
-                (map obj metas) `shouldBe` [h4, h3, h2, h1]
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ MarkedBreakingWithPred h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ MarkedBreakingWithPred h2
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObj $ MarkedBreakingWithPred h3
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
+      (map obj metas) `shouldBe` [h4, h3, h2, h1]
 
     it "history of clone" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj $ MarkedBreakingWithPred h1
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj $ CloneOf h2
-          runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObj $ MarkedBreakingWithPred h3
-            runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-              runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas ->
-                (map obj metas) `shouldBe` [h4, h3, h2]
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ MarkedBreakingWithPred h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ CloneOf h2
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObj $ MarkedBreakingWithPred h3
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
+      (map obj metas) `shouldBe` [h4, h3, h2]
 
     it "history of clone of clone" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj $ CloneOf h1
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj $ CloneOf h2
-          runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-            o4 <- createObj $ MarkedBreakingWithPred h3
-            runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-              runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas ->
-                (map obj metas) `shouldBe` [h4, h3, h2]
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ CloneOf h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ CloneOf h2
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObj $ MarkedBreakingWithPred h3
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
+      (map obj metas) `shouldBe` [h4, h3, h2]
 
     it "history of clone of deleted" $ do
       o1 <- createObj Init
-      runOperation vcClientEnv (pushFunction o1) $ \h1 -> do
-        o2 <- createObj $ CloneOf h1
-        runOperation vcClientEnv (pushFunction o2) $ \h2 -> do
-          o3 <- createObj $ CloneOf h2
-          runOperation vcClientEnv (deleteVCObject h2) $ \() -> do
-            runOperation vcClientEnv (pushFunction o3) $ \h3 -> do
-              o4 <- createObj $ MarkedBreakingWithPred h3
-              runOperation vcClientEnv (pushFunction o4) $ \h4 -> do
-                runOperation vcClientEnv (fetchVCObjectHistory h4) $ \metas -> do
-                  (map obj metas) `shouldBe` [h4, h3, h2]
-                  let [_, o3', _] = metas
-                  Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ CloneOf h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ CloneOf h2
+      runOperation vcClientEnv (deleteVCObject h2)
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      o4 <- createObj $ MarkedBreakingWithPred h3
+      h4 <- runOperation vcClientEnv (pushFunction o4)
+      metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
+      (map obj metas) `shouldBe` [h4, h3, h2]
+      let o3' = metas !! 1
+      Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
+
+    it "history of clone of deleted (clone is head)" $ do
+      o1 <- createObj Init
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ CloneOf h1
+      h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ CloneOf h2
+      h3 <- runOperation vcClientEnv (pushFunction o3)
+      runOperation vcClientEnv (deleteVCObject h2)
+      metas <- runOperation vcClientEnv (fetchVCObjectHistory h3)
+      (map obj metas) `shouldBe` [h3, h2]
+      Inferno.VersionControl.Types.pred (metas !! 0) `shouldBe` CloneOfRemoved h2
+
+    it "cannot branch" $ do
+      o1 <- createObj Init
+      h1 <- runOperation vcClientEnv (pushFunction o1)
+      o2 <- createObj $ CompatibleWithPred h1
+      _h2 <- runOperation vcClientEnv (pushFunction o2)
+      o3 <- createObj $ CompatibleWithPred h1
+      runOperationFail vcClientEnv (pushFunction o3) >>= \case
+        VCServerError (TryingToAppendToNonHead _) -> pure ()
+        _ -> expectationFailure ""
+
+
   where
     fetchFunction :: VCObjectHash -> ClientMWithVCStoreError (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
     fetchFunctionsForGroups :: Set.Set g -> ClientMWithVCStoreError [VCMeta a g VCObjectHash]
