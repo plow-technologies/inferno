@@ -219,7 +219,7 @@ instance
 
     withWrite lock $ do
       metas <- fetchVCObjectHistory obj_hash
-      forM_ metas $ \VCMeta {obj = hash} -> do
+      forM_ (takeUpUntilClone metas) $ \VCMeta {obj = hash} -> do
         forM_
           [ show hash,
             "heads" </> show hash,
@@ -232,6 +232,20 @@ instance
         liftIO (doesFileExist source) >>= \case
           False -> pure ()
           True -> liftIO $ renameFile source target
+
+      takeUpUntilClone :: [VCMeta a g o] -> [VCMeta a g o]
+      takeUpUntilClone = \case
+        (x@VCMeta {pred = predObj} : rest)
+          | isClone predObj -> [x]
+          | otherwise -> x : takeUpUntilClone rest
+        [] -> []
+
+      isClone :: VCObjectPred -> Bool
+      isClone = \case
+        CloneOf {} -> True
+        CloneOfRemoved {} -> True
+        CloneOfNotFound {} -> True
+        _ -> False
 
   fetchVCObject = fetchVCObject' Nothing
 
