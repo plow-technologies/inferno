@@ -225,6 +225,13 @@ vcServerSpec url = do
       h2 <- runOperation vcClientEnv (pushFunction o2)
       o3 <- createObj $ CloneOf h2
       runOperation vcClientEnv (deleteVCObject h2)
+      -- Fetching h2 should now fail:
+      runOperationFail vcClientEnv (fetchFunction h2) >>= \case
+        VCServerError (CouldNotFindPath _) -> pure ()
+        _ -> expectationFailure ""
+      -- Original object is not deleted
+      fmap (map obj) (runOperation vcClientEnv (fetchVCObjectHistory h1)) `shouldReturn` [h1]
+
       h3 <- runOperation vcClientEnv (pushFunction o3)
       o4 <- createObj $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
@@ -232,9 +239,8 @@ vcServerSpec url = do
       (map obj metas) `shouldBe` [h4, h3, h2]
       let o3' = metas !! 1
       Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
-      -- Original object is not deleted
-      metas' <- runOperation vcClientEnv (fetchVCObjectHistory h1)
-      (map obj metas') `shouldBe` [h1]
+
+      fmap (map obj) (runOperation vcClientEnv (fetchVCObjectHistory h3)) `shouldReturn` [h4, h3, h2]
 
     it "history of clone of deleted (clone is head)" $ do
       o1 <- createObj Init
