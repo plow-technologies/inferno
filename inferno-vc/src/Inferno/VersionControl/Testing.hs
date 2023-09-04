@@ -232,6 +232,9 @@ vcServerSpec url = do
       (map obj metas) `shouldBe` [h4, h3, h2]
       let o3' = metas !! 1
       Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
+      -- Original object is not deleted
+      metas' <- runOperation vcClientEnv (fetchVCObjectHistory h1)
+      (map obj metas') `shouldBe` [h1]
 
     it "history of clone of deleted (clone is head)" $ do
       o1 <- createObj Init
