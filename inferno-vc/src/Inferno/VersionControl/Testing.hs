@@ -85,7 +85,7 @@ createObjForGroup group predecessor = do
       }
 
 vcServerSpec ::
-  forall a g.
+  forall g a.
   ( Arbitrary a,
     Show a,
     FromJSON a,
