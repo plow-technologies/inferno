@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -113,16 +113,16 @@ vcServerSpec url = do
       h3 <- runOperation vcClientEnv (pushFunction o3)
       o4 <- createObjForGroup g $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
-      
+
       -- Test fetchFunction:
       forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) -> do
-        o' <-  runOperation vcClientEnv (fetchFunction h)
+        o' <- runOperation vcClientEnv (fetchFunction h)
         timestamp o' `shouldBe` timestamp o
         obj o' `shouldBe` obj o
 
       -- Test fetchVCObject:
       forM_ [(o1, h1), (o2, h2), (o3, h3), (o4, h4)] $ \(o, h) -> do
-        o' <-  runOperation vcClientEnv (fetchVCObject h)
+        o' <- runOperation vcClientEnv (fetchVCObject h)
         case obj o' of
           VCFunction e t -> do
             timestamp o' `shouldBe` timestamp o
@@ -257,8 +257,6 @@ vcServerSpec url = do
       runOperationFail vcClientEnv (pushFunction o3) >>= \case
         VCServerError (TryingToAppendToNonHead _) -> pure ()
         _ -> expectationFailure ""
-
-
   where
     fetchFunction :: VCObjectHash -> ClientMWithVCStoreError (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
     fetchFunctionsForGroups :: Set.Set g -> ClientMWithVCStoreError [VCMeta a g VCObjectHash]
