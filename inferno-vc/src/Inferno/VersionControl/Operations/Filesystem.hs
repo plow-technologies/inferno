@@ -153,11 +153,11 @@ instance
               let new_head_fp = storePath </> "heads" </> show obj_h
               liftIO $ renameFile head_fp new_head_fp
               -- we append the previous head hash to the file (this serves as lookup for all the predecessors)
-              appendBS new_head_fp $ BL.fromStrict $ vcObjectHashToByteString pred_hash <> "\n"
+              appendBS new_head_fp $ vcObjectHashToByteString pred_hash <> "\n"
               -- now we need to change all the predecessor mappings in '<storePath>/to_head' to point to the new HEAD
               -- we also include the new head pointing to itself
               preds <- readVCObjectHashTxt new_head_fp
-              let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
+              let obj_h_bs = vcObjectHashToByteString obj_h
               forM_ (obj_h : preds) (\pred_h -> writeBS (storePath </> "to_head" </> show pred_h) obj_h_bs)
 
               pure obj_h
@@ -169,7 +169,7 @@ instance
           appendBS new_head_fp mempty
 
           -- we again make sure to add a self reference link to the '<storePath>/to_head' map
-          let obj_h_bs = BL.fromStrict $ vcObjectHashToByteString obj_h
+          let obj_h_bs = vcObjectHashToByteString obj_h
           writeBS (storePath </> "to_head" </> show obj_h) obj_h_bs
           pure obj_h
 
@@ -178,7 +178,7 @@ instance
       writeBS (storePath </> "deps" </> show obj_h) mempty
       forM_ deps $ \dep_h -> do
         -- first we append the direct dependency hash 'dep_h'
-        appendBS (storePath </> "deps" </> show obj_h) $ BL.fromStrict $ vcObjectHashToByteString dep_h <> "\n"
+        appendBS (storePath </> "deps" </> show obj_h) $ vcObjectHashToByteString dep_h <> "\n"
         -- then we append the transitive dependencies of the given object, pointed to by the hash 'dep_h'
         appendBS (storePath </> "deps" </> show obj_h) =<< getDepsFromStore (storePath </> "deps") dep_h
 
@@ -431,21 +431,21 @@ checkPathExists fp =
     False -> throwError $ CouldNotFindPath fp
     True -> pure ()
 
-getDepsFromStore :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> VCObjectHash -> m BL.ByteString
+getDepsFromStore :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> VCObjectHash -> m B.ByteString
 getDepsFromStore path h = do
   let fp = path </> show h
   checkPathExists fp
-  liftIO $ BL.readFile $ path </> show h
+  liftIO $ B.readFile $ path </> show h
 
-appendBS :: (VCStoreLogM env m) => FilePath -> BL.ByteString -> m ()
+appendBS :: (VCStoreLogM env m) => FilePath -> B.ByteString -> m ()
 appendBS fp bs = do
   trace $ WriteTxt fp
-  liftIO $ BL.appendFile fp bs
+  liftIO $ B.appendFile fp bs
 
-writeBS :: (VCStoreLogM env m) => FilePath -> BL.ByteString -> m ()
+writeBS :: (VCStoreLogM env m) => FilePath -> B.ByteString -> m ()
 writeBS fp bs = do
   trace $ WriteTxt fp
-  liftIO $ BL.writeFile fp bs
+  liftIO $ B.writeFile fp bs
 
 writeHashedJSON :: (VCStoreLogM env m, VCHashUpdate obj, ToJSON obj) => FilePath -> obj -> m VCObjectHash
 writeHashedJSON path o = do
@@ -481,4 +481,4 @@ fetchVCObject' mprefix h = do
   withRead lock $ do
     checkPathExists fp
     trace $ ReadJSON fp
-    either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode <$> BL.readFile fp)
+    either (throwError . CouldNotDecodeObject h) pure =<< liftIO (eitherDecode . BL.fromStrict <$> B.readFile fp)
