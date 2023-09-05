@@ -30,6 +30,7 @@ import Text.Megaparsec (initialPos)
 data InfernoError
   = ParseError String
   | PinError String
+  -- ok
   | InferenceError String
   deriving (Eq, Show)
 
