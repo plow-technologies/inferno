@@ -30,11 +30,11 @@ import Text.Megaparsec (initialPos)
 data InfernoError
   = ParseError String
   | PinError String
-  -- ok
   | InferenceError String
   deriving (Eq, Show)
 
 -- | Public API for the Inferno interpreter. @c@ is the custom value type.
+-- comment
 data Interpreter c = Interpreter
   { evalInEnv ::
       forall a.
