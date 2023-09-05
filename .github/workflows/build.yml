@@ -33,6 +33,7 @@ jobs:
           name: inferno
           authToken: "${{ secrets.CACHIX_TOKEN }}"
       - run: |
+          echo $(cat ~/.config/nix/nix.conf)
           nix build -L .#
 
       # Download and train MNIST model to test Inferno's torchscript model loader
