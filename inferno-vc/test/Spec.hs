@@ -4,7 +4,6 @@
 module Main (main) where
 
 import Control.Concurrent (forkIO)
-import Data.Proxy (Proxy (..))
 import qualified Inferno.VersionControl.Operations.Filesystem as FSOps
 import Inferno.VersionControl.Server (runServerConfig)
 import Inferno.VersionControl.Server.Types (ServerConfig (..))
@@ -22,10 +21,8 @@ main =
     _ <-
       forkIO $
         runServerConfig
-          (Proxy :: Proxy Int)
-          (Proxy :: Proxy Int)
           FSOps.withEnv
-          FSOps.runInfernoVCFilesystemM
+          (FSOps.runInfernoVCFilesystemM @Int @Int)
           ServerConfig
             { serverHost = "127.0.0.1",
               serverPort = 13077,
@@ -34,7 +31,7 @@ main =
     putStrLn "  Done."
 
     hspec $
-      vcServerSpec
+      vcServerSpec @Int @Int
         BaseUrl
           { baseUrlScheme = Http,
             baseUrlHost = "127.0.0.1",
