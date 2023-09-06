@@ -36,6 +36,7 @@ data InfernoError
 -- | Public API for the Inferno interpreter. @c@ is the custom value type.
 -- comment
 -- comment
+-- comment
 data Interpreter c = Interpreter
   { evalInEnv ::
       forall a.
