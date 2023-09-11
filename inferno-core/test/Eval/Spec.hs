@@ -348,7 +348,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
     shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
     -- Miscellaneous
-    shouldEvaluateTo "Array.map ((Text.append \"a\") . (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
+    shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
     shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" $ vTrue
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo

@@ -616,11 +616,11 @@ module Base
   infix 19 ..;
   infix 5 ?;
 
-  infixl 12 .;
+  infixl 12 <<;
   infixl 12 |>;
 
-  @doc Function composition. `(f . g) x == f (g x)`;
-  (.) : forall 'a 'b 'c. ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c := fun f g x -> f (g x);
+  @doc Function composition. `(f << g) x == f (g x)`;
+  (<<) : forall 'a 'b 'c. ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c := fun f g x -> f (g x);
 
   @doc The pipe operator. `x |> f |> g == g (f x)`;
   (|>) : forall 'a 'b 'c. 'a -> ('a -> 'b) -> 'b := fun x f -> f x;
