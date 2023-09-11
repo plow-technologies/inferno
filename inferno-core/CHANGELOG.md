@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.1.0 -- 2023-09-11
+* Add function composition, pipe, fst, snd, and zip
+
 ## 0.4.0.0 -- 2023-08-15
 * Pass environments directly, instead of functions (breaking change).
 

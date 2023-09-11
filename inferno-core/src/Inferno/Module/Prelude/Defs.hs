@@ -434,6 +434,15 @@ zeroFun = VFun $ \case
   VTypeRep ty -> throwM $ RuntimeError $ "zeroFun: unexpected runtimeRep " <> show ty
   _ -> throwM $ RuntimeError "zeroFun: expecting a runtimeRep"
 
+zipFun :: (MonadThrow m) => Value c m
+zipFun = VFun $ \case
+  VArray xs ->
+    return $ VFun $ \case
+      VArray ys ->
+        return $ VArray $ map (\(v1, v2) -> VTuple [v1, v2]) $ zip xs ys
+      _ -> throwM $ RuntimeError "zip: expecting an array"
+  _ -> throwM $ RuntimeError "zip: expecting an array"
+
 lengthFun :: (MonadThrow m) => Value c m
 lengthFun =
   VFun $ \case

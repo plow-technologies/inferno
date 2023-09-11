@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -115,6 +114,7 @@ import Inferno.Module.Prelude.Defs
     yearFun,
     yearsBeforeFun,
     zeroFun,
+    zipFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -132,29 +132,28 @@ baseOpsTable moduleMap =
    in IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
 
 builtinModulesOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map ModuleName OpsTable
-builtinModulesOpsTable moduleMap = Map.map (\Module {moduleOpsTable} -> moduleOpsTable) $ moduleMap
+builtinModulesOpsTable = Map.map (\Module {moduleOpsTable} -> moduleOpsTable)
 
 builtinModulesPinMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
 builtinModulesPinMap moduleMap =
   Pinned.openModule "Base" $
     Pinned.insertBuiltinModule $
       Map.foldrWithKey Pinned.insertHardcodedModule mempty $
-        Map.map (Map.map Builtin . pinnedModuleNameToHash) $
-          moduleMap
+        Map.map (Map.map Builtin . pinnedModuleNameToHash) moduleMap
 
 builtinModulesTerms :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
-builtinModulesTerms moduleMap = combineTermEnvs moduleMap
+builtinModulesTerms = combineTermEnvs
 
 preludeNameToTypeMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
 preludeNameToTypeMap moduleMap =
   let unqualifiedN2h = pinnedModuleNameToHash $ moduleMap Map.! "Base"
       n2h =
         Map.unions $
-          (Map.mapKeys (Nothing,) $ pinnedModuleNameToHash builtinModule)
-            : (Map.mapKeys (Nothing,) $ unqualifiedN2h)
-            : [Map.mapKeys (Just nm,) $ (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList $ moduleMap]
-      h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems $ moduleMap]
-   in Map.mapMaybe (\h -> Map.lookup h h2ty) n2h
+          Map.mapKeys (Nothing,) (pinnedModuleNameToHash builtinModule)
+            : Map.mapKeys (Nothing,) unqualifiedN2h
+            : [Map.mapKeys (Just nm,) (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList moduleMap]
+      h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems moduleMap]
+   in Map.mapMaybe (`Map.lookup` h2ty) n2h
 
 -- In the definitions below, ###!x### is an anti-quotation to a haskell variable `x` of type `Monad m => (Value m)`
 -- This sort of Value is necessary for polymorphic functions such as `map` or `id`
@@ -617,6 +616,15 @@ module Base
   infix 19 ..;
   infix 5 ?;
 
+  infixl 12 .;
+  infixl 12 |>;
+
+  @doc Function composition. `(f . g) x == f (g x)`;
+  (.) : forall 'a 'b 'c. ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c := fun f g x -> f (g x);
+
+  @doc The pipe operator. `x |> f |> g == g (f x)`;
+  (|>) : forall 'a 'b 'c. 'a -> ('a -> 'b) -> 'b := fun x f -> f x;
+
   (..) := ###enumFromToInt64###;
 
   define order on int;
@@ -678,5 +686,14 @@ module Base
       | Some a -> a
       | None -> default
     };
+
+  @doc Gets the first component of a tuple: `fst (x, y) == x`;
+  fst : forall 'a 'b. ('a, 'b) -> 'a := fun t -> match t with { (x, y) -> x };
+
+  @doc Gets the second component of a tuple: `snd (x, y) == y`;
+  snd : forall 'a 'b. ('a, 'b) -> 'b := fun t -> match t with { (x, y) -> y };
+
+  @doc Zip two arrays into a array of tuples/pairs. If one input array is shorter than the other, excess elements of the longer array are discarded. `zip [1, 2] ['a', 'b'] == [(1,'a'),(2,'b')]`;
+  zip : forall 'a 'b. array of 'a -> array of 'b -> array of ('a, 'b) := ###!zipFun###;
 
 |]
