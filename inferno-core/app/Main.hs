@@ -8,6 +8,8 @@ import Inferno.Core (Interpreter (evalInEnv, parseAndInferTypeReps), mkInferno)
 import Inferno.Module.Prelude (builtinModules)
 import Inferno.Utils.Prettyprinter (showPretty)
 import System.Environment (getArgs)
+import System.Exit (exitFailure)
+import System.IO (hPutStrLn, stderr)
 
 main :: IO ()
 main = do
@@ -15,8 +17,12 @@ main = do
   src <- Text.readFile file
   let inferno = mkInferno builtinModules :: Interpreter ()
   case parseAndInferTypeReps inferno src of
-    Left err -> print err
+    Left err -> do
+      hPutStrLn stderr $ show err
+      exitFailure
     Right ast ->
       evalInEnv inferno M.empty M.empty ast >>= \case
-        Left err -> print err
+        Left err -> do
+          hPutStrLn stderr $ show err
+          exitFailure
         Right res -> showPretty res
