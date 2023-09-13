@@ -346,8 +346,11 @@
           (_:_: { inherit (inputs) hasktorch; })
           (import ./nix/overlays/compat.nix)
           (import ./nix/overlays/torch.nix)
+          (_: prev: {
+            inherit (self.legacyPackages.${prev.system}.hsPkgs) inferno-core;
+          })
         ];
-        inferno-ml = prev: _: {
+        inferno-ml = _: prev: {
           inherit (self.packages.${prev.system})
             inferno-ml-remote
             inferno-ml-remote-cpu
