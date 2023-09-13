@@ -41,6 +41,11 @@ data Interpreter c = Interpreter
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Expr (Maybe VCObjectHash) a ->
       IO (Either EvalError (Value c (ImplEnvM IO c))),
+    evalInEmptyEnv ::
+      forall a.
+      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
+      Expr (Maybe VCObjectHash) a ->
+      IO (Either EvalError (Value c (ImplEnvM IO c))),
     evalInImplEnvM ::
       forall a.
       TermEnv VCObjectHash c (ImplEnvM IO c) ->
@@ -60,13 +65,17 @@ data Interpreter c = Interpreter
       ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c))
   }
 
-mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> Interpreter c
-mkInferno prelude =
-  Interpreter
+mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> IO (Interpreter c)
+mkInferno prelude = do
+  emptyTermEnv <- runImplEnvM Map.empty $ builtinModulesTerms prelude
+  return $ Interpreter
     { evalInEnv =
         \localEnv env expr ->
           mkTermEnv localEnv
             >>= \lenv -> runEvalIO lenv env expr,
+      evalInEmptyEnv =
+        \env expr ->
+          runEvalIO emptyTermEnv env expr,
       evalInImplEnvM = runEvalIO,
       parseAndInferTypeReps = parseAndInferTypeReps,
       parseAndInfer = parseAndInfer,

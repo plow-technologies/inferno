@@ -120,7 +120,7 @@ test-suite inferno-tests
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2
 
 executable inferno
   main-is: Main.hs
