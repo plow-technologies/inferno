@@ -60,7 +60,7 @@ evalTests = describe "evaluate" $
             case parseAndInferTypeReps inferno str of
               Left err -> expectationFailure $ show err
               Right ast ->
-                evalInEmptyEnv inferno Map.empty ast >>= \case
+                evalInEmptyEnv inferno ast >>= \case
                   Left err -> expectationFailure $ "Failed eval with: " <> show err
                   Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
     let shouldThrowRuntimeError str merr =
@@ -68,8 +68,7 @@ evalTests = describe "evaluate" $
             case parseAndInferTypeReps inferno str of
               Left err -> expectationFailure $ show err
               Right ast ->
-                -- TODO fix implicit Env to empty too?
-                evalInEmptyEnv inferno Map.empty ast >>= \case
+                evalInEmptyEnv inferno ast >>= \case
                   Left err' -> case merr of
                     Nothing -> pure ()
                     Just err -> err' `shouldBe` err

@@ -35,15 +35,18 @@ data InfernoError
 
 -- | Public API for the Inferno interpreter. @c@ is the custom value type.
 data Interpreter c = Interpreter
-  { evalInEnv ::
+  { -- | Evaluates an Expr in a given (local) pinned env and implicit env
+    evalInEnv ::
       forall a.
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Expr (Maybe VCObjectHash) a ->
       IO (Either EvalError (Value c (ImplEnvM IO c))),
+    -- | Evaluates an Expr in an empty pinned and implicit env. This will be
+    -- much faster than @evalInEnv Map.empty Map.empty@ as it reuses the
+    -- evaluation of the prelude.
     evalInEmptyEnv ::
       forall a.
-      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Expr (Maybe VCObjectHash) a ->
       IO (Either EvalError (Value c (ImplEnvM IO c))),
     evalInImplEnvM ::
@@ -73,9 +76,7 @@ mkInferno prelude = do
         \localEnv env expr ->
           mkTermEnv localEnv
             >>= \lenv -> runEvalIO lenv env expr,
-      evalInEmptyEnv =
-        \env expr ->
-          runEvalIO emptyTermEnv env expr,
+      evalInEmptyEnv = runEvalIO emptyTermEnv Map.empty,
       evalInImplEnvM = runEvalIO,
       parseAndInferTypeReps = parseAndInferTypeReps,
       parseAndInfer = parseAndInfer,
