@@ -7,7 +7,7 @@ import Data.Bifunctor (bimap)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (unpack)
-import Inferno.Core (Interpreter (evalInEnv, parseAndInfer, parseAndInferTypeReps, evalInEmptyEnv), mkInferno)
+import Inferno.Core (Interpreter (evalInEmptyEnv, evalInEnv, parseAndInfer, parseAndInferTypeReps), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
@@ -15,7 +15,7 @@ import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..)
 import Inferno.Types.Value (Value (..))
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, runIO)
+import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 
 type TestCustomValue = ()
 
@@ -73,7 +73,6 @@ evalTests = describe "evaluate" $
                     Nothing -> pure ()
                     Just err -> err' `shouldBe` err
                   Right _ -> expectationFailure $ "Should not evaluate."
-
 
     shouldEvaluateTo "3" $ VDouble 3
     shouldEvaluateTo "-3" $ VDouble (-3)

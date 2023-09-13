@@ -71,17 +71,18 @@ data Interpreter c = Interpreter
 mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> IO (Interpreter c)
 mkInferno prelude = do
   emptyTermEnv <- runImplEnvM Map.empty $ builtinModulesTerms prelude
-  return $ Interpreter
-    { evalInEnv =
-        \localEnv env expr ->
-          mkTermEnv localEnv
-            >>= \lenv -> runEvalIO lenv env expr,
-      evalInEmptyEnv = runEvalIO emptyTermEnv Map.empty,
-      evalInImplEnvM = runEvalIO,
-      parseAndInferTypeReps = parseAndInferTypeReps,
-      parseAndInfer = parseAndInfer,
-      mkPinnedEnvFromClosure = mkPinnedEnvFromClosure
-    }
+  return $
+    Interpreter
+      { evalInEnv =
+          \localEnv env expr ->
+            mkTermEnv localEnv
+              >>= \lenv -> runEvalIO lenv env expr,
+        evalInEmptyEnv = runEvalIO emptyTermEnv Map.empty,
+        evalInImplEnvM = runEvalIO,
+        parseAndInferTypeReps = parseAndInferTypeReps,
+        parseAndInfer = parseAndInfer,
+        mkPinnedEnvFromClosure = mkPinnedEnvFromClosure
+      }
   where
     parseAndInfer src =
       -- parse

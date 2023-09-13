@@ -22,7 +22,7 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldNotBe, runIO)
+import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe, shouldNotBe)
 
 inferTests :: Spec
 inferTests = describe "infer" $
@@ -53,7 +53,6 @@ inferTests = describe "infer" $
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
               Right _ -> expectationFailure $ "Should fail to infer a type"
-
 
     shouldInferTypeFor "3" $
       makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
