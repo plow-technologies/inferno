@@ -6,12 +6,12 @@ module Main (main) where
 
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
-import Inferno.Core (InfernoError (..), Interpreter (evalInEnv, parseAndInfer, parseAndInferTypeReps), mkInferno)
+import Inferno.Core (InfernoError (..), Interpreter (defaultEnv, evalExpr, parseAndInfer, parseAndInferTypeReps), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Types.Value (MlValue (VTensor))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Test.Hspec (Spec, describe, expectationFailure, hspec, it, shouldBe)
+import Test.Hspec (Spec, describe, expectationFailure, hspec, it, runIO, shouldBe)
 import qualified Torch as T
 import qualified Torch.DType as TD
 
@@ -44,6 +44,24 @@ xorScript =
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
+    inferno <- runIO $ (mkInferno mlPrelude :: IO (Interpreter MlValue))
+    let shouldEvaluateInEnvTo implEnv str (v :: Value MlValue IO) =
+          it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+            case parseAndInferTypeReps inferno str of
+              Left err -> expectationFailure $ show err
+              Right ast ->
+                evalExpr inferno (defaultEnv inferno) implEnv ast >>= \case
+                  Left err -> expectationFailure $ "Failed eval with: " <> show err
+                  Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+    let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
+    let shouldFailToInferTypeFor str =
+          it ("should fail to infer type of \"" <> unpack str <> "\"") $
+            case parseAndInfer inferno str of
+              Left (ParseError err) -> expectationFailure err
+              Left (PinError _err) -> pure ()
+              Left (InferenceError _err) -> pure ()
+              Right _ -> expectationFailure $ "Should fail to infer a type"
+
     shouldEvaluateTo "open ML in asTensor1 #int [1, 2, 4]" $
       VCustom $
         VTensor $
@@ -56,31 +74,3 @@ evalTests = describe "evaluate" $
     shouldFailToInferTypeFor "open ML in asTensor4 #float [[1, 2, 4]]"
     shouldEvaluateTo "open ML in asDouble (sumAll (ones #int [2, 4]))" $ VDouble 8.0
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])
-  where
-    inferno = mkInferno mlPrelude :: Interpreter MlValue
-    shouldEvaluateInEnvTo localEnv implEnv str (v :: Value MlValue IO) =
-      it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
-        case parseAndInferTypeReps inferno str of
-          Left err -> expectationFailure $ show err
-          Right ast ->
-            evalInEnv inferno localEnv implEnv ast >>= \case
-              Left err -> expectationFailure $ "Failed eval with: " <> show err
-              Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
-    shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty
-    _shouldThrowRuntimeError str merr =
-      it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
-        case parseAndInferTypeReps inferno str of
-          Left err -> expectationFailure $ show err
-          Right ast ->
-            evalInEnv inferno Map.empty Map.empty ast >>= \case
-              Left err' -> case merr of
-                Nothing -> pure ()
-                Just err -> err' `shouldBe` err
-              Right _ -> expectationFailure $ "Should not evaluate."
-    shouldFailToInferTypeFor str =
-      it ("should fail to infer type of \"" <> unpack str <> "\"") $
-        case parseAndInfer inferno str of
-          Left (ParseError err) -> expectationFailure err
-          Left (PinError _err) -> pure ()
-          Left (InferenceError _err) -> pure ()
-          Right _ -> expectationFailure $ "Should fail to infer a type"
