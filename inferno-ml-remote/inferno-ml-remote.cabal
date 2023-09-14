@@ -95,6 +95,7 @@ test-suite tests
     , generic-lens
     , hspec
     , http-client
+    , inferno-core
     , inferno-ml
     , inferno-ml-remote
     , inferno-types

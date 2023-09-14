@@ -6,10 +6,12 @@ module Inferno.ML.Remote.Server
   )
 where
 
-import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.Reader (MonadIO (liftIO), ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
+import Inferno.Core (Interpreter, mkInferno)
+import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
@@ -18,6 +20,7 @@ import Inferno.ML.Remote.Types
     Options,
     mkOptions,
   )
+import Inferno.ML.Types.Value (MlValue)
 import Lens.Micro.Platform ((^.))
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
@@ -35,9 +38,10 @@ main :: IO ()
 main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
-    runServer options =
+    runServer options = do
+      interpreter <- liftIO $ mkInferno mlPrelude
       withStdoutLogger $
-        (`runSettings` infernoMlRemote mkEnv) . mkSettings
+        (`runSettings` infernoMlRemote interpreter mkEnv) . mkSettings
       where
         mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
@@ -48,11 +52,13 @@ main = runServer =<< mkOptions
         mkEnv :: InfernoMlRemoteEnv
         mkEnv = InfernoMlRemoteEnv $ options ^. #modelCache
 
-infernoMlRemote :: InfernoMlRemoteEnv -> Application
-infernoMlRemote env = serve api $ hoistServer api (`runReaderT` env) server
+infernoMlRemote :: Interpreter MlValue -> InfernoMlRemoteEnv -> Application
+infernoMlRemote interpreter env =
+  serve api $ hoistServer api (`runReaderT` env) (server interpreter)
 
 api :: Proxy InfernoMlRemoteAPI
 api = Proxy
 
-server :: ServerT InfernoMlRemoteAPI InfernoMlRemoteM
-server = runInferenceHandler
+server :: Interpreter MlValue -> ServerT InfernoMlRemoteAPI InfernoMlRemoteM
+server interpreter =
+  runInferenceHandler interpreter

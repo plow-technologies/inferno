@@ -21,7 +21,7 @@ import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
 import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Inferno.Core (Interpreter (Interpreter, evalInEnv))
+import Inferno.Core (Interpreter (Interpreter, defaultEnv, evalExpr))
 import Inferno.ML.Remote.Types
   ( EvalResult (EvalResult),
     InfernoMlRemoteM,
@@ -45,9 +45,9 @@ import System.Directory
     setCurrentDirectory,
   )
 
-runInferenceHandler :: Script -> InfernoMlRemoteM EvalResult
-runInferenceHandler src = do
-  (interpreter, ast) <- liftEither500 $ mkFinalAst src
+runInferenceHandler :: Interpreter MlValue -> Script -> InfernoMlRemoteM EvalResult
+runInferenceHandler interpreter src = do
+  ast <- liftEither500 $ mkFinalAst interpreter src
   cwd <- liftIO getCurrentDirectory
   asks (view #modelCache) >>= \case
     Nothing -> do
@@ -77,9 +77,9 @@ runInferenceHandler src = do
       Interpreter MlValue ->
       Expr (Maybe VCObjectHash) SourcePos ->
       InfernoMlRemoteM EvalResult
-    runEval Interpreter {evalInEnv} ast =
+    runEval Interpreter {evalExpr, defaultEnv} ast =
       fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
-        =<< liftIO (evalInEnv Map.empty Map.empty ast)
+        =<< liftIO (evalExpr defaultEnv Map.empty ast)
 
 liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
 liftEither500 = either (throwError . mk500) pure
