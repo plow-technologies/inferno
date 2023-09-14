@@ -1,0 +1,3 @@
+let x = 2 in
+assert x ** x > 1 in
+0.0

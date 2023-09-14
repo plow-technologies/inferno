@@ -102,6 +102,7 @@ test-suite inferno-tests
     , hspec
     , hspec-golden-aeson
     , hspec-golden-cereal
+    , HTF
     , inferno-core
     , inferno-types
     , inferno-vc
@@ -120,7 +121,7 @@ test-suite inferno-tests
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2 -threaded
 
 executable inferno
   main-is: Main.hs
