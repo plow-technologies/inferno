@@ -67,8 +67,7 @@ mkInferno prelude = do
   (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
   return $
     Interpreter
-      { 
-        evalExpr = runEvalIO,
+      { evalExpr = runEvalIO,
         parseAndInferTypeReps = parseAndInferTypeReps,
         parseAndInfer = parseAndInfer,
         mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv,
