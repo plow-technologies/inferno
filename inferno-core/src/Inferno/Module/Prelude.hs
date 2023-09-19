@@ -114,6 +114,7 @@ import Inferno.Module.Prelude.Defs
     yearFun,
     yearsBeforeFun,
     zeroFun,
+    zipFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -615,6 +616,15 @@ module Base
   infix 19 ..;
   infix 5 ?;
 
+  infixl 12 <<;
+  infixl 12 |>;
+
+  @doc Function composition. `(f << g) x == f (g x)`;
+  (<<) : forall 'a 'b 'c. ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c := fun f g x -> f (g x);
+
+  @doc The pipe operator. `x |> f |> g == g (f x)`;
+  (|>) : forall 'a 'b 'c. 'a -> ('a -> 'b) -> 'b := fun x f -> f x;
+
   (..) := ###enumFromToInt64###;
 
   define order on int;
@@ -676,5 +686,14 @@ module Base
       | Some a -> a
       | None -> default
     };
+
+  @doc Gets the first component of a tuple: `fst (x, y) == x`;
+  fst : forall 'a 'b. ('a, 'b) -> 'a := fun t -> match t with { (x, y) -> x };
+
+  @doc Gets the second component of a tuple: `snd (x, y) == y`;
+  snd : forall 'a 'b. ('a, 'b) -> 'b := fun t -> match t with { (x, y) -> y };
+
+  @doc Zip two arrays into a array of tuples/pairs. If one input array is shorter than the other, excess elements of the longer array are discarded. `zip [1, 2] ['a', 'b'] == [(1,'a'),(2,'b')]`;
+  zip : forall 'a 'b. array of 'a -> array of 'b -> array of ('a, 'b) := ###!zipFun###;
 
 |]

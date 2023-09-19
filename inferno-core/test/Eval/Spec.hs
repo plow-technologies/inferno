@@ -366,7 +366,17 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "match [1, 3] with { | [1, _] -> 2 | _ -> 3 }" $ VDouble 2
     shouldEvaluateTo "match [1.2, 3, 3] with { | [x, y, z] -> 2*x+3*y+z | _ -> 3 }" $ VDouble 14.4
     shouldEvaluateTo "(fun a -> match a with { | [x, y, z] -> truncateTo x 1.1 | _ -> 3 }) [1, 2, 3]" $ VDouble 1.1
+    -- Tuple
+    shouldEvaluateTo "fst (1, 0) == snd (0, 1)" $ vTrue
+    shouldEvaluateTo "zip [1, 2, 3] [4, 5] == [(1, 4), (2, 5)]" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\", \"b\"] == [(1,\"a\"),(2,\"b\")]" $ vTrue
+    shouldEvaluateTo "zip [1] [\"a\", \"b\"] == [(1,\"a\")]" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" $ vTrue
+    shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
     -- Miscellaneous
+    shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
+    shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" $ vTrue
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
