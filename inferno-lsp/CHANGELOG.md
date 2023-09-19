@@ -4,7 +4,6 @@
 ## 0.1.10 -- 2023-09-18
 * Update inferno-core version
 
-* Update inferno-core version
 ## 0.1.9 -- 2023-08-08
 * Fix order of input parameters in last commit
 
