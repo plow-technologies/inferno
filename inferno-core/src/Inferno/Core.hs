@@ -67,11 +67,7 @@ mkInferno prelude = do
   (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
   return $
     Interpreter
-      { -- { evalInEnv =
-        --     \localEnv env expr ->
-        --       mkTermEnv localEnv
-        --         >>= \lenv -> runEvalIO lenv env expr,
-        evalExpr = runEvalIO,
+      { evalExpr = runEvalIO,
         parseAndInferTypeReps = parseAndInferTypeReps,
         parseAndInfer = parseAndInfer,
         mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv,
@@ -112,8 +108,6 @@ mkInferno prelude = do
                    in Right finalAst
 
     allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
-
-    -- mkTermEnv localEnv = runImplEnvM localEnv $ builtinModulesTerms prelude
 
     -- TODO at some point: instead of evaluating closure and putting into pinned env,
     -- add closure into the expression being evaluated by using let bindings.

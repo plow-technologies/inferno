@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -6,7 +7,7 @@ module Main (main) where
 
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
-import Inferno.Core (InfernoError (..), Interpreter (defaultEnv, evalExpr, parseAndInfer, parseAndInferTypeReps), mkInferno)
+import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Types.Value (MlValue (VTensor))
 import Inferno.Types.Value (Value (..))
@@ -44,19 +45,20 @@ xorScript =
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
-    inferno <- runIO $ (mkInferno mlPrelude :: IO (Interpreter MlValue))
+    Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
+      runIO $ (mkInferno mlPrelude :: IO (Interpreter MlValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value MlValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
-            case parseAndInferTypeReps inferno str of
+            case parseAndInferTypeReps str of
               Left err -> expectationFailure $ show err
               Right ast ->
-                evalExpr inferno (defaultEnv inferno) implEnv ast >>= \case
+                evalExpr defaultEnv implEnv ast >>= \case
                   Left err -> expectationFailure $ "Failed eval with: " <> show err
                   Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
     let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
     let shouldFailToInferTypeFor str =
           it ("should fail to infer type of \"" <> unpack str <> "\"") $
-            case parseAndInfer inferno str of
+            case parseAndInfer str of
               Left (ParseError err) -> expectationFailure err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
