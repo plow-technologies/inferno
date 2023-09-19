@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.5.1.0 -- 2023-09-19
+* Add function composition, pipe, fst, snd, and zip
+
 ## 0.5.0.0 -- 2023-09-18
 * Breaking change: new Interpreter API that pre-computes and shares prelude
 
