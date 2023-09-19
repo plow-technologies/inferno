@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                inferno-core
-version:             0.4.0.0
+version:             0.5.0.0
 synopsis:            A statically-typed functional scripting language
 description:         Parser, type inference, and interpreter for a statically-typed functional scripting language
 category:            DSL,Scripting
@@ -121,7 +121,7 @@ test-suite inferno-tests
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2 -threaded
 
 executable inferno
   main-is: Main.hs

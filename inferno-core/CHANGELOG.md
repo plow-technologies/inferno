@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.5.0.0 -- 2023-09-18
+* Breaking change: new Interpreter API that pre-computes and shares prelude
+
 ## 0.4.0.0 -- 2023-08-15
 * Pass environments directly, instead of functions (breaking change).
 

@@ -8,6 +8,8 @@ import Data.Generics.Labels ()
 import Data.Generics.Product.Typed (typed)
 import qualified Data.Text.IO as Text.IO
 import Data.Word (Word64)
+import Inferno.Core (Interpreter, mkInferno)
+import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Client (runInference)
 import Inferno.ML.Remote.Server (api, infernoMlRemote)
 import Inferno.ML.Remote.Types
@@ -24,6 +26,7 @@ import Inferno.ML.Remote.Utils
     collectModelNames,
     mkFinalAst,
   )
+import Inferno.ML.Types.Value (MlValue)
 import Inferno.Types.Syntax (Expr, SourcePos)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform ((.~))
@@ -45,13 +48,14 @@ import qualified Test.Hspec as Hspec
 
 main :: IO ()
 main = Hspec.hspec $ do
-  inferenceSpec
+  interpreter <- Hspec.runIO $ mkInferno mlPrelude
+  inferenceSpec interpreter
   Hspec.describe "Inferno.ML.Remote.Utils" $
-    collectModelsSpec *> cacheModelsSpec
+    collectModelsSpec interpreter *> cacheModelsSpec
 
 -- Tests `/inference` endpoint with various Inferno scripts with ML features
-inferenceSpec :: Spec
-inferenceSpec = do
+inferenceSpec :: Interpreter MlValue -> Spec
+inferenceSpec interpreter = do
   baseUrl <- Hspec.runIO $ parseBaseUrl "http://localhost"
   manager <- Hspec.runIO $ newManager defaultManagerSettings
 
@@ -72,7 +76,7 @@ inferenceSpec = do
               (Hspec.expectationFailure . show)
               (`Hspec.shouldBe` expected)
 
-  Hspec.around (withTestAppAndEnv mkCacheOption) $ do
+  Hspec.around (withTestAppAndEnv interpreter mkCacheOption) $ do
     Hspec.describe "POST /inference" $ do
       mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
@@ -82,12 +86,12 @@ inferenceSpec = do
 
   -- This tests caching and using the model with the filesystem compression
   -- option, the one above uses non-compressed paths
-  Hspec.around (withTestAppAndEnv mkCompressedCacheOption) $ do
+  Hspec.around (withTestAppAndEnv interpreter mkCompressedCacheOption) $ do
     Hspec.describe "POST /inference (compressed)" $ do
       mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
 
-collectModelsSpec :: Spec
-collectModelsSpec = Hspec.describe "collectModelNames" $ do
+collectModelsSpec :: Interpreter MlValue -> Spec
+collectModelsSpec interpreter = Hspec.describe "collectModelNames" $ do
   Hspec.it "extracts models from script" $ do
     mkAstTest "../inferno-ml/test/mnist.inferno" $
       (`Hspec.shouldBe` ["mnist.ts.pt"]) . collectModelNames
@@ -119,7 +123,7 @@ collectModelsSpec = Hspec.describe "collectModelNames" $ do
 
     astFromScript ::
       FilePath -> IO (Either SomeInfernoError (Expr (Maybe VCObjectHash) SourcePos))
-    astFromScript = fmap (fmap snd . mkFinalAst) . readScript
+    astFromScript = fmap (mkFinalAst interpreter) . readScript
 
 cacheModelsSpec :: Spec
 cacheModelsSpec =
@@ -137,16 +141,17 @@ cacheModelsSpec =
         cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
 
 withTestAppAndEnv ::
-  (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
-withTestAppAndEnv g f =
+  Interpreter MlValue -> (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
+withTestAppAndEnv interpreter g f =
   withTempDir $
-    (`withTestApp` f)
+    (`testApp` f)
       . InfernoMlRemoteEnv
       . Just
       . (`g` maxSize)
   where
     maxSize :: Word64
     maxSize = 10 * 1073741824
+    testApp = withTestApp interpreter
 
 mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
 mkCacheOption fp = Paths "./test" . ModelCache fp
@@ -157,8 +162,8 @@ mkCompressedCacheOption fp = CompressedPaths "./test" . ModelCache fp
 withTempDir :: (FilePath -> IO ()) -> IO ()
 withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
 
-withTestApp :: InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
-withTestApp = testWithApplication . pure . infernoMlRemote
+withTestApp :: Interpreter MlValue -> InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
+withTestApp interpreter = testWithApplication . pure . infernoMlRemote interpreter
 
 readScript :: MonadIO m => FilePath -> m Script
 readScript = fmap coerce . liftIO . Text.IO.readFile

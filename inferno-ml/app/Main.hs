@@ -1,10 +1,11 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Main where
 
-import qualified Data.Map as M
+import qualified Data.Map as Map
 import qualified Data.Text.IO as Text
-import Inferno.Core (Interpreter (evalInEnv, parseAndInferTypeReps), mkInferno)
+import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Types.Value (MlValue)
 import Inferno.Utils.Prettyprinter (showPretty)
@@ -14,10 +15,11 @@ main :: IO ()
 main = do
   file <- head <$> getArgs
   src <- Text.readFile file
-  let inferno = mkInferno mlPrelude :: Interpreter MlValue
-  case parseAndInferTypeReps inferno src of
+  Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
+    mkInferno mlPrelude :: IO (Interpreter MlValue)
+  case parseAndInferTypeReps src of
     Left err -> print err
     Right ast ->
-      evalInEnv inferno M.empty M.empty ast >>= \case
+      evalExpr defaultEnv Map.empty ast >>= \case
         Left err -> print err
         Right res -> showPretty res

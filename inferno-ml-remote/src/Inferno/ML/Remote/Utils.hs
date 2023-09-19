@@ -21,8 +21,7 @@ import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Tuple.Extra (dupe)
 import Data.Word (Word64)
-import Inferno.Core (Interpreter (Interpreter, parseAndInferTypeReps), mkInferno)
-import Inferno.ML.Module.Prelude (mlPrelude)
+import Inferno.Core (Interpreter (Interpreter, parseAndInferTypeReps))
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteError
       ( CacheSizeExceeded,
@@ -62,21 +61,13 @@ import System.IO.Temp (createTempDirectory)
 import System.Process.Typed (proc, runProcess)
 
 mkFinalAst ::
+  Interpreter MlValue ->
   Script ->
   Either
     SomeInfernoError
-    ( Interpreter MlValue,
-      Expr (Maybe VCObjectHash) SourcePos
-    )
-mkFinalAst (Script src) =
-  traverse
-    (first SomeInfernoError . parseAndInferTypeReps)
-    ( inferno,
-      src
-    )
-  where
-    inferno :: Interpreter MlValue
-    inferno@Interpreter {parseAndInferTypeReps} = mkInferno mlPrelude
+    (Expr (Maybe VCObjectHash) SourcePos)
+mkFinalAst Interpreter {parseAndInferTypeReps} (Script src) =
+  first SomeInfernoError . parseAndInferTypeReps $ src
 
 -- | Takes a model from the model store specified by name and adds it to the model
 -- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
