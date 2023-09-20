@@ -48,8 +48,7 @@ data Value custom m
   | VTypeRep InfernoType
   | VCustom custom
 
--- | Function values are not reduced.
-instance NFData custom => NFData  (Value custom m) where
+instance NFData custom => NFData (Value custom m) where
   rnf (VInt x) = x `seq` ()
   rnf (VDouble x) = x `seq` ()
   rnf (VWord16 x) = x `seq` ()
@@ -62,7 +61,7 @@ instance NFData custom => NFData  (Value custom m) where
   rnf (VTuple xs) = rnf xs
   rnf (VOne x) = rnf x
   rnf VEmpty = ()
-  rnf (VFun _) = () -- Function can't be reduced
+  rnf (VFun f) = rnf f
   rnf (VTypeRep x) = rnf x
   rnf (VCustom x) = rnf x
 
