@@ -4,6 +4,7 @@
 
 module Inferno.Types.Value where
 
+import Control.DeepSeq (NFData, rnf)
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.Except (MonadError, lift)
 import Control.Monad.Fix (MonadFix)
@@ -29,7 +30,6 @@ import Prettyprinter
     (<+>),
   )
 import System.Posix.Types (EpochTime)
-import Control.DeepSeq (NFData, rnf)
 
 data Value custom m
   = VInt Int64
