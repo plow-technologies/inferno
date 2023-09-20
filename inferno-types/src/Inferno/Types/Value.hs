@@ -29,6 +29,7 @@ import Prettyprinter
     (<+>),
   )
 import System.Posix.Types (EpochTime)
+import Control.DeepSeq (NFData, rnf)
 
 data Value custom m
   = VInt Int64
@@ -46,6 +47,23 @@ data Value custom m
   | VFun (Value custom m -> m (Value custom m))
   | VTypeRep InfernoType
   | VCustom custom
+
+instance NFData custom => NFData  (Value custom m) where
+  rnf (VInt x) = x `seq` ()
+  rnf (VDouble x) = x `seq` ()
+  rnf (VWord16 x) = x `seq` ()
+  rnf (VWord32 x) = x `seq` ()
+  rnf (VWord64 x) = x `seq` ()
+  rnf (VEpochTime x) = x `seq` ()
+  rnf (VText x) = rnf x
+  rnf (VEnum hash i) = rnf hash `seq` rnf i `seq` ()
+  rnf (VArray xs) = rnf xs
+  rnf (VTuple xs) = rnf xs
+  rnf (VOne x) = rnf x
+  rnf VEmpty = ()
+  rnf (VFun _) = () -- Function can't be reduced
+  rnf (VTypeRep x) = rnf x
+  rnf (VCustom x) = rnf x
 
 instance Eq c => Eq (Value c m) where
   (VInt i1) == (VInt i2) = i1 == i2
