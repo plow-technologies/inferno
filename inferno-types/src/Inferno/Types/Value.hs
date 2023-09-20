@@ -48,6 +48,7 @@ data Value custom m
   | VTypeRep InfernoType
   | VCustom custom
 
+-- | Function values are not reduced.
 instance NFData custom => NFData  (Value custom m) where
   rnf (VInt x) = x `seq` ()
   rnf (VDouble x) = x `seq` ()
