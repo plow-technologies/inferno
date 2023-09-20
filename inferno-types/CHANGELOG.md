@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.2.0 -- 2023-09-20
+* Add NFData Value instance.
+
 ## 0.2.1 -- 2023-08-07
 * Nicer error message when extractArgsAndPrettyPrint fails
 
