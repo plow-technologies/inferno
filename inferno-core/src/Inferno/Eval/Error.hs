@@ -1,8 +1,8 @@
 module Inferno.Eval.Error where
 
+import Control.DeepSeq (NFData, rnf)
 import Control.Monad.Catch (Exception)
 import Inferno.Types.Syntax (ExtIdent)
-import Control.DeepSeq (NFData, rnf)
 
 data EvalError
   = AssertionFailed
