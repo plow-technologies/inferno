@@ -321,7 +321,7 @@ instance ElementPosition (Maybe Ident) where
 -- | An extended identifier; either an internal (e.g., var$4) or a regular variable
 newtype ExtIdent = ExtIdent (Either Int Text)
   deriving (Show, Eq, Ord, Data, Generic)
-  deriving newtype (ToJSON, FromJSON)
+  deriving newtype (ToJSON, FromJSON, NFData)
 
 instance ToJSONKey ExtIdent where
   toJSONKey = toJSONKeyText $ \case
