@@ -1,3 +1,4 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -7,7 +8,7 @@ import Data.Bifunctor (bimap)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (unpack)
-import Inferno.Core (Interpreter (evalInEnv, parseAndInfer, parseAndInferTypeReps), mkInferno)
+import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
@@ -15,14 +16,14 @@ import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..)
 import Inferno.Types.Value (Value (..))
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe)
+import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 
 type TestCustomValue = ()
 
-runtimeTypeRepsTests :: Spec
-runtimeTypeRepsTests = describe "runtime type reps" $ do
+runtimeTypeRepsTests :: Interpreter TestCustomValue -> Spec
+runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describe "runtime type reps" $ do
   let expr_3 =
-        case parseAndInfer inferno "3" of
+        case parseAndInfer "3" of
           Left err ->
             error $ "parseAndInfer failed with: " <> show err
           Right (expr', _typ) ->
@@ -38,15 +39,36 @@ runtimeTypeRepsTests = describe "runtime type reps" $ do
     let expr_3_double = App expr (TypeRep () (TBase TDouble))
     shouldEvaluateTo expr_3_double (VDouble 3)
   where
-    inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
     shouldEvaluateTo expr (v :: Value TestCustomValue IO) = do
-      evalInEnv inferno Map.empty Map.empty expr >>= \case
+      evalExpr defaultEnv Map.empty expr >>= \case
         Left err -> expectationFailure $ "Failed eval with: " <> show err
         Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
 
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
+    inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
+      runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter TestCustomValue))
+    let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
+          it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+            case parseAndInferTypeReps str of
+              Left err -> expectationFailure $ show err
+              Right ast ->
+                evalExpr defaultEnv implEnv ast >>= \case
+                  Left err -> expectationFailure $ "Failed eval with: " <> show err
+                  Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+    let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
+    let shouldThrowRuntimeError str merr =
+          it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
+            case parseAndInferTypeReps str of
+              Left err -> expectationFailure $ show err
+              Right ast ->
+                evalExpr defaultEnv Map.empty ast >>= \case
+                  Left err' -> case merr of
+                    Nothing -> pure ()
+                    Just err -> err' `shouldBe` err
+                  Right _ -> expectationFailure $ "Should not evaluate."
+
     shouldEvaluateTo "3" $ VDouble 3
     shouldEvaluateTo "-3" $ VDouble (-3)
     shouldEvaluateTo "-(-3)" $ VDouble 3
@@ -339,15 +361,23 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "match [1, 3] with { | [1, _] -> 2 | _ -> 3 }" $ VDouble 2
     shouldEvaluateTo "match [1.2, 3, 3] with { | [x, y, z] -> 2*x+3*y+z | _ -> 3 }" $ VDouble 14.4
     shouldEvaluateTo "(fun a -> match a with { | [x, y, z] -> truncateTo x 1.1 | _ -> 3 }) [1, 2, 3]" $ VDouble 1.1
+    -- Tuple
+    shouldEvaluateTo "fst (1, 0) == snd (0, 1)" $ vTrue
+    shouldEvaluateTo "zip [1, 2, 3] [4, 5] == [(1, 4), (2, 5)]" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\", \"b\"] == [(1,\"a\"),(2,\"b\")]" $ vTrue
+    shouldEvaluateTo "zip [1] [\"a\", \"b\"] == [(1,\"a\")]" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" $ vTrue
+    shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
+    shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
     -- Miscellaneous
+    shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
+    shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" $ vTrue
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo
-      Map.empty
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
       "?x + 2"
       (VDouble 7)
     shouldEvaluateInEnvTo
-      Map.empty
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
       "let f = fun x -> ?x + 2 in f 0"
       (VDouble 7)
@@ -366,27 +396,7 @@ evalTests = describe "evaluate" $
     shouldThrowRuntimeError "assert #false in ()" $ Just AssertionFailed
     shouldEvaluateTo "assert #true in ()" $ VTuple []
 
-    runtimeTypeRepsTests
+    runtimeTypeRepsTests inferno
   where
     vTrue = VEnum enumBoolHash (Ident "true")
     vFalse = VEnum enumBoolHash (Ident "false")
-    inferno = mkInferno Prelude.builtinModules :: Interpreter TestCustomValue
-    shouldEvaluateInEnvTo localEnv implEnv str (v :: Value TestCustomValue IO) =
-      it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
-        case parseAndInferTypeReps inferno str of
-          Left err -> expectationFailure $ show err
-          Right ast ->
-            evalInEnv inferno localEnv implEnv ast >>= \case
-              Left err -> expectationFailure $ "Failed eval with: " <> show err
-              Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
-    shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty Map.empty
-    shouldThrowRuntimeError str merr =
-      it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
-        case parseAndInferTypeReps inferno str of
-          Left err -> expectationFailure $ show err
-          Right ast ->
-            evalInEnv inferno Map.empty Map.empty ast >>= \case
-              Left err' -> case merr of
-                Nothing -> pure ()
-                Just err -> err' `shouldBe` err
-              Right _ -> expectationFailure $ "Should not evaluate."

@@ -22,7 +22,7 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
-import Test.Hspec (Spec, describe, expectationFailure, it, shouldBe, shouldNotBe)
+import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe, shouldNotBe)
 
 inferTests :: Spec
 inferTests = describe "infer" $
@@ -38,6 +38,21 @@ inferTests = describe "infer" $
     let ordTC ts = makeTCs "order" ts
     let repTC ts = makeTCs "rep" ts
     let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
+
+    inferno <- runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter ()))
+    let shouldInferTypeFor str t =
+          it ("should infer type of \"" <> unpack str <> "\"") $
+            case parseAndInfer inferno str of
+              Left err -> expectationFailure $ show err
+              Right (_ast, t') -> t' `shouldBe` t
+
+    let shouldFailToInferTypeFor str =
+          it ("should fail to infer type of \"" <> unpack str <> "\"") $
+            case parseAndInfer inferno str of
+              Left (ParseError err) -> expectationFailure err
+              Left (PinError _err) -> pure ()
+              Left (InferenceError _err) -> pure ()
+              Right _ -> expectationFailure $ "Should fail to infer a type"
 
     shouldInferTypeFor "3" $
       makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
@@ -164,21 +179,6 @@ inferTests = describe "infer" $
   where
     t_hash = vcHash ("true" :: Ident, enumBoolHash)
     f_hash = vcHash ("false" :: Ident, enumBoolHash)
-    inferno = mkInferno Prelude.builtinModules :: Interpreter ()
-
-    shouldInferTypeFor str t =
-      it ("should infer type of \"" <> unpack str <> "\"") $
-        case parseAndInfer inferno str of
-          Left err -> expectationFailure $ show err
-          Right (_ast, t') -> t' `shouldBe` t
-
-    shouldFailToInferTypeFor str =
-      it ("should fail to infer type of \"" <> unpack str <> "\"") $
-        case parseAndInfer inferno str of
-          Left (ParseError err) -> expectationFailure err
-          Left (PinError _err) -> pure ()
-          Left (InferenceError _err) -> pure ()
-          Right _ -> expectationFailure $ "Should fail to infer a type"
 
     enum_sigs =
       Map.fromList

@@ -35,13 +35,10 @@ data InfernoError
 
 -- | Public API for the Inferno interpreter. @c@ is the custom value type.
 data Interpreter c = Interpreter
-  { evalInEnv ::
-      forall a.
-      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
-      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
-      Expr (Maybe VCObjectHash) a ->
-      IO (Either EvalError (Value c (ImplEnvM IO c))),
-    evalInImplEnvM ::
+  { -- | Evaluates an Expr in a given pinned and implicit env. Use
+    -- @defaultEnv@ for an empty env (only prelude) or compute one using
+    -- @mkEnvFromClosure@.
+    evalExpr ::
       forall a.
       TermEnv VCObjectHash c (ImplEnvM IO c) ->
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
@@ -54,24 +51,28 @@ data Interpreter c = Interpreter
       Text ->
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme),
     -- | Evaluates all functions in given closure and creates a pinned env containing them
-    mkPinnedEnvFromClosure ::
+    mkEnvFromClosure ::
       Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c))
+      ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c)),
+    -- | The default pinned env containing only the prelude
+    defaultEnv ::
+      TermEnv VCObjectHash c (ImplEnvM IO c)
   }
 
-mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> Interpreter c
-mkInferno prelude =
-  Interpreter
-    { evalInEnv =
-        \localEnv env expr ->
-          mkTermEnv localEnv
-            >>= \lenv -> runEvalIO lenv env expr,
-      evalInImplEnvM = runEvalIO,
-      parseAndInferTypeReps = parseAndInferTypeReps,
-      parseAndInfer = parseAndInfer,
-      mkPinnedEnvFromClosure = mkPinnedEnvFromClosure
-    }
+mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> IO (Interpreter c)
+mkInferno prelude = do
+  -- We pre-compute envs that only depend on the prelude so that they can be
+  -- shared among evaluations of different scripts
+  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
+  return $
+    Interpreter
+      { evalExpr = runEvalIO,
+        parseAndInferTypeReps = parseAndInferTypeReps,
+        parseAndInfer = parseAndInfer,
+        mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv,
+        defaultEnv = (preludeIdentEnv, preludePinnedEnv)
+      }
   where
     parseAndInfer src =
       -- parse
@@ -108,13 +109,9 @@ mkInferno prelude =
 
     allClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
 
-    mkTermEnv localEnv = runImplEnvM localEnv $ builtinModulesTerms prelude
-
     -- TODO at some point: instead of evaluating closure and putting into pinned env,
     -- add closure into the expression being evaluated by using let bindings.
-    -- Also, assert that `fst <$> builtinModulesTerms prelude` is empty before discarding
-    mkPinnedEnvFromClosure localEnv closure = do
-      pinnedEnv <- snd <$> builtinModulesTerms prelude
+    mkEnvFromClosure preludePinnedEnv localEnv closure = do
       mdo
         pinnedEnv' <-
           foldM
@@ -127,6 +124,6 @@ mkInferno prelude =
                       pure $ Map.insert hash val env
                 _ -> pure env
             )
-            pinnedEnv
+            preludePinnedEnv
             (Map.toList closure)
         pure (localEnv, pinnedEnv')
