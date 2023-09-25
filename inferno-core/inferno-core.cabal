@@ -1,6 +1,6 @@
 cabal-version:       2.4
 name:                inferno-core
-version:             0.5.1.0
+version:             0.5.0.0
 synopsis:            A statically-typed functional scripting language
 description:         Parser, type inference, and interpreter for a statically-typed functional scripting language
 category:            DSL,Scripting
