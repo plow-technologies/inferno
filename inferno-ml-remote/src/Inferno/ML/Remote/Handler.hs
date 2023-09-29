@@ -7,7 +7,6 @@ module Inferno.ML.Remote.Handler
 where
 
 import Control.Exception (Exception (displayException))
-import Control.Monad (unless)
 import Control.Monad.Catch (bracket_)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -15,7 +14,7 @@ import Control.Monad.Reader.Class (asks)
 import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
-import Data.Foldable (traverse_)
+import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
@@ -49,29 +48,22 @@ runInferenceHandler :: Interpreter MlValue -> Script -> InfernoMlRemoteM EvalRes
 runInferenceHandler interpreter src = do
   ast <- liftEither500 $ mkFinalAst interpreter src
   cwd <- liftIO getCurrentDirectory
-  asks (view #modelCache) >>= \case
-    Nothing -> do
-      unless (null (collectModelNames ast)) $
-        throwError $
-          err500
-            { errBody = "No model cache has been configured for this server"
-            }
-      runEval interpreter ast
-    Just cache -> do
-      traverse_ (`cacheAndUseModel` cache) $ collectModelNames ast
-      -- Change working directories to the model cache so that Hasktorch
-      -- can find the models using relative paths (otherwise the AST would need
-      -- to be updated to use an absolute path)
-      --
-      -- NOTE
-      -- We can't use `withCurrentDirectory` here because it expects an IO action
-      -- to run in between. And there's no `UnliftIO` instance for `Handler`
-      -- (because it uses `ExceptT`), so it's easier just to `bracket` it
-      -- directly
-      bracket_
-        (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
-        (cwd & liftIO . setCurrentDirectory)
-        $ runEval interpreter ast
+  store <- asks $ view #modelStore
+  cache <- asks $ view #modelCache
+  for_ (collectModelNames ast) $ \m -> cacheAndUseModel m cache store
+  -- Change working directories to the model cache so that Hasktorch
+  -- can find the models using relative paths (otherwise the AST would need
+  -- to be updated to use an absolute path)
+  --
+  -- NOTE
+  -- We can't use `withCurrentDirectory` here because it expects an IO action
+  -- to run in between. And there's no `UnliftIO` instance for `Handler`
+  -- (because it uses `ExceptT`), so it's easier just to `bracket` it
+  -- directly
+  bracket_
+    (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
+    (cwd & liftIO . setCurrentDirectory)
+    $ runEval interpreter ast
   where
     runEval ::
       Interpreter MlValue ->

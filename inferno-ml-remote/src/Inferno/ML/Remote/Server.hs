@@ -17,11 +17,13 @@ import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteM,
+    ModelStore (Paths),
+    ModelStoreOption (PathOption),
     Options,
     mkOptions,
   )
 import Inferno.ML.Types.Value (MlValue)
-import Lens.Micro.Platform ((^.))
+import Lens.Micro.Platform (view, (^.))
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
 import Network.Wai.Handler.Warp
@@ -40,8 +42,9 @@ main = runServer =<< mkOptions
     runServer :: Options -> IO ()
     runServer options = do
       interpreter <- liftIO $ mkInferno mlPrelude
+      env <- mkEnv
       withStdoutLogger $
-        (`runSettings` infernoMlRemote interpreter mkEnv) . mkSettings
+        (`runSettings` infernoMlRemote interpreter env) . mkSettings
       where
         mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
@@ -49,8 +52,12 @@ main = runServer =<< mkOptions
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
 
-        mkEnv :: InfernoMlRemoteEnv
-        mkEnv = InfernoMlRemoteEnv $ options ^. #modelCache
+        mkEnv :: IO InfernoMlRemoteEnv
+        mkEnv = InfernoMlRemoteEnv (view #modelCache options) <$> storeFromOption
+
+        storeFromOption :: IO ModelStore
+        storeFromOption = case options ^. #modelStore of
+          PathOption p -> pure $ Paths p
 
 infernoMlRemote :: Interpreter MlValue -> InfernoMlRemoteEnv -> Application
 infernoMlRemote interpreter env =

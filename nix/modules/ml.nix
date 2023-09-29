@@ -16,6 +16,7 @@
       {
         exes.inferno-ml-remote = wrap "inferno-ml-remote";
         tests.tests = wrap "tests";
+        library.libs = [ pkgs.postgresql ];
       };
 
     libtorch-ffi = {

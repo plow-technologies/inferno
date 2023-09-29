@@ -14,7 +14,8 @@ module Inferno.ML.Remote.Types
     EvalResult (EvalResult),
     InfernoMlRemoteM,
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
-    ModelCacheOption (..),
+    ModelStore (..),
+    ModelStoreOption (..),
     ModelCache (ModelCache),
     SomeInfernoError (..),
     InfernoMlRemoteError (..),
@@ -23,7 +24,7 @@ module Inferno.ML.Remote.Types
   )
 where
 
-import Control.Applicative (Alternative ((<|>)), optional, (<**>))
+import Control.Applicative ((<**>))
 import Control.Exception (Exception (displayException), throwIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
@@ -32,7 +33,6 @@ import Data.Aeson
     eitherDecodeFileStrict,
     withObject,
     (.:),
-    (.:?),
   )
 import Data.String (IsString)
 import Data.Text (Text)
@@ -47,10 +47,32 @@ type InfernoMlRemoteAPI =
 
 type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
 
-newtype InfernoMlRemoteEnv = InfernoMlRemoteEnv
-  { modelCache :: Maybe ModelCacheOption
+data InfernoMlRemoteEnv = InfernoMlRemoteEnv
+  { modelCache :: ModelCache,
+    modelStore :: ModelStore
   }
   deriving stock (Generic)
+
+-- | The actual model store itself, not the 'ModelStoreOption', which only specifies
+-- how the store should be connected to. For the 'Paths' option, this is simple, but
+-- for other backends there will need to be initialization, thus the two separate
+-- types
+data ModelStore
+  = -- | Path to source directory holding models
+    Paths FilePath
+  deriving stock (Show, Eq, Generic)
+
+-- | Config for caching ML models to be used with Inferno scripts. When a script
+-- uses @ML.loadModel@, models will be copied from the source configured in
+-- 'ModelCacheOption' and saved to the 'cache' directory. Once the `maxSize` has
+-- been exceeded, least-recently-used cached models will be removed
+data ModelCache = ModelCache
+  { -- | Directory where the models should be cached
+    path :: FilePath,
+    -- | Maximum size in bytes of the model cache directory
+    maxSize :: Word64
+  }
+  deriving stock (Show, Eq, Generic)
 
 -- | Generic container for errors that may arise when parsing\/typechecking
 -- Inferno scripts in handlers. It doesn\'t matter what the specific error is
@@ -66,30 +88,14 @@ instance Exception SomeInfernoError where
 
 -- TODO
 -- Add more ways to load?
-data ModelCacheOption
+data ModelStoreOption
   = -- | Path to source directory holding models
-    Paths FilePath ModelCache
-  | -- | Path to source directory holding compressed models
-    CompressedPaths FilePath ModelCache
+    PathOption FilePath
   deriving stock (Show, Eq, Generic)
 
-instance FromJSON ModelCacheOption where
+instance FromJSON ModelStoreOption where
   parseJSON = withObject "ModelCacheOption" $ \o ->
-    o .:? "compressed" >>= \case
-      Just True -> CompressedPaths <$> o .: "store" <*> o .: "cache"
-      _ -> Paths <$> o .: "store" <*> o .: "cache"
-
--- | Options for caching ML models to be used with Inferno scripts. When a script
--- uses @ML.loadModel@, models will be copied from the source configured in
--- 'ModelCacheOption' and saved to the 'cache' directory. Once the `maxSize` has
--- been exceeded, least-recently-used cached models will be removed
-data ModelCache = ModelCache
-  { -- | Directry where the models should be cached
-    path :: FilePath,
-    -- | Maximum size in bytes of the model cache directory
-    maxSize :: Word64
-  }
-  deriving stock (Show, Eq, Generic)
+    PathOption <$> o .: "path"
 
 instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->
@@ -97,13 +103,14 @@ instance FromJSON ModelCache where
 
 data Options = Options
   { port :: Word64,
-    modelCache :: Maybe ModelCacheOption
+    modelCache :: ModelCache,
+    modelStore :: ModelStoreOption
   }
   deriving stock (Show, Eq, Generic)
 
 instance FromJSON Options where
   parseJSON = withObject "Options" $ \o ->
-    Options <$> o .: "port" <*> o .:? "model-cache"
+    Options <$> o .: "port" <*> o .: "model-cache" <*> o .: "model-store"
 
 newtype Script = Script Text
   deriving stock (Show, Generic)
@@ -138,79 +145,17 @@ instance Exception InfernoMlRemoteError where
 
 mkOptions :: IO Options
 mkOptions =
-  parseOptions >>= \case
-    CliOptions os -> pure os
-    ConfigFile fp ->
-      eitherDecodeFileStrict @Options fp
-        >>= either (throwIO . userError) pure
+  either (throwIO . userError) pure
+    =<< eitherDecodeFileStrict @Options
+    =<< parseOptions
 
-data OptionsOrCfgFile
-  = CliOptions Options
-  | ConfigFile FilePath
-  deriving stock (Show, Eq, Generic)
-
-parseOptions :: IO OptionsOrCfgFile
+parseOptions :: IO FilePath
 parseOptions = Options.execParser opts
   where
-    opts :: Options.ParserInfo OptionsOrCfgFile
+    opts :: Options.ParserInfo FilePath
     opts =
-      Options.info ((cfgFileP <|> optionsP) <**> Options.helper) $
+      Options.info (cfgFileP <**> Options.helper) $
         Options.fullDesc <> Options.progDesc "Server for `inferno-ml-remote`"
 
-    cfgFileP :: Options.Parser OptionsOrCfgFile
-    cfgFileP =
-      ConfigFile
-        <$> Options.strOption
-          ( Options.long "config" <> Options.metavar "FILEPATH"
-          )
-
-    optionsP :: Options.Parser OptionsOrCfgFile
-    optionsP =
-      fmap CliOptions $
-        Options
-          <$> Options.option
-            Options.auto
-            ( Options.long "port"
-                <> Options.short 'p'
-                <> Options.help "Port to run `inferno-ml-remote` server on"
-                <> Options.showDefault
-                <> Options.value 8080
-                <> Options.metavar "BYTES"
-            )
-          <*> modelCacheOptionP
-
-    modelCacheOptionP :: Options.Parser (Maybe ModelCacheOption)
-    modelCacheOptionP = optional $ pathsP <|> compressedPathsP
-      where
-        compressedPathsP :: Options.Parser ModelCacheOption
-        compressedPathsP =
-          pathP CompressedPaths
-            <* Options.flag'
-              ()
-              ( Options.long "compressed"
-                  <> Options.help "Whether the model source uses compression"
-              )
-
-        pathsP :: Options.Parser ModelCacheOption
-        pathsP = pathP Paths
-
-        pathP :: (FilePath -> ModelCache -> b) -> Options.Parser b
-        pathP f =
-          f
-            <$> Options.strOption
-              ( Options.long "model-source" <> Options.metavar "FILEPATH"
-              )
-            <*> modelCacheP
-
-        modelCacheP :: Options.Parser ModelCache
-        modelCacheP =
-          ModelCache
-            <$> Options.strOption
-              ( Options.long "cache-path" <> Options.metavar "FILEPATH"
-              )
-            <*> Options.option
-              Options.auto
-              ( Options.long "max-size"
-                  <> Options.help "Max size of model cache"
-                  <> Options.metavar "BYTES"
-              )
+    cfgFileP :: Options.Parser FilePath
+    cfgFileP = Options.strOption $ Options.long "config" <> Options.metavar "FILEPATH"

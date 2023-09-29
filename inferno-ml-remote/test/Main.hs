@@ -17,7 +17,7 @@ import Inferno.ML.Remote.Types
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteError (CacheSizeExceeded),
     ModelCache (ModelCache),
-    ModelCacheOption (CompressedPaths, Paths),
+    ModelStoreOption (CompressedPaths, Paths),
     Script (Script),
     SomeInfernoError,
   )
@@ -141,7 +141,7 @@ cacheModelsSpec =
         cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
 
 withTestAppAndEnv ::
-  Interpreter MlValue -> (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
+  Interpreter MlValue -> (FilePath -> Word64 -> ModelStoreOption) -> (Int -> IO ()) -> IO ()
 withTestAppAndEnv interpreter g f =
   withTempDir $
     (`testApp` f)
@@ -153,10 +153,10 @@ withTestAppAndEnv interpreter g f =
     maxSize = 10 * 1073741824
     testApp = withTestApp interpreter
 
-mkCacheOption :: FilePath -> Word64 -> ModelCacheOption
+mkCacheOption :: FilePath -> Word64 -> ModelStoreOption
 mkCacheOption fp = Paths "./test" . ModelCache fp
 
-mkCompressedCacheOption :: FilePath -> Word64 -> ModelCacheOption
+mkCompressedCacheOption :: FilePath -> Word64 -> ModelStoreOption
 mkCompressedCacheOption fp = CompressedPaths "./test" . ModelCache fp
 
 withTempDir :: (FilePath -> IO ()) -> IO ()
