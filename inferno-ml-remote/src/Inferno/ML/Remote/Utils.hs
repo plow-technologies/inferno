@@ -8,6 +8,7 @@ module Inferno.ML.Remote.Utils
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (when)
 import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -41,7 +42,7 @@ import Inferno.Types.Syntax
     SourcePos,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
-import Lens.Micro.Platform (view, (^.))
+import Lens.Micro.Platform ((^.))
 import System.Directory
   ( copyFile,
     createDirectoryIfMissing,
@@ -85,7 +86,17 @@ cacheAndUseModel model cache = \case
       -- the least-recently-used models can be evicted if necessary
       True -> liftIO (setAccessTime cachedPath =<< getCurrentTime)
       -- Moving to the cache will implicitly set the access time
-      False -> moveToCache srcPath
+      False -> do
+        size <- newModelSize
+        when (size >= maxSize) $ throwM CacheSizeExceeded
+        whenM (cacheSizeExceeded size) $ evictOldModels size
+        liftIO $ copyFile srcPath modelPath
+        where
+          newModelSize :: m Word64
+          newModelSize = fromIntegral <$> liftIO (getFileSize srcPath)
+
+          modelPath :: FilePath
+          modelPath = cacheDir </> takeFileName srcPath
     where
       cachedPath :: FilePath
       cachedPath = cache ^. #path & (</> Text.unpack model)
@@ -94,41 +105,29 @@ cacheAndUseModel model cache = \case
       srcPath = src </> Text.unpack model
   Postgres _ -> undefined -- FIXME
   where
-    moveToCache :: FilePath -> m ()
-    moveToCache path = do
-      whenM ((>= view #maxSize cache) <$> newModelSize) $
-        throwM CacheSizeExceeded
-      whenM cacheSizeExceeded evictOldModels
-      liftIO $ copyFile path modelPath
-      where
-        evictOldModels :: m ()
-        evictOldModels = loopM doEvict =<< modelsByATime cacheDir
+    cacheSizeExceeded :: Word64 -> m Bool
+    cacheSizeExceeded = fmap (>= maxSize) . newCacheSize
 
-        doEvict :: [FilePath] -> m (Either [FilePath] ())
-        doEvict = \case
-          [] -> pure $ Right ()
-          m : ms ->
-            cacheSizeExceeded >>= \case
-              False -> pure $ Right ()
-              True -> Left ms <$ liftIO (removeFile m)
+    maxSize :: Word64
+    maxSize = cache ^. #maxSize
 
-        newModelSize :: m Word64
-        newModelSize = fromIntegral <$> liftIO (getFileSize path)
+    newCacheSize :: Word64 -> m Word64
+    newCacheSize newSize =
+      (+ newSize) . fromIntegral <$> liftIO (getFileSize cacheDir)
 
-        cacheSizeExceeded :: m Bool
-        cacheSizeExceeded =
-          fmap (>= view #maxSize cache) . newCacheSize
-            =<< newModelSize
+    cacheDir :: FilePath
+    cacheDir = cache ^. #path
 
-        newCacheSize :: Word64 -> m Word64
-        newCacheSize newSize =
-          (+ newSize) . fromIntegral <$> liftIO (getFileSize cacheDir)
+    evictOldModels :: Word64 -> m ()
+    evictOldModels size = loopM (doEvict size) =<< modelsByATime cacheDir
 
-        modelPath :: FilePath
-        modelPath = cacheDir </> takeFileName path
-
-        cacheDir :: FilePath
-        cacheDir = cache ^. #path
+    doEvict :: Word64 -> [FilePath] -> m (Either [FilePath] ())
+    doEvict size = \case
+      [] -> pure $ Right ()
+      m : ms ->
+        cacheSizeExceeded size >>= \case
+          False -> pure $ Right ()
+          True -> Left ms <$ liftIO (removeFile m)
 
 modelsByATime :: MonadIO m => FilePath -> m [FilePath]
 modelsByATime dir =

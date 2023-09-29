@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE GADTs #-}
@@ -19,6 +20,8 @@ module Inferno.ML.Remote.Types
     ModelCache (ModelCache),
     SomeInfernoError (..),
     InfernoMlRemoteError (..),
+    ModelRow (ModelRow),
+    UserId (UserId),
     parseOptions,
     mkOptions,
   )
@@ -36,11 +39,20 @@ import Data.Aeson
     (.:),
   )
 import Data.Aeson.Types (Parser)
+import qualified Data.ByteString.Lazy as Lazy
+import Data.Int (Int64)
 import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word64)
-import Database.PostgreSQL.Simple (ConnectInfo (ConnectInfo), Connection)
+import Database.PostgreSQL.Simple
+  ( ConnectInfo (ConnectInfo),
+    Connection,
+    FromRow,
+    ToRow,
+  )
+import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
 import Servant (Handler, JSON, Post, ReqBody, (:>))
@@ -77,6 +89,23 @@ data ModelCache = ModelCache
     maxSize :: Word64
   }
   deriving stock (Show, Eq, Generic)
+
+data ModelRow = ModelRow
+  { name :: Text,
+    model :: Lazy.ByteString,
+    -- Storing the size when creating the model row helps avoid needing to
+    -- compure it later on, to ensure that adding the model doesn't cause the
+    -- cache to exceed it's maximum size. Since the models can be large it's
+    -- better to avoid needing to calculate the size
+    size :: Int64,
+    user :: Maybe UserId
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromRow, ToRow)
+
+newtype UserId = UserId Text
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromField, ToField)
 
 -- | Generic container for errors that may arise when parsing\/typechecking
 -- Inferno scripts in handlers. It doesn\'t matter what the specific error is
