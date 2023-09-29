@@ -8,7 +8,7 @@ module Inferno.ML.Remote.Utils
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad.Catch (MonadMask, MonadThrow (throwM))
+import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
@@ -27,7 +27,7 @@ import Inferno.ML.Remote.Types
         NoSuchModel
       ),
     ModelCache,
-    ModelStore (Paths),
+    ModelStore (Paths, Postgres),
     Script (Script),
     SomeInfernoError (SomeInfernoError),
   )
@@ -70,8 +70,7 @@ mkFinalAst Interpreter {parseAndInferTypeReps} (Script src) =
 cacheAndUseModel ::
   forall m.
   ( MonadIO m,
-    MonadThrow m,
-    MonadMask m
+    MonadThrow m
   ) =>
   Text ->
   ModelCache ->
@@ -93,6 +92,7 @@ cacheAndUseModel model cache = \case
 
       srcPath :: FilePath
       srcPath = src </> Text.unpack model
+  Postgres _ -> undefined -- FIXME
   where
     moveToCache :: FilePath -> m ()
     moveToCache path = do

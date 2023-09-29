@@ -24,20 +24,23 @@ module Inferno.ML.Remote.Types
   )
 where
 
-import Control.Applicative ((<**>))
+import Control.Applicative (asum, (<**>))
 import Control.Exception (Exception (displayException), throwIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
+    Object,
     ToJSON,
     eitherDecodeFileStrict,
     withObject,
     (.:),
   )
+import Data.Aeson.Types (Parser)
 import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Word (Word64)
+import Database.PostgreSQL.Simple (ConnectInfo (ConnectInfo), Connection)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
 import Servant (Handler, JSON, Post, ReqBody, (:>))
@@ -60,7 +63,8 @@ data InfernoMlRemoteEnv = InfernoMlRemoteEnv
 data ModelStore
   = -- | Path to source directory holding models
     Paths FilePath
-  deriving stock (Show, Eq, Generic)
+  | Postgres Connection
+  deriving stock (Eq, Generic)
 
 -- | Config for caching ML models to be used with Inferno scripts. When a script
 -- uses @ML.loadModel@, models will be copied from the source configured in
@@ -91,11 +95,29 @@ instance Exception SomeInfernoError where
 data ModelStoreOption
   = -- | Path to source directory holding models
     PathOption FilePath
+  | PostgresOption ConnectInfo
   deriving stock (Show, Eq, Generic)
 
 instance FromJSON ModelStoreOption where
   parseJSON = withObject "ModelCacheOption" $ \o ->
-    PathOption <$> o .: "path"
+    asum
+      [ PathOption <$> o .: "path",
+        fmap PostgresOption $ connInfoP =<< o .: "postgres"
+      ]
+    where
+      connInfoP :: Object -> Parser ConnectInfo
+      connInfoP o =
+        ConnectInfo
+          <$> o
+          .: "host"
+          <*> o
+          .: "port"
+          <*> o
+          .: "user"
+          <*> o
+          .: "password"
+          <*> o
+          .: "database"
 
 instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->

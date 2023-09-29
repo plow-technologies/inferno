@@ -6,10 +6,11 @@ module Inferno.ML.Remote.Server
   )
 where
 
-import Control.Monad.Reader (MonadIO (liftIO), ReaderT (runReaderT))
+import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
+import Database.PostgreSQL.Simple (withConnect)
 import Inferno.Core (Interpreter, mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Handler (runInferenceHandler)
@@ -17,8 +18,8 @@ import Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteM,
-    ModelStore (Paths),
-    ModelStoreOption (PathOption),
+    ModelStore (Paths, Postgres),
+    ModelStoreOption (PathOption, PostgresOption),
     Options,
     mkOptions,
   )
@@ -40,24 +41,26 @@ main :: IO ()
 main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
-    runServer options = do
-      interpreter <- liftIO $ mkInferno mlPrelude
-      env <- mkEnv
-      withStdoutLogger $
-        (`runSettings` infernoMlRemote interpreter env) . mkSettings
+    runServer options =
+      mkInferno mlPrelude >>= \interpreter -> case options ^. #modelStore of
+        PathOption p ->
+          run . infernoMlRemote interpreter . mkEnv $
+            Paths p
+        PostgresOption p ->
+          withConnect p $
+            run . infernoMlRemote interpreter . mkEnv . Postgres
       where
+        mkEnv :: ModelStore -> InfernoMlRemoteEnv
+        mkEnv = InfernoMlRemoteEnv $ view #modelCache options
+
+        run :: Application -> IO ()
+        run app = withStdoutLogger $ (`runSettings` app) . mkSettings
+
         mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
           defaultSettings
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
-
-        mkEnv :: IO InfernoMlRemoteEnv
-        mkEnv = InfernoMlRemoteEnv (view #modelCache options) <$> storeFromOption
-
-        storeFromOption :: IO ModelStore
-        storeFromOption = case options ^. #modelStore of
-          PathOption p -> pure $ Paths p
 
 infernoMlRemote :: Interpreter MlValue -> InfernoMlRemoteEnv -> Application
 infernoMlRemote interpreter env =
@@ -67,5 +70,4 @@ api :: Proxy InfernoMlRemoteAPI
 api = Proxy
 
 server :: Interpreter MlValue -> ServerT InfernoMlRemoteAPI InfernoMlRemoteM
-server interpreter =
-  runInferenceHandler interpreter
+server = runInferenceHandler
