@@ -20,8 +20,9 @@ module Inferno.ML.Remote.Types
     ModelCache (ModelCache),
     SomeInfernoError (..),
     InfernoMlRemoteError (..),
-    ModelRow (ModelRow),
     UserId (UserId),
+    ModelName (ModelName),
+    ModelRow (ModelRow),
     parseOptions,
     mkOptions,
   )
@@ -90,8 +91,12 @@ data ModelCache = ModelCache
   }
   deriving stock (Show, Eq, Generic)
 
+newtype ModelName = ModelName Text
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromField, ToField)
+
 data ModelRow = ModelRow
-  { name :: Text,
+  { name :: ModelName,
     model :: Lazy.ByteString,
     -- Storing the size when creating the model row helps avoid needing to
     -- compure it later on, to ensure that adding the model doesn't cause the
@@ -173,7 +178,7 @@ newtype EvalResult = EvalResult Text
 
 data InfernoMlRemoteError
   = CacheSizeExceeded
-  | NoSuchModel Text
+  | NoSuchModel ModelName
   | ExternalProcessFailed FilePath Int
   deriving stock (Show, Eq, Generic)
 
@@ -187,7 +192,7 @@ instance Exception InfernoMlRemoteError where
           "failed with exit code",
           show ec
         ]
-    NoSuchModel m ->
+    NoSuchModel (ModelName m) ->
       unwords
         [ "Model:",
           "'" <> Text.unpack m <> "'",

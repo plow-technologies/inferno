@@ -13,6 +13,7 @@ import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
+import qualified Data.ByteString.Lazy as ByteString.Lazy
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.List (sortOn)
@@ -21,6 +22,7 @@ import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Tuple.Extra (dupe)
 import Data.Word (Word64)
+import Database.PostgreSQL.Simple (Only (Only), query)
 import Inferno.Core (Interpreter (Interpreter, parseAndInferTypeReps))
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteError
@@ -28,6 +30,8 @@ import Inferno.ML.Remote.Types
         NoSuchModel
       ),
     ModelCache,
+    ModelName (ModelName),
+    ModelRow,
     ModelStore (Paths, Postgres),
     Script (Script),
     SomeInfernoError (SomeInfernoError),
@@ -53,7 +57,7 @@ import System.Directory
     removeFile,
     setAccessTime,
   )
-import System.FilePath (takeFileName, (</>))
+import System.FilePath ((</>))
 
 mkFinalAst ::
   Interpreter MlValue ->
@@ -73,13 +77,13 @@ cacheAndUseModel ::
   ( MonadIO m,
     MonadThrow m
   ) =>
-  Text ->
+  ModelName ->
   ModelCache ->
   ModelStore ->
   m ()
-cacheAndUseModel model cache = \case
+cacheAndUseModel mn@(ModelName modelName) cache = \case
   Paths src -> do
-    unlessM (liftIO (doesFileExist srcPath)) . throwM $ NoSuchModel model
+    unlessM (liftIO (doesFileExist srcPath)) . throwM $ NoSuchModel mn
     cache ^. #path & liftIO . createDirectoryIfMissing True
     liftIO (doesFileExist cachedPath) >>= \case
       -- This also sets the access time for the model to make sure that
@@ -94,16 +98,26 @@ cacheAndUseModel model cache = \case
         where
           newModelSize :: m Word64
           newModelSize = fromIntegral <$> liftIO (getFileSize srcPath)
-
-          modelPath :: FilePath
-          modelPath = cacheDir </> takeFileName srcPath
     where
       cachedPath :: FilePath
-      cachedPath = cache ^. #path & (</> Text.unpack model)
+      cachedPath = cache ^. #path & (</> Text.unpack modelName)
 
       srcPath :: FilePath
-      srcPath = src </> Text.unpack model
-  Postgres _ -> undefined -- FIXME
+      srcPath = src </> Text.unpack modelName
+  Postgres conn -> do
+    liftIO q >>= \case
+      [] -> throwM $ NoSuchModel mn
+      model : _ -> do
+        let size :: Word64
+            size = model ^. #size & fromIntegral
+        when (size >= maxSize) $ throwM CacheSizeExceeded
+        whenM (cacheSizeExceeded size) $ evictOldModels size
+        model ^. #model & liftIO . ByteString.Lazy.writeFile modelPath
+    where
+      q :: IO [ModelRow]
+      q =
+        query @_ @ModelRow conn "select model from models where name = ?" $
+          Only modelName
   where
     cacheSizeExceeded :: Word64 -> m Bool
     cacheSizeExceeded = fmap (>= maxSize) . newCacheSize
@@ -129,6 +143,9 @@ cacheAndUseModel model cache = \case
           False -> pure $ Right ()
           True -> Left ms <$ liftIO (removeFile m)
 
+    modelPath :: FilePath
+    modelPath = cacheDir </> Text.unpack modelName
+
 modelsByATime :: MonadIO m => FilePath -> m [FilePath]
 modelsByATime dir =
   liftIO $
@@ -141,8 +158,8 @@ modelsByATime dir =
     getATime (_, p) = (,p) <$> getAccessTime p
 
 -- Get the names of models used with @ML.loadModel@ so they can be cached
-collectModelNames :: Expr a b -> [Text]
-collectModelNames x = collect mempty x
+collectModelNames :: Expr a b -> [ModelName]
+collectModelNames x = ModelName <$> collect mempty x
   where
     collect :: [Text] -> Expr a b -> [Text]
     collect models = \case
