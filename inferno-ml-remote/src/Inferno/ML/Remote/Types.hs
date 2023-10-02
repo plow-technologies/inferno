@@ -93,7 +93,7 @@ data ModelCache = ModelCache
 
 newtype ModelName = ModelName Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromField, ToField)
+  deriving newtype (Eq, FromField, ToField, IsString)
 
 data ModelRow = ModelRow
   { name :: ModelName,

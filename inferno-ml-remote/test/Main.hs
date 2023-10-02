@@ -17,7 +17,7 @@ import Inferno.ML.Remote.Types
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     InfernoMlRemoteError (CacheSizeExceeded),
     ModelCache (ModelCache),
-    ModelStoreOption (CompressedPaths, Paths),
+    ModelStore (Paths),
     Script (Script),
     SomeInfernoError,
   )
@@ -76,18 +76,12 @@ inferenceSpec interpreter = do
               (Hspec.expectationFailure . show)
               (`Hspec.shouldBe` expected)
 
-  Hspec.around (withTestAppAndEnv interpreter mkCacheOption) $ do
+  Hspec.around (withTestAppAndEnv interpreter mkRemoteEnv) $ do
     Hspec.describe "POST /inference" $ do
       mkEvalTest "../inferno-ml/test/test.inferno" "Tensor Int64 []  262144"
 
       mkEvalTest "../inferno-ml/test/test-cpu.inferno" "Tensor Float []  8.5899e9"
 
-      mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
-
-  -- This tests caching and using the model with the filesystem compression
-  -- option, the one above uses non-compressed paths
-  Hspec.around (withTestAppAndEnv interpreter mkCompressedCacheOption) $ do
-    Hspec.describe "POST /inference (compressed)" $ do
       mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
 
 collectModelsSpec :: Interpreter MlValue -> Spec
@@ -128,36 +122,40 @@ collectModelsSpec interpreter = Hspec.describe "collectModelNames" $ do
 cacheModelsSpec :: Spec
 cacheModelsSpec =
   Hspec.around withTempDir . Hspec.describe "cacheAndUseModel" $ do
+    let cacheWithLocalStore :: FilePath -> Word64 -> IO ()
+        cacheWithLocalStore fp size =
+          cacheAndUseModel
+            "mnist.ts.pt"
+            (ModelCache fp size)
+            localStore
+
     Hspec.it "caches a model" $ \fp -> do
-      cacheAndUseModel "mnist.ts.pt" . mkCacheOption fp $ 10 * 1073741824
+      cacheWithLocalStore fp $ 10 * 1073741824
       (`Hspec.shouldBe` ["mnist.ts.pt"]) =<< listDirectory fp
 
-    Hspec.it "decompresses and caches a model" $ \fp -> do
-      cacheAndUseModel "mnist.ts.pt" . mkCompressedCacheOption fp $ 10 * 1073741824
-      (`Hspec.shouldBe` ["mnist.ts.pt"]) =<< listDirectory fp
-
-    Hspec.it "throws when model is too big" $ \fp -> do
+    Hspec.it "throws when model is too big" $ \fp ->
       (`Hspec.shouldThrow` (== CacheSizeExceeded)) $
-        cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
+        cacheWithLocalStore fp 10
 
 withTestAppAndEnv ::
-  Interpreter MlValue -> (FilePath -> Word64 -> ModelStoreOption) -> (Int -> IO ()) -> IO ()
+  Interpreter MlValue ->
+  (FilePath -> Word64 -> InfernoMlRemoteEnv) ->
+  (Int -> IO ()) ->
+  IO ()
 withTestAppAndEnv interpreter g f =
-  withTempDir $
-    (`testApp` f)
-      . InfernoMlRemoteEnv
-      . Just
-      . (`g` maxSize)
+  withTempDir $ \tmp -> testApp (g tmp maxSize) f
   where
     maxSize :: Word64
     maxSize = 10 * 1073741824
+
+    testApp :: InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
     testApp = withTestApp interpreter
 
-mkCacheOption :: FilePath -> Word64 -> ModelStoreOption
-mkCacheOption fp = Paths "./test" . ModelCache fp
+mkRemoteEnv :: FilePath -> Word64 -> InfernoMlRemoteEnv
+mkRemoteEnv fp = (`InfernoMlRemoteEnv` localStore) . ModelCache fp
 
-mkCompressedCacheOption :: FilePath -> Word64 -> ModelStoreOption
-mkCompressedCacheOption fp = CompressedPaths "./test" . ModelCache fp
+localStore :: ModelStore
+localStore = Paths "./test"
 
 withTempDir :: (FilePath -> IO ()) -> IO ()
 withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
