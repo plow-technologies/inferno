@@ -96,7 +96,9 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
     liftIO q >>= \case
       [] -> throwM $ NoSuchModel mn
       model : _ -> ifNotCached $ do
-        model ^. #size & fromIntegral & checkCacheSize
+        -- TODO
+        -- Use a PG function to get the length, probably more efficient
+        model ^. #model & ByteString.length & fromIntegral & checkCacheSize
         -- The default representation for Postgres' `bytea` type is hex encoding,
         -- so it will need to be converted back into bytes
         model ^. #model
@@ -106,7 +108,7 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
     where
       q :: IO [ModelRow]
       q =
-        query conn "select * from models where name = ?" $
+        query conn "SELECT * FROM models WHERE name = ? AND user = NULL" $
           Only modelName
   where
     ifNotCached :: m () -> m ()

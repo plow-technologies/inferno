@@ -20,7 +20,7 @@ module Inferno.ML.Remote.Types
     ModelCache (ModelCache),
     SomeInfernoError (..),
     InfernoMlRemoteError (..),
-    UserId (UserId),
+    Id (Id),
     ModelName (ModelName),
     ModelRow (ModelRow),
     parseOptions,
@@ -96,19 +96,21 @@ newtype ModelName = ModelName Text
   deriving newtype (Eq, FromField, ToField, IsString)
 
 data ModelRow = ModelRow
-  { name :: ModelName,
+  { id :: Id ModelRow,
+    name :: ModelName,
+    -- The actual contents of the model
     model :: ByteString,
-    -- Storing the size when creating the model row helps avoid needing to
-    -- compure it later on, to ensure that adding the model doesn't cause the
-    -- cache to exceed it's maximum size. Since the models can be large it's
-    -- better to avoid needing to calculate the size
-    size :: Int64,
-    user :: Maybe UserId
+    -- Not currently used
+    user :: Maybe (Id User)
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
 
-newtype UserId = UserId Text
+newtype Id a = Id Int64
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromField, ToField)
+
+newtype User = User Text
   deriving stock (Show, Generic)
   deriving newtype (Eq, FromField, ToField)
 
