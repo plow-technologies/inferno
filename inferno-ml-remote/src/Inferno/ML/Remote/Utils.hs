@@ -13,9 +13,10 @@ import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Bifunctor (Bifunctor (first))
-import qualified Data.ByteString.Lazy as ByteString.Lazy
+import qualified Data.ByteString as ByteString
 import Data.Function ((&))
 import Data.Generics.Labels ()
+import qualified Data.HexString as HexString
 import Data.List (sortOn)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -96,7 +97,12 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
       [] -> throwM $ NoSuchModel mn
       model : _ -> ifNotCached $ do
         model ^. #size & fromIntegral & checkCacheSize
-        model ^. #model & liftIO . ByteString.Lazy.writeFile cachedPath
+        -- The default representation for Postgres' `bytea` type is hex encoding,
+        -- so it will need to be converted back into bytes
+        model ^. #model
+          & HexString.hexString
+          & HexString.toBytes
+          & liftIO . ByteString.writeFile cachedPath
     where
       q :: IO [ModelRow]
       q =
@@ -114,9 +120,9 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
           False -> f
 
     checkCacheSize :: Word64 -> m ()
-    checkCacheSize size = do
-      when (size >= maxSize) $ throwM CacheSizeExceeded
-      whenM (cacheSizeExceeded size) $ evictOldModels size
+    checkCacheSize modelSize = do
+      when (modelSize >= maxSize) $ throwM CacheSizeExceeded
+      whenM (cacheSizeExceeded modelSize) $ evictOldModels modelSize
 
     cacheSizeExceeded :: Word64 -> m Bool
     cacheSizeExceeded = fmap (>= maxSize) . newCacheSize

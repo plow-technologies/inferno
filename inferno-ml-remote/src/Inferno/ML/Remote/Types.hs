@@ -40,7 +40,7 @@ import Data.Aeson
     (.:),
   )
 import Data.Aeson.Types (Parser)
-import qualified Data.ByteString.Lazy as Lazy
+import Data.ByteString (ByteString)
 import Data.Int (Int64)
 import Data.String (IsString)
 import Data.Text (Text)
@@ -97,7 +97,7 @@ newtype ModelName = ModelName Text
 
 data ModelRow = ModelRow
   { name :: ModelName,
-    model :: Lazy.ByteString,
+    model :: ByteString,
     -- Storing the size when creating the model row helps avoid needing to
     -- compure it later on, to ensure that adding the model doesn't cause the
     -- cache to exceed it's maximum size. Since the models can be large it's
