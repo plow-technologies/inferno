@@ -85,40 +85,39 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
   Paths src -> do
     unlessM (liftIO (doesFileExist srcPath)) . throwM $ NoSuchModel mn
     cache ^. #path & liftIO . createDirectoryIfMissing True
-    liftIO (doesFileExist cachedPath) >>= \case
-      -- This also sets the access time for the model to make sure that
-      -- the least-recently-used models can be evicted if necessary
-      True -> liftIO (setAccessTime cachedPath =<< getCurrentTime)
-      -- Moving to the cache will implicitly set the access time
-      False -> do
-        size <- newModelSize
-        when (size >= maxSize) $ throwM CacheSizeExceeded
-        whenM (cacheSizeExceeded size) $ evictOldModels size
-        liftIO $ copyFile srcPath modelPath
-        where
-          newModelSize :: m Word64
-          newModelSize = fromIntegral <$> liftIO (getFileSize srcPath)
+    ifNotCached $ do
+      checkCacheSize . fromIntegral =<< liftIO (getFileSize srcPath)
+      liftIO $ copyFile srcPath cachedPath
     where
-      cachedPath :: FilePath
-      cachedPath = cache ^. #path & (</> Text.unpack modelName)
-
       srcPath :: FilePath
       srcPath = src </> Text.unpack modelName
   Postgres conn -> do
     liftIO q >>= \case
       [] -> throwM $ NoSuchModel mn
-      model : _ -> do
-        let size :: Word64
-            size = model ^. #size & fromIntegral
-        when (size >= maxSize) $ throwM CacheSizeExceeded
-        whenM (cacheSizeExceeded size) $ evictOldModels size
-        model ^. #model & liftIO . ByteString.Lazy.writeFile modelPath
+      model : _ -> ifNotCached $ do
+        model ^. #size & fromIntegral & checkCacheSize
+        model ^. #model & liftIO . ByteString.Lazy.writeFile cachedPath
     where
       q :: IO [ModelRow]
       q =
-        query @_ @ModelRow conn "select model from models where name = ?" $
+        query conn "select * from models where name = ?" $
           Only modelName
   where
+    ifNotCached :: m () -> m ()
+    ifNotCached f =
+      liftIO (doesFileExist cachedPath)
+        >>= \case
+          -- This also sets the access time for the model to make sure that
+          -- the least-recently-used models can be evicted if necessary
+          True -> liftIO $ setAccessTime cachedPath =<< getCurrentTime
+          -- Moving to the cache will implicitly set the access time
+          False -> f
+
+    checkCacheSize :: Word64 -> m ()
+    checkCacheSize size = do
+      when (size >= maxSize) $ throwM CacheSizeExceeded
+      whenM (cacheSizeExceeded size) $ evictOldModels size
+
     cacheSizeExceeded :: Word64 -> m Bool
     cacheSizeExceeded = fmap (>= maxSize) . newCacheSize
 
@@ -128,9 +127,6 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
     newCacheSize :: Word64 -> m Word64
     newCacheSize newSize =
       (+ newSize) . fromIntegral <$> liftIO (getFileSize cacheDir)
-
-    cacheDir :: FilePath
-    cacheDir = cache ^. #path
 
     evictOldModels :: Word64 -> m ()
     evictOldModels size = loopM (doEvict size) =<< modelsByATime cacheDir
@@ -143,8 +139,11 @@ cacheAndUseModel mn@(ModelName modelName) cache = \case
           False -> pure $ Right ()
           True -> Left ms <$ liftIO (removeFile m)
 
-    modelPath :: FilePath
-    modelPath = cacheDir </> Text.unpack modelName
+    cacheDir :: FilePath
+    cacheDir = cache ^. #path
+
+    cachedPath :: FilePath
+    cachedPath = cacheDir </> Text.unpack modelName
 
 modelsByATime :: MonadIO m => FilePath -> m [FilePath]
 modelsByATime dir =
