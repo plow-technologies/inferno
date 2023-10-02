@@ -63,6 +63,7 @@ library
     , inferno-ml
     , inferno-types
     , microlens-platform
+    , monadlist
     , mtl
     , optparse-applicative
     , postgresql-simple
@@ -73,6 +74,7 @@ library
     , time
     , typed-process
     , unix
+    , unliftio
     , wai
     , wai-logger
     , warp
