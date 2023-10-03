@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.6.1.0 -- 2023-10-03
+* Add function composition, pipe, fst, snd, and zip
+
 ## 0.6.0.0 -- 2023-10-03
 * Breaking change: Interpreter API is parametric on monad to run in
 
