@@ -6,12 +6,14 @@
 module Inferno.Core where
 
 import Control.Monad (foldM)
+import Control.Monad.Catch (MonadCatch, MonadThrow)
+import Control.Monad.Except (MonadFix)
 import Data.Bifunctor (bimap)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
-import Inferno.Eval (TermEnv, eval, runEvalIO)
+import Inferno.Eval (TermEnv, eval, runEvalM)
 import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (inferExpr, inferTypeReps)
 import Inferno.Infer.Pinned (pinExpr)
@@ -33,17 +35,19 @@ data InfernoError
   | InferenceError String
   deriving (Eq, Show)
 
--- | Public API for the Inferno interpreter. @c@ is the custom value type.
-data Interpreter c = Interpreter
+-- | Public API for the Inferno interpreter.
+-- @m@ is the monad to run the interpreter in.
+-- @c@ is the custom value type.
+data Interpreter m c = Interpreter
   { -- | Evaluates an Expr in a given pinned and implicit env. Use
     -- @defaultEnv@ for an empty env (only prelude) or compute one using
     -- @mkEnvFromClosure@.
     evalExpr ::
       forall a.
-      TermEnv VCObjectHash c (ImplEnvM IO c) ->
-      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
+      TermEnv VCObjectHash c (ImplEnvM m c) ->
+      Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Expr (Maybe VCObjectHash) a ->
-      IO (Either EvalError (Value c (ImplEnvM IO c))),
+      m (Either EvalError (Value c (ImplEnvM m c))),
     parseAndInferTypeReps ::
       Text ->
       Either InfernoError (Expr (Maybe VCObjectHash) SourcePos),
@@ -52,22 +56,22 @@ data Interpreter c = Interpreter
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme),
     -- | Evaluates all functions in given closure and creates a pinned env containing them
     mkEnvFromClosure ::
-      Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
+      Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM IO c (TermEnv VCObjectHash c (ImplEnvM IO c)),
+      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)),
     -- | The default pinned env containing only the prelude
     defaultEnv ::
-      TermEnv VCObjectHash c (ImplEnvM IO c)
+      TermEnv VCObjectHash c (ImplEnvM m c)
   }
 
-mkInferno :: forall c. (Eq c, Pretty c) => ModuleMap IO c -> IO (Interpreter c)
+mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c) => ModuleMap m c -> m (Interpreter m c)
 mkInferno prelude = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts
   (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
   return $
     Interpreter
-      { evalExpr = runEvalIO,
+      { evalExpr = runEvalM,
         parseAndInferTypeReps = parseAndInferTypeReps,
         parseAndInfer = parseAndInfer,
         mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv,

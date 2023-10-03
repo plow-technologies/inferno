@@ -1,9 +1,12 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Eval.Spec where
 
+import Control.Monad.Catch (MonadThrow (..))
+import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT))
 import Data.Bifunctor (bimap)
 import Data.Int (Int64)
 import qualified Data.Map as Map
@@ -11,16 +14,18 @@ import Data.Text (unpack)
 import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.Module.Builtin (enumBoolHash)
+import Inferno.Module.Prelude (ModuleMap)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
-import Inferno.Types.Value (Value (..))
+import Inferno.Types.Value (ImplEnvM (..), Value (..), liftImplEnvM)
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
+import Inferno.Utils.QQ.Module (infernoModules)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 
 type TestCustomValue = ()
 
-runtimeTypeRepsTests :: Interpreter TestCustomValue -> Spec
+runtimeTypeRepsTests :: Interpreter IO TestCustomValue -> Spec
 runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describe "runtime type reps" $ do
   let expr_3 =
         case parseAndInfer "3" of
@@ -48,7 +53,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
-      runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter TestCustomValue))
+      runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
@@ -387,6 +392,54 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "assert #true in ()" $ VTuple []
 
     runtimeTypeRepsTests inferno
+
+    evalInMonadTest
   where
     vTrue = VEnum enumBoolHash (Ident "true")
     vFalse = VEnum enumBoolHash (Ident "false")
+
+-------------------------------------------------------------------------------
+-- Test running interpreter in a custom (reader) monad:
+-------------------------------------------------------------------------------
+
+data TestEnv = TestEnv {cache :: Int64}
+
+cachedGet :: (MonadReader TestEnv m, MonadThrow m) => Value TestCustomValue (ImplEnvM m TestCustomValue)
+cachedGet =
+  VFun $ \_ -> do
+    TestEnv {cache} <- liftImplEnvM $ ask
+    pure $ VInt cache
+
+evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
+evalInMonadPrelude =
+  [infernoModules|
+module EvalInMonad
+
+  cachedGet : () -> int := ###!cachedGet###;
+|]
+
+evalInMonadTest :: Spec
+evalInMonadTest = do
+  let testEnv = TestEnv {cache = 4}
+
+  let modules =
+        Map.unionWith
+          (error "Duplicate module name in builtinModules")
+          (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
+          evalInMonadPrelude
+  Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
+    runIO $ flip runReaderT testEnv $ (mkInferno modules :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
+
+  let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
+        it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+          case parseAndInferTypeReps str of
+            Left err -> expectationFailure $ show err
+            Right ast -> do
+              res <- flip runReaderT testEnv $ evalExpr defaultEnv implEnv ast
+              case res of
+                Left err -> expectationFailure $ "Failed eval with: " <> show err
+                Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+  let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
+
+  describe "TODO" $ do
+    shouldEvaluateTo "EvalInMonad.cachedGet ()" $ VInt 4

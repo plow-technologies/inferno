@@ -16,7 +16,7 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno mlPrelude :: IO (Interpreter MlValue)
+    mkInferno mlPrelude :: IO (Interpreter IO MlValue)
   case parseAndInferTypeReps src of
     Left err -> print err
     Right ast ->

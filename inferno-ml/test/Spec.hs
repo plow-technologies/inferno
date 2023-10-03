@@ -46,7 +46,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
-      runIO $ (mkInferno mlPrelude :: IO (Interpreter MlValue))
+      runIO $ (mkInferno mlPrelude :: IO (Interpreter IO MlValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value MlValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of

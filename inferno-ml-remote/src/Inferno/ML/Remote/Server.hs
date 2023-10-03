@@ -52,13 +52,13 @@ main = runServer =<< mkOptions
         mkEnv :: InfernoMlRemoteEnv
         mkEnv = InfernoMlRemoteEnv $ options ^. #modelCache
 
-infernoMlRemote :: Interpreter MlValue -> InfernoMlRemoteEnv -> Application
+infernoMlRemote :: Interpreter IO MlValue -> InfernoMlRemoteEnv -> Application
 infernoMlRemote interpreter env =
   serve api $ hoistServer api (`runReaderT` env) (server interpreter)
 
 api :: Proxy InfernoMlRemoteAPI
 api = Proxy
 
-server :: Interpreter MlValue -> ServerT InfernoMlRemoteAPI InfernoMlRemoteM
+server :: Interpreter IO MlValue -> ServerT InfernoMlRemoteAPI InfernoMlRemoteM
 server interpreter =
   runInferenceHandler interpreter

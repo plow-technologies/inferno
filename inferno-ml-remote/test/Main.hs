@@ -54,7 +54,7 @@ main = Hspec.hspec $ do
     collectModelsSpec interpreter *> cacheModelsSpec
 
 -- Tests `/inference` endpoint with various Inferno scripts with ML features
-inferenceSpec :: Interpreter MlValue -> Spec
+inferenceSpec :: Interpreter IO MlValue -> Spec
 inferenceSpec interpreter = do
   baseUrl <- Hspec.runIO $ parseBaseUrl "http://localhost"
   manager <- Hspec.runIO $ newManager defaultManagerSettings
@@ -90,7 +90,7 @@ inferenceSpec interpreter = do
     Hspec.describe "POST /inference (compressed)" $ do
       mkEvalTest "../inferno-ml/test/mnist.inferno" "()"
 
-collectModelsSpec :: Interpreter MlValue -> Spec
+collectModelsSpec :: Interpreter IO MlValue -> Spec
 collectModelsSpec interpreter = Hspec.describe "collectModelNames" $ do
   Hspec.it "extracts models from script" $ do
     mkAstTest "../inferno-ml/test/mnist.inferno" $
@@ -141,7 +141,7 @@ cacheModelsSpec =
         cacheAndUseModel "mnist.ts.pt" (mkCacheOption fp 10)
 
 withTestAppAndEnv ::
-  Interpreter MlValue -> (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
+  Interpreter IO MlValue -> (FilePath -> Word64 -> ModelCacheOption) -> (Int -> IO ()) -> IO ()
 withTestAppAndEnv interpreter g f =
   withTempDir $
     (`testApp` f)
@@ -162,7 +162,7 @@ mkCompressedCacheOption fp = CompressedPaths "./test" . ModelCache fp
 withTempDir :: (FilePath -> IO ()) -> IO ()
 withTempDir = withSystemTempDirectory "inferno-ml-remote-tests"
 
-withTestApp :: Interpreter MlValue -> InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
+withTestApp :: Interpreter IO MlValue -> InfernoMlRemoteEnv -> (Int -> IO ()) -> IO ()
 withTestApp interpreter = testWithApplication . pure . infernoMlRemote interpreter
 
 readScript :: MonadIO m => FilePath -> m Script
