@@ -45,7 +45,7 @@ import System.Directory
     setCurrentDirectory,
   )
 
-runInferenceHandler :: Interpreter MlValue -> Script -> InfernoMlRemoteM EvalResult
+runInferenceHandler :: Interpreter IO MlValue -> Script -> InfernoMlRemoteM EvalResult
 runInferenceHandler interpreter src = do
   ast <- liftEither500 $ mkFinalAst interpreter src
   cwd <- liftIO getCurrentDirectory
@@ -74,7 +74,7 @@ runInferenceHandler interpreter src = do
         $ runEval interpreter ast
   where
     runEval ::
-      Interpreter MlValue ->
+      Interpreter IO MlValue ->
       Expr (Maybe VCObjectHash) SourcePos ->
       InfernoMlRemoteM EvalResult
     runEval Interpreter {evalExpr, defaultEnv} ast =

@@ -61,7 +61,7 @@ import System.IO.Temp (createTempDirectory)
 import System.Process.Typed (proc, runProcess)
 
 mkFinalAst ::
-  Interpreter MlValue ->
+  Interpreter IO MlValue ->
   Script ->
   Either
     SomeInfernoError

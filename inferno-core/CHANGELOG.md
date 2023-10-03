@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.6.0.0 -- 2023-10-03
+* Breaking change: Interpreter API is parametric on monad to run in
+
 ## 0.5.0.1 -- 2023-09-25
 * Add NFData EvalError instance.
 

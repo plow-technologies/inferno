@@ -110,6 +110,9 @@ instance MonadCatch m => MonadCatch (ImplEnvM m c) where
   catch (ImplEnvM (ReaderT m)) c = ImplEnvM $ ReaderT $ \env ->
     m env `catch` \e -> runImplEnvM env (c e)
 
+liftImplEnvM :: Monad m => m a -> ImplEnvM m c a
+liftImplEnvM = ImplEnvM . lift
+
 runImplEnvM :: Map.Map ExtIdent (Value c (ImplEnvM m c)) -> ImplEnvM m c a -> m a
 runImplEnvM env = flip runReaderT env . unImplEnvM
 

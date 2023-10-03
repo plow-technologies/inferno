@@ -3,7 +3,7 @@
 
 module Inferno.Eval where
 
-import Control.Monad.Catch (MonadThrow (throwM), try)
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM), try)
 import Control.Monad.Except (forM)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
@@ -263,14 +263,14 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
 -- | Evaluate an expression with the provided environments.
 --   If an 'EvalError' exception is thrown during evaluation, it will be
 --   caught and a 'Left' result will be returned.
-runEvalIO ::
-  Pretty c =>
+runEvalM ::
+  (MonadThrow m, MonadCatch m, Pretty c) =>
   -- | Environment.
-  TermEnv VCObjectHash c (ImplEnvM IO c) ->
+  TermEnv VCObjectHash c (ImplEnvM m c) ->
   -- | Implicit environment.
-  Map.Map ExtIdent (Value c (ImplEnvM IO c)) ->
+  Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
   -- | Expression to evaluate.
   Expr (Maybe VCObjectHash) a ->
-  IO (Either EvalError (Value c (ImplEnvM IO c)))
-runEvalIO env implicitEnv ex =
+  m (Either EvalError (Value c (ImplEnvM m c)))
+runEvalM env implicitEnv ex =
   try $ runImplEnvM implicitEnv $ eval env ex

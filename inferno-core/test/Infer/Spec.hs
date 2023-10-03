@@ -39,7 +39,7 @@ inferTests = describe "infer" $
     let repTC ts = makeTCs "rep" ts
     let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
 
-    inferno <- runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter ()))
+    inferno <- runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter IO ()))
     let shouldInferTypeFor str t =
           it ("should infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer inferno str of

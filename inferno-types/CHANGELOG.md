@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.3.0 -- 2023-10-03
+* Add liftImplEnvM
+
 ## 0.2.2.0 -- 2023-09-20
 * Add NFData Value instance.
 

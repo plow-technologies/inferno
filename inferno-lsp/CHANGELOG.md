@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.11 -- 2023-10-03
+* Update inferno-core version
+
 ## 0.1.10 -- 2023-09-18
 * Update inferno-core version
 
