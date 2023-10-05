@@ -22,7 +22,8 @@ module Inferno.ML.Remote.Types
     InfernoMlRemoteError (..),
     Id (Id),
     ModelName (ModelName),
-    ModelRow (ModelRow),
+    Model (Model),
+    InferenceParam (InferenceParam),
     parseOptions,
     mkOptions,
   )
@@ -40,7 +41,6 @@ import Data.Aeson
     (.:),
   )
 import Data.Aeson.Types (Parser)
-import Data.ByteString (ByteString)
 import Data.Int (Int64)
 import Data.String (IsString)
 import Data.Text (Text)
@@ -53,6 +53,7 @@ import Database.PostgreSQL.Simple
     ToRow,
   )
 import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
@@ -95,13 +96,23 @@ newtype ModelName = ModelName Text
   deriving stock (Show, Generic)
   deriving newtype (Eq, FromField, ToField, IsString)
 
-data ModelRow = ModelRow
-  { id :: Id ModelRow,
+data Model = Model
+  { id :: Id Model,
     name :: ModelName,
     -- The actual contents of the model
-    model :: ByteString,
+    contents :: Oid,
+    version :: Text,
     -- Not currently used
-    user :: Maybe (Id User)
+    user :: Maybe User
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromRow, ToRow)
+
+data InferenceParam = InferenceParam
+  { id :: Id InferenceParam,
+    -- FIXME Better type
+    script :: Text,
+    user :: User
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)

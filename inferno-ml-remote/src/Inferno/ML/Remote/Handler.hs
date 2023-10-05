@@ -14,23 +14,19 @@ import Control.Monad.Reader.Class (asks)
 import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
-import Data.Foldable (for_)
 import Data.Function ((&))
 import Data.Generics.Labels ()
-import Data.Generics.Product (HasType (typed))
 import qualified Data.Map as Map
 import qualified Data.Text as Text
 import Inferno.Core (Interpreter (Interpreter, defaultEnv, evalExpr))
 import Inferno.ML.Remote.Types
   ( EvalResult (EvalResult),
     InfernoMlRemoteM,
-    ModelCache,
     Script,
     SomeInfernoError (SomeInfernoError),
   )
 import Inferno.ML.Remote.Utils
   ( cacheAndUseModel,
-    collectModelNames,
     mkFinalAst,
   )
 import Inferno.ML.Types.Value (MlValue)
@@ -39,7 +35,7 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (view, (^.))
 import Servant (ServerError (errBody), err500)
-import System.Directory
+import UnliftIO.Directory
   ( getCurrentDirectory,
     setCurrentDirectory,
   )
@@ -47,10 +43,11 @@ import System.Directory
 runInferenceHandler :: Interpreter MlValue -> Script -> InfernoMlRemoteM EvalResult
 runInferenceHandler interpreter src = do
   ast <- liftEither500 $ mkFinalAst interpreter src
-  cwd <- liftIO getCurrentDirectory
-  store <- asks $ view #modelStore
+  cwd <- getCurrentDirectory
   cache <- asks $ view #modelCache
-  for_ (collectModelNames ast) $ \m -> cacheAndUseModel m cache store
+  store <- asks $ view #modelStore
+  -- FIXME
+  liftIO $ cacheAndUseModel store cache undefined
   -- Change working directories to the model cache so that Hasktorch
   -- can find the models using relative paths (otherwise the AST would need
   -- to be updated to use an absolute path)
@@ -61,8 +58,8 @@ runInferenceHandler interpreter src = do
   -- (because it uses `ExceptT`), so it's easier just to `bracket` it
   -- directly
   bracket_
-    (cache ^. typed @ModelCache . #path & liftIO . setCurrentDirectory)
-    (cwd & liftIO . setCurrentDirectory)
+    (cache ^. #path & setCurrentDirectory)
+    (setCurrentDirectory cwd)
     $ runEval interpreter ast
   where
     runEval ::
