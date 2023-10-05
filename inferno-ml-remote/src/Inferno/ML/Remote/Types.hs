@@ -19,6 +19,7 @@ module Inferno.ML.Remote.Types
     Id (Id),
     ModelName (ModelName),
     Model (Model),
+    User (User),
     InferenceParam (InferenceParam),
     InferenceRequest (InferenceRequest),
     ModelRequest (ModelRequest),
@@ -134,20 +135,13 @@ newtype User = User Text
       ToJSON
     )
 
--- instance FromJSON ModelStoreOption where
---   parseJSON = withObject "ModelCacheOption" $ \o ->
---     asum
---       [ PathOption <$> o .: "path",
---         fmap PostgresOption $ connInfoP =<< o .: "postgres"
---       ]
-
 instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->
     ModelCache <$> o .: "path" <*> o .: "max-size"
 
 data InferenceRequest = InferenceRequest
   { parameter :: Id InferenceParam,
-    user :: Maybe User,
+    user :: User,
     model :: ModelRequest
   }
   deriving stock (Show, Eq, Generic)
@@ -222,6 +216,8 @@ parseOptions = Options.execParser opts
 data RemoteError
   = CacheSizeExceeded
   | NoSuchModel ModelName
+  | NoSuchParameter (Id InferenceParam)
+  | OtherError String
   deriving stock (Show, Eq, Generic)
 
 instance Exception RemoteError where
@@ -233,6 +229,9 @@ instance Exception RemoteError where
           "'" <> Text.unpack m <> "'",
           "does not exist in the store"
         ]
+    NoSuchParameter iid ->
+      unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
+    OtherError e -> e
 
 data SomeInfernoError where
   SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
