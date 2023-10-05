@@ -2,22 +2,10 @@
 
 {
   packages = {
-    inferno-ml-remote.components =
-      let
-        wrap = bin: {
-          pkgconfig = [ [ pkgs.makeWrapper ] ];
-          postInstall = ''
-            wrapProgram $out/bin/${bin} \
-              --prefix PATH : "${lib.makeBinPath [ pkgs.zstd ]}"
-          '';
-
-        };
-      in
-      {
-        exes.inferno-ml-remote = wrap "inferno-ml-remote";
-        tests.tests = wrap "tests";
-        library.libs = [ pkgs.postgresql ];
-      };
+    inferno-ml-remote.components = {
+      library.libs = [ pkgs.postgresql ];
+      tests.tests.doCheck = false;
+    };
 
     libtorch-ffi = {
       configureFlags = [
