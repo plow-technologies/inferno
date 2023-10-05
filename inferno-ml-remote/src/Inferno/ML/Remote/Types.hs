@@ -13,8 +13,8 @@ module Inferno.ML.Remote.Types
     Options (Options),
     Script (Script),
     InferenceResponse (InferenceResponse),
-    InfernoMlRemoteM,
-    InfernoMlRemoteEnv (InfernoMlRemoteEnv),
+    RemoteM,
+    Env (Env),
     ModelStore (..),
     ModelStoreOption (..),
     ModelCache (ModelCache),
@@ -59,14 +59,14 @@ import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import qualified Options.Applicative as Options
-import Servant (Handler, JSON, Post, ReqBody, (:>))
+import Servant (JSON, Post, ReqBody, (:>))
 
 type InfernoMlRemoteAPI =
   "inference" :> ReqBody '[JSON] InferenceRequest :> Post '[JSON] InferenceResponse
 
-type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
+type RemoteM = ReaderT Env IO
 
-data InfernoMlRemoteEnv = InfernoMlRemoteEnv
+data Env = Env
   { modelCache :: ModelCache,
     modelStore :: ModelStore
   }

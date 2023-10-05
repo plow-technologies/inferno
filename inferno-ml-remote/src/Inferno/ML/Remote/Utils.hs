@@ -26,7 +26,7 @@ import Database.PostgreSQL.Simple (Only (Only), query)
 import Inferno.Core (Interpreter (Interpreter, parseAndInferTypeReps))
 import Inferno.ML.Remote.Types
   ( InfernoMlRemoteError (CacheSizeExceeded, NoSuchModel),
-    InfernoMlRemoteM,
+    RemoteM,
     Model,
     ModelCache,
     ModelName (ModelName),
@@ -72,8 +72,8 @@ mkFinalAst Interpreter {parseAndInferTypeReps} (Script src) =
 -- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
 -- be exceeded by adding the new model. If the model is already cached, it sets
 -- the access time
-cacheAndUseModel :: MonadUnliftIO m => ModelStore -> ModelCache -> ModelName -> m ()
-cacheAndUseModel _ _ (ModelName _) = undefined
+cacheAndUseModel :: ModelName -> RemoteM ()
+cacheAndUseModel (ModelName _) = undefined
 
 modelsByAccessTime :: forall m. MonadIO m => FilePath -> m [FilePath]
 modelsByAccessTime = sortByM compareAccessTime <=< listDirectory

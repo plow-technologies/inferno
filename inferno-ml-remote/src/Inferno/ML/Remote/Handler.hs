@@ -7,22 +7,20 @@ module Inferno.ML.Remote.Handler
 where
 
 import Control.Exception (Exception (displayException))
-import Control.Monad.Catch (bracket_)
-import Control.Monad.Except (MonadError (throwError))
+import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader.Class (asks)
 import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Coerce (coerce)
 import Data.Function ((&))
-import Data.Generics.Labels ()
 import qualified Data.Map as Map
 import qualified Data.Text as Text
 import Inferno.Core (Interpreter (Interpreter, defaultEnv, evalExpr))
 import Inferno.ML.Remote.Types
   ( InferenceRequest,
     InferenceResponse (InferenceResponse),
-    InfernoMlRemoteM,
+    RemoteM,
     SomeInfernoError (SomeInfernoError),
   )
 import Inferno.ML.Remote.Utils
@@ -35,45 +33,33 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (view, (^.))
 import Servant (ServerError (errBody), err500)
-import UnliftIO.Directory
-  ( getCurrentDirectory,
-    setCurrentDirectory,
-  )
+import UnliftIO.Directory (withCurrentDirectory)
 
-runInferenceHandler :: Interpreter MlValue -> InferenceRequest -> InfernoMlRemoteM InferenceResponse
+runInferenceHandler ::
+  Interpreter MlValue -> InferenceRequest -> RemoteM InferenceResponse
 runInferenceHandler interpreter req = do
   -- FIXME
   script <- req ^. #parameter & undefined
   ast <- liftEither500 $ mkFinalAst interpreter script
-  cwd <- getCurrentDirectory
   cache <- asks $ view #modelCache
-  store <- asks $ view #modelStore
   -- FIXME
-  liftIO $ cacheAndUseModel store cache undefined
+  cacheAndUseModel undefined
   -- Change working directories to the model cache so that Hasktorch
   -- can find the models using relative paths (otherwise the AST would need
   -- to be updated to use an absolute path)
-  --
-  -- NOTE
-  -- We can't use `withCurrentDirectory` here because it expects an IO action
-  -- to run in between. And there's no `UnliftIO` instance for `Handler`
-  -- (because it uses `ExceptT`), so it's easier just to `bracket` it
-  -- directly
-  bracket_
-    (cache ^. #path & setCurrentDirectory)
-    (setCurrentDirectory cwd)
-    $ runEval interpreter ast
+  withCurrentDirectory (cache ^. #path) $
+    runEval interpreter ast
   where
     runEval ::
       Interpreter MlValue ->
       Expr (Maybe VCObjectHash) SourcePos ->
-      InfernoMlRemoteM InferenceResponse
+      RemoteM InferenceResponse
     runEval Interpreter {evalExpr, defaultEnv} ast =
       fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
         =<< liftIO (evalExpr defaultEnv Map.empty ast)
 
-liftEither500 :: forall e a. Exception e => Either e a -> InfernoMlRemoteM a
-liftEither500 = either (throwError . mk500) pure
+liftEither500 :: forall e a. Exception e => Either e a -> RemoteM a
+liftEither500 = either (throwM . mk500) pure
   where
     mk500 :: Show e => e -> ServerError
     mk500 (ByteString.Lazy.Char8.pack . displayException -> e) =
