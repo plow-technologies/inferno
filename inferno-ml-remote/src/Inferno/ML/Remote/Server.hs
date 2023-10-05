@@ -12,17 +12,15 @@ import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
-import Database.PostgreSQL.Simple (withConnect)
+import Database.PostgreSQL.Simple (Connection, withConnect)
 import Inferno.Core (Interpreter, mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
-  ( InfernoMlRemoteAPI,
-    Env (Env),
-    RemoteM,
-    ModelStore (Paths, Postgres),
-    ModelStoreOption (PathOption, PostgresOption),
+  ( Env (Env),
+    InfernoMlRemoteAPI,
     Options,
+    RemoteM,
     mkOptions,
   )
 import Inferno.ML.Types.Value (MlValue)
@@ -50,16 +48,12 @@ main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
     runServer options =
-      mkInferno mlPrelude >>= \interpreter -> case options ^. #modelStore of
-        PathOption p ->
-          run . infernoMlRemote interpreter . mkEnv $
-            Paths p
-        PostgresOption p ->
-          withConnect p $
-            run . infernoMlRemote interpreter . mkEnv . Postgres
+      mkInferno mlPrelude >>= \interpreter ->
+        withConnect (options ^. #store) $
+          run . infernoMlRemote interpreter . mkEnv
       where
-        mkEnv :: ModelStore -> Env
-        mkEnv = Env $ view #modelCache options
+        mkEnv :: Connection -> Env
+        mkEnv = Env $ view #cache options
 
         run :: Application -> IO ()
         run app = withStdoutLogger $ (`runSettings` app) . mkSettings

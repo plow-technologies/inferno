@@ -10,28 +10,26 @@
 
 module Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
+    RemoteM,
+    Env (Env),
     Options (Options),
     Script (Script),
     InferenceResponse (InferenceResponse),
-    RemoteM,
-    Env (Env),
-    ModelStore (..),
-    ModelStoreOption (..),
     ModelCache (ModelCache),
-    SomeInfernoError (..),
-    InfernoMlRemoteError (..),
     Id (Id),
     ModelName (ModelName),
     Model (Model),
     InferenceParam (InferenceParam),
     InferenceRequest (InferenceRequest),
     ModelRequest (ModelRequest),
+    SomeInfernoError (..),
+    RemoteError (..),
     parseOptions,
     mkOptions,
   )
 where
 
-import Control.Applicative (asum, (<**>))
+import Control.Applicative ((<**>))
 import Control.Exception (Exception (displayException), throwIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
@@ -67,20 +65,10 @@ type InfernoMlRemoteAPI =
 type RemoteM = ReaderT Env IO
 
 data Env = Env
-  { modelCache :: ModelCache,
-    modelStore :: ModelStore
+  { cache :: ModelCache,
+    store :: Connection
   }
   deriving stock (Generic)
-
--- | The actual model store itself, not the 'ModelStoreOption', which only specifies
--- how the store should be connected to. For the 'Paths' option, this is simple, but
--- for other backends there will need to be initialization, thus the two separate
--- types
-data ModelStore
-  = -- | Path to source directory holding models
-    Paths FilePath
-  | Postgres Connection
-  deriving stock (Eq, Generic)
 
 -- | Config for caching ML models to be used with Inferno scripts. When a script
 -- uses @ML.loadModel@, models will be copied from the source configured in
@@ -120,7 +108,7 @@ data Model = Model
 data InferenceParam = InferenceParam
   { id :: Id InferenceParam,
     -- FIXME Better type
-    script :: Text,
+    script :: Script,
     user :: User
   }
   deriving stock (Show, Eq, Generic)
@@ -146,46 +134,12 @@ newtype User = User Text
       ToJSON
     )
 
--- | Generic container for errors that may arise when parsing\/typechecking
--- Inferno scripts in handlers. It doesn\'t matter what the specific error is
--- as it will only be used in a 400 or 500 response with a message body containing
--- the error
-data SomeInfernoError where
-  SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
-
-deriving stock instance Show SomeInfernoError
-
-instance Exception SomeInfernoError where
-  displayException (SomeInfernoError x) = show x
-
--- TODO
--- Add more ways to load?
-data ModelStoreOption
-  = -- | Path to source directory holding models
-    PathOption FilePath
-  | PostgresOption ConnectInfo
-  deriving stock (Show, Eq, Generic)
-
-instance FromJSON ModelStoreOption where
-  parseJSON = withObject "ModelCacheOption" $ \o ->
-    asum
-      [ PathOption <$> o .: "path",
-        fmap PostgresOption $ connInfoP =<< o .: "postgres"
-      ]
-    where
-      connInfoP :: Object -> Parser ConnectInfo
-      connInfoP o =
-        ConnectInfo
-          <$> o
-          .: "host"
-          <*> o
-          .: "port"
-          <*> o
-          .: "user"
-          <*> o
-          .: "password"
-          <*> o
-          .: "database"
+-- instance FromJSON ModelStoreOption where
+--   parseJSON = withObject "ModelCacheOption" $ \o ->
+--     asum
+--       [ PathOption <$> o .: "path",
+--         fmap PostgresOption $ connInfoP =<< o .: "postgres"
+--       ]
 
 instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->
@@ -208,22 +162,45 @@ data ModelRequest = ModelRequest
 
 newtype Script = Script Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON, IsString)
+  deriving newtype
+    ( Eq,
+      FromJSON,
+      ToJSON,
+      IsString,
+      FromField,
+      ToField
+    )
 
+-- FIXME
+-- The endpoint should return something structured
 newtype InferenceResponse = InferenceResponse Text
   deriving stock (Show, Generic)
   deriving newtype (Eq, FromJSON, ToJSON, IsString)
 
 data Options = Options
   { port :: Word64,
-    modelCache :: ModelCache,
-    modelStore :: ModelStoreOption
+    cache :: ModelCache,
+    store :: ConnectInfo
   }
   deriving stock (Show, Eq, Generic)
 
 instance FromJSON Options where
   parseJSON = withObject "Options" $ \o ->
-    Options <$> o .: "port" <*> o .: "model-cache" <*> o .: "model-store"
+    Options <$> o .: "port" <*> o .: "cache" <*> (connInfoP =<< o .: "store")
+    where
+      connInfoP :: Object -> Parser ConnectInfo
+      connInfoP o =
+        ConnectInfo
+          <$> o
+          .: "host"
+          <*> o
+          .: "port"
+          <*> o
+          .: "user"
+          <*> o
+          .: "password"
+          <*> o
+          .: "database"
 
 mkOptions :: IO Options
 mkOptions =
@@ -242,12 +219,12 @@ parseOptions = Options.execParser opts
     cfgFileP :: Options.Parser FilePath
     cfgFileP = Options.strOption $ Options.long "config" <> Options.metavar "FILEPATH"
 
-data InfernoMlRemoteError
+data RemoteError
   = CacheSizeExceeded
   | NoSuchModel ModelName
   deriving stock (Show, Eq, Generic)
 
-instance Exception InfernoMlRemoteError where
+instance Exception RemoteError where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
     NoSuchModel (ModelName m) ->
@@ -256,3 +233,11 @@ instance Exception InfernoMlRemoteError where
           "'" <> Text.unpack m <> "'",
           "does not exist in the store"
         ]
+
+data SomeInfernoError where
+  SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
+
+deriving stock instance Show SomeInfernoError
+
+instance Exception SomeInfernoError where
+  displayException (SomeInfernoError x) = show x

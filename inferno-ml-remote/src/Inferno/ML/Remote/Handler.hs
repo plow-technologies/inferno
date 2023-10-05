@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Inferno.ML.Remote.Handler
   ( runInferenceHandler,
@@ -43,7 +44,7 @@ runInferenceHandler interpreter req = do
   -- FIXME
   script <- req ^. #parameter & undefined
   ast <- liftEither500 $ mkFinalAst interpreter script
-  cache <- asks $ view #modelCache
+  cache <- asks $ view #cache
   -- FIXME
   cacheAndUseModel undefined
   -- Change working directories to the model cache so that Hasktorch
