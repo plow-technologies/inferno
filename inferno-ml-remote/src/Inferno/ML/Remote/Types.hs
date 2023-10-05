@@ -12,7 +12,7 @@ module Inferno.ML.Remote.Types
   ( InfernoMlRemoteAPI,
     Options (Options),
     Script (Script),
-    EvalResult (EvalResult),
+    InferenceResponse (InferenceResponse),
     InfernoMlRemoteM,
     InfernoMlRemoteEnv (InfernoMlRemoteEnv),
     ModelStore (..),
@@ -24,6 +24,8 @@ module Inferno.ML.Remote.Types
     ModelName (ModelName),
     Model (Model),
     InferenceParam (InferenceParam),
+    InferenceRequest (InferenceRequest),
+    ModelRequest (ModelRequest),
     parseOptions,
     mkOptions,
   )
@@ -60,7 +62,7 @@ import qualified Options.Applicative as Options
 import Servant (Handler, JSON, Post, ReqBody, (:>))
 
 type InfernoMlRemoteAPI =
-  "inference" :> ReqBody '[JSON] Script :> Post '[JSON] EvalResult
+  "inference" :> ReqBody '[JSON] InferenceRequest :> Post '[JSON] InferenceResponse
 
 type InfernoMlRemoteM = ReaderT InfernoMlRemoteEnv Handler
 
@@ -94,7 +96,14 @@ data ModelCache = ModelCache
 
 newtype ModelName = ModelName Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromField, ToField, IsString)
+  deriving newtype
+    ( Eq,
+      FromField,
+      ToField,
+      IsString,
+      FromJSON,
+      ToJSON
+    )
 
 data Model = Model
   { id :: Id Model,
@@ -119,11 +128,23 @@ data InferenceParam = InferenceParam
 
 newtype Id a = Id Int64
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromField, ToField)
+  deriving newtype
+    ( Eq,
+      FromField,
+      ToField,
+      FromJSON,
+      ToJSON
+    )
 
 newtype User = User Text
   deriving stock (Show, Generic)
-  deriving newtype (Eq, FromField, ToField)
+  deriving newtype
+    ( Eq,
+      FromField,
+      ToField,
+      FromJSON,
+      ToJSON
+    )
 
 -- | Generic container for errors that may arise when parsing\/typechecking
 -- Inferno scripts in handlers. It doesn\'t matter what the specific error is
@@ -170,6 +191,29 @@ instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->
     ModelCache <$> o .: "path" <*> o .: "max-size"
 
+data InferenceRequest = InferenceRequest
+  { parameter :: Id InferenceParam,
+    user :: Maybe User,
+    model :: ModelRequest
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+data ModelRequest = ModelRequest
+  { name :: ModelName,
+    version :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+newtype Script = Script Text
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromJSON, ToJSON, IsString)
+
+newtype InferenceResponse = InferenceResponse Text
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromJSON, ToJSON, IsString)
+
 data Options = Options
   { port :: Word64,
     modelCache :: ModelCache,
@@ -180,37 +224,6 @@ data Options = Options
 instance FromJSON Options where
   parseJSON = withObject "Options" $ \o ->
     Options <$> o .: "port" <*> o .: "model-cache" <*> o .: "model-store"
-
-newtype Script = Script Text
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON, IsString)
-
-newtype EvalResult = EvalResult Text
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON, IsString)
-
-data InfernoMlRemoteError
-  = CacheSizeExceeded
-  | NoSuchModel ModelName
-  | ExternalProcessFailed FilePath Int
-  deriving stock (Show, Eq, Generic)
-
-instance Exception InfernoMlRemoteError where
-  displayException = \case
-    CacheSizeExceeded -> "Model exceeds maximum cache size"
-    ExternalProcessFailed p ec ->
-      unwords
-        [ "Process",
-          "'" <> p <> "'",
-          "failed with exit code",
-          show ec
-        ]
-    NoSuchModel (ModelName m) ->
-      unwords
-        [ "Model:",
-          "'" <> Text.unpack m <> "'",
-          "does not exist in the store"
-        ]
 
 mkOptions :: IO Options
 mkOptions =
@@ -228,3 +241,18 @@ parseOptions = Options.execParser opts
 
     cfgFileP :: Options.Parser FilePath
     cfgFileP = Options.strOption $ Options.long "config" <> Options.metavar "FILEPATH"
+
+data InfernoMlRemoteError
+  = CacheSizeExceeded
+  | NoSuchModel ModelName
+  deriving stock (Show, Eq, Generic)
+
+instance Exception InfernoMlRemoteError where
+  displayException = \case
+    CacheSizeExceeded -> "Model exceeds maximum cache size"
+    NoSuchModel (ModelName m) ->
+      unwords
+        [ "Model:",
+          "'" <> Text.unpack m <> "'",
+          "does not exist in the store"
+        ]

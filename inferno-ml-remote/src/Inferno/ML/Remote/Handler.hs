@@ -20,9 +20,9 @@ import qualified Data.Map as Map
 import qualified Data.Text as Text
 import Inferno.Core (Interpreter (Interpreter, defaultEnv, evalExpr))
 import Inferno.ML.Remote.Types
-  ( EvalResult (EvalResult),
+  ( InferenceRequest,
+    InferenceResponse (InferenceResponse),
     InfernoMlRemoteM,
-    Script,
     SomeInfernoError (SomeInfernoError),
   )
 import Inferno.ML.Remote.Utils
@@ -40,9 +40,11 @@ import UnliftIO.Directory
     setCurrentDirectory,
   )
 
-runInferenceHandler :: Interpreter MlValue -> Script -> InfernoMlRemoteM EvalResult
-runInferenceHandler interpreter src = do
-  ast <- liftEither500 $ mkFinalAst interpreter src
+runInferenceHandler :: Interpreter MlValue -> InferenceRequest -> InfernoMlRemoteM InferenceResponse
+runInferenceHandler interpreter req = do
+  -- FIXME
+  script <- req ^. #parameter & undefined
+  ast <- liftEither500 $ mkFinalAst interpreter script
   cwd <- getCurrentDirectory
   cache <- asks $ view #modelCache
   store <- asks $ view #modelStore
@@ -65,7 +67,7 @@ runInferenceHandler interpreter src = do
     runEval ::
       Interpreter MlValue ->
       Expr (Maybe VCObjectHash) SourcePos ->
-      InfernoMlRemoteM EvalResult
+      InfernoMlRemoteM InferenceResponse
     runEval Interpreter {evalExpr, defaultEnv} ast =
       fmap (coerce . Text.strip . renderPretty) . liftEither500 . first SomeInfernoError
         =<< liftIO (evalExpr defaultEnv Map.empty ast)
