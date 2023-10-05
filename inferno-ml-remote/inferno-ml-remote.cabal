@@ -40,9 +40,9 @@ library
   exposed-modules:
     Inferno.ML.Remote.Client
     Inferno.ML.Remote.Handler
+    Inferno.ML.Remote.Handler.Utils
     Inferno.ML.Remote.Server
     Inferno.ML.Remote.Types
-    Inferno.ML.Remote.Utils
 
   hs-source-dirs:  src
   build-depends:
