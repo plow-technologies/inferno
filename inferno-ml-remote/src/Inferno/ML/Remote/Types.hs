@@ -22,7 +22,7 @@ module Inferno.ML.Remote.Types
     User (User),
     InferenceParam (InferenceParam),
     InferenceRequest (InferenceRequest),
-    ModelRequest (ModelRequest),
+    RequestedModel (RequestedModel),
     SomeInfernoError (..),
     RemoteError (..),
     parseOptions,
@@ -142,12 +142,12 @@ instance FromJSON ModelCache where
 data InferenceRequest = InferenceRequest
   { parameter :: Id InferenceParam,
     user :: User,
-    model :: ModelRequest
+    model :: RequestedModel
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-data ModelRequest = ModelRequest
+data RequestedModel = RequestedModel
   { name :: ModelName,
     version :: Text
   }

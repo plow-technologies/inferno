@@ -20,7 +20,7 @@ import Data.Function ((&))
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Database.PostgreSQL.Simple (Only (Only, fromOnly), Query)
+import Database.PostgreSQL.Simple (Only (Only, fromOnly), Query, withTransaction)
 import Database.PostgreSQL.Simple.LargeObjects
   ( IOMode (ReadMode),
     Oid,
@@ -43,7 +43,6 @@ import Inferno.ML.Remote.Types
     InferenceResponse (InferenceResponse),
     Model,
     ModelCache,
-    ModelRequest,
     RemoteError
       ( CacheSizeExceeded,
         NoSuchModel,
@@ -51,6 +50,7 @@ import Inferno.ML.Remote.Types
         OtherError
       ),
     RemoteM,
+    RequestedModel,
     SomeInfernoError (SomeInfernoError),
     User,
   )
@@ -60,6 +60,7 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (to, unpacked, view, (^.))
 import System.FilePath (joinPath, takeDirectory)
+import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Directory
   ( doesPathExist,
     getAccessTime,
@@ -68,6 +69,7 @@ import UnliftIO.Directory
     removeFile,
     withCurrentDirectory,
   )
+import UnliftIO.Exception (bracket)
 import UnliftIO.IO.File (writeBinaryFile)
 
 runInferenceHandler ::
@@ -113,7 +115,7 @@ getModelSize oid =
     q :: Query
     q =
       [sql|
-        SELECT sum(lenth(lo.data)), 0 FROM pg_largeobject lo
+        SELECT sum(length(lo.data)), 0 FROM pg_largeobject lo
         WHERE lo.loid = ?
       |]
 
@@ -121,8 +123,8 @@ getModelSize oid =
 -- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
 -- be exceeded by adding the new model. If the model is already cached, it sets
 -- the access time
-getAndCacheModel :: ModelCache -> ModelRequest -> RemoteM FilePath
-getAndCacheModel cache mr = do
+getAndCacheModel :: ModelCache -> RequestedModel -> RemoteM FilePath
+getAndCacheModel cache rm = do
   unlessM (doesPathExist path) $ do
     model <- queryModel
     (size, contents) <- model ^. #contents & getModelContents
@@ -131,18 +133,18 @@ getAndCacheModel cache mr = do
   pure path
   where
     getModelContents :: Oid -> RemoteM (Integer, ByteString)
-    getModelContents m = do
-      conn <- asks $ view #store
-      size <- getModelSize m
-      fd <- liftIO $ loOpen conn m ReadMode
-      bs <- liftIO . loRead conn fd $ fromIntegral size
-      liftIO $ loClose conn fd
-      pure (size, bs)
+    getModelContents m =
+      asks (view #store) >>= \conn -> withRunInIO $ \r ->
+        withTransaction conn . r $ do
+          size <- getModelSize m
+          bs <- liftIO . bracket (loOpen conn m ReadMode) (loClose conn) $
+            \fd -> loRead conn fd $ fromIntegral size
+          pure (size, bs)
 
     queryModel :: RemoteM Model
     queryModel =
-      firstOrThrow (NoSuchModel (view #name mr))
-        =<< queryStore q (mr ^. #name, mr ^. #version)
+      firstOrThrow (NoSuchModel (view #name rm))
+        =<< queryStore q (rm ^. #name, rm ^. #version)
       where
         -- NOTE
         -- In the future, users will be able to add their own models. This is not
@@ -162,8 +164,8 @@ getAndCacheModel cache mr = do
     path =
       joinPath
         [ cache ^. #path,
-          mr ^. #version . unpacked,
-          mr ^. #name . to wrappedTo . unpacked
+          rm ^. #version . unpacked,
+          rm ^. #name . to wrappedTo . unpacked
         ]
 
     maxSize :: Integer
