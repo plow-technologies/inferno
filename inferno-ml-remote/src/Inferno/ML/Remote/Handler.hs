@@ -20,7 +20,11 @@ import Data.Function ((&))
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.Map as Map
 import qualified Data.Text as Text
-import Database.PostgreSQL.Simple (Only (Only, fromOnly), Query, withTransaction)
+import Database.PostgreSQL.Simple
+  ( Only (Only, fromOnly),
+    Query,
+    withTransaction,
+  )
 import Database.PostgreSQL.Simple.LargeObjects
   ( IOMode (ReadMode),
     Oid,
@@ -59,14 +63,16 @@ import Inferno.Types.Syntax (Expr, SourcePos)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (to, unpacked, view, (^.))
-import System.FilePath (joinPath, takeDirectory)
+import System.FilePath (takeBaseName, (<.>))
 import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Directory
-  ( doesPathExist,
+  ( createFileLink,
+    doesPathExist,
     getAccessTime,
     getFileSize,
     listDirectory,
     removeFile,
+    removePathForcibly,
     withCurrentDirectory,
   )
 import UnliftIO.Exception (bracket)
@@ -78,11 +84,12 @@ runInferenceHandler interpreter req = do
   script <- view #script <$> getParameter param uid
   ast <- liftEither500 $ mkFinalAst interpreter script
   cache <- asks $ view #cache
-  wd <- req ^. #model & getAndCacheModel cache & fmap takeDirectory
   -- Change working directories to the model cache so that Hasktorch
   -- can find the models using relative paths (otherwise the AST would need
-  -- to be updated to use an absolute path)
-  withCurrentDirectory wd $ runEval interpreter ast
+  -- to be updated to use an absolute versioned)
+  withCurrentDirectory (cache ^. #path) $ do
+    linkVersionedModel =<< getAndCacheModel cache (view #model req)
+    runEval interpreter ast
   where
     runEval ::
       Interpreter MlValue ->
@@ -98,13 +105,23 @@ runInferenceHandler interpreter req = do
     uid :: User
     uid = req ^. #user
 
+-- Link the versioned versioned to the model, e.g. `<name>.<version>` to just
+-- `<name>.ts.pt`, so it can be loaded by Hasktorch
+linkVersionedModel :: FilePath -> RemoteM ()
+linkVersionedModel withVersion = do
+  whenM (doesPathExist withExt) $ removePathForcibly withExt
+  createFileLink withVersion withExt
+  where
+    withExt :: FilePath
+    withExt = takeBaseName withVersion <.> "ts" <.> "pt"
+
 getParameter :: Id InferenceParam -> User -> RemoteM InferenceParam
 getParameter iid u =
   firstOrThrow (NoSuchParameter iid)
     =<< queryStore q (u, iid)
   where
     q :: Query
-    q = [sql| SELECT * FROM params WHERE id = ? AND "user" = ? LIMIT 1|]
+    q = [sql| SELECT * FROM params WHERE id = ? AND "user" = ? LIMIT 1 |]
 
 getModelSize :: Oid -> RemoteM Integer
 getModelSize oid =
@@ -115,22 +132,21 @@ getModelSize oid =
     q :: Query
     q =
       [sql|
-        SELECT sum(length(lo.data)), 0 FROM pg_largeobject lo
+        SELECT sum(length(lo.data)) FROM pg_largeobject lo
         WHERE lo.loid = ?
       |]
 
--- | Takes a model from the model store specified by name and adds it to the model
--- cache, evicting the older previously saved model(s) if the cache 'maxSize' will
--- be exceeded by adding the new model. If the model is already cached, it sets
--- the access time
+-- | Takes a model from the model store specified by name and version and adds
+-- it to the model cache, evicting the older previously saved model(s) if the
+-- cache 'maxSize' will be exceeded by adding the new model
 getAndCacheModel :: ModelCache -> RequestedModel -> RemoteM FilePath
 getAndCacheModel cache rm = do
-  unlessM (doesPathExist path) $ do
+  unlessM (doesPathExist versioned) $ do
     model <- queryModel
     (size, contents) <- model ^. #contents & getModelContents
     checkCacheSize size
-    writeBinaryFile path contents
-  pure path
+    writeBinaryFile versioned contents
+  pure versioned
   where
     getModelContents :: Oid -> RemoteM (Integer, ByteString)
     getModelContents m =
@@ -159,14 +175,12 @@ getAndCacheModel cache rm = do
             AND "user" IS NULL
           |]
 
-    -- Cache the model under its specific version, i.e. `/<version>/<name>`
-    path :: FilePath
-    path =
-      joinPath
-        [ cache ^. #path,
-          rm ^. #version . unpacked,
-          rm ^. #name . to wrappedTo . unpacked
-        ]
+    -- Cache the model with its specific version, i.e. `<name>.ts.pt.<version>`, which
+    -- will later be symlinked to `<name>.ts.pt`
+    versioned :: FilePath
+    versioned =
+      rm ^. #name . to wrappedTo . unpacked
+        & (<.> rm ^. #version . unpacked)
 
     maxSize :: Integer
     maxSize = cache ^. #maxSize & fromIntegral
@@ -177,7 +191,7 @@ getAndCacheModel cache rm = do
       whenM cacheSizeExceeded evictOldModels
       where
         evictOldModels :: RemoteM ()
-        evictOldModels = loopM doEvict =<< modelsByAccessTime (view #path cache)
+        evictOldModels = loopM doEvict =<< modelsByAccessTime "."
 
         doEvict :: [FilePath] -> RemoteM (Either [FilePath] ())
         doEvict = \case
@@ -189,9 +203,11 @@ getAndCacheModel cache rm = do
 
         cacheSizeExceeded :: RemoteM Bool
         cacheSizeExceeded = (>= maxSize) <$> newCacheSize
-
-        newCacheSize :: RemoteM Integer
-        newCacheSize = (+ modelSize) <$> getFileSize (view #path cache)
+          where
+            newCacheSize :: RemoteM Integer
+            newCacheSize =
+              fmap ((+ modelSize) . sum) . traverse getFileSize
+                =<< listDirectory "."
 
 modelsByAccessTime :: forall m. MonadIO m => FilePath -> m [FilePath]
 modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
