@@ -78,10 +78,10 @@ import UnliftIO.Directory
 import UnliftIO.Exception (bracket)
 import UnliftIO.IO.File (writeBinaryFile)
 
-runInferenceHandler ::
-  Interpreter MlValue -> InferenceRequest -> RemoteM InferenceResponse
-runInferenceHandler interpreter req = do
+runInferenceHandler :: InferenceRequest -> RemoteM InferenceResponse
+runInferenceHandler req = do
   script <- view #script <$> getParameter param uid
+  interpreter <- asks $ view #interpreter
   ast <- liftEither500 $ mkFinalAst interpreter script
   cache <- asks $ view #cache
   -- Change working directories to the model cache so that Hasktorch

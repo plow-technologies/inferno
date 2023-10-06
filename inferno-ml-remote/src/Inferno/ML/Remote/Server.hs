@@ -1,5 +1,6 @@
 module Inferno.ML.Remote.Server
   ( InfernoMlRemoteAPI,
+    runInEnv,
     api,
     main,
     infernoMlRemote,
@@ -12,8 +13,8 @@ import Control.Monad.Reader (ReaderT (runReaderT))
 import Data.Function ((&))
 import Data.Generics.Labels ()
 import Data.Proxy (Proxy (Proxy))
-import Database.PostgreSQL.Simple (Connection, withConnect)
-import Inferno.Core (Interpreter, mkInferno)
+import Database.PostgreSQL.Simple (withConnect)
+import Inferno.Core (mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Remote.Handler (runInferenceHandler)
 import Inferno.ML.Remote.Types
@@ -23,7 +24,6 @@ import Inferno.ML.Remote.Types
     RemoteM,
     mkOptions,
   )
-import Inferno.ML.Types.Value (MlValue)
 import Lens.Micro.Platform (view, (^.))
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
@@ -47,14 +47,8 @@ main :: IO ()
 main = runServer =<< mkOptions
   where
     runServer :: Options -> IO ()
-    runServer options =
-      mkInferno mlPrelude >>= \interpreter ->
-        withConnect (options ^. #store) $
-          run . infernoMlRemote interpreter . mkEnv
+    runServer options = runInEnv options $ run . infernoMlRemote
       where
-        mkEnv :: Connection -> Env
-        mkEnv = Env $ view #cache options
-
         run :: Application -> IO ()
         run app = withStdoutLogger $ (`runSettings` app) . mkSettings
 
@@ -64,11 +58,13 @@ main = runServer =<< mkOptions
             & setPort (options ^. #port & fromIntegral)
             & setLogger logger
 
-infernoMlRemote :: Interpreter MlValue -> Env -> Application
-infernoMlRemote interpreter env =
-  serve api
-    . hoistServer api (`toHandler` env)
-    $ server interpreter
+runInEnv :: Options -> (Env -> IO ()) -> IO ()
+runInEnv options f = withConnect (options ^. #store) $ \conn ->
+  f . Env (view #cache options) conn
+    =<< mkInferno mlPrelude
+
+infernoMlRemote :: Env -> Application
+infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
   where
     toHandler :: RemoteM a -> Env -> Handler a
     toHandler m = Handler . ExceptT . try . runReaderT m
@@ -76,5 +72,5 @@ infernoMlRemote interpreter env =
 api :: Proxy InfernoMlRemoteAPI
 api = Proxy
 
-server :: Interpreter MlValue -> ServerT InfernoMlRemoteAPI RemoteM
+server :: ServerT InfernoMlRemoteAPI RemoteM
 server = runInferenceHandler

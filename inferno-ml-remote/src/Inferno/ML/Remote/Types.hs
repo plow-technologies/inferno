@@ -31,7 +31,7 @@ module Inferno.ML.Remote.Types
 where
 
 import Control.Applicative ((<**>))
-import Control.Exception (Exception (displayException), throwIO)
+import Control.Exception (Exception (displayException))
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
@@ -57,8 +57,11 @@ import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
+import Inferno.Core (Interpreter)
+import Inferno.ML.Types.Value (MlValue)
 import qualified Options.Applicative as Options
 import Servant (JSON, Post, ReqBody, (:>))
+import UnliftIO.Exception (throwString)
 
 type InfernoMlRemoteAPI =
   "inference" :> ReqBody '[JSON] InferenceRequest :> Post '[JSON] InferenceResponse
@@ -67,7 +70,8 @@ type RemoteM = ReaderT Env IO
 
 data Env = Env
   { cache :: ModelCache,
-    store :: Connection
+    store :: Connection,
+    interpreter :: Interpreter MlValue
   }
   deriving stock (Generic)
 
@@ -198,7 +202,7 @@ instance FromJSON Options where
 
 mkOptions :: IO Options
 mkOptions =
-  either (throwIO . userError) pure
+  either throwString pure
     =<< eitherDecodeFileStrict @Options
     =<< parseOptions
 
