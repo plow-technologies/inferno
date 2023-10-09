@@ -16,7 +16,7 @@ import Data.Proxy (Proxy (Proxy))
 import Database.PostgreSQL.Simple (withConnect)
 import Inferno.Core (mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Remote.Handler (runInferenceHandler)
+import Inferno.ML.Remote.Handler.Inference (runInferenceHandler)
 import Inferno.ML.Remote.Types
   ( Env (Env),
     InfernoMlRemoteAPI,
