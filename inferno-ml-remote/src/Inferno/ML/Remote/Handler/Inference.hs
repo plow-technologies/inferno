@@ -50,7 +50,7 @@ import Inferno.Types.Syntax (Expr, SourcePos)
 import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Lens.Micro.Platform (to, unpacked, view, (^.))
-import System.FilePath (takeBaseName, (<.>))
+import System.FilePath (dropExtensions, (<.>))
 import UnliftIO.Directory
   ( createFileLink,
     doesPathExist,
@@ -98,7 +98,7 @@ linkVersionedModel withVersion = do
   createFileLink withVersion withExt
   where
     withExt :: FilePath
-    withExt = takeBaseName withVersion <.> "ts" <.> "pt"
+    withExt = dropExtensions withVersion <.> "ts" <.> "pt"
 
 getParameter :: Id InferenceParam -> User -> RemoteM InferenceParam
 getParameter iid u =

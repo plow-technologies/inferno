@@ -41,12 +41,6 @@ source-repository-package
     tag: 2d0fe9b2f0aa0e1aefc7bfed95a501e59486afb0
     subdir: inline-c-cpp
 
-source-repository-package
-    type: git
-    location: https://github.com/reach-sh/haskell-hexstring
-    --sha256: 1ji81zbflw07fjp4zazxc2h55b47laji24m0xnmxvmwyic8zlq8k
-    tag: 085c16fb21b9f856a435a3faab980e7e0b319341
-
 -- TODO
 -- `hasktorch` configures these automatically as well in their
 -- haskell.nix setup

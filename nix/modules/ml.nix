@@ -4,7 +4,6 @@
   packages = {
     inferno-ml-remote.components = {
       library.libs = [ pkgs.postgresql ];
-      tests.tests.doCheck = false;
     };
 
     libtorch-ffi = {
