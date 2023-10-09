@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.7.0.0 -- 2023-10-09
+* Breaking change: Make some Array functions total by returning options
+
 ## 0.6.1.0 -- 2023-10-03
 * Add function composition, pipe, fst, snd, and zip
 
