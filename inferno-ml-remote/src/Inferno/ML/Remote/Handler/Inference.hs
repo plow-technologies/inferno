@@ -3,6 +3,8 @@
 
 module Inferno.ML.Remote.Handler.Inference
   ( runInferenceHandler,
+    getAndCacheModel,
+    linkVersionedModel,
   )
 where
 
@@ -61,7 +63,7 @@ import UnliftIO.Directory
     removePathForcibly,
     withCurrentDirectory,
   )
-import UnliftIO.IO.File (writeBinaryFile)
+import UnliftIO.IO.File (writeBinaryFileDurableAtomic)
 
 runInferenceHandler :: InferenceRequest -> RemoteM InferenceResponse
 runInferenceHandler req = do
@@ -117,7 +119,7 @@ getAndCacheModel cache rm = do
     model <- getModel rm
     (size, contents) <- model ^. #contents & getModelContents
     checkCacheSize size
-    writeBinaryFile versioned contents
+    writeBinaryFileDurableAtomic versioned contents
   pure versioned
   where
     -- Cache the model with its specific version, i.e. `<name>.ts.pt.<version>`, which
