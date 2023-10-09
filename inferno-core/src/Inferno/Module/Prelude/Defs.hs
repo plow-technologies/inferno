@@ -470,8 +470,8 @@ minimumFun =
 maximumFun :: (MonadThrow m) => Value c m
 maximumFun =
   VFun $ \case
-    VArray [] -> throwM $ RuntimeError "maximum: expecting a non-empty array"
-    VArray xs -> return $ fst $ maximumBy (comparing snd) $ keepNumberValues xs
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ fst $ maximumBy (comparing snd) $ keepNumberValues xs
     _ -> throwM $ RuntimeError "maximum: expecting an array"
 
 averageFun :: (MonadThrow m) => Value c m

@@ -391,7 +391,7 @@ module Array
   minimum: forall 'a. array of 'a -> double := ###!minimumFun###;
 
   @doc The maximum value in an array;
-  maximum: forall 'a. array of 'a -> double := ###!maximumFun###;
+  maximum: forall 'a. array of 'a -> option of double := ###!maximumFun###;
 
   @doc The average of the values in an array;
   average: forall 'a. array of 'a -> double := ###!averageFun###;
