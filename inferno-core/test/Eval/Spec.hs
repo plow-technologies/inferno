@@ -243,7 +243,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.singleton 3.14" $ VArray [VDouble 3.14]
     shouldEvaluateTo "Array.length []" $ VInt 0
     shouldEvaluateTo "Array.length [3.0, 4.0]" $ VInt 2
-    shouldEvaluateTo "Array.minimum [3.0, 4.0]" $ VDouble 3.0
+    shouldEvaluateTo "Array.minimum [3.0, 4.0] ? -999" $ VDouble 3.0
     shouldEvaluateTo "Array.maximum [3.0, 4.0] ? 999" $ VDouble 4.0
     shouldEvaluateTo "Array.average [0.0, 1.0] ? 0" $ VDouble 0.5
     shouldEvaluateTo "Array.argmin [3.0, 4.0] ? 1" $ VInt 0

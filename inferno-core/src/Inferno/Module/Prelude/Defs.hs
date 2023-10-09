@@ -463,8 +463,8 @@ keepNumberValues =
 minimumFun :: (MonadThrow m) => Value c m
 minimumFun =
   VFun $ \case
-    VArray [] -> pure $ VDouble 0
-    VArray xs -> return $ fst $ minimumBy (comparing snd) $ keepNumberValues xs
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ fst $ minimumBy (comparing snd) $ keepNumberValues xs
     _ -> throwM $ RuntimeError "minimum: expecting an array"
 
 maximumFun :: (MonadThrow m) => Value c m

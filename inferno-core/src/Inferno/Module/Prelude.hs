@@ -387,8 +387,8 @@ module Array
 
   length : forall 'a. array of 'a -> int := ###!lengthFun###;
 
-  @doc The minimum value in an array (or 0.0 for empty arrays);
-  minimum: forall 'a. array of 'a -> double := ###!minimumFun###;
+  @doc The minimum value in an array, or `None` if empty;
+  minimum: forall 'a. array of 'a -> option of double := ###!minimumFun###;
 
   @doc The maximum value in an array, or `None` if empty;
   maximum: forall 'a. array of 'a -> option of double := ###!maximumFun###;
