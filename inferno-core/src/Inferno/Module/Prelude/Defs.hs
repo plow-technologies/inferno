@@ -463,7 +463,7 @@ keepNumberValues =
 minimumFun :: (MonadThrow m) => Value c m
 minimumFun =
   VFun $ \case
-    VArray [] -> throwM $ RuntimeError "minimum: expecting a non-empty array"
+    VArray [] -> pure $ VDouble 0
     VArray xs -> return $ fst $ minimumBy (comparing snd) $ keepNumberValues xs
     _ -> throwM $ RuntimeError "minimum: expecting an array"
 
@@ -477,8 +477,8 @@ maximumFun =
 averageFun :: (MonadThrow m) => Value c m
 averageFun =
   VFun $ \case
-    VArray [] -> throwM $ RuntimeError "average: expecting a non-empty array"
-    VArray xs -> return $ VDouble $ sum (mapMaybe toDouble xs) / fromIntegral (length xs)
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ VDouble $ sum (mapMaybe toDouble xs) / fromIntegral (length xs)
     _ -> throwM $ RuntimeError "average: expecting an array"
   where
     toDouble :: Value c m -> Maybe Double
@@ -490,7 +490,8 @@ averageFun =
 argminFun :: (MonadThrow m) => Value c m
 argminFun =
   VFun $ \case
-    VArray xs -> pure $ VInt $ fromIntegral $ argMin' $ map snd $ keepNumberValues xs
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ VInt $ fromIntegral $ argMin' $ map snd $ keepNumberValues xs
     _ -> throwM $ RuntimeError "argmin: expecting an array"
   where
     argMin' :: [Double] -> Int
@@ -499,7 +500,8 @@ argminFun =
 argmaxFun :: (MonadThrow m) => Value c m
 argmaxFun =
   VFun $ \case
-    VArray xs -> pure $ VInt $ fromIntegral $ argMax' $ map snd $ keepNumberValues xs
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ VInt $ fromIntegral $ argMax' $ map snd $ keepNumberValues xs
     _ -> throwM $ RuntimeError "argmax: expecting an array"
   where
     argMax' :: [Double] -> Int

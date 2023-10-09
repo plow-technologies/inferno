@@ -387,20 +387,20 @@ module Array
 
   length : forall 'a. array of 'a -> int := ###!lengthFun###;
 
-  @doc The minimum value in an array;
+  @doc The minimum value in an array (or 0.0 for empty arrays);
   minimum: forall 'a. array of 'a -> double := ###!minimumFun###;
 
-  @doc The maximum value in an array;
+  @doc The maximum value in an array, or `None` if empty;
   maximum: forall 'a. array of 'a -> option of double := ###!maximumFun###;
 
-  @doc The average of the values in an array;
-  average: forall 'a. array of 'a -> double := ###!averageFun###;
+  @doc The average of the values in an array, or `None` if empty;
+  average: forall 'a. array of 'a -> option of double := ###!averageFun###;
 
-  @doc The index of the minimum value in an array;
-  argmin: forall 'a. array of 'a -> int := ###!argminFun###;
+  @doc The index of the minimum value in an array, or `None` if empty;
+  argmin: forall 'a. array of 'a -> option of int := ###!argminFun###;
 
-  @doc The index of the maximum value in an array;
-  argmax: forall 'a. array of 'a -> int := ###!argmaxFun###;
+  @doc The index of the maximum value in an array, or `None` if empty;
+  argmax: forall 'a. array of 'a -> option of int := ###!argmaxFun###;
 
   @doc Returns the indices that would sort an array;
   argsort: forall 'a. array of 'a -> array of int := ###!argsortFun###;
