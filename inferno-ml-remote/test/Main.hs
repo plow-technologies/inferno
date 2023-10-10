@@ -49,7 +49,7 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
   Hspec.it "caches a model" . cdCache $ do
     cacheModel
     dir <- env ^. #cache . #path & listDirectory
-    dir `Hspec.shouldContain` ["mnist.v1", "mnist.ts.pt"]
+    dir `Hspec.shouldMatchList` ["mnist.v1", "mnist.ts.pt"]
     contents <- ByteString.readFile "mnist.ts.pt"
     ByteString.length contents `Hspec.shouldBe` mnistSize
     getZipMagic contents `Hspec.shouldBe` zipMagic
