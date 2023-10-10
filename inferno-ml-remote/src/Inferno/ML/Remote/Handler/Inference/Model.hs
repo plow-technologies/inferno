@@ -71,8 +71,4 @@ getModelSize oid =
       =<< queryStore q (Only oid)
   where
     q :: Query
-    q =
-      [sql|
-        SELECT sum(length(lo.data)) FROM pg_largeobject lo
-        WHERE lo.loid = ?
-      |]
+    q = [sql| SELECT length(lo_get(?)) |]
