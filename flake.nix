@@ -237,6 +237,7 @@
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
               inferno-ml-remote = "inferno-ml-remote:exe:inferno-ml-remote";
+              inferno-ml-remote-tests = "inferno-ml-remote:exe:tests";
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -253,6 +254,7 @@
               inferno-ml-cpu = packages.${inferno-ml};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
               inferno-ml-remote = packages.${inferno-ml-remote};
+              inferno-ml-remote-tests = packages.${inferno-ml-remote-tests};
               inferno-ml-remote-cpu = packages.${inferno-ml-remote};
               inferno-ml-remote-cuda =
                 flakes."${defaultCompiler}-cuda".packages.${inferno-ml-remote};
@@ -355,6 +357,7 @@
             inferno-ml-remote
             inferno-ml-remote-cpu
             inferno-ml-remote-cuda
+            inferno-ml-remote-tests
             ;
         };
       };
