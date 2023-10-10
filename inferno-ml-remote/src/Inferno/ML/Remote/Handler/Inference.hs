@@ -105,7 +105,7 @@ linkVersionedModel withVersion = do
 getParameter :: Id InferenceParam -> User -> RemoteM InferenceParam
 getParameter iid u =
   firstOrThrow (NoSuchParameter iid)
-    =<< queryStore q (u, iid)
+    =<< queryStore q (iid, u)
   where
     q :: Query
     q = [sql| SELECT * FROM params WHERE id = ? AND "user" = ? LIMIT 1 |]
