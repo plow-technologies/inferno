@@ -19,6 +19,7 @@ module Inferno.ML.Remote.Types
     Id (Id),
     ModelName (ModelName),
     Model (Model),
+    Ami (Ami),
     User (User),
     InferenceParam (InferenceParam),
     InferenceRequest (InferenceRequest),
@@ -42,6 +43,10 @@ import Data.Aeson
     (.:),
   )
 import Data.Aeson.Types (Parser)
+import qualified Data.ByteString.Char8 as ByteString.Char8
+import Data.Function ((&))
+import Data.Generics.Labels ()
+import Data.IP (IPv4)
 import Data.Int (Int64)
 import Data.String (IsString)
 import Data.Text (Text)
@@ -51,20 +56,39 @@ import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
     FromRow,
+    ResultError (ConversionFailed, UnexpectedNull),
     ToRow,
   )
-import Database.PostgreSQL.Simple.FromField (FromField)
+import Database.PostgreSQL.Simple.FromField
+  ( FieldParser,
+    FromField,
+    optionalField,
+    returnError,
+  )
+import Database.PostgreSQL.Simple.FromRow
+  ( FromRow (fromRow),
+    field,
+    fieldWith,
+  )
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
-import Database.PostgreSQL.Simple.ToField (ToField)
+import Database.PostgreSQL.Simple.ToField
+  ( Action (Escape),
+    ToField (toField),
+  )
+import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Types.Value (MlValue)
+import Lens.Micro.Platform ((^.))
 import qualified Options.Applicative as Options
 import Servant (JSON, Post, ReqBody, (:>))
+import Text.Read (readMaybe)
 import UnliftIO.Exception (throwString)
 
 type InfernoMlRemoteAPI =
-  "inference" :> ReqBody '[JSON] InferenceRequest :> Post '[JSON] InferenceResponse
+  "inference"
+    :> ReqBody '[JSON] InferenceRequest
+    :> Post '[JSON] InferenceResponse
 
 type RemoteM = ReaderT Env IO
 
@@ -76,9 +100,9 @@ data Env = Env
   deriving stock (Generic)
 
 -- | Config for caching ML models to be used with Inferno scripts. When a script
--- uses @ML.loadModel@, models will be copied from the source configured in
--- 'ModelCacheOption' and saved to the 'cache' directory. Once the `maxSize` has
--- been exceeded, least-recently-used cached models will be removed
+-- uses @ML.loadModel@, models will be copied from the DB and saved to the cache
+-- directory. Once the `maxSize` has been exceeded, least-recently-used cached
+-- models will be removed
 data ModelCache = ModelCache
   { -- | Directory where the models should be cached
     path :: FilePath,
@@ -118,6 +142,30 @@ data InferenceParam = InferenceParam
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
+
+data Ami = Ami
+  { id :: Id Ami,
+    user :: User,
+    ip :: Maybe IPv4
+  }
+  deriving stock (Show, Eq, Generic)
+
+instance FromRow Ami where
+  fromRow = Ami <$> field <*> field <*> fieldWith (optionalField ipv4p)
+    where
+      ipv4p :: FieldParser IPv4
+      ipv4p f =
+        maybe (returnError UnexpectedNull f mempty) $
+          maybe (returnError ConversionFailed f mempty) pure
+            . readMaybe @IPv4
+            . ByteString.Char8.unpack
+
+instance ToRow Ami where
+  toRow ami =
+    [ ami ^. #id & toField,
+      ami ^. #user & toField,
+      ami ^. #ip & Escape . ByteString.Char8.pack . show
+    ]
 
 newtype Id a = Id Int64
   deriving stock (Show, Generic)
@@ -233,7 +281,7 @@ instance Exception RemoteError where
           "'" <> Text.unpack m <> "'",
           "does not exist in the store"
         ]
-    NoSuchParameter iid ->
+    NoSuchParameter (Id iid) ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
     OtherError e -> e
 

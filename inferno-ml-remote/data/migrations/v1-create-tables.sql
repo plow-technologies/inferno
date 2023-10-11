@@ -18,5 +18,13 @@ CREATE TABLE IF NOT EXISTS models(
   "user" TEXT REFERENCES users (id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS amis(
+  id TEXT,
+  ec2 TEXT,
+  ip INET,
+  "user" TEXT REFERENCES users (id) ON DELETE CASCADE
+);
+
+
 CREATE TRIGGER "manage-model-lo" BEFORE UPDATE OR DELETE ON models
   FOR EACH ROW EXECUTE FUNCTION lo_manage(contents);
