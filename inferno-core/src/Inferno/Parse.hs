@@ -467,13 +467,32 @@ letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
     startPos <- getSourcePos
     hidden $ rword "let"
     varPos <- getSourcePos
-    x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
+    xAndMaybeType <-
+      try
+        ( do
+            x <- lexeme $ ((ExtIdent . Right <$> variable) <?> "a variable")
+            tPos <- getSourcePos
+            t <- symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, [])) schemeParser)
+            pure $ Left (x, tPos, t)
+        )
+        <|> ( do
+                x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
+                pure $ Right x
+            )
+    -- x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
+    -- tPos <- getSourcePos
+    -- t <- optional (symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, [])) schemeParser))
+    -- TODO support customTys instead of hardcoding [] above
+    -- TODO add annotation to example
     eqPos <- getSourcePos
     symbol "=" <?> "'='"
-    e1 <- expr <?> ("an expression to bind to '" ++ show x ++ "'" ++ example x)
+    -- e1 <- expr <?> ("an expression to bind to '" ++ show x ++ "'" ++ example x)
+    e1 <- expr <?> ("an expression to bind to 'x'" ++ example 'x') -- TODO
     inPos <- getSourcePos
     e2 <- (rword "in" <?> "_the 'in' keyword") *> expr
-    pure $ Let startPos varPos x eqPos e1 inPos e2
+    pure $ case xAndMaybeType of
+      Left (x, tPos, tcs) -> LetAnnot startPos varPos x tPos tcs eqPos e1 inPos e2
+      Right x -> Let startPos varPos x eqPos e1 inPos e2
   where
     example x = "\nfor example: let " ++ show x ++ " = 2 * 5 in ..."
 

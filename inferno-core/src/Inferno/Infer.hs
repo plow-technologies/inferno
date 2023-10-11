@@ -784,15 +784,49 @@ infer expr =
                       [ tyConstr t1 (t2 `TArr` tv) [ExpectedFunction tyCls (t2 `TArr` tv) t1 $ blockPosition e1]
                       ]
                 )
-
-        -- non generalized let
-        Let p1 loc (Expl x) p2 e1 p3 e2 -> do
+        LetAnnot p1 loc x pT t p2 e1 p3 e2 -> do
           (e1', ImplType i1 t1, c1) <- infer e1
+          (tcs, (ImplType iT tT)) <- instantiate t
+          let tyCls = Set.fromList $ map snd $ rights $ Set.toList c1
           attachTypeToPosition
             (elementPosition loc $ Expl x)
             TypeMetadata
               { identExpr = Var () () LocalScope $ Expl x,
-                ty = (Set.fromList $ map snd $ rights $ Set.toList c1, ImplType i1 t1),
+                -- ty = (tyCls, ImplType i1 t1),
+                ty = (tcs, (ImplType iT tT)),
+                docs = Nothing
+              }
+          let newEnv =
+                ( x,
+                  TypeMetadata
+                    { identExpr = Var () () LocalScope $ Expl x,
+                      -- ty = ForallTC [] tyCls $ ImplType i1 t1,
+                      ty = ForallTC [] tcs (ImplType iT tT),
+                      docs = Nothing
+                    }
+                )
+          (e2', ImplType i2 t2, c2) <- inEnv newEnv $ infer e2
+          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [i1, i2, iT]
+          return
+            ( LetAnnot p1 loc x pT t p2 e1' p3 e2',
+              ImplType isMerged t2,
+              Set.fromList ics
+                `Set.union` c1
+                `Set.union` c2
+                -- Type of e1 == type annotation
+                `Set.union` Set.fromList [tyConstr t1 tT [UnificationFail tyCls t1 tT $ blockPosition e1]]
+                -- Type class constraints from type annotation TODO filter out reps?
+                `Set.union` Set.map (Right . (exprLoc,)) tcs
+            )
+        -- non generalized let
+        Let p1 loc (Expl x) p2 e1 p3 e2 -> do
+          (e1', ImplType i1 t1, c1) <- infer e1
+          let tyCls = Set.fromList $ map snd $ rights $ Set.toList c1
+          attachTypeToPosition
+            (elementPosition loc $ Expl x)
+            TypeMetadata
+              { identExpr = Var () () LocalScope $ Expl x,
+                ty = (tyCls, ImplType i1 t1),
                 docs = Nothing
               }
 
@@ -800,7 +834,7 @@ infer expr =
                 ( x,
                   TypeMetadata
                     { identExpr = Var () () LocalScope $ Expl x,
-                      ty = ForallTC [] (Set.fromList $ map snd $ rights $ Set.toList c1) $ ImplType i1 t1,
+                      ty = ForallTC [] tyCls $ ImplType i1 t1,
                       docs = Nothing
                     }
                 )

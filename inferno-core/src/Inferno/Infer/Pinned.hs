@@ -177,6 +177,14 @@ pinExpr m expr =
                   args
           Lam p1 args p2 <$> pinExpr m' e
         App e1 e2 -> App <$> pinExpr m e1 <*> pinExpr m e2
+        LetAnnot p1 loc x@(ExtIdent (Right i)) pT t p2 e1 p3 e2 -> do
+          e1' <- pinExpr m e1
+          e2' <- pinExpr (insertLocal (Ident i) m) e2
+          pure $ LetAnnot p1 loc x pT t p2 e1' p3 e2'
+        LetAnnot p1 loc x@(ExtIdent (Left _)) pT t p2 e1 p3 e2 -> do
+          e1' <- pinExpr m e1
+          e2' <- pinExpr m e2
+          pure $ LetAnnot p1 loc x pT t p2 e1' p3 e2'
         Let p1 loc x@(Expl (ExtIdent (Right i))) p2 e1 p3 e2 -> do
           e1' <- pinExpr m e1
           e2' <- pinExpr (insertLocal (Ident i) m) e2
