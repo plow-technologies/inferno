@@ -2,7 +2,6 @@
 
 packages:
   ./inferno-ml
-  ./inferno-ml-remote
 
 source-repository-package
     type: git
