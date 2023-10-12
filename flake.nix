@@ -236,7 +236,6 @@
                 };
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
-              inferno-ml-remote = "inferno-ml-remote:exe:inferno-ml-remote";
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -252,10 +251,6 @@
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
-              inferno-ml-remote = packages.${inferno-ml-remote};
-              inferno-ml-remote-cpu = packages.${inferno-ml-remote};
-              inferno-ml-remote-cuda =
-                flakes."${defaultCompiler}-cuda".packages.${inferno-ml-remote};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "almost-everything"
                 {
@@ -338,25 +333,40 @@
           };
         };
 
-      flake.overlays = {
-        combined = lib.composeManyExtensions [
-          haskell-nix.overlays.combined
-          inputs.npm-buildpackage.overlays.default
-          inputs.tokenizers.overlay
-          (_:_: { inherit (inputs) hasktorch; })
-          (import ./nix/overlays/compat.nix)
-          (import ./nix/overlays/torch.nix)
-          (_: prev: {
-            inherit (self.legacyPackages.${prev.system}.hsPkgs) inferno-core;
-          })
-        ];
-        inferno-ml = _: prev: {
-          inherit (self.packages.${prev.system})
-            inferno-ml-remote
-            inferno-ml-remote-cpu
-            inferno-ml-remote-cuda
-            ;
+      flake = {
+        nixosModules = {
+          ml-project = import ./nix/modules/ml.nix;
+        };
+
+        overlays = {
+          ml-project = lib.composeManyExtensions [
+            haskell-nix.overlays.combined
+            inputs.tokenizers.overlay
+            (_:_: { inherit (inputs) hasktorch; })
+            (import ./nix/overlays/compat.nix)
+            (import ./nix/overlays/torch.nix)
+          ];
+
+          combined = lib.composeManyExtensions [
+            self.overlays.ml-project
+            inputs.npm-buildpackage.overlays.default
+            (
+              _: prev: {
+                inherit (self.legacyPackages.${prev.system}.hsPkgs)
+                  inferno-core;
+              }
+            )
+          ];
+
+          inferno-ml = _: prev: {
+            inherit (self.packages.${prev.system})
+              inferno-ml-remote
+              inferno-ml-remote-cpu
+              inferno-ml-remote-cuda
+              ;
+          };
         };
       };
+
     };
 }
