@@ -335,10 +335,12 @@
 
       flake = {
         nixosModules = {
+          # haskell.nix module configuration for projects with `inferno-ml` as a dependency
           ml-project = import ./nix/modules/ml.nix;
         };
 
         overlays = {
+          # Overlay for creating a project with `inferno-ml` as a dependency
           ml-project = lib.composeManyExtensions [
             haskell-nix.overlays.combined
             inputs.tokenizers.overlay
