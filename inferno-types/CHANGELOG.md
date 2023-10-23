@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.4.0 -- 2023-10-23
+* Add LetAnnot to Expr for type annotations; move types in Types.hs to Syntax.hs
+
 ## 0.2.3.0 -- 2023-10-03
 * Add liftImplEnvM
 
