@@ -169,8 +169,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
         argv <- eval env arg
         f argv
       _ -> throwM $ RuntimeError "failed to match with a function"
-  -- TODO create pattern for LetAnnot, or reuse?
-  LetAnnot _ _ x _ _ _ e _ body -> do
+  LetAnnot_ x e body -> do
     e' <- eval env e
     let nenv = Map.insert x e' localEnv
     eval (nenv, pinnedEnv) body

@@ -52,6 +52,7 @@ module Inferno.Types.Syntax
         App_,
         Lam_,
         Let_,
+        LetAnnot_,
         Lit_,
         InterpolatedString_,
         If_,
@@ -937,6 +938,7 @@ data Expr hash pos
   App_,
   Lam_,
   Let_,
+  LetAnnot_,
   Lit_,
   InterpolatedString_,
   If_,
@@ -977,6 +979,9 @@ pattern Lam_ xs e <- Lam _ xs _ e
 
 pattern Let_ :: forall hash pos. ImplExpl -> Expr hash pos -> Expr hash pos -> Expr hash pos
 pattern Let_ x e1 e2 <- Let _ _ x _ e1 _ e2
+
+pattern LetAnnot_ :: forall hash pos. ExtIdent -> Expr hash pos -> Expr hash pos -> Expr hash pos
+pattern LetAnnot_ x e1 e2 <- LetAnnot _ _ x _ _ _ e1 _ e2
 
 pattern Lit_ :: forall hash pos. Lit -> Expr hash pos
 pattern Lit_ l <- Lit _ l

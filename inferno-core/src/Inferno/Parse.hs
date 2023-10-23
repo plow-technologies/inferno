@@ -71,6 +71,7 @@ import Inferno.Types.Type
     TV (TV),
     TypeClass (TypeClass),
   )
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Text.Megaparsec
   ( MonadParsec
       ( eof,
@@ -462,7 +463,7 @@ openModE = label "an 'open' module expression\nfor example: open A in ..." $
         Nothing -> customFailure $ ModuleNotFound modNm
 
 letE :: Parser (Expr () SourcePos)
-letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
+letE = label ("a 'let' expression" ++ example "x") $
   do
     startPos <- getSourcePos
     hidden $ rword "let"
@@ -472,6 +473,7 @@ letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
         ( do
             x <- lexeme $ ((ExtIdent . Right <$> variable) <?> "a variable")
             tPos <- getSourcePos
+            -- TODO add customTys to Parser and use it instead of hardcoding [] below
             t <- symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, [])) schemeParser)
             pure $ Left (x, tPos, t)
         )
@@ -479,22 +481,19 @@ letE = label ("a 'let' expression" ++ example (Expl $ ExtIdent $ Right "x")) $
                 x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
                 pure $ Right x
             )
-    -- x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
-    -- tPos <- getSourcePos
-    -- t <- optional (symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, [])) schemeParser))
-    -- TODO support customTys instead of hardcoding [] above
-    -- TODO add annotation to example
+    let xStr = unpack $ varName xAndMaybeType
     eqPos <- getSourcePos
     symbol "=" <?> "'='"
-    -- e1 <- expr <?> ("an expression to bind to '" ++ show x ++ "'" ++ example x)
-    e1 <- expr <?> ("an expression to bind to 'x'" ++ example 'x') -- TODO
+    e1 <- expr <?> ("an expression to bind to '" ++ xStr ++ "'" ++ example xStr)
     inPos <- getSourcePos
     e2 <- (rword "in" <?> "_the 'in' keyword") *> expr
     pure $ case xAndMaybeType of
       Left (x, tPos, tcs) -> LetAnnot startPos varPos x tPos tcs eqPos e1 inPos e2
       Right x -> Let startPos varPos x eqPos e1 inPos e2
   where
-    example x = "\nfor example: let " ++ show x ++ " = 2 * 5 in ..."
+    example x = "\nfor example: let " ++ x ++ " = 2 * 5 in ...\nor: let " ++ x ++ " : double = 1 + 2 in ..."
+    varName (Left (x, _, _)) = renderPretty x
+    varName (Right x) = renderPretty x
 
 pat :: Parser (Pat () SourcePos)
 pat =
