@@ -169,6 +169,10 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
         argv <- eval env arg
         f argv
       _ -> throwM $ RuntimeError "failed to match with a function"
+  LetAnnot_ x e body -> do
+    e' <- eval env e
+    let nenv = Map.insert x e' localEnv
+    eval (nenv, pinnedEnv) body
   Let_ (Expl x) e body -> do
     e' <- eval env e
     let nenv = Map.insert x e' localEnv

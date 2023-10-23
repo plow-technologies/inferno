@@ -52,6 +52,7 @@ module Inferno.Types.Syntax
         App_,
         Lam_,
         Let_,
+        LetAnnot_,
         Lit_,
         InterpolatedString_,
         If_,
@@ -89,6 +90,30 @@ module Inferno.Types.Syntax
     hideInternalIdents,
     substInternalIdents,
     getIdentifierPositions,
+    ImplType (..),
+    Namespace (..),
+    TCScheme (..),
+    TypeClass (..),
+    TypeClassShape (..),
+    TypeMetadata (..),
+    Substitutable (..),
+    Subst (..),
+    Scheme (..),
+    (.->),
+    sch,
+    var,
+    tySig,
+    namespaceToIdent,
+    typeInt,
+    typeBool,
+    typeDouble,
+    typeWord16,
+    typeWord32,
+    typeWord64,
+    typeText,
+    typeResolution,
+    typeTimeDiff,
+    typeTime,
   )
 where
 
@@ -106,6 +131,7 @@ import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
+import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
@@ -114,7 +140,7 @@ import Data.Serialize (Serialize)
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
-import Data.Text (Text)
+import Data.Text (Text, unpack)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import Data.Word (Word64)
@@ -125,21 +151,28 @@ import Prettyprinter
   ( Doc,
     Pretty (pretty),
     align,
+    comma,
     concatWith,
     enclose,
+    encloseSep,
     flatAlt,
     group,
     hardline,
+    hsep,
     indent,
+    lbrace,
     lbracket,
     line,
     line',
     lparen,
     nest,
+    rbrace,
     rbracket,
     rparen,
     sep,
     vsep,
+    -- sep,
+    -- tupled,
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
@@ -288,6 +321,174 @@ instance Pretty InfernoType where
     TRep ty@(TBase _) -> "rep of" <+> align (pretty ty)
     TRep ty@(TTuple _) -> "rep of" <+> align (pretty ty)
     TRep ty -> "rep of" <+> align (enclose lparen rparen $ pretty ty)
+
+data ImplType = ImplType (Map.Map ExtIdent InfernoType) InfernoType
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+data Scheme = Forall [TV] ImplType
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+typeInt, typeBool, typeDouble, typeWord16, typeWord32, typeWord64, typeText, typeResolution, typeTimeDiff, typeTime :: InfernoType
+typeInt = TBase TInt
+typeBool = TBase $ TEnum "bool" $ Set.fromList ["true", "false"]
+typeDouble = TBase TDouble
+typeWord16 = TBase TWord16
+typeWord32 = TBase TWord32
+typeWord64 = TBase TWord64
+typeText = TBase TText
+typeTimeDiff = TBase TTimeDiff
+typeTime = TBase TTime
+typeResolution = TBase TResolution
+
+sch :: InfernoType -> Scheme
+sch = Forall [] . ImplType Map.empty
+
+infixr 3 .->
+
+(.->) :: InfernoType -> InfernoType -> InfernoType
+x .-> y = TArr x y
+
+var :: Int -> InfernoType
+var x = TVar (TV x)
+
+data TypeClass = TypeClass
+  { className :: Text,
+    params :: [InfernoType]
+  }
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+data TCScheme = ForallTC [TV] (Set.Set TypeClass) ImplType
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+tySig :: [Doc ann] -> [Doc ann]
+tySig [] = []
+tySig [d] = [":" <+> d]
+tySig (d : ds) = (":" <+> d) : go ds
+  where
+    go [] = []
+    go (d' : ds') = ("|" <+> d') : go ds'
+
+instance Pretty ImplType where
+  pretty (ImplType impl ty)
+    | Map.null impl = pretty ty
+    | otherwise =
+        encloseSep
+          lbrace
+          rbrace
+          comma
+          (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
+          <+> "⇒"
+          <+> pretty ty
+
+instance Pretty Scheme where
+  pretty (Forall _ implType) = pretty implType
+
+instance Pretty TypeClass where
+  pretty = \case
+    TypeClass nm tys -> pretty nm <+> "on" <+> (hsep $ map bracketPretty tys)
+    where
+      bracketPretty ty = case ty of
+        TVar _ -> pretty ty
+        TBase _ -> pretty ty
+        _ -> enclose lparen rparen $ pretty ty
+
+newtype TypeClassShape = TypeClassShape TypeClass
+
+instance Pretty TypeClassShape where
+  pretty = \case
+    TypeClassShape (TypeClass nm tys) -> pretty nm <+> "on" <+> (hsep $ map bracketPretty tys)
+    where
+      bracketPretty ty = case ty of
+        TVar _ -> "_"
+        TBase _ -> pretty ty
+        _ -> enclose lparen rparen $ pretty ty
+
+instance Pretty TCScheme where
+  pretty (ForallTC _ tcs (ImplType impl ty))
+    | Map.null impl && null tcs = pretty ty
+    | otherwise =
+        encloseSep
+          lbrace
+          rbrace
+          comma
+          ( (map (("requires" <+>) . pretty) $ Set.toList tcs)
+              ++ (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
+          )
+          <+> "⇒"
+          <+> pretty ty
+
+newtype Subst = Subst (Map.Map TV InfernoType)
+  deriving stock (Eq, Ord)
+  deriving newtype (Semigroup, Monoid)
+
+instance Show Subst where
+  show (Subst m) = intercalate "\n" $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
+
+class Substitutable a where
+  apply :: Subst -> a -> a
+  ftv :: a -> Set.Set TV
+
+instance Substitutable InfernoType where
+  apply _ (TBase a) = TBase a
+  apply (Subst s) t@(TVar a) = Map.findWithDefault t a s
+  apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
+  apply s (TArray t) = TArray $ apply s t
+  apply s (TSeries t) = TSeries $ apply s t
+  apply s (TOptional t) = TOptional $ apply s t
+  apply s (TTuple ts) = TTuple $ fmap (apply s) ts
+  apply s (TRep t) = TRep $ apply s t
+
+  ftv TBase {} = Set.empty
+  ftv (TVar a) = Set.singleton a
+  ftv (t1 `TArr` t2) = ftv t1 `Set.union` ftv t2
+  ftv (TArray t) = ftv t
+  ftv (TSeries t) = ftv t
+  ftv (TOptional t) = ftv t
+  ftv (TTuple ts) = foldr (Set.union . ftv) Set.empty ts
+  ftv (TRep t) = ftv t
+
+instance Substitutable ImplType where
+  apply s (ImplType impl t) =
+    ImplType (Map.map (apply s) impl) $ apply s t
+  ftv (ImplType impl t) = (foldr Set.union Set.empty $ map (ftv . snd) $ Map.toList impl) `Set.union` ftv t
+
+instance Substitutable TypeClass where
+  apply s (TypeClass n tys) = TypeClass n $ map (apply s) tys
+  ftv (TypeClass _ tys) = Set.unions $ map ftv tys
+
+instance Substitutable TCScheme where
+  apply (Subst s) (ForallTC as tcs t) = ForallTC as (Set.map (apply s') tcs) (apply s' t)
+    where
+      s' = Subst $ foldr Map.delete s as
+  ftv (ForallTC as tcs t) = ((ftv t) `Set.union` (Set.unions $ Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
+
+instance Substitutable a => Substitutable [a] where
+  apply = map . apply
+  ftv = foldr (Set.union . ftv) Set.empty
+
+data Namespace
+  = FunNamespace Ident
+  | OpNamespace Ident
+  | EnumNamespace Ident
+  | ModuleNamespace ModuleName
+  | TypeNamespace Ident
+  deriving (Eq, Show, Ord, Generic, ToJSON, FromJSON)
+
+instance Pretty Namespace where
+  pretty = \case
+    FunNamespace (Ident i) -> pretty i
+    OpNamespace (Ident i) -> pretty i
+    EnumNamespace (Ident i) -> "#" <> pretty i
+    ModuleNamespace (ModuleName m) -> pretty m
+    TypeNamespace (Ident i) -> pretty i
+
+namespaceToIdent :: Namespace -> Ident
+namespaceToIdent = \case
+  FunNamespace i -> i
+  OpNamespace i -> i
+  EnumNamespace i -> i
+  TypeNamespace i -> i
+  ModuleNamespace _ -> error "namespaceToIdent undefined for ModuleNamespace"
 
 incSourceCol :: SourcePos -> Int -> SourcePos
 incSourceCol pos 0 = pos
@@ -615,6 +816,16 @@ data Expr hash pos
       (Expr hash pos)
       pos -- position of `in`
       (Expr hash pos)
+  | LetAnnot
+      pos -- position of `let`
+      pos -- position of variable
+      ExtIdent -- We disallow type annotations on implicit vars
+      pos -- position of type annotation
+      TCScheme
+      pos -- position of `=`
+      (Expr hash pos)
+      pos -- position of `in`
+      (Expr hash pos)
   | Lit pos Lit
   | InterpolatedString
       pos -- position of string start
@@ -727,6 +938,7 @@ data Expr hash pos
   App_,
   Lam_,
   Let_,
+  LetAnnot_,
   Lit_,
   InterpolatedString_,
   If_,
@@ -767,6 +979,9 @@ pattern Lam_ xs e <- Lam _ xs _ e
 
 pattern Let_ :: forall hash pos. ImplExpl -> Expr hash pos -> Expr hash pos -> Expr hash pos
 pattern Let_ x e1 e2 <- Let _ _ x _ e1 _ e2
+
+pattern LetAnnot_ :: forall hash pos. ExtIdent -> Expr hash pos -> Expr hash pos -> Expr hash pos
+pattern LetAnnot_ x e1 e2 <- LetAnnot _ _ x _ _ _ e1 _ e2
 
 pattern Lit_ :: forall hash pos. Lit -> Expr hash pos
 pattern Lit_ l <- Lit _ l
@@ -967,6 +1182,7 @@ instance BlockUtils (Expr hash) where
         AppF (pos1, _) (_, pos2) -> (pos1, pos2)
         LamF pos1 _ _ (_, pos2) -> (pos1, pos2)
         LetF pos1 _ _ _ _ _ (_, pos2) -> (pos1, pos2)
+        LetAnnotF pos1 _ _ _ _ _ _ _ (_, pos2) -> (pos1, pos2)
         LitF pos l -> (pos, incSourceCol pos $ length $ show $ pretty l)
         InterpolatedStringF pos1 _ pos2 -> (pos1, pos2)
         IfF pos1 _ _ _ _ (_, pos2) -> (pos1, pos2)
@@ -1160,6 +1376,10 @@ prettyPrec isBracketed prec expr =
        in group $ nest 2 $ vsep [fun, body]
     Let _ _ x _ e1 _ e2 ->
       let letPretty = "let" <+> align (pretty x <+> "=" <+> align (prettyPrec False 0 e1))
+          body = "in" <+> prettyPrec False 0 e2
+       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+    LetAnnot _ _ x _ t _ e1 _ e2 ->
+      let letPretty = "let" <+> align (pretty x <+> ":" <+> pretty t <+> "=" <+> align (prettyPrec False 0 e1))
           body = "in" <+> prettyPrec False 0 e2
        in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
     Lit _ l -> pretty l
@@ -1375,6 +1595,13 @@ prettyPrec isBracketed prec expr =
       Op _ _ _ _ _ _ _ -> prettyPrec False n e
       PreOp _ _ _ _ _ _ -> prettyPrec False n e
       _ -> enclose lparen rparen $ if hasTrailingComment e then prettyPrec False n e <> hardline else prettyPrec False n e
+
+data TypeMetadata ty = TypeMetadata
+  { identExpr :: Expr () (),
+    docs :: Maybe Text,
+    ty :: ty
+  }
+  deriving (Eq, Show, Generic, Data, ToJSON, FromJSON)
 
 data SigVar = SigVar Text | SigOpVar Text deriving (Eq, Show, Data)
 
