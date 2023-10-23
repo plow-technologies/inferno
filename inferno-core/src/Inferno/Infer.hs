@@ -814,7 +814,7 @@ infer expr =
                 `Set.union` c1
                 `Set.union` c2
                 -- Type of e1 == type annotation
-                `Set.union` Set.fromList [tyConstr t1 tT [UnificationFail tyCls t1 tT $ blockPosition e1]]
+                `Set.union` Set.fromList [tyConstr t1 tT [AnnotationUnificationFail tyCls t1 tT $ blockPosition e1]]
                 -- Type class constraints from type annotation TODO filter out reps?
                 `Set.union` Set.map (Right . (exprLoc,)) tcs
             )

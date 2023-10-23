@@ -30,6 +30,7 @@ type Location a = (a, a)
 
 data TypeError a
   = UnificationFail (Set.Set TypeClass) InfernoType InfernoType (Location a)
+  | AnnotationUnificationFail (Set.Set TypeClass) InfernoType InfernoType (Location a)
   | ExpectedFunction (Set.Set TypeClass) InfernoType InfernoType (Location a)
   | InfiniteType TV InfernoType (Location a)
   | UnboundNameInNamespace (Scoped ModuleName) (Either VCObjectHash Namespace) (Location a)
@@ -80,6 +81,7 @@ getLocFromErrs = concatMap getLocFromErr
 getTypeClassFromErr :: TypeError a -> Set.Set TypeClass
 getTypeClassFromErr = \case
   UnificationFail tyCls _ _ _ -> tyCls
+  AnnotationUnificationFail tyCls _ _ _ -> tyCls
   ExpectedFunction tyCls _ _ _ -> tyCls
   ImplicitVarTypeOverlap tyCls _ _ _ _ -> tyCls
   IfConditionMustBeBool tyCls _ _ -> tyCls

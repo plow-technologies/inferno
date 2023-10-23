@@ -114,6 +114,20 @@ inferErrorDiagnostic = \case
             indent 2 (pretty $ closeOverType t2)
           ]
     ]
+  AnnotationUnificationFail _ t1 t2 (s, e) ->
+    [ errorDiagnosticInfer
+        (unPos $ sourceLine s)
+        (unPos $ sourceColumn s)
+        (unPos $ sourceLine e)
+        (unPos $ sourceColumn e)
+        $ renderDoc
+        $ vsep
+          [ "The type of this expression",
+            indent 2 (pretty $ closeOverType t1),
+            "does not match with the annotated type",
+            indent 2 (pretty $ closeOverType t2)
+          ]
+    ]
   ExpectedFunction _ t1 t2 (s, e) ->
     [ errorDiagnosticInfer
         (unPos $ sourceLine s)
