@@ -1,4 +1,0 @@
-open ML in
-let model1 = loadModel "x.ts.pt" in
-let model2 = loadModel "y.ts.pt" in
-()
