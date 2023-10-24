@@ -9,6 +9,6 @@ import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 
 main :: IO ()
 main = do
-  runInfernoLspServer @() @IO builtinModules >>= \case
+  runInfernoLspServer @() builtinModules [] >>= \case
     0 -> exitSuccess
     c -> exitWith . ExitFailure $ c

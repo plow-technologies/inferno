@@ -78,7 +78,7 @@ infixl 2 <?>
 parsingTests :: Spec
 parsingTests = describe "pretty printing/parsing" $ do
   prop "parseExpr and pretty are inverse up to normalizeExpr" $
-    \(x :: Expr () ()) -> case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) (renderPretty x) of
+    \(x :: Expr () ()) -> case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
       Left err ->
         property False
           <?> ( "Pretty: \n"
@@ -248,11 +248,11 @@ parsingTests = describe "pretty printing/parsing" $ do
   where
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $
-        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) str of
+        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
           Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NonEmpty.head err)
           Right (res, _) -> fmap (const ()) res `shouldBe` ast
     shouldFailFor str =
       it ("should fail for \"" <> unpack str <> "\"") $
-        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) str of
+        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
           Left _err -> pure ()
           Right _res -> expectationFailure $ "This should not parse"

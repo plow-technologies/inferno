@@ -48,7 +48,7 @@ inferno =
     { quoteExp = \str -> do
         l <- location'
         let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins) $ topLevel $ expr) $
+              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel $ expr) $
                 State
                   (pack str)
                   0

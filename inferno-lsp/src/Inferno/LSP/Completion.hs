@@ -5,16 +5,15 @@
 
 module Inferno.LSP.Completion where
 
-import Control.Monad.Catch (MonadThrow (..))
 import Data.List (delete, nub)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.LSP.ParseInfer (getTypeMetadataText, mkPrettyTy)
-import Inferno.Module.Prelude (ModuleMap)
-import Inferno.Types.Syntax (Ident (..), ModuleName (..), rws)
+import Inferno.Types.Syntax (Ident (..), ModuleName (..), TypeClass, rws)
 import Inferno.Types.Type (Namespace (..), TCScheme, TypeMetadata (..))
 import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
 import Language.LSP.Types
@@ -99,8 +98,8 @@ findInPrelude preludeNameToTypeMap prefix =
         ModuleNamespace (ModuleName n) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower n)
         TypeNamespace _ -> False
 
-mkCompletionItem :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
-mkCompletionItem prelude txt (modNm, ns) tm@TypeMetadata {ty} =
+mkCompletionItem :: Set TypeClass -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
+mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata {ty} =
   CompletionItem
     { _label = insertModNm $ renderPretty ns,
       _kind = case ns of
@@ -110,7 +109,7 @@ mkCompletionItem prelude txt (modNm, ns) tm@TypeMetadata {ty} =
         ModuleNamespace _ -> Just CiModule
         TypeNamespace _ -> Nothing,
       _tags = Nothing,
-      _detail = Just $ renderDoc $ mkPrettyTy prelude mempty ty,
+      _detail = Just $ renderDoc $ mkPrettyTy typeClasses mempty ty,
       _documentation = CompletionDocMarkup . MarkupContent MkMarkdown <$> getTypeMetadataText tm,
       _deprecated = Nothing,
       _preselect = Nothing,

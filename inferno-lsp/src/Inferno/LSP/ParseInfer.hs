@@ -16,16 +16,14 @@ import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
 import qualified Data.Set as Set
 import Data.Text (Text, pack)
 import qualified Data.Text as Text
-import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferExpr, inferPossibleTypes, inferTypeReps)
+import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
+import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
-import Inferno.Infer.Pinned (pinExpr)
-import Inferno.Module (Module (..))
-import Inferno.Module.Builtin (builtinModule)
-import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, builtinModulesPinMap)
+import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable)
 import Inferno.Parse (InfernoParsingError, parseExpr, parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (Comment, Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
+import Inferno.Types.Syntax (Comment, CustomType, Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
 import Inferno.Types.Type
   ( BaseType (..),
     ImplType (ImplType),
@@ -66,12 +64,13 @@ parseExprInBaseModule ::
   forall m c.
   (MonadThrow m, Pretty c, Eq c) =>
   ModuleMap m c ->
+  [CustomType] ->
   Text ->
   Either
     (NEList.NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     (Expr () SourcePos, [Comment SourcePos])
-parseExprInBaseModule prelude =
-  parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude)
+parseExprInBaseModule prelude customTypes =
+  parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) customTypes
 
 errorDiagnostic :: Int -> Int -> Int -> Int -> Maybe Text -> Text -> Diagnostic
 errorDiagnostic s_line s_col e_line e_col source message =
@@ -510,46 +509,46 @@ inferErrorDiagnostic = \case
             ]
     ]
 
-allClasses :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass
-allClasses prelude = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
-
-parseAndInfer :: forall m1 m2 c. (MonadThrow m1, Pretty c, Eq c, MonadIO m2) => ModuleMap m1 c -> [Maybe Ident] -> Text -> (InfernoType -> Either Text ()) -> m2 (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(Range, MarkupContent)]))
-parseAndInfer prelude idents txt validateInput = do
+parseAndInferDiagnostics ::
+  forall m c.
+  (Pretty c, Eq c, MonadIO m) =>
+  Interpreter IO c ->
+  [Maybe Ident] ->
+  Text ->
+  (InfernoType -> Either Text ()) ->
+  m (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(Range, MarkupContent)]))
+parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt validateInput = do
   let input = case idents of
         [] -> "\n" <> txt
         ids -> "fun " <> (Text.intercalate " " $ map (maybe "_" (\(Ident i) -> i)) ids) <> " -> \n" <> txt
   -- AppConfig _ _ tracer <- ask
   -- let trace = const $ pure () --traceWith tracer
-  case (parseExprInBaseModule prelude) input of
-    Left err -> do
+  case parseAndInfer input of
+    Left (ParseError err) -> do
       return $ Left $ fmap parseErrorDiagnostic $ NEList.toList err
-    Right (ast, comments) -> do
-      case pinExpr (builtinModulesPinMap prelude) ast of
-        Left err -> do
-          return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
-        Right pinnedAST -> do
-          case inferExpr prelude pinnedAST of
-            Left err -> do
-              return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
-            Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap) -> do
-              let signature = collectArrs typSig
-              -- Validate input types
-              case checkScriptInputTypes signature pinnedAST' of
-                Left errors -> return $ Left errors
-                Right () -> do
-                  -- Check that script isn't itself a function, and extract outermost Lam
-                  let (lams, lamBody) = extractLams [] pinnedAST'
-                  case checkScriptIsNotAFunction signature idents of
-                    Left errors -> return $ Left errors
-                    Right () -> do
-                      -- Insert comments into Lam body
-                      let final = putBackLams lams $ fmap (const ()) $ insertCommentsIntoExpr comments lamBody
-                      return $
-                        Right
-                          ( final,
-                            tcSch,
-                            Map.foldrWithKey (\k v xs -> (mkHover prelude currentClasses k v) : xs) mempty tyMap
-                          )
+    Left (PinError err) -> do
+      return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
+    Left (InferenceError err) -> do
+      return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
+    Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap, comments) -> do
+      let signature = collectArrs typSig
+      -- Validate input types
+      case checkScriptInputTypes signature pinnedAST' of
+        Left errors -> return $ Left errors
+        Right () -> do
+          -- Check that script isn't itself a function, and extract outermost Lam
+          let (lams, lamBody) = extractLams [] pinnedAST'
+          case checkScriptIsNotAFunction signature idents of
+            Left errors -> return $ Left errors
+            Right () -> do
+              -- Insert comments into Lam body
+              let final = putBackLams lams $ fmap (const ()) $ insertCommentsIntoExpr comments lamBody
+              return $
+                Right
+                  ( final,
+                    tcSch,
+                    Map.foldrWithKey (\k v xs -> (mkHover typeClasses currentClasses k v) : xs) mempty tyMap
+                  )
   where
     -- Extract and replace outermost Lams so that comments can be inserted into script body.
     -- We want the final expression to look like: Lam (...)
@@ -581,9 +580,10 @@ parseAndInfer prelude idents txt validateInput = do
                                 Just (s, e) -> Left [errorDiagnosticInfer (unPos $ sourceLine s) (unPos $ sourceColumn s) (unPos $ sourceLine e) (unPos $ sourceColumn e) err]
             _ -> Right ()
 
-parseAndInferPretty :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> IO ()
-parseAndInferPretty prelude txt =
-  (parseAndInfer @m @_ @c prelude) [] txt (const $ Right ()) >>= \case
+parseAndInferPretty :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> IO ()
+parseAndInferPretty prelude txt = do
+  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  (parseAndInferDiagnostics @IO @c interpreter) [] txt (const $ Right ()) >>= \case
     Left err -> print err
     Right (expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "internal: " <> renderPretty expr
@@ -592,22 +592,24 @@ parseAndInferPretty prelude txt =
 
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
 
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy prelude mempty typ)
+      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
 
-parseAndInferTypeReps :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Text] -> Text -> IO ()
-parseAndInferTypeReps prelude expr inTys outTy =
-  (parseAndInfer @m @_ @c prelude) [] expr (const $ Right ()) >>= \case
+parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> Text -> IO ()
+parseAndInferTypeReps prelude expr inTys outTy = do
+  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
+    -- (parseAndInferDiagnostics @m @c interpreter) [] expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy prelude mempty typ)
+      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
 
       case traverse parseType inTys of
         Left errs -> print errs
         Right inTysParsed -> case parseType outTy of
           Left errTy -> print errTy
           Right outTyParsed ->
-            case inferTypeReps (allClasses prelude) typ inTysParsed outTyParsed of
+            case inferTypeReps typeClasses typ inTysParsed outTyParsed of
               Left errTy' -> do
                 print errTy'
                 forM_ errTy' $ \e -> print $ inferErrorDiagnostic e
@@ -615,20 +617,21 @@ parseAndInferTypeReps prelude expr inTys outTy =
                 putStrLn ("type reps:" :: String)
                 print res
 
-parseAndInferPossibleTypes :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
-parseAndInferPossibleTypes prelude expr inTys outTy =
-  (parseAndInfer @m @_ @c prelude) [] expr (const $ Right ()) >>= \case
+parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
+parseAndInferPossibleTypes prelude expr inTys outTy = do
+  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy prelude mempty typ)
+      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
 
       case traverse (maybe (pure Nothing) ((Just <$>) . parseType)) inTys of
         Left errs -> print errs
         Right inTysParsed -> case (maybe (pure Nothing) ((Just <$>) . parseType)) outTy of
           Left errTy -> print errTy
           Right outTyParsed ->
-            case inferPossibleTypes (allClasses prelude) typ inTysParsed outTyParsed of
+            case inferPossibleTypes typeClasses typ inTysParsed outTyParsed of
               Left errTy' -> do
                 print errTy'
                 forM_ errTy' $ \e -> print $ inferErrorDiagnostic e
@@ -638,9 +641,9 @@ parseAndInferPossibleTypes prelude expr inTys outTy =
 
 -- putStrLn $ show hovers
 
-mkHover :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
-mkHover prelude currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = tcSchTy} =
-  let prettyTy = mkPrettyTy prelude currentClasses tcSchTy
+mkHover :: Set.Set TypeClass -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
+mkHover allClasses currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = tcSchTy} =
+  let prettyTy = mkPrettyTy allClasses currentClasses tcSchTy
    in ( mkRange ((fromIntegral $ unPos $ sourceLine s) - 2) ((fromIntegral $ unPos $ sourceColumn s) - 1) ((fromIntegral $ unPos $ sourceLine e) - 2) ((fromIntegral $ unPos $ sourceColumn e) - 1),
         MarkupContent MkMarkdown $
           "**Type**\n"
@@ -650,8 +653,8 @@ mkHover prelude currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = 
             <> (maybe "" ("\n" <>) (getTypeMetadataText meta))
       )
 
-mkPrettyTy :: forall m c ann. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Set.Set TypeClass -> TCScheme -> Doc ann
-mkPrettyTy prelude currentClasses (ForallTC _tvs cls typ) =
+mkPrettyTy :: forall ann. Set.Set TypeClass -> Set.Set TypeClass -> TCScheme -> Doc ann
+mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
   let ftvTy = ftv typ
    in if Set.null ftvTy
         then -- if the body of the type contains no type variables, simply pretty print it
@@ -660,7 +663,7 @@ mkPrettyTy prelude currentClasses (ForallTC _tvs cls typ) =
         -- things to note:
         --   * we need to filter out the "rep" typeclass, since it is always defined and thererfore pointless to pass to the solver
         --   * we only want to pass in the fvs of typ to the solver, as these are the only type variables we care about displaying
-        case findTypeClassWitnesses (allClasses prelude) (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
+        case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
           [] -> error "we must always have at least one witness!"
           subs ->
             let prettyList = map pretty $ nub $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs

@@ -17,7 +17,7 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno builtinModules :: IO (Interpreter IO ())
+    mkInferno builtinModules [] :: IO (Interpreter IO ())
   case parseAndInferTypeReps src of
     Left err -> do
       hPutStrLn stderr $ show err

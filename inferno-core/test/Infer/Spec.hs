@@ -3,6 +3,7 @@
 module Infer.Spec where
 
 import Data.List (intercalate)
+import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (unpack)
@@ -19,6 +20,7 @@ import Inferno.Infer.Exhaustiveness
   )
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
+import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
@@ -39,17 +41,17 @@ inferTests = describe "infer" $
     let repTC ts = makeTCs "rep" ts
     let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
 
-    inferno <- runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter IO ()))
+    inferno <- runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
     let shouldInferTypeFor str t =
           it ("should infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer inferno str of
               Left err -> expectationFailure $ show err
-              Right (_ast, t') -> t' `shouldBe` t
+              Right (_ast, t', _typMap, _comments) -> t' `shouldBe` t
 
     let shouldFailToInferTypeFor str =
           it ("should fail to infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer inferno str of
-              Left (ParseError err) -> expectationFailure err
+              Left (ParseError err) -> expectationFailure $ prettyError $ fst $ NEList.head err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
               Right _ -> expectationFailure $ "Should fail to infer a type"
