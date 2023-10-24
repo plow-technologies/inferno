@@ -6,7 +6,6 @@
 module Inferno.LSP.ParseInfer where
 
 import Control.Monad (forM_)
-import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
 import Data.List (find, findIndices, foldl', nub, sort)
@@ -19,11 +18,11 @@ import qualified Data.Text as Text
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
-import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable)
-import Inferno.Parse (InfernoParsingError, parseExpr, parseType)
+import Inferno.Module.Prelude (ModuleMap)
+import Inferno.Parse (parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (Comment, CustomType, Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
+import Inferno.Types.Syntax (Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
 import Inferno.Types.Type
   ( BaseType (..),
     ImplType (ImplType),
