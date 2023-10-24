@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.2.1 -- 2023-10-24
+* Update to use changed Interpreter API type
+
 ## 0.1.2.0 -- 2023-10-03
 * Update to use new Interpreter API parametric on the monad
 

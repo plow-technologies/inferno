@@ -31,7 +31,7 @@ runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describ
         case parseAndInfer "3" of
           Left err ->
             error $ "parseAndInfer failed with: " <> show err
-          Right (expr', _typ) ->
+          Right (expr', _typ, _typMap, _comments) ->
             pure $ bimap pinnedToMaybe (const ()) expr'
 
   it "test int type rep" $ do
@@ -53,7 +53,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
-      runIO $ (mkInferno Prelude.builtinModules :: IO (Interpreter IO TestCustomValue))
+      runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
@@ -438,7 +438,7 @@ evalInMonadTest = do
           (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
           evalInMonadPrelude
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    runIO $ flip runReaderT testEnv $ (mkInferno modules :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
+    runIO $ flip runReaderT testEnv $ (mkInferno modules [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
 
   let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
         it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do

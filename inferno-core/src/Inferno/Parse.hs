@@ -132,7 +132,7 @@ type Comments = Endo [Comment SourcePos]
 output :: Comment SourcePos -> SomeParser r ()
 output x = tell $ Endo ([x] <>)
 
-type Parser = ReaderT (OpsTable, Map.Map ModuleName OpsTable) (WriterT Comments (Parsec InfernoParsingError Text))
+type Parser = ReaderT (OpsTable, Map.Map ModuleName OpsTable, [CustomType]) (WriterT Comments (Parsec InfernoParsingError Text))
 
 type SomeParser r = ReaderT r (WriterT Comments (Parsec InfernoParsingError Text))
 
@@ -181,7 +181,7 @@ alphaNumCharOrSeparator = satisfy isAlphaNumOrSeparator <?> "alphanumeric charac
 
 variable :: Parser Text
 variable = do
-  (opsTable, _) <- ask
+  (opsTable, _, _) <- ask
   try (p >>= check opsTable)
   where
     p = pack <$> (((:) <$> letterChar <*> hidden (many alphaNumCharOrSeparator)) <?> "a variable")
@@ -385,13 +385,13 @@ renameModE = label "a 'let module' expression\nfor example: let module A = Base 
     oldNmPos <- getSourcePos
     oldNm <- lexeme $ (ModuleName <$> variable <?> "name of an existing module")
     inPos <- getSourcePos
-    (opsTable, modOpsTables) <- ask
+    (opsTable, modOpsTables, customTypes) <- ask
     case Map.lookup oldNm modOpsTables of
       Nothing -> customFailure $ ModuleNotFound oldNm
       Just opsTableOldNm -> do
         let opsTable' = IntMap.unionWith (<>) opsTable $ IntMap.map (\xs -> [(fix, Scope newNm, op) | (fix, _, op) <- xs]) opsTableOldNm
         let modOpsTables' = Map.insert newNm opsTableOldNm modOpsTables
-        e <- withReaderT (const (opsTable', modOpsTables')) $ (rword "in" <?> "_the 'in' keyword") *> expr
+        e <- withReaderT (const (opsTable', modOpsTables', customTypes)) $ (rword "in" <?> "_the 'in' keyword") *> expr
         pure $ RenameModule newNmPos newNm oldNmPos oldNm inPos e
 
 data InfernoParsingError = ModuleNotFound ModuleName | InfixOpNotFound ModuleName Ident | UnboundTyVar Text
@@ -410,7 +410,7 @@ openModArgs modNm = do
   symbol "("
   is <- go
   symbol ")"
-  (opsTable, modOpsTables) <- ask
+  (opsTable, modOpsTables, customTypes) <- ask
   opsTable' <-
     foldM
       ( \oTbl i -> case i of
@@ -422,7 +422,7 @@ openModArgs modNm = do
       opsTable
       (map fst is)
   inPos <- getSourcePos
-  e <- withReaderT (const (opsTable', modOpsTables)) $ (rword "in" <?> "_the 'in' keyword") *> expr
+  e <- withReaderT (const (opsTable', modOpsTables, customTypes)) $ (rword "in" <?> "_the 'in' keyword") *> expr
   return (is, inPos, e)
   where
     findOp :: Ident -> Map.Map ModuleName OpsTable -> Parser OpsTable
@@ -455,10 +455,10 @@ openModE = label "an 'open' module expression\nfor example: open A in ..." $
     (uncurry3 (OpenModule nmPos () nm) <$> (try (openModArgs nm) <|> ((\inPos e -> ([], inPos, e)) <$> getSourcePos <*> openAll nm)))
   where
     openAll modNm = do
-      (opsTable, modOpsTables) <- ask
+      (opsTable, modOpsTables, customTypes) <- ask
       case Map.lookup modNm modOpsTables of
         Just opsTable' ->
-          withReaderT (const (IntMap.unionWith (<>) opsTable opsTable', modOpsTables)) $
+          withReaderT (const (IntMap.unionWith (<>) opsTable opsTable', modOpsTables, customTypes)) $
             (rword "in" <?> "_the 'in' keyword") *> expr
         Nothing -> customFailure $ ModuleNotFound modNm
 
@@ -473,8 +473,7 @@ letE = label ("a 'let' expression" ++ example "x") $
         ( do
             x <- lexeme $ ((ExtIdent . Right <$> variable) <?> "a variable")
             tPos <- getSourcePos
-            -- TODO add customTys to Parser and use it instead of hardcoding [] below
-            t <- symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, [])) schemeParser)
+            t <- symbol ":" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser)
             pure $ Left (x, tPos, t)
         )
         <|> ( do
@@ -592,7 +591,7 @@ prefixOpsWithoutModule :: SourcePos -> Parser (Expr () SourcePos)
 prefixOpsWithoutModule startPos = do
   hidden (ask >>= choiceOf (prefixOp startPos) . opsInLocalScope)
   where
-    opsInLocalScope ops = [s | (_, modNm, s) <- concat $ fst ops, modNm == LocalScope]
+    opsInLocalScope (ops, _, _) = [s | (_, modNm, s) <- concat ops, modNm == LocalScope]
     prefixOp :: SourcePos -> Text -> Parser (Expr () SourcePos)
     prefixOp pos s = do
       _ <- symbol $ s <> ")"
@@ -603,7 +602,7 @@ prefixOpsWithModule :: SourcePos -> Parser (Expr () SourcePos)
 prefixOpsWithModule startPos = do
   hidden (ask >>= tryMany prefixOp . opsNotInLocal)
   where
-    opsNotInLocal ops = [(modNm, s) | (_, modNm, s) <- concat $ fst ops, modNm /= LocalScope]
+    opsNotInLocal (ops, _, _) = [(modNm, s) | (_, modNm, s) <- concat ops, modNm /= LocalScope]
     prefixOp :: (Scoped ModuleName, Text) -> Parser (Expr () SourcePos)
     prefixOp (modNm, s) = do
       _ <- symbol $ fromScoped "" (unModuleName <$> modNm) <> ".(" <> s <> ")"
@@ -695,7 +694,7 @@ app =
       <|> return x
 
 expr :: Parser (Expr () SourcePos)
-expr = ask >>= \(opsTable, _) -> makeExprParser app $ mkOperators opsTable
+expr = ask >>= \(opsTable, _, _) -> makeExprParser app $ mkOperators opsTable
 
 mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
 mkOperators opsTable =
@@ -731,12 +730,13 @@ mkOperators opsTable =
 parseExpr ::
   OpsTable ->
   Map.Map ModuleName OpsTable ->
+  [CustomType] ->
   Text ->
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     (Expr () SourcePos, [Comment SourcePos])
-parseExpr opsTable modOpsTables s =
-  case runParser (runWriterT $ flip runReaderT (opsTable, modOpsTables) $ topLevel expr) "<stdin>" s of
+parseExpr opsTable modOpsTables customTypes s =
+  case runParser (runWriterT $ flip runReaderT (opsTable, modOpsTables, customTypes) $ topLevel expr) "<stdin>" s of
     Left (ParseErrorBundle errs pos) -> Left $ fst $ attachSourcePos errorOffset errs pos
     Right (e, comments) -> Right (e, appEndo comments [])
 
@@ -847,7 +847,7 @@ typeClass :: TyParser TypeClass
 typeClass = TypeClass <$> (lexeme typeIdent <* symbol "on") <*> (many typeParser)
 
 tyContextSingle :: TyParser (Either TypeClass (Text, InfernoType))
-tyContextSingle = (Left <$> (symbol "requires" *> typeClass)) <|> (Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m, _) -> (ops, m)) variable)) <*> (symbol ":" *> typeParser)))
+tyContextSingle = (Left <$> (symbol "requires" *> typeClass)) <|> (Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m, customTypes) -> (ops, m, customTypes)) variable)) <*> (symbol ":" *> typeParser)))
 
 schemeParser :: TyParser TCScheme
 schemeParser = do
@@ -883,7 +883,7 @@ enumConstructors = try ((:) <$> (lexeme enumConstructor <* symbol "|") <*> enumC
 
 sigVariable :: Parser SigVar
 sigVariable =
-  ask >>= \(opsTable, _) ->
+  ask >>= \(opsTable, _, _) ->
     let opList =
           concatMap
             ( \case
@@ -909,16 +909,16 @@ data QQDefinition = QQRawDef String | QQToValueDef String | InlineDef (Expr () S
 
 exprOrBuiltin :: Parser QQDefinition
 exprOrBuiltin =
-  try ((QQToValueDef . unpack) <$> lexeme (string "###" *> withReaderT (const (mempty, mempty)) variable <* string "###"))
-    <|> try ((QQRawDef . unpack) <$> lexeme (string "###!" *> withReaderT (const (mempty, mempty)) variable <* string "###"))
+  try ((QQToValueDef . unpack) <$> lexeme (string "###" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
+    <|> try ((QQRawDef . unpack) <$> lexeme (string "###!" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
     <|> (InlineDef <$> expr)
 
-sigParser :: [CustomType] -> Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
-sigParser customTys =
-  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> (withReaderT (\(ops, m) -> (mempty, ops, m, customTys)) schemeParser))) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
+sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
+sigParser =
+  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser))) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
       <|> try (EnumDef <$> (Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
       <|> (EnumDef Nothing <$> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
-      <|> TypeClassInstance <$> (symbol "define" *> (withReaderT (\(ops, m) -> (mempty, ops, m, customTys)) typeClass))
+      <|> TypeClassInstance <$> (symbol "define" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) typeClass))
       <|> Export <$> (symbol "export" *> (ModuleName <$> lexeme variable))
   )
     <* symbol ";"
@@ -941,19 +941,23 @@ fixityLvl = try (lexeme Lexer.decimal >>= check)
         then return x
         else fail $ "Fixity level annotation must be between 0 and 19 (inclusive)"
 
-sigsParser :: [CustomType] -> Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-sigsParser customTys =
-  try (opDeclP >>= \opsTable' -> withReaderT (const opsTable') $ sigsParser customTys)
+sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
+sigsParser =
+  try (opDeclP >>= \opsTable' -> withReaderT (const opsTable') sigsParser)
     <|> try
       ( do
-          def <- sigParser customTys
-          (opsTable, defs) <- sigsParser customTys
+          def <- sigParser
+          (opsTable, defs) <- sigsParser
           return (opsTable, def : defs)
       )
-    <|> try ((,[]) . fst <$> opDeclP)
-    <|> (sigParser customTys >>= \r -> ask >>= \(opsTable, _) -> return (opsTable, [r]))
+    <|> try
+      ( do
+          (opsTable, _, _) <- opDeclP
+          return (opsTable, [])
+      )
+    <|> (sigParser >>= \r -> ask >>= \(opsTable, _, _) -> return (opsTable, [r]))
   where
-    opDeclP = ask >>= \(opsTable, modOpsTables) -> (\f l o -> (insertIntoOpsTable opsTable f l o, modOpsTables)) <$> fixityP <*> fixityLvl <*> (operatorP <* symbol ";")
+    opDeclP = ask >>= \(opsTable, modOpsTables, customTypes) -> (\f l o -> (insertIntoOpsTable opsTable f l o, modOpsTables, customTypes)) <$> fixityP <*> fixityLvl <*> (operatorP <* symbol ";")
     operatorP = lexeme $ takeWhile1P (Just "operator") (\c -> c /= ';' && not (isSpace c))
 
 insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
@@ -966,15 +970,15 @@ insertIntoOpsTable opsTable fixity lvl op =
     lvl
     opsTable
 
-modulesParser :: [CustomType] -> Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
-modulesParser customTys = do
+modulesParser :: Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
+modulesParser = do
   symbol "module"
   moduleNm <- ModuleName <$> lexeme variable
-  (ops, sigs) <- sigsParser customTys
+  (ops, sigs) <- sigsParser
   let opsQualified = IntMap.map (map (\(fix, _, t) -> (fix, Scope moduleNm, t))) ops
   try
     ( do
-        ms <- withReaderT (\(prevOps, modOpsTables) -> (IntMap.unionWith (<>) prevOps opsQualified, Map.insert moduleNm ops modOpsTables)) (modulesParser customTys)
+        ms <- withReaderT (\(prevOps, modOpsTables, customTypes) -> (IntMap.unionWith (<>) prevOps opsQualified, Map.insert moduleNm ops modOpsTables, customTypes)) modulesParser
         pure $ (moduleNm, ops, sigs) : ms
     )
     <|> pure [(moduleNm, ops, sigs)]

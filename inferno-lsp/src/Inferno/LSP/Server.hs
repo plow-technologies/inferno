@@ -17,7 +17,6 @@ import Control.Concurrent.STM.TChan (TChan, newTChan, readTChan, writeTChan)
 import Control.Concurrent.STM.TVar (TVar, modifyTVar, newTVar, readTVar)
 import qualified Control.Exception as E
 import Control.Monad (forever)
-import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.STM (atomically)
 import Control.Monad.Trans.Reader (ReaderT (..), ask)
@@ -31,10 +30,11 @@ import qualified Data.Text as T
 import qualified Data.Text.Utf16.Rope as Rope
 import Data.Time.Clock (UTCTime, getCurrentTime)
 import qualified Data.UUID.V4 as UUID.V4
+import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.LSP.Completion (completionQueryAt, filterModuleNameCompletionItems, findInPrelude, identifierCompletionItems, mkCompletionItem, rwsCompletionItems)
-import Inferno.LSP.ParseInfer (errorDiagnostic, parseAndInfer)
-import Inferno.Module.Prelude (ModuleMap, preludeNameToTypeMap)
-import Inferno.Types.Syntax (Expr, Ident (..), InfernoType)
+import Inferno.LSP.ParseInfer (errorDiagnostic, parseAndInferDiagnostics)
+import Inferno.Module.Prelude (ModuleMap)
+import Inferno.Types.Syntax (CustomType, Expr, Ident (..), InfernoType)
 import Inferno.Types.Type (TCScheme)
 import Inferno.Types.VersionControl (Pinned)
 import Inferno.VersionControl.Types (VCObjectHash)
@@ -75,12 +75,13 @@ import System.Timeout (timeout)
 -- specifies parameters ["a", "b"] and the body of the script is "a + b", then we will pass "fun a b -> a + b"
 -- to the inferno typechecker.
 runInfernoLspServerWith ::
-  forall m c.
-  (MonadThrow m, Pretty c, Eq c) =>
+  forall c.
+  (Pretty c, Eq c) =>
   IOTracer T.Text ->
   IO BS.ByteString ->
   (BSL.ByteString -> IO ()) ->
-  ModuleMap m c ->
+  ModuleMap IO c ->
+  [CustomType] ->
   IO [Maybe Ident] ->
   (InfernoType -> Either T.Text ()) ->
   -- | Action to run before start parsing
@@ -88,9 +89,10 @@ runInfernoLspServerWith ::
   -- | Action to run after parsing is done
   ((UUID, UTCTime) -> ParsedResult -> IO ParsedResult) ->
   IO Int
-runInfernoLspServerWith tracer clientIn clientOut prelude getIdents validateInput before after = flip E.catches handlers $ do
+runInfernoLspServerWith tracer clientIn clientOut prelude customTypes getIdents validateInput before after = flip E.catches handlers $ do
   rin <- atomically newTChan :: IO (TChan ReactorInput)
   docMap <- atomically $ newTVar mempty
+  interpreter <- mkInferno prelude customTypes
   let infernoEnv = InfernoEnv docMap tracer getIdents before after validateInput
 
   let serverDefinition =
@@ -98,7 +100,7 @@ runInfernoLspServerWith tracer clientIn clientOut prelude getIdents validateInpu
           { defaultConfig = (),
             onConfigurationChange = \old _v -> Right old,
             doInitialize = \env _ -> forkIO (reactor tracer rin) >> pure (Right env),
-            staticHandlers = lspHandlers @m @c prelude rin,
+            staticHandlers = lspHandlers @c interpreter rin,
             interpretHandler = \env -> Iso (flip runReaderT infernoEnv . runLspT env) liftIO,
             options = lspOptions
           }
@@ -115,8 +117,8 @@ runInfernoLspServerWith tracer clientIn clientOut prelude getIdents validateInpu
     ioExcept (e :: E.IOException) = traceWith tracer (T.pack (show e)) >> return 1
     someExcept (e :: E.SomeException) = traceWith tracer (T.pack (show e)) >> return 1
 
-runInfernoLspServer :: forall c m. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> IO Int
-runInfernoLspServer prelude = do
+runInfernoLspServer :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> [CustomType] -> IO Int
+runInfernoLspServer prelude customTypes = do
   hSetBuffering stdin NoBuffering
   hSetEncoding stdin utf8
 
@@ -133,7 +135,7 @@ runInfernoLspServer prelude = do
   withAsyncHandleTracer stderr 100 $ \tracer -> do
     let beforeParse _ = pure ()
         afterParse _ = pure
-    runInfernoLspServerWith @m @c tracer clientIn clientOut prelude getIdents (const $ Right ()) beforeParse afterParse
+    runInfernoLspServerWith @c tracer clientIn clientOut prelude customTypes getIdents (const $ Right ()) beforeParse afterParse
 
 -- ---------------------------------------------------------------------
 
@@ -206,16 +208,16 @@ sendDiagnostics fileUri version diags =
   publishDiagnostics 100 fileUri version (partitionBySource diags)
 
 parseAndInferWithTimeout ::
-  forall m1 m2 c.
-  (MonadIO m2, MonadThrow m1, Pretty c, Eq c) =>
+  forall m c.
+  (MonadIO m, Pretty c, Eq c) =>
   ((UUID, UTCTime) -> IO ()) ->
   ((UUID, UTCTime) -> ParsedResult -> IO ParsedResult) ->
-  ModuleMap m1 c ->
+  Interpreter IO c ->
   [Maybe Ident] ->
   T.Text ->
   (InfernoType -> Either T.Text ()) ->
-  m2 ParsedResult
-parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateInput = do
+  m ParsedResult
+parseAndInferWithTimeout beforeParse afterParse interpreter idents doc_txt validateInput = do
   ts <- liftIO getCurrentTime
   uuid <- UUID <$> liftIO UUID.V4.nextRandom
 
@@ -223,7 +225,7 @@ parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateI
   result <- do
     -- Timeout parsing and type checking after 10 seconds
     let timeLimit = 10
-    mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInfer @m1 @_ @c prelude idents doc_txt validateInput
+    mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInferDiagnostics @_ @c interpreter idents doc_txt validateInput
     case mResult of
       Nothing -> pure $ Left $ [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
       Just res -> pure res
@@ -231,8 +233,8 @@ parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateI
 
 -- | Check if we have a handler, and if we create a haskell-lsp handler to pass it as
 -- input into the reactor
-lspHandlers :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> TChan ReactorInput -> Handlers InfernoLspM
-lspHandlers prelude rin = mapHandlers goReq goNot (handle @m @c prelude)
+lspHandlers :: forall c. (Pretty c, Eq c) => Interpreter IO c -> TChan ReactorInput -> Handlers InfernoLspM
+lspHandlers interpreter rin = mapHandlers goReq goNot (handle @c interpreter)
   where
     goReq :: forall (a :: J.Method 'J.FromClient 'J.Request). Handler InfernoLspM a -> Handler InfernoLspM a
     goReq f = \msg k -> do
@@ -247,8 +249,8 @@ lspHandlers prelude rin = mapHandlers goReq goNot (handle @m @c prelude)
       liftIO $ atomically $ writeTChan rin $ ReactorAction (flip runReaderT infernoEnv $ runLspT env $ f msg)
 
 -- | Where the actual logic resides for handling requests and notifications.
-handle :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Handlers InfernoLspM
-handle prelude =
+handle :: forall c. (Pretty c, Eq c) => Interpreter IO c -> Handlers InfernoLspM
+handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
   -- Note: at some point we should handle CancelReqest and cancel a previous parseAndInfer if a new one superceeds it. E.g.:
   -- https://github.com/haskell/haskell-language-server/blob/baf2fecfa1384dd18e869a837ee2768d9bce18bd/ghcide/src/Development/IDE/LSP/LanguageServer.hs#L266
   mconcat
@@ -259,7 +261,7 @@ handle prelude =
         idents <- liftIO getIdents
         trace $ "Processing DidOpenTextDocument for: " ++ show doc_uri
         hovers <-
-          parseAndInferWithTimeout beforeParse afterParse prelude idents doc_txt validateInput >>= \case
+          parseAndInferWithTimeout beforeParse afterParse interpreter idents doc_txt validateInput >>= \case
             Left errs -> do
               sendDiagnostics doc_uri (Just 0) errs
               pure mempty
@@ -287,7 +289,7 @@ handle prelude =
             trace $ "Processing DidChangeTextDocument for: " ++ show doc_uri ++ " - " ++ show doc_version
             idents <- liftIO getIdents
             hovers <-
-              parseAndInferWithTimeout beforeParse afterParse prelude idents txt validateInput >>= \case
+              parseAndInferWithTimeout beforeParse afterParse interpreter idents txt validateInput >>= \case
                 Left errs -> do
                   trace $ "Sending errs: " ++ show errs
                   sendDiagnostics doc_uri (Just doc_version) errs
@@ -313,15 +315,15 @@ handle prelude =
             Nothing -> pure Nothing
         trace $ "Completion prefix: " <> show completionPrefix
         mIdents <- liftIO $ getIdents
-        let completions = maybe [] id $ findInPrelude @c (preludeNameToTypeMap prelude) <$> completionPrefix
+        let completions = maybe [] id $ findInPrelude @c nameToTypeMap <$> completionPrefix
             idents = unIdent <$> catMaybes mIdents
             identCompletions = maybe [] id $ identifierCompletionItems idents <$> completionPrefix
             rwsCompletions = maybe [] id $ rwsCompletionItems <$> completionPrefix
-            moduleCompletions = maybe [] id $ filterModuleNameCompletionItems @c (preludeNameToTypeMap prelude) <$> completionPrefix
-            allCompletions = rwsCompletions ++ moduleCompletions ++ identCompletions ++ map (uncurry $ mkCompletionItem prelude $ fromMaybe "" completionPrefix) completions
+            moduleCompletions = maybe [] id $ filterModuleNameCompletionItems @c nameToTypeMap <$> completionPrefix
+            allCompletions = rwsCompletions ++ moduleCompletions ++ identCompletions ++ map (uncurry $ mkCompletionItem typeClasses $ fromMaybe "" completionPrefix) completions
 
         trace $ "Ident completions: " <> show identCompletions
-        trace $ "Found completions: " <> show completions
+        trace $ "Found completions: " <> show (map fst completions)
 
         responder $ Right $ J.InL $ J.List $ allCompletions,
       requestHandler J.STextDocumentHover $ \req responder -> do

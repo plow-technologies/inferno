@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.0.0 -- 2023-10-24
+* Refactor to use Inferno.Core.Interpreter API
+
 ## 0.1.13 -- 2023-10-23
 * Error message for type annotation type error
 

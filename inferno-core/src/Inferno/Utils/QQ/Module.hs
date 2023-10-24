@@ -55,12 +55,12 @@ infernoModules :: QuasiQuoter
 infernoModules = moduleQuoter []
 
 moduleQuoter :: [CustomType] -> QuasiQuoter
-moduleQuoter customTys =
+moduleQuoter customTypes =
   QuasiQuoter
     { quoteExp = \str -> do
         l <- location'
         let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (mempty, mempty) $ topLevel $ modulesParser customTys) $
+              runParser' (runWriterT $ flip runReaderT (mempty, mempty, customTypes) $ topLevel modulesParser) $
                 State
                   (pack str)
                   0

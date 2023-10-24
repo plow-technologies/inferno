@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.8.0.0 -- 2023-10-24
+* Change Interpreter API so that LSP can use it too; refactor parser to use Reader for CustomTypes
+
 ## 0.7.1.0 -- 2023-10-23
 * Add optional type annotations to let expressions
 
