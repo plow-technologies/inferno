@@ -60,18 +60,6 @@ import qualified Safe
 import Text.Megaparsec.Error (ParseError, ShowErrorComponent)
 import Text.Megaparsec.Pos (SourcePos (..), unPos)
 
-parseExprInBaseModule ::
-  forall m c.
-  (MonadThrow m, Pretty c, Eq c) =>
-  ModuleMap m c ->
-  [CustomType] ->
-  Text ->
-  Either
-    (NEList.NonEmpty (ParseError Text InfernoParsingError, SourcePos))
-    (Expr () SourcePos, [Comment SourcePos])
-parseExprInBaseModule prelude customTypes =
-  parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) customTypes
-
 errorDiagnostic :: Int -> Int -> Int -> Int -> Maybe Text -> Text -> Diagnostic
 errorDiagnostic s_line s_col e_line e_col source message =
   Diagnostic
