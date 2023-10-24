@@ -5,11 +5,13 @@
 
 module Main (main) where
 
+import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Types.Value (MlValue (VTensor))
+import Inferno.ML.Types.Value (MlValue (VTensor), customTypes)
+import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, hspec, it, runIO, shouldBe)
@@ -46,7 +48,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
-      runIO $ (mkInferno mlPrelude :: IO (Interpreter IO MlValue))
+      runIO $ (mkInferno mlPrelude customTypes :: IO (Interpreter IO MlValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value MlValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
@@ -59,7 +61,7 @@ evalTests = describe "evaluate" $
     let shouldFailToInferTypeFor str =
           it ("should fail to infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer str of
-              Left (ParseError err) -> expectationFailure err
+              Left (ParseError err) -> expectationFailure $ prettyError $ fst $ NEList.head err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
               Right _ -> expectationFailure $ "Should fail to infer a type"
