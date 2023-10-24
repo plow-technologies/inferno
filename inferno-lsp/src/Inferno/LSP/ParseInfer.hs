@@ -586,7 +586,6 @@ parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text ->
 parseAndInferTypeReps prelude expr inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
-    -- (parseAndInferDiagnostics @m @c interpreter) [] expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
