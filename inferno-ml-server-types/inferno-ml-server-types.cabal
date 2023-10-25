@@ -1,15 +1,15 @@
-cabal-version:      2.4
-name:               inferno-ml-server-types
-version:            0.1.0
-synopsis:           Types for Inferno ML server
-description:        Types for Inferno ML server
-homepage:           https://github.com/plow-technologies/inferno.git#readme
-bug-reports:        https://github.com/plow-technologies/inferno.git/issues
-copyright:          Plow-Technologies LLC
-license:            MIT
-author:             Rory Tyler hayford
-maintainer:         rory.hayford@plowtech.net
-build-type:         Simple
+cabal-version: 2.4
+name:          inferno-ml-server-types
+version:       0.1.0
+synopsis:      Types for Inferno ML server
+description:   Types for Inferno ML server
+homepage:      https://github.com/plow-technologies/inferno.git#readme
+bug-reports:   https://github.com/plow-technologies/inferno.git/issues
+copyright:     Plow-Technologies LLC
+license:       MIT
+author:        Rory Tyler hayford
+maintainer:    rory.hayford@plowtech.net
+build-type:    Simple
 
 source-repository head
   type:     git
@@ -41,7 +41,6 @@ library
     , aeson
     , base
     , inferno-core
-    , inferno-ml
     , inferno-types
     , postgresql-simple
     , servant-client
