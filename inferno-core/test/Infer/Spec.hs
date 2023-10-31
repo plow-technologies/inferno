@@ -124,6 +124,17 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "round -1425"
     shouldInferTypeFor "round (-1425)" $ simpleType typeInt
 
+    -- Type annotations:
+    shouldInferTypeFor "let xBoo : double = 1 in truncateTo 2 xBoo" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let xBoo : double = 1 in truncateTo xBoo 3.14"
+    shouldFailToInferTypeFor "let xBoo : double = \"boo\" in xBoo"
+    shouldInferTypeFor "let foo : forall 'a. {requires negate on 'a} => 'a = 3.3 in foo" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let t : int -> int = truncate in t 43.3"
+    shouldInferTypeFor "let x : int = 3 in let y = truncate x in y" $ simpleType typeInt
+    shouldInferTypeFor "let d : option of int = None in d ? 2" $ simpleType typeInt
+    shouldInferTypeFor "let d : forall 'a. {requires numeric on 'a} ⇒ array of (option of 'a) = [] in 1.0" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let d : forall 'b 'a2 . {requires numeric on double} ⇒ series of (array of 'a1) = None in 0"
+
     -- Array pattern matching:
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [_, (x, y), _] -> 3 | _ -> 9 }"
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [x, [y]] -> 2 | _ -> 9 }"

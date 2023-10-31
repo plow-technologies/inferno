@@ -374,6 +374,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" $ vTrue
     shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
     shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
+    -- Type annotations
+    shouldEvaluateTo "let x : int = 2 in x" $ VInt 2
+    shouldEvaluateTo "let x : double = 2 in x" $ VDouble 2
     -- Miscellaneous
     shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
     shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" $ vTrue

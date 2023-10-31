@@ -25,9 +25,11 @@ import qualified Data.ByteString.Char8 as Char8
 import qualified Data.IntMap as IntMap (elems, toList)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Set as Set (fromList)
-import qualified Data.Text as Text (Text, all, null, pack)
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import qualified Data.Text as Text (Text, all, null, pack, unpack)
 import GHC.Generics (Generic (..), Rep)
+import Inferno.Infer.Env (closeOver)
 import qualified Inferno.Module.Prelude as Prelude
 import qualified Inferno.Types.Module as Module (Module)
 import Inferno.Types.Syntax
@@ -39,6 +41,7 @@ import Inferno.Types.Syntax
     IStr (..),
     Ident (Ident),
     ImplExpl (..),
+    ImplType (..),
     Import (..),
     InfernoType (..),
     InfixFixity,
@@ -48,8 +51,10 @@ import Inferno.Types.Syntax
     Pat (..),
     Scoped (..),
     SomeIStr (..),
+    TCScheme (..),
     TList (..),
     TV (..),
+    TypeClass (..),
     rws,
     tListFromList,
   )
@@ -75,10 +80,14 @@ import Test.QuickCheck
     Gen,
     PrintableString (getPrintableString),
     choose,
+    chooseInt,
     elements,
+    getSize,
     listOf,
     oneof,
     recursivelyShrink,
+    resize,
+    scale,
     shrinkNothing,
     sized,
     suchThat,
@@ -113,8 +122,9 @@ instance Arbitrary BaseType where
   shrink = shrinkNothing
   arbitrary =
     oneof $
-      (TEnum <$> (Text.pack <$> arbitrary) <*> (Set.fromList <$> listOf arbitrary))
-        : (TCustom <$> arbitrary)
+      (TEnum <$> arbitraryTypeName <*> (Set.fromList <$> suchThat (listOf (Ident <$> arbitraryName)) (not . null)))
+        -- NOTE: we don't generate custom types because these need to be known when constructing the parser
+        -- : (TCustom . Text.unpack <$> arbitraryName)
         : ( map
               pure
               [ TInt,
@@ -131,44 +141,56 @@ instance Arbitrary BaseType where
 
 deriving instance ToADTArbitrary InfernoType
 
+-- | Arbitrary generator for InfernoType that only generates type vars from the given list
+arbitraryInfernoType :: [TV] -> Gen InfernoType
+arbitraryInfernoType typeVars = arbitrarySized
+  where
+    arbitraryVar =
+      TVar <$> elements typeVars
+
+    arbitraryArr = do
+      let arbitrarySmaller = scale ((div) 3) arbitrarySized
+      TArr
+        <$> arbitrarySmaller
+        <*> arbitrarySmaller
+
+    arbitraryTTuple = do
+      let arbitrarySmaller = scale ((div) 3) arbitrarySized
+      oneof
+        [ pure $ TTuple TNil,
+          TTuple <$> (TCons <$> arbitrarySmaller <*> arbitrarySmaller <*> listOf arbitrarySmaller)
+        ]
+
+    arbitraryBase = TBase <$> arbitrary
+
+    arbitraryRest = do
+      -- TODO is it okay to omit TRep?
+      -- constr <- elements [TArray, TSeries, TOptional, TRep]
+      constr <- elements [TArray, TSeries, TOptional]
+      constr <$> scale ((div) 3) arbitrarySized
+
+    arbitrarySized = do
+      getSize >>= \case
+        0 ->
+          oneof $
+            (if null typeVars then [] else [arbitraryVar])
+              ++ [arbitraryBase]
+        _n ->
+          oneof $
+            (if null typeVars then [] else [arbitraryVar])
+              ++ [ arbitraryBase,
+                   arbitraryArr,
+                   arbitraryTTuple,
+                   arbitraryRest
+                 ]
+
 instance Arbitrary InfernoType where
   shrink = recursivelyShrink
-  arbitrary = sized arbitrarySized
-    where
-      arbitraryVar =
-        TVar <$> arbitrary
+  arbitrary = do
+    typeVars <- arbitrary
+    arbitraryInfernoType typeVars
 
-      arbitraryArr n =
-        TArr
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
-
-      arbitraryTTuple n =
-        oneof
-          [ pure $ TTuple TNil,
-            TTuple <$> (TCons <$> (arbitrarySized $ n `div` 3) <*> (arbitrarySized $ n `div` 3) <*> listOf (arbitrarySized $ n `div` 3))
-          ]
-
-      arbitraryBase = TBase <$> arbitrary
-
-      arbitraryRest n = do
-        constr <- elements [TArray, TSeries, TOptional, TRep]
-        constr <$> (arbitrarySized $ n `div` 3)
-
-      arbitrarySized 0 =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase
-          ]
-      arbitrarySized n =
-        oneof
-          [ arbitraryVar,
-            arbitraryBase,
-            arbitraryArr n,
-            arbitraryTTuple n,
-            arbitraryRest n
-          ]
-
+-- | An arbitrary valid variable name
 arbitraryName :: Gen Text.Text
 arbitraryName =
   ( (\a as -> Text.pack $ a : as)
@@ -176,6 +198,15 @@ arbitraryName =
       <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['_'])
   )
     `suchThat` (\i -> not $ i `elem` rws)
+
+-- | An arbitrary valid type variable name
+arbitraryTypeName :: Gen Text.Text
+arbitraryTypeName =
+  ( (\a as -> Text.pack $ a : as)
+      <$> (elements ['a' .. 'z'])
+      <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'])
+  )
+    `suchThat` (not . (flip elem rws))
 
 deriving instance ToADTArbitrary Ident
 
@@ -358,6 +389,18 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
 
+      arbitraryLetAnnot n =
+        LetAnnot
+          <$> arbitrary
+          <*> arbitrary
+          <*> arbitraryExtIdent
+          <*> arbitrary
+          <*> resize 3 arbitrary
+          <*> arbitrary
+          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrary
+          <*> (arbitrarySized $ n `div` 3)
+
       arbitraryIString n =
         InterpolatedString
           <$> arbitrary
@@ -499,6 +542,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             arbitraryApp n,
             arbitraryLam n,
             arbitraryLet n,
+            arbitraryLetAnnot n,
             arbitraryIString n,
             arbitraryIf n,
             arbitraryOp n,
@@ -559,7 +603,23 @@ deriving via (GenericArbitrary Type.TypeClass) instance Arbitrary Type.TypeClass
 
 deriving instance ToADTArbitrary Type.TCScheme
 
-deriving via (GenericArbitrary Type.TCScheme) instance Arbitrary Type.TCScheme
+instance Arbitrary Type.TCScheme where
+  -- NOTE: this only generates TCSchemes where implicit variables are ExtIdent (Right ...),
+  -- because the Lefts are internal variables not supported by the parser.
+  arbitrary = do
+    -- Quantify over type variables that look like [TV 0 .. TV n] because parser normalizes type var names to look like this
+    -- numTypeVars <- getSize >>= \size -> chooseInt (0, max 3 $ size `div` 8)
+    -- let typeVars = map TV $ take numTypeVars [0 ..]
+    let typeVars = map TV [0, 1, 2] -- TODO
+    -- ForallTC <$> pure typeVars <*> arbitraryTC typeVars <*> arbitraryImplType typeVars
+    closeOver <$> arbitraryTC typeVars <*> arbitraryImplType typeVars
+    where
+      arbitraryTC typeVars =
+        Set.fromList <$> listOf (TypeClass <$> arbitraryTypeName <*> listOf (arbitraryInfernoType typeVars))
+      arbitraryImplType typeVars =
+        ImplType <$> arbitraryImpls typeVars <*> arbitraryInfernoType typeVars
+      arbitraryImpls typeVars =
+        Map.fromList <$> listOf ((,) <$> (ExtIdent <$> Right <$> arbitraryName) <*> arbitraryInfernoType typeVars)
 
 deriving instance ToADTArbitrary Type.Namespace
 

@@ -8,7 +8,7 @@ module Parse.Spec where
 
 import Data.Functor.Foldable (ana, project)
 import qualified Data.List.NonEmpty as NonEmpty
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, isInfixOf, pack, unpack)
 import Data.Text.Lazy (toStrict)
 import Inferno.Instances.Arbitrary ()
 import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModules, builtinModulesOpsTable)
@@ -34,8 +34,14 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
   ( Property,
     Testable (property),
+    arbitrary,
     counterexample,
+    forAll,
+    resize,
+    verbose,
+    within,
     (===),
+    (==>),
   )
 import Text.Pretty.Simple (pShow)
 
@@ -78,23 +84,30 @@ infixl 2 <?>
 parsingTests :: Spec
 parsingTests = describe "pretty printing/parsing" $ do
   prop "parseExpr and pretty are inverse up to normalizeExpr" $
-    \(x :: Expr () ()) -> case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
-      Left err ->
-        property False
-          <?> ( "Pretty: \n"
-                  <> (renderPretty x)
-                  <> "\nParse error:\n"
-                  <> (pack $ prettyError $ fst $ NonEmpty.head err)
-              )
-      Right (res, _comments) ->
-        (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
-          <?> ( "Pretty: \n"
-                  <> (renderPretty x)
-                  <> "\nParsed: \n"
-                  <> (toStrict $ pShow res)
-                  <> "\nParsed pretty: \n"
-                  <> (renderPretty res)
-              )
+    forAll (resize 3 arbitrary) $
+      \(x :: Expr () ()) ->
+        -- verbose $
+        within 2000000 $
+          -- let src = renderPretty x
+          --  in not ("rep of" `isInfixOf` src)
+          --       ==>
+          case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
+            Left err ->
+              property False
+                <?> ( "Pretty: \n"
+                        <> (renderPretty x)
+                        <> "\nParse error:\n"
+                        <> (pack $ prettyError $ fst $ NonEmpty.head err)
+                    )
+            Right (res, _comments) ->
+              (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
+                <?> ( "Pretty: \n"
+                        <> (renderPretty x)
+                        <> "\nParsed: \n"
+                        <> (toStrict $ pShow res)
+                        <> "\nParsed pretty: \n"
+                        <> (renderPretty res)
+                    )
 
   describe "parsing literals" $ do
     shouldSucceedFor "0" $ Lit () (LInt 0)
