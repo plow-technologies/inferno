@@ -27,7 +27,7 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import qualified Data.Text as Text (Text, all, null, pack, unpack)
+import qualified Data.Text as Text (Text, all, null, pack)
 import GHC.Generics (Generic (..), Rep)
 import Inferno.Infer.Env (closeOver)
 import qualified Inferno.Module.Prelude as Prelude
@@ -51,7 +51,6 @@ import Inferno.Types.Syntax
     Pat (..),
     Scoped (..),
     SomeIStr (..),
-    TCScheme (..),
     TList (..),
     TV (..),
     TypeClass (..),
@@ -80,7 +79,6 @@ import Test.QuickCheck
     Gen,
     PrintableString (getPrintableString),
     choose,
-    chooseInt,
     elements,
     getSize,
     listOf,
@@ -141,54 +139,44 @@ instance Arbitrary BaseType where
 
 deriving instance ToADTArbitrary InfernoType
 
--- | Arbitrary generator for InfernoType that only generates type vars from the given list
-arbitraryInfernoType :: [TV] -> Gen InfernoType
-arbitraryInfernoType typeVars = arbitrarySized
-  where
-    arbitraryVar =
-      TVar <$> elements typeVars
-
-    arbitraryArr = do
-      let arbitrarySmaller = scale ((div) 3) arbitrarySized
-      TArr
-        <$> arbitrarySmaller
-        <*> arbitrarySmaller
-
-    arbitraryTTuple = do
-      let arbitrarySmaller = scale ((div) 3) arbitrarySized
-      oneof
-        [ pure $ TTuple TNil,
-          TTuple <$> (TCons <$> arbitrarySmaller <*> arbitrarySmaller <*> listOf arbitrarySmaller)
-        ]
-
-    arbitraryBase = TBase <$> arbitrary
-
-    arbitraryRest = do
-      -- TODO is it okay to omit TRep?
-      -- constr <- elements [TArray, TSeries, TOptional, TRep]
-      constr <- elements [TArray, TSeries, TOptional]
-      constr <$> scale ((div) 3) arbitrarySized
-
-    arbitrarySized = do
-      getSize >>= \case
-        0 ->
-          oneof $
-            (if null typeVars then [] else [arbitraryVar])
-              ++ [arbitraryBase]
-        _n ->
-          oneof $
-            (if null typeVars then [] else [arbitraryVar])
-              ++ [ arbitraryBase,
-                   arbitraryArr,
-                   arbitraryTTuple,
-                   arbitraryRest
-                 ]
-
 instance Arbitrary InfernoType where
   shrink = recursivelyShrink
-  arbitrary = do
-    typeVars <- arbitrary
-    arbitraryInfernoType typeVars
+  arbitrary = arbitraryType
+    where
+      arbitraryVar =
+        TVar <$> arbitrary
+
+      arbitraryArr =
+        TArr
+          <$> (scale (`div` 3) arbitraryType)
+          <*> (scale (`div` 3) arbitraryType)
+
+      arbitraryTTuple = do
+        let arbitrarySmaller = scale (`div` 3) arbitraryType
+        oneof
+          [ pure $ TTuple TNil,
+            TTuple <$> (TCons <$> arbitrarySmaller <*> arbitrarySmaller <*> listOf arbitrarySmaller)
+          ]
+
+      arbitraryBase = TBase <$> arbitrary
+
+      arbitraryRest = do
+        -- NOTE: we omit TRep because it is an internal type that the parser does not support
+        constr <- elements [TArray, TSeries, TOptional]
+        constr <$> scale (`div` 3) arbitraryType
+
+      arbitraryType = do
+        getSize >>= \case
+          0 ->
+            oneof [arbitraryVar, arbitraryBase]
+          _n ->
+            oneof
+              [ arbitraryVar,
+                arbitraryBase,
+                arbitraryArr,
+                arbitraryTTuple,
+                arbitraryRest
+              ]
 
 -- | An arbitrary valid variable name
 arbitraryName :: Gen Text.Text
@@ -395,7 +383,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> arbitraryExtIdent
           <*> arbitrary
-          <*> resize 3 arbitrary
+          <*> resize (n `div` 3) arbitrary
           <*> arbitrary
           <*> (arbitrarySized $ n `div` 3)
           <*> arbitrary
@@ -607,19 +595,15 @@ instance Arbitrary Type.TCScheme where
   -- NOTE: this only generates TCSchemes where implicit variables are ExtIdent (Right ...),
   -- because the Lefts are internal variables not supported by the parser.
   arbitrary = do
-    -- Quantify over type variables that look like [TV 0 .. TV n] because parser normalizes type var names to look like this
-    -- numTypeVars <- getSize >>= \size -> chooseInt (0, max 3 $ size `div` 8)
-    -- let typeVars = map TV $ take numTypeVars [0 ..]
-    let typeVars = map TV [0, 1, 2] -- TODO
-    -- ForallTC <$> pure typeVars <*> arbitraryTC typeVars <*> arbitraryImplType typeVars
-    closeOver <$> arbitraryTC typeVars <*> arbitraryImplType typeVars
+    -- Generate an arbitrary type class set and ImplType and then normalize and quantify:
+    closeOver <$> arbitraryTC <*> arbitraryImplType
     where
-      arbitraryTC typeVars =
-        Set.fromList <$> listOf (TypeClass <$> arbitraryTypeName <*> listOf (arbitraryInfernoType typeVars))
-      arbitraryImplType typeVars =
-        ImplType <$> arbitraryImpls typeVars <*> arbitraryInfernoType typeVars
-      arbitraryImpls typeVars =
-        Map.fromList <$> listOf ((,) <$> (ExtIdent <$> Right <$> arbitraryName) <*> arbitraryInfernoType typeVars)
+      arbitraryTC =
+        Set.fromList <$> listOf (TypeClass <$> arbitraryTypeName <*> listOf arbitrary)
+      arbitraryImplType =
+        ImplType <$> arbitraryImpls <*> arbitrary
+      arbitraryImpls =
+        Map.fromList <$> listOf ((,) <$> (ExtIdent <$> Right <$> arbitraryName) <*> arbitrary)
 
 deriving instance ToADTArbitrary Type.Namespace
 

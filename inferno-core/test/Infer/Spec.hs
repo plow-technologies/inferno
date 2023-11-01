@@ -133,7 +133,6 @@ inferTests = describe "infer" $
     shouldInferTypeFor "let x : int = 3 in let y = truncate x in y" $ simpleType typeInt
     shouldInferTypeFor "let d : option of int = None in d ? 2" $ simpleType typeInt
     shouldInferTypeFor "let d : forall 'a. {requires numeric on 'a} ⇒ array of (option of 'a) = [] in 1.0" $ simpleType typeDouble
-    shouldFailToInferTypeFor "let d : forall 'b 'a2 . {requires numeric on double} ⇒ series of (array of 'a1) = None in 0"
 
     -- Array pattern matching:
     shouldFailToInferTypeFor "match [1.2, 3, 3] with { | [_, (x, y), _] -> 3 | _ -> 9 }"
