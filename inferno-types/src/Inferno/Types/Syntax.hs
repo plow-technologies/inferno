@@ -275,11 +275,14 @@ collectArrs :: InfernoType -> [InfernoType]
 collectArrs (TArr ty1 ty2) = ty1 : collectArrs ty2
 collectArrs t = [t]
 
-letters :: [Text]
-letters = map Text.pack $ [1 ..] >>= flip replicateM ['a' .. 'z']
+-- | ['a', 'b', ..., 'z', 'aa', 'bb', ..., 'zz', ...]
+allTypeVars :: [Text]
+allTypeVars = map Text.pack $ [1 ..] >>= flip replicateM ['a' .. 'z']
 
 instance Pretty TV where
-  pretty (TV i) = "'" <> pretty (letters !! i)
+  pretty (TV i)
+    | 0 <= i = "'" <> pretty (allTypeVars !! i)
+    | otherwise = "'a" <> pretty (-i)
 
 instance Pretty BaseType where
   pretty = \case
@@ -292,7 +295,7 @@ instance Pretty BaseType where
     TTime -> "time"
     TTimeDiff -> "timeDiff"
     TResolution -> "resolution"
-    TEnum t _ -> pretty t
+    TEnum t cs -> pretty t <> encloseSep lbrace rbrace comma (map (((<>) "#") . pretty . unIdent) $ Set.toList cs)
     TCustom t -> pretty t
 
 instance Pretty InfernoType where
@@ -404,18 +407,19 @@ instance Pretty TypeClassShape where
         _ -> enclose lparen rparen $ pretty ty
 
 instance Pretty TCScheme where
-  pretty (ForallTC _ tcs (ImplType impl ty))
-    | Map.null impl && null tcs = pretty ty
-    | otherwise =
-        encloseSep
-          lbrace
-          rbrace
-          comma
-          ( (map (("requires" <+>) . pretty) $ Set.toList tcs)
-              ++ (map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impl)
-          )
-          <+> "⇒"
-          <+> pretty ty
+  pretty (ForallTC xs tcs (ImplType impl ty)) =
+    prettyXs xs
+      <+> prettyPrecondition
+      <+> pretty ty
+    where
+      prettyXs [] = mempty
+      prettyXs xs' = "forall" <+> sep (fmap pretty xs') <+> "."
+      prettyTcs tcs' = map (("requires" <+>) . pretty) $ Set.toList tcs'
+      prettyImpls impls = map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impls
+      prettyPrecondition =
+        case prettyTcs tcs ++ prettyImpls impl of
+          [] -> mempty
+          precs -> encloseSep lbrace rbrace comma precs <+> "⇒"
 
 newtype Subst = Subst (Map.Map TV InfernoType)
   deriving stock (Eq, Ord)
@@ -495,7 +499,7 @@ incSourceCol pos 0 = pos
 incSourceCol (SourcePos n l c) i = SourcePos n l (c <> mkPos i)
 
 rws :: [Text] -- list of reserved words
-rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "None", "assert", "fun", "infixr", "infixl", "infix", "enum", "open"]
+rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "None", "assert", "fun", "infixr", "infixl", "infix", "enum", "open", "define", "on", "forall", "requires"]
 
 newtype Ident = Ident {unIdent :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)

@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0.0 -- 2023-11-01
+* Fix pretty printing of types to be parser-copmatible. Now prints as `bool{#true, #false}`
+
 ## 0.2.4.0 -- 2023-10-23
 * Add LetAnnot to Expr for type annotations; move types in Types.hs to Syntax.hs
 

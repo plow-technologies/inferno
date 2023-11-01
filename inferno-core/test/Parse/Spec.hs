@@ -35,6 +35,7 @@ import Test.QuickCheck
   ( Property,
     Testable (property),
     counterexample,
+    within,
     (===),
   )
 import Text.Pretty.Simple (pShow)
@@ -78,23 +79,25 @@ infixl 2 <?>
 parsingTests :: Spec
 parsingTests = describe "pretty printing/parsing" $ do
   prop "parseExpr and pretty are inverse up to normalizeExpr" $
-    \(x :: Expr () ()) -> case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
-      Left err ->
-        property False
-          <?> ( "Pretty: \n"
-                  <> (renderPretty x)
-                  <> "\nParse error:\n"
-                  <> (pack $ prettyError $ fst $ NonEmpty.head err)
-              )
-      Right (res, _comments) ->
-        (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
-          <?> ( "Pretty: \n"
-                  <> (renderPretty x)
-                  <> "\nParsed: \n"
-                  <> (toStrict $ pShow res)
-                  <> "\nParsed pretty: \n"
-                  <> (renderPretty res)
-              )
+    \(x :: Expr () ()) ->
+      within 10000000 $
+        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
+          Left err ->
+            property False
+              <?> ( "Pretty: \n"
+                      <> (renderPretty x)
+                      <> "\nParse error:\n"
+                      <> (pack $ prettyError $ fst $ NonEmpty.head err)
+                  )
+          Right (res, _comments) ->
+            (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
+              <?> ( "Pretty: \n"
+                      <> (renderPretty x)
+                      <> "\nParsed: \n"
+                      <> (toStrict $ pShow res)
+                      <> "\nParsed pretty: \n"
+                      <> (renderPretty res)
+                  )
 
   describe "parsing literals" $ do
     shouldSucceedFor "0" $ Lit () (LInt 0)
@@ -245,6 +248,9 @@ parsingTests = describe "pretty printing/parsing" $ do
         (Just ((), Op (Var () () LocalScope (Expl (ExtIdent $ Right "x"))) () () (7, NoFix) LocalScope (Ident ">") (Lit () (LInt 10))))
         ()
     shouldFailFor "[() | if x > 10]"
+
+  describe "parsing type annotations" $ do
+    shouldFailFor "let d : forall 'b 'a2 . {requires numeric on double} ⇒ series of (array of 'a1) = None in 0"
   where
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $

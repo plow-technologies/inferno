@@ -2,60 +2,34 @@
     "samples": [
         {
             "contents": {
-                "tag": "TWord16"
+                "tag": "TTime"
             },
             "tag": "TBase"
         },
         {
             "contents": {
-                "tag": "TText"
+                "tag": "TTime"
             },
             "tag": "TBase"
         },
         {
             "contents": {
-                "contents": [
-                    "p@|#ww}\u0008",
-                    [
-                        "a6w84t_rmv",
-                        "bq4j_jza4y0731",
-                        "chhdplp839",
-                        "cw3hsmeo0_zf",
-                        "dbqhquh6clwp3prc4c_0k8l22",
-                        "edvtxyv3m56ghn6brgd2oeskcc16",
-                        "ey",
-                        "ffwgzqyfyckjqvhixrnbxrx6iamvqq",
-                        "hs_wtx4o",
-                        "imlc6odthsr4py6",
-                        "jq8p8n50kwmpe0hmazc2mc",
-                        "l6w",
-                        "ldtm08p0",
-                        "n",
-                        "onqjbc55d6trmtnfrg2tow0",
-                        "ow1pjgv69p3e7",
-                        "qq78gk8000jd",
-                        "qv975ab5o1y",
-                        "r0727x42f_2qtskpppw",
-                        "rd6lb92lkuwau6qm3mzj_a3b75m",
-                        "vzrj_x401hmnu_ux"
-                    ]
-                ],
-                "tag": "TEnum"
+                "tag": "TWord32"
             },
             "tag": "TBase"
         },
         {
             "contents": {
-                "tag": "TText"
+                "tag": "TWord64"
             },
             "tag": "TBase"
         },
         {
             "contents": {
-                "tag": "TText"
+                "tag": "TTimeDiff"
             },
             "tag": "TBase"
         }
     ],
-    "seed": 801499757
+    "seed": 977430778
 }

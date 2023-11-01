@@ -2,72 +2,45 @@
     "samples": [
         {
             "contents": {
-                "contents": [
-                    {
-                        "contents": [
-                            {
-                                "contents": -23,
-                                "tag": "TVar"
-                            },
-                            {
-                                "contents": {
-                                    "tag": "TTime"
-                                },
-                                "tag": "TBase"
-                            }
-                        ],
-                        "tag": "TArr"
-                    },
-                    {
-                        "contents": [
-                            {
-                                "contents": {
-                                    "tag": "TTimeDiff"
-                                },
-                                "tag": "TBase"
-                            },
-                            {
-                                "contents": {
-                                    "tag": "TNil"
-                                },
-                                "tag": "TTuple"
-                            }
-                        ],
-                        "tag": "TArr"
-                    }
-                ],
-                "tag": "TArr"
+                "contents": {
+                    "tag": "TTime"
+                },
+                "tag": "TBase"
             },
             "tag": "TSeries"
         },
         {
             "contents": {
-                "contents": 12,
+                "contents": -2,
                 "tag": "TVar"
             },
             "tag": "TSeries"
         },
         {
             "contents": {
-                "contents": 30,
+                "contents": -4,
                 "tag": "TVar"
             },
             "tag": "TSeries"
         },
         {
             "contents": {
-                "contents": -17,
-                "tag": "TVar"
+                "contents": {
+                    "tag": "TTime"
+                },
+                "tag": "TBase"
             },
             "tag": "TSeries"
         },
         {
             "contents": {
-                "contents": -13,
-                "tag": "TVar"
+                "contents": {
+                    "tag": "TNil"
+                },
+                "tag": "TTuple"
             },
             "tag": "TSeries"
         }
     ],
-    "seed": -570853263
+    "seed": -673534758
 }
