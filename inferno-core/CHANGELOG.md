@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.8.2.0 -- 2023-11-02
+* Add median
+
 ## 0.8.1.0 -- 2023-11-01
 * Add tests for type annotations; fix parser and arbitrary generators for type annotations
 
