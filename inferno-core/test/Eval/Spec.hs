@@ -246,6 +246,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.minimum [3.0, 4.0] ? -999" $ VDouble 3.0
     shouldEvaluateTo "Array.maximum [3.0, 4.0] ? 999" $ VDouble 4.0
     shouldEvaluateTo "Array.average [0.0, 1.0] ? 0" $ VDouble 0.5
+    shouldEvaluateTo "Array.median [0.0, 1.0, 2.0] ? 0" $ VDouble 1.0
+    shouldEvaluateTo "Array.median [0, 1] ? 0" $ VDouble 0.5
+    shouldEvaluateTo "Array.median [] ? 9" $ VDouble 9.0
     shouldEvaluateTo "Array.argmin [3.0, 4.0] ? 1" $ VInt 0
     shouldEvaluateTo "Array.argmax [3.0, 4.0] ? 0" $ VInt 1
     shouldEvaluateTo "Array.argsort [3.0, 1.0, 2.0]" $ VArray [VInt 1, VInt 2, VInt 0]

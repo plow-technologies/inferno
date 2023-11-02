@@ -66,6 +66,7 @@ import Inferno.Module.Prelude.Defs
     magnitudeFun,
     maxFun,
     maximumFun,
+    medianFun,
     minFun,
     minimumFun,
     minutesBeforeFun,
@@ -395,6 +396,9 @@ module Array
 
   @doc The average of the values in an array, or `None` if empty;
   average: forall 'a. array of 'a -> option of double := ###!averageFun###;
+
+  @doc Return the median element in an array, or `None` if empty;
+  median: forall 'a. array of 'a -> option of double := ###!medianFun###;
 
   @doc The index of the minimum value in an array, or `None` if empty;
   argmin: forall 'a. array of 'a -> option of int := ###!argminFun###;
