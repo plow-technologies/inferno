@@ -41,6 +41,7 @@ import Inferno.Module.Cast (Either3, Either4, Either5, Either6, FromValue (fromV
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
+import Numeric.Statistics.Median (median)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
@@ -480,6 +481,19 @@ averageFun =
     VArray [] -> pure VEmpty
     VArray xs -> pure $ VOne $ VDouble $ sum (mapMaybe toDouble xs) / fromIntegral (length xs)
     _ -> throwM $ RuntimeError "average: expecting an array"
+  where
+    toDouble :: Value c m -> Maybe Double
+    toDouble = \case
+      VInt v -> Just $ fromIntegral v
+      VDouble v -> Just v
+      _ -> Nothing
+
+medianFun :: (MonadThrow m) => Value c m
+medianFun =
+  VFun $ \case
+    VArray [] -> pure VEmpty
+    VArray xs -> pure $ VOne $ VDouble $ median (mapMaybe toDouble xs)
+    _ -> throwM $ RuntimeError "median: expecting an array"
   where
     toDouble :: Value c m -> Maybe Double
     toDouble = \case

@@ -90,6 +90,7 @@ import Text.Megaparsec
     anySingle,
     attachSourcePos,
     between,
+    choice,
     customFailure,
     errorOffset,
     getSourcePos,
@@ -210,7 +211,7 @@ implicitVariable = hidden $ char '?' *> (Text.cons <$> letterChar <*> takeWhileP
 enumConstructor :: SomeParser r Ident
 enumConstructor =
   Ident
-    <$> (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
+    <$> lexeme (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
     <?> "an enum constructor\nfor example: #true, #false"
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
@@ -394,16 +395,22 @@ renameModE = label "a 'let module' expression\nfor example: let module A = Base 
         e <- withReaderT (const (opsTable', modOpsTables', customTypes)) $ (rword "in" <?> "_the 'in' keyword") *> expr
         pure $ RenameModule newNmPos newNm oldNmPos oldNm inPos e
 
-data InfernoParsingError = ModuleNotFound ModuleName | InfixOpNotFound ModuleName Ident | UnboundTyVar Text
+data InfernoParsingError
+  = ModuleNotFound ModuleName
+  | InfixOpNotFound ModuleName Ident
+  | UnboundTyVar Text
+  | ImplicitVarTypeAnnot
   deriving (Eq, Show, Ord)
 
 instance ShowErrorComponent InfernoParsingError where
   showErrorComponent (ModuleNotFound (ModuleName modNm)) =
     "Module '" <> unpack modNm <> "' could not be found"
   showErrorComponent (InfixOpNotFound (ModuleName modNm) (Ident op)) =
-    "Module " <> unpack modNm <> " does nto export `(" <> unpack op <> ")`"
+    "Module " <> unpack modNm <> " does not export `(" <> unpack op <> ")`"
   showErrorComponent (UnboundTyVar ty) =
     "Unbound type variable '" <> unpack ty
+  showErrorComponent ImplicitVarTypeAnnot =
+    "Implicit variables cannot have type annotations"
 
 openModArgs :: ModuleName -> Parser ([(Import SourcePos, Maybe SourcePos)], SourcePos, Expr () SourcePos)
 openModArgs modNm = do
@@ -468,31 +475,24 @@ letE = label ("a 'let' expression" ++ example "x") $
     startPos <- getSourcePos
     hidden $ rword "let"
     varPos <- getSourcePos
-    xAndMaybeType <-
-      try
-        ( do
-            x <- lexeme $ ((ExtIdent . Right <$> variable) <?> "a variable")
-            tPos <- getSourcePos
-            t <- symbol ":" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser)
-            pure $ Left (x, tPos, t)
-        )
-        <|> ( do
-                x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
-                pure $ Right x
-            )
-    let xStr = unpack $ varName xAndMaybeType
+    x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
+    let xStr = unpack $ renderPretty x
+    tPos <- getSourcePos
+    maybeTy <-
+      optional $
+        symbol ":"
+          *> withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser
     eqPos <- getSourcePos
     symbol "=" <?> "'='"
     e1 <- expr <?> ("an expression to bind to '" ++ xStr ++ "'" ++ example xStr)
     inPos <- getSourcePos
     e2 <- (rword "in" <?> "_the 'in' keyword") *> expr
-    pure $ case xAndMaybeType of
-      Left (x, tPos, tcs) -> LetAnnot startPos varPos x tPos tcs eqPos e1 inPos e2
-      Right x -> Let startPos varPos x eqPos e1 inPos e2
+    case (x, maybeTy) of
+      (Expl x', Just t) -> pure $ LetAnnot startPos varPos x' tPos t eqPos e1 inPos e2
+      (Impl _, Just _) -> customFailure ImplicitVarTypeAnnot
+      (_, Nothing) -> pure $ Let startPos varPos x eqPos e1 inPos e2
   where
     example x = "\nfor example: let " ++ x ++ " = 2 * 5 in ...\nor: let " ++ x ++ " : double = 1 + 2 in ..."
-    varName (Left (x, _, _)) = renderPretty x
-    varName (Right x) = renderPretty x
 
 pat :: Parser (Pat () SourcePos)
 pat =
@@ -769,12 +769,8 @@ baseType = do
             <|> try (symbol "timeDiff" *> pure TTimeDiff)
             <|> (symbol "time" *> pure TTime)
             <|> (symbol "resolution" *> pure TResolution)
-            <|> parseCustomTypes customTypes
+            <|> choice (map (\t -> symbol (pack t) *> pure (TCustom t)) customTypes)
         )
-  where
-    parseCustomTypes [] = fail "parseCustomTypes: nothing mached"
-    parseCustomTypes (t : ts) =
-      try (symbol (pack t) *> pure (TCustom t)) <|> parseCustomTypes ts
 
 type_variable_raw :: TyParser Text
 type_variable_raw = (char '\'' *> takeWhile1P Nothing isAlphaNum)
