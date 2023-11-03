@@ -1,3 +1,4 @@
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -57,20 +58,24 @@ import Web.HttpApiData
   )
 
 type InfernoMlServerAPI uid gid =
+  -- Evaluate an inference script. The script must evaluate to a tensor, which
+  -- will then be converted to an array, whose elements will be subsequently
+  -- streamed as chunks
   "inference"
     :> ReqBody '[JSON] (InferenceRequest uid gid)
     :> StreamPost NewlineFraming JSON (ConduitT () SomeChunk IO ())
 
 -- | We need to be able to support chunk sizes based on the dimensions of the input
--- tensor
+-- tensor, which may be nested, and of varying @dtype@s
 data SomeChunk where
   -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
   -- no other way to include this information using `NewlineFraming` with `JSON`,
   -- since that framing strategy apparently doesn't support adding response headers
   -- (where the `dtype` and `dim` could also be added); also, headers are not
   -- available in `MimeUnrender` implementations, so decoding would be an issue
-  SomeChunk ::
-    forall a. (Show a, ToJSON a) => Dim -> DType -> a -> SomeChunk
+  SomeChunk :: forall a. Chunkable a => Dim -> DType -> a -> SomeChunk
+
+type Chunkable a = (Show a, ToJSON a, FromJSON a)
 
 deriving stock instance Show SomeChunk
 
@@ -95,7 +100,7 @@ instance FromJSON SomeChunk where
         x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
         x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
         where
-          mkSomeChunk :: (Show a, ToJSON a) => (Dim, DType) -> a -> SomeChunk
+          mkSomeChunk :: Chunkable a => (Dim, DType) -> a -> SomeChunk
           mkSomeChunk = uncurry SomeChunk
 
           getChunk :: FromJSON a => Parser a
