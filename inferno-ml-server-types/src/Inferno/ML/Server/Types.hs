@@ -17,18 +17,18 @@
 module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
-import Data.Aeson
-  ( FromJSON (parseJSON),
-    Object,
-    ToJSON (toJSON),
-    Value (Number, String),
-    object,
-    withObject,
-    withScientific,
-    withText,
-    (.:),
-    (.=),
-  )
+import Data.Aeson (
+  FromJSON (parseJSON),
+  Object,
+  ToJSON (toJSON),
+  Value (Number, String),
+  object,
+  withObject,
+  withScientific,
+  withText,
+  (.:),
+  (.=),
+ )
 import Data.Aeson.Types (Parser)
 import Data.Char (toLower)
 import Data.Int (Int64)
@@ -36,26 +36,26 @@ import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Vector (Vector)
-import Database.PostgreSQL.Simple
-  ( FromRow,
-    ToRow,
-  )
+import Database.PostgreSQL.Simple (
+  FromRow,
+  ToRow,
+ )
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
-import Servant
-  ( JSON,
-    NewlineFraming,
-    ReqBody,
-    StreamPost,
-    (:>),
-  )
+import Servant (
+  JSON,
+  NewlineFraming,
+  ReqBody,
+  StreamPost,
+  (:>),
+ )
 import Servant.Conduit ()
-import Web.HttpApiData
-  ( FromHttpApiData (parseUrlPiece),
-    ToHttpApiData (toUrlPiece),
-  )
+import Web.HttpApiData (
+  FromHttpApiData (parseUrlPiece),
+  ToHttpApiData (toUrlPiece),
+ )
 
 type InfernoMlServerAPI uid gid =
   -- Evaluate an inference script. The script must evaluate to a tensor, which
@@ -65,8 +65,9 @@ type InfernoMlServerAPI uid gid =
     :> ReqBody '[JSON] (InferenceRequest uid gid)
     :> StreamPost NewlineFraming JSON (ConduitT () SomeChunk IO ())
 
--- | We need to be able to support chunk sizes based on the dimensions of the input
--- tensor, which may be nested, and of varying @dtype@s
+{- | We need to be able to support chunk sizes based on the dimensions of the input
+tensor, which may be nested, and of varying @dtype@s
+-}
 data SomeChunk where
   -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
   -- no other way to include this information using `NewlineFraming` with `JSON`,
@@ -82,40 +83,41 @@ deriving stock instance Show SomeChunk
 instance FromJSON SomeChunk where
   parseJSON = withObject "SomeChunk" $ \o ->
     someChunkP o =<< ((,) <$> o .: "dim" <*> o .: "dtype")
-    where
-      -- Each chunk is one element of the list from the original n-dimension
-      -- tensor (up to four dimensions)
-      someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
-      someChunkP o = \case
-        x@(One, Float) -> mkSomeChunk x <$> getChunk @Float
-        x@(Two, Float) -> mkSomeChunk x <$> getChunk @[Float]
-        x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
-        x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
-        x@(One, Double) -> mkSomeChunk x <$> getChunk @Double
-        x@(Two, Double) -> mkSomeChunk x <$> getChunk @[Double]
-        x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
-        x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
-        x@(One, Int64) -> mkSomeChunk x <$> getChunk @Int64
-        x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
-        x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
-        x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
-        where
-          mkSomeChunk :: Chunkable a => (Dim, DType) -> a -> SomeChunk
-          mkSomeChunk = uncurry SomeChunk
+   where
+    -- Each chunk is one element of the list from the original n-dimension
+    -- tensor (up to four dimensions)
+    someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
+    someChunkP o = \case
+      x@(One, Float) -> mkSomeChunk x <$> getChunk @Float
+      x@(Two, Float) -> mkSomeChunk x <$> getChunk @[Float]
+      x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
+      x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
+      x@(One, Double) -> mkSomeChunk x <$> getChunk @Double
+      x@(Two, Double) -> mkSomeChunk x <$> getChunk @[Double]
+      x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
+      x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
+      x@(One, Int64) -> mkSomeChunk x <$> getChunk @Int64
+      x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
+      x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
+      x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
+     where
+      mkSomeChunk :: Chunkable a => (Dim, DType) -> a -> SomeChunk
+      mkSomeChunk = uncurry SomeChunk
 
-          getChunk :: FromJSON a => Parser a
-          getChunk = o .: "chunk"
+      getChunk :: FromJSON a => Parser a
+      getChunk = o .: "chunk"
 
 instance ToJSON SomeChunk where
   toJSON (SomeChunk dim dtype x) =
     object
-      [ "dtype" .= dtype,
-        "dim" .= dim,
-        "chunk" .= x
+      [ "dtype" .= dtype
+      , "dim" .= dim
+      , "chunk" .= x
       ]
 
--- | Representation of tensor, parameterized by its datatype, up to four dimensions
--- (see 'Dim')
+{- | Representation of tensor, parameterized by its datatype, up to four dimensions
+(see 'Dim')
+-}
 data AsValue a where
   AsValue1 :: [a] -> AsValue [a]
   AsValue2 :: [[a]] -> AsValue [[a]]
@@ -154,22 +156,36 @@ instance FromHttpApiData DType where
     "double" -> pure Double
     d -> Left . Text.pack $ unwords ["Invalid dtype:", show d]
 
--- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
--- tensors and Haskell lists for up to four dimensions. This is included in the
--- response when running an inference parameter.
+{- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
+tensors and Haskell lists for up to four dimensions. This is included in the
+response when running an inference parameter.
+-}
 data Dim
   = One
   | Two
   | Three
   | Four
   deriving stock
-    ( Show,
-      Eq,
-      Ord,
-      Bounded,
-      Enum,
-      Generic
+    ( Show
+    , Eq
+    , Ord
+    , Bounded
+    , Generic
     )
+
+instance Enum Dim where
+  toEnum = \case
+    1 -> One
+    2 -> Two
+    3 -> Three
+    4 -> Four
+    _ -> error "Dimension out of bounds (1, 4)"
+
+  fromEnum = \case
+    One -> 1
+    Two -> 2
+    Three -> 3
+    Four -> 4
 
 instance FromJSON Dim where
   parseJSON = withScientific "Dim" $ \case
@@ -202,8 +218,8 @@ vdim = \case
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
-  { parameter :: Id (InferenceParam uid gid),
-    model :: Id (Model uid gid)
+  { parameter :: Id (InferenceParam uid gid)
+  , model :: Id (Model uid gid)
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -212,23 +228,23 @@ data InferenceRequest uid gid = InferenceRequest
 newtype Id a = Id Int64
   deriving stock (Show, Generic)
   deriving newtype
-    ( Eq,
-      FromField,
-      ToField,
-      FromJSON,
-      ToJSON
+    ( Eq
+    , FromField
+    , ToField
+    , FromJSON
+    , ToJSON
     )
 
 -- Row of the model table, parameterized by the user and group type
 data Model uid gid = Model
-  { id :: Maybe (Id (Model uid gid)),
-    name :: Text,
-    -- The actual contents of the model
-    contents :: Oid,
-    version :: Text,
-    -- The groups able to access the model
-    groups :: Vector gid,
-    -- Not currently used
+  { id :: Maybe (Id (Model uid gid))
+  , name :: Text
+  , -- The actual contents of the model
+    contents :: Oid
+  , version :: Text
+  , -- The groups able to access the model
+    groups :: Vector gid
+  , -- Not currently used
     user :: Maybe uid
   }
   deriving stock (Show, Eq, Generic)
@@ -236,19 +252,19 @@ data Model uid gid = Model
 
 -- | Row of the inference parameter table, parameterized by the user type
 data InferenceParam uid gid = InferenceParam
-  { id :: Maybe (Id (InferenceParam uid gid)),
-    -- FIXME Better type
-    script :: Script,
-    model :: Id (Model uid gid),
-    user :: uid
+  { id :: Maybe (Id (InferenceParam uid gid))
+  , -- FIXME Better type
+    script :: Script
+  , model :: Id (Model uid gid)
+  , user :: uid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
-  { id :: uid,
-    groups :: Vector gid
+  { id :: uid
+  , groups :: Vector gid
   }
   deriving stock (Show, Generic, Eq)
   deriving anyclass (FromRow, ToRow)
@@ -256,10 +272,10 @@ data User uid gid = User
 newtype Script = Script Text
   deriving stock (Show, Generic)
   deriving newtype
-    ( Eq,
-      FromJSON,
-      ToJSON,
-      IsString,
-      FromField,
-      ToField
+    ( Eq
+    , FromJSON
+    , ToJSON
+    , IsString
+    , FromField
+    , ToField
     )
