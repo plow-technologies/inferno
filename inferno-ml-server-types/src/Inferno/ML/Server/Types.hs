@@ -3,19 +3,33 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Conduit (ConduitT)
+import Data.Aeson
+  ( FromJSON (parseJSON),
+    Object,
+    ToJSON,
+    withObject,
+    withScientific,
+    (.:),
+  )
+import Data.Aeson.Types (Parser)
+import Data.Char (toLower)
 import Data.Int (Int64)
 import Data.String (IsString)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Vector (Vector)
 import Database.PostgreSQL.Simple
   ( FromRow,
@@ -25,12 +39,143 @@ import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
-import Servant (JSON, Post, ReqBody, (:>))
+import Servant
+  ( JSON,
+    NewlineFraming,
+    ReqBody,
+    StreamPost,
+    (:>),
+  )
+import Servant.Conduit ()
+import Web.HttpApiData
+  ( FromHttpApiData (parseUrlPiece),
+    ToHttpApiData (toUrlPiece),
+  )
 
 type InfernoMlServerAPI uid gid =
   "inference"
     :> ReqBody '[JSON] (InferenceRequest uid gid)
-    :> Post '[JSON] InferenceResponse
+    :> StreamPost NewlineFraming JSON (ConduitT () SomeChunk IO ())
+
+-- | We need to be able to support chunk sizes based on the dimensions of the input
+-- tensor
+data SomeChunk where
+  -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
+  -- no other way to include this information using `NewlineFraming` with `JSON`,
+  -- since that framing strategy apparently doesn't support adding response headers
+  -- (where the `dtype` and `dim` could also be added); also, headers are not
+  -- available in `MimeUnrender` implementations, so decoding would be an issue
+  SomeChunk :: forall a. Show a => Dim -> DType -> a -> SomeChunk
+
+deriving stock instance Show SomeChunk
+
+instance FromJSON SomeChunk where
+  parseJSON = withObject "SomeChunk" $ \o ->
+    someChunkP o =<< ((,) <$> o .: "dim" <*> o .: "dtype")
+    where
+      -- Each chunk is one element of the original n-dimension tensor (up to four
+      -- dimensions)
+      someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
+      someChunkP o = \case
+        x@(One, Float) -> uncurry SomeChunk x <$> getChunk @Float
+        x@(Two, Float) -> uncurry SomeChunk x <$> getChunk @[Float]
+        x@(Three, Float) -> uncurry SomeChunk x <$> getChunk @[[Float]]
+        x@(Four, Float) -> uncurry SomeChunk x <$> getChunk @[[[Float]]]
+        x@(One, Double) -> uncurry SomeChunk x <$> getChunk @Double
+        x@(Two, Double) -> uncurry SomeChunk x <$> getChunk @[Double]
+        x@(Three, Double) -> uncurry SomeChunk x <$> getChunk @[[Double]]
+        x@(Four, Double) -> uncurry SomeChunk x <$> getChunk @[[[Double]]]
+        x@(One, Int64) -> uncurry SomeChunk x <$> getChunk @Int64
+        x@(Two, Int64) -> uncurry SomeChunk x <$> getChunk @[Int64]
+        x@(Three, Int64) -> uncurry SomeChunk x <$> getChunk @[[Int64]]
+        x@(Four, Int64) -> uncurry SomeChunk x <$> getChunk @[[[Int64]]]
+        where
+          getChunk :: FromJSON a => Parser a
+          getChunk = o .: "chunk"
+
+-- | Representation of tensor, parameterized by its datatype, up to four dimensions
+-- (see 'Dim')
+data AsValue a where
+  AsValue1 :: [a] -> AsValue [a]
+  AsValue2 :: [[a]] -> AsValue [[a]]
+  AsValue3 :: [[[a]]] -> AsValue [[[a]]]
+  AsValue4 :: [[[[a]]]] -> AsValue [[[[a]]]]
+
+-- | Supported tensor datatypes.
+data DType
+  = Int64
+  | Float
+  | Double
+  deriving stock (Show, Eq, Generic)
+
+instance ToHttpApiData DType where
+  toUrlPiece = \case
+    Int64 -> "int"
+    d -> Text.pack $ toLower <$> show d
+
+instance FromHttpApiData DType where
+  parseUrlPiece = \case
+    "int" -> pure Int64
+    "float" -> pure Float
+    "double" -> pure Double
+    d -> Left . Text.pack $ unwords ["Invalid dtype:", show d]
+
+instance FromJSON DType where
+  parseJSON = \case
+    "int" -> pure Int64
+    "float" -> pure Float
+    "double" -> pure Double
+    d -> fail $ unwords ["Invalid dtype:", show d]
+
+-- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
+-- tensors and Haskell lists for up to four dimensions. This is included in the
+-- response when running an inference parameter.
+data Dim
+  = One
+  | Two
+  | Three
+  | Four
+  deriving stock
+    ( Show,
+      Eq,
+      Ord,
+      Bounded,
+      Enum,
+      Generic
+    )
+
+instance ToHttpApiData Dim where
+  toUrlPiece = Text.pack . show . fromEnum
+
+instance FromHttpApiData Dim where
+  parseUrlPiece = \case
+    "1" -> pure One
+    "2" -> pure Two
+    "3" -> pure Three
+    "4" -> pure Four
+    n -> Left . Text.pack $ unwords ["Invalid dimension:", show n]
+
+instance FromJSON Dim where
+  parseJSON = withScientific "Dim" $ \case
+    1 -> pure One
+    2 -> pure Two
+    3 -> pure Three
+    4 -> pure Four
+    n -> fail $ unwords ["Invalid dimension:", show n]
+
+vdim :: AsValue a -> Dim
+vdim = \case
+  AsValue1 _ -> One
+  AsValue2 _ -> Two
+  AsValue3 _ -> Three
+  AsValue4 _ -> Four
+
+-- FIXME
+-- This is just a placeholder for the moment. The endpoint will probably have
+-- a streamed response
+newtype InferenceResponse = InferenceResponse Text
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, FromJSON, ToJSON, IsString)
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
@@ -95,10 +240,3 @@ newtype Script = Script Text
       FromField,
       ToField
     )
-
--- FIXME
--- This is just a placeholder for the moment. The endpoint will probably have
--- a streamed response
-newtype InferenceResponse = InferenceResponse Text
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON, IsString)

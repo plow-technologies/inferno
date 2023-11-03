@@ -40,10 +40,16 @@ library
   build-depends:
     , aeson
     , base
+    , bytestring
+    , conduit
+    , extra
+    , generic-lens
+    , http-api-data
     , inferno-core
     , inferno-types
     , postgresql-simple
     , servant-client
+    , servant-conduit
     , servant-server
     , text
     , vector
