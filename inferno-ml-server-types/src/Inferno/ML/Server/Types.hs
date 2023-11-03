@@ -19,10 +19,14 @@ import Conduit (ConduitT)
 import Data.Aeson
   ( FromJSON (parseJSON),
     Object,
-    ToJSON,
+    ToJSON (toJSON),
+    Value (Number, String),
+    object,
     withObject,
     withScientific,
+    withText,
     (.:),
+    (.=),
   )
 import Data.Aeson.Types (Parser)
 import Data.Char (toLower)
@@ -65,7 +69,8 @@ data SomeChunk where
   -- since that framing strategy apparently doesn't support adding response headers
   -- (where the `dtype` and `dim` could also be added); also, headers are not
   -- available in `MimeUnrender` implementations, so decoding would be an issue
-  SomeChunk :: forall a. Show a => Dim -> DType -> a -> SomeChunk
+  SomeChunk ::
+    forall a. (Show a, ToJSON a) => Dim -> DType -> a -> SomeChunk
 
 deriving stock instance Show SomeChunk
 
@@ -73,25 +78,36 @@ instance FromJSON SomeChunk where
   parseJSON = withObject "SomeChunk" $ \o ->
     someChunkP o =<< ((,) <$> o .: "dim" <*> o .: "dtype")
     where
-      -- Each chunk is one element of the original n-dimension tensor (up to four
-      -- dimensions)
+      -- Each chunk is one element of the list from the original n-dimension
+      -- tensor (up to four dimensions)
       someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
       someChunkP o = \case
-        x@(One, Float) -> uncurry SomeChunk x <$> getChunk @Float
-        x@(Two, Float) -> uncurry SomeChunk x <$> getChunk @[Float]
-        x@(Three, Float) -> uncurry SomeChunk x <$> getChunk @[[Float]]
-        x@(Four, Float) -> uncurry SomeChunk x <$> getChunk @[[[Float]]]
-        x@(One, Double) -> uncurry SomeChunk x <$> getChunk @Double
-        x@(Two, Double) -> uncurry SomeChunk x <$> getChunk @[Double]
-        x@(Three, Double) -> uncurry SomeChunk x <$> getChunk @[[Double]]
-        x@(Four, Double) -> uncurry SomeChunk x <$> getChunk @[[[Double]]]
-        x@(One, Int64) -> uncurry SomeChunk x <$> getChunk @Int64
-        x@(Two, Int64) -> uncurry SomeChunk x <$> getChunk @[Int64]
-        x@(Three, Int64) -> uncurry SomeChunk x <$> getChunk @[[Int64]]
-        x@(Four, Int64) -> uncurry SomeChunk x <$> getChunk @[[[Int64]]]
+        x@(One, Float) -> mkSomeChunk x <$> getChunk @Float
+        x@(Two, Float) -> mkSomeChunk x <$> getChunk @[Float]
+        x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
+        x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
+        x@(One, Double) -> mkSomeChunk x <$> getChunk @Double
+        x@(Two, Double) -> mkSomeChunk x <$> getChunk @[Double]
+        x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
+        x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
+        x@(One, Int64) -> mkSomeChunk x <$> getChunk @Int64
+        x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
+        x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
+        x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
         where
+          mkSomeChunk :: (Show a, ToJSON a) => (Dim, DType) -> a -> SomeChunk
+          mkSomeChunk = uncurry SomeChunk
+
           getChunk :: FromJSON a => Parser a
           getChunk = o .: "chunk"
+
+instance ToJSON SomeChunk where
+  toJSON (SomeChunk dim dtype x) =
+    object
+      [ "dtype" .= dtype,
+        "dim" .= dim,
+        "chunk" .= x
+      ]
 
 -- | Representation of tensor, parameterized by its datatype, up to four dimensions
 -- (see 'Dim')
@@ -108,6 +124,19 @@ data DType
   | Double
   deriving stock (Show, Eq, Generic)
 
+instance FromJSON DType where
+  parseJSON = withText "DType" $ \case
+    "int" -> pure Int64
+    "float" -> pure Float
+    "double" -> pure Double
+    d -> fail $ unwords ["Invalid dtype:", show d]
+
+instance ToJSON DType where
+  toJSON =
+    String . \case
+      Int64 -> "int"
+      dt -> Text.pack $ toLower <$> show dt
+
 instance ToHttpApiData DType where
   toUrlPiece = \case
     Int64 -> "int"
@@ -119,13 +148,6 @@ instance FromHttpApiData DType where
     "float" -> pure Float
     "double" -> pure Double
     d -> Left . Text.pack $ unwords ["Invalid dtype:", show d]
-
-instance FromJSON DType where
-  parseJSON = \case
-    "int" -> pure Int64
-    "float" -> pure Float
-    "double" -> pure Double
-    d -> fail $ unwords ["Invalid dtype:", show d]
 
 -- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
 -- tensors and Haskell lists for up to four dimensions. This is included in the
@@ -144,6 +166,17 @@ data Dim
       Generic
     )
 
+instance FromJSON Dim where
+  parseJSON = withScientific "Dim" $ \case
+    1 -> pure One
+    2 -> pure Two
+    3 -> pure Three
+    4 -> pure Four
+    n -> fail $ unwords ["Invalid dimension:", show n]
+
+instance ToJSON Dim where
+  toJSON = Number . fromIntegral . fromEnum
+
 instance ToHttpApiData Dim where
   toUrlPiece = Text.pack . show . fromEnum
 
@@ -155,27 +188,12 @@ instance FromHttpApiData Dim where
     "4" -> pure Four
     n -> Left . Text.pack $ unwords ["Invalid dimension:", show n]
 
-instance FromJSON Dim where
-  parseJSON = withScientific "Dim" $ \case
-    1 -> pure One
-    2 -> pure Two
-    3 -> pure Three
-    4 -> pure Four
-    n -> fail $ unwords ["Invalid dimension:", show n]
-
 vdim :: AsValue a -> Dim
 vdim = \case
   AsValue1 _ -> One
   AsValue2 _ -> Two
   AsValue3 _ -> Three
   AsValue4 _ -> Four
-
--- FIXME
--- This is just a placeholder for the moment. The endpoint will probably have
--- a streamed response
-newtype InferenceResponse = InferenceResponse Text
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, FromJSON, ToJSON, IsString)
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
