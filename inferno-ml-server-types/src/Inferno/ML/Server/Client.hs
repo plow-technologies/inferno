@@ -11,7 +11,7 @@ import Servant.Client.Streaming (ClientM, client)
 runInference ::
   forall uid gid.
   InferenceRequest uid gid ->
-  ClientM (ConduitT () SomeChunks IO ())
+  ClientM (ConduitT () AsValue IO ())
 runInference = client api
 
 api :: Proxy (InfernoMlServerAPI uid gid)
