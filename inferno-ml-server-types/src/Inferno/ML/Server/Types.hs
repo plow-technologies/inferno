@@ -69,10 +69,10 @@ data SomeValue where
 
 -- | Representation of tensor, up to four dimensions (see 'Dim')
 data AsValue a where
-  AsValue1 :: [a] -> AsValue [a]
-  AsValue2 :: [[a]] -> AsValue [[a]]
-  AsValue3 :: [[[a]]] -> AsValue [[[a]]]
-  AsValue4 :: [[[[a]]]] -> AsValue [[[[a]]]]
+  AsValue1 :: Chunkable a => [a] -> AsValue [a]
+  AsValue2 :: Chunkable a => [[a]] -> AsValue [[a]]
+  AsValue3 :: Chunkable a => [[[a]]] -> AsValue [[[a]]]
+  AsValue4 :: Chunkable a => [[[[a]]]] -> AsValue [[[[a]]]]
 
 -- | We need to be able to support chunk sizes based on the dimensions of the input
 -- tensor, which may be nested, and of varying @dtype@s.
