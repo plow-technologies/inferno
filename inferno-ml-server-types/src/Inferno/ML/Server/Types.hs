@@ -69,7 +69,7 @@ data SomeValue where
   SomeValue :: Chunkable a => AsValue a -> SomeValue
 
 -- | We need to be able to support chunk sizes based on the dimensions of the input
--- tensor, which may be nested, and of varying @dtype@s
+-- tensor, which may be nested, and of varying @dtype@s.
 data SomeChunk where
   -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
   -- no other way to include this information using `NewlineFraming` with `JSON`,
@@ -90,18 +90,18 @@ instance FromJSON SomeChunk where
       -- tensor (up to four dimensions)
       someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
       someChunkP o = \case
-        x@(One, Float) -> mkSomeChunk x <$> getChunk @Float
-        x@(Two, Float) -> mkSomeChunk x <$> getChunk @[Float]
-        x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
-        x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
-        x@(One, Double) -> mkSomeChunk x <$> getChunk @Double
-        x@(Two, Double) -> mkSomeChunk x <$> getChunk @[Double]
-        x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
-        x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
-        x@(One, Int64) -> mkSomeChunk x <$> getChunk @Int64
-        x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
-        x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
-        x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
+        x@(One, Float) -> mkSomeChunk x <$> getChunk @[Float]
+        x@(Two, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
+        x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
+        x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[[Float]]]]
+        x@(One, Double) -> mkSomeChunk x <$> getChunk @[Double]
+        x@(Two, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
+        x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
+        x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[[Double]]]]
+        x@(One, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
+        x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
+        x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
+        x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[[Int64]]]]
         where
           mkSomeChunk :: Chunkable a => (Dim, DType) -> a -> SomeChunk
           mkSomeChunk = uncurry SomeChunk
