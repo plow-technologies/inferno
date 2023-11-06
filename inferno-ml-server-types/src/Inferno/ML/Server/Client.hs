@@ -12,5 +12,5 @@ runInference ::
   forall uid gid.
   Proxy (InfernoMlServerAPI uid gid) ->
   InferenceRequest uid gid ->
-  ClientM (ConduitT () SomeChunk IO ())
+  ClientM (ConduitT () SomeChunks IO ())
 runInference = client

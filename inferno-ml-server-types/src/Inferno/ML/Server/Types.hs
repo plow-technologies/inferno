@@ -59,71 +59,71 @@ import Web.HttpApiData
 
 type InfernoMlServerAPI uid gid =
   -- Evaluate an inference script. The script must evaluate to a tensor, which
-  -- will then be converted to an array, whose elements will be subsequently
-  -- streamed as chunks
+  -- will then be converted to an array, which will subsequently be streamed in chunks
   "inference"
     :> ReqBody '[JSON] (InferenceRequest uid gid)
-    :> StreamPost NewlineFraming JSON (ConduitT () SomeChunk IO ())
+    :> StreamPost NewlineFraming JSON (ConduitT () SomeChunks IO ())
 
 data SomeValue where
   SomeValue :: Chunkable a => AsValue a -> SomeValue
 
--- | We need to be able to support chunk sizes based on the dimensions of the input
--- tensor, which may be nested, and of varying @dtype@s.
-data SomeChunk where
-  -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
-  -- no other way to include this information using `NewlineFraming` with `JSON`,
-  -- since that framing strategy apparently doesn't support adding response headers
-  -- (where the `dtype` and `dim` could also be added); also, headers are not
-  -- available in `MimeUnrender` implementations, so decoding would be an issue
-  SomeChunk :: forall a. Chunkable a => Dim -> DType -> a -> SomeChunk
-
-type Chunkable a = (Show a, ToJSON a, FromJSON a)
-
-deriving stock instance Show SomeChunk
-
-instance FromJSON SomeChunk where
-  parseJSON = withObject "SomeChunk" $ \o ->
-    someChunkP o =<< ((,) <$> o .: "dim" <*> o .: "dtype")
-    where
-      -- Each chunk is one element of the list from the original n-dimension
-      -- tensor (up to four dimensions)
-      someChunkP :: Object -> (Dim, DType) -> Parser SomeChunk
-      someChunkP o = \case
-        x@(One, Float) -> mkSomeChunk x <$> getChunk @[Float]
-        x@(Two, Float) -> mkSomeChunk x <$> getChunk @[[Float]]
-        x@(Three, Float) -> mkSomeChunk x <$> getChunk @[[[Float]]]
-        x@(Four, Float) -> mkSomeChunk x <$> getChunk @[[[[Float]]]]
-        x@(One, Double) -> mkSomeChunk x <$> getChunk @[Double]
-        x@(Two, Double) -> mkSomeChunk x <$> getChunk @[[Double]]
-        x@(Three, Double) -> mkSomeChunk x <$> getChunk @[[[Double]]]
-        x@(Four, Double) -> mkSomeChunk x <$> getChunk @[[[[Double]]]]
-        x@(One, Int64) -> mkSomeChunk x <$> getChunk @[Int64]
-        x@(Two, Int64) -> mkSomeChunk x <$> getChunk @[[Int64]]
-        x@(Three, Int64) -> mkSomeChunk x <$> getChunk @[[[Int64]]]
-        x@(Four, Int64) -> mkSomeChunk x <$> getChunk @[[[[Int64]]]]
-        where
-          mkSomeChunk :: Chunkable a => (Dim, DType) -> a -> SomeChunk
-          mkSomeChunk = uncurry SomeChunk
-
-          getChunk :: FromJSON a => Parser a
-          getChunk = o .: "chunk"
-
-instance ToJSON SomeChunk where
-  toJSON (SomeChunk dim dtype x) =
-    object
-      [ "dtype" .= dtype,
-        "dim" .= dim,
-        "chunk" .= x
-      ]
-
--- | Representation of tensor, parameterized by its datatype, up to four dimensions
--- (see 'Dim')
+-- | Representation of tensor, up to four dimensions (see 'Dim')
 data AsValue a where
   AsValue1 :: [a] -> AsValue [a]
   AsValue2 :: [[a]] -> AsValue [[a]]
   AsValue3 :: [[[a]]] -> AsValue [[[a]]]
   AsValue4 :: [[[[a]]]] -> AsValue [[[[a]]]]
+
+-- | We need to be able to support chunk sizes based on the dimensions of the input
+-- tensor, which may be nested, and of varying @dtype@s.
+--
+-- TODO Include shape as well?
+data SomeChunks where
+  -- Note that this encodes the `dtype` and `dim` redundantly, but AFAICT there's
+  -- no other way to include this information using `NewlineFraming` with `JSON`,
+  -- since that framing strategy apparently doesn't support adding response headers
+  -- (where the `dtype` and `dim` could also be added); also, headers are not
+  -- available in `MimeUnrender` implementations, so decoding would be an issue
+  SomeChunks :: forall a. Chunkable a => Dim -> DType -> a -> SomeChunks
+
+deriving stock instance Show SomeChunks
+
+instance FromJSON SomeChunks where
+  parseJSON = withObject "SomeChunks" $ \o ->
+    someChunkP o =<< ((,) <$> o .: "dim" <*> o .: "dtype")
+    where
+      -- Each chunk is one element of the list from the original n-dimension
+      -- tensor (up to four dimensions)
+      someChunkP :: Object -> (Dim, DType) -> Parser SomeChunks
+      someChunkP o = \case
+        x@(One, Float) -> mkSomeChunks x <$> getChunks @[Float]
+        x@(Two, Float) -> mkSomeChunks x <$> getChunks @[[Float]]
+        x@(Three, Float) -> mkSomeChunks x <$> getChunks @[[[Float]]]
+        x@(Four, Float) -> mkSomeChunks x <$> getChunks @[[[[Float]]]]
+        x@(One, Double) -> mkSomeChunks x <$> getChunks @[Double]
+        x@(Two, Double) -> mkSomeChunks x <$> getChunks @[[Double]]
+        x@(Three, Double) -> mkSomeChunks x <$> getChunks @[[[Double]]]
+        x@(Four, Double) -> mkSomeChunks x <$> getChunks @[[[[Double]]]]
+        x@(One, Int64) -> mkSomeChunks x <$> getChunks @[Int64]
+        x@(Two, Int64) -> mkSomeChunks x <$> getChunks @[[Int64]]
+        x@(Three, Int64) -> mkSomeChunks x <$> getChunks @[[[Int64]]]
+        x@(Four, Int64) -> mkSomeChunks x <$> getChunks @[[[[Int64]]]]
+        where
+          mkSomeChunks :: Chunkable a => (Dim, DType) -> a -> SomeChunks
+          mkSomeChunks = uncurry SomeChunks
+
+          getChunks :: FromJSON a => Parser a
+          getChunks = o .: "chunks"
+
+instance ToJSON SomeChunks where
+  toJSON (SomeChunks dim dtype x) =
+    object
+      [ "dtype" .= dtype,
+        "dim" .= dim,
+        "chunks" .= x
+      ]
+
+type Chunkable a = (Show a, ToJSON a, FromJSON a)
 
 -- | Supported tensor datatypes.
 data DType
