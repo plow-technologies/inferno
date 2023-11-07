@@ -19,7 +19,6 @@ import Conduit (ConduitT)
 import Data.Aeson
   ( Encoding,
     FromJSON (parseJSON),
-    Object,
     ToJSON (toEncoding, toJSON),
     Value (Number, String),
     pairs,
@@ -29,9 +28,9 @@ import Data.Aeson
     (.:),
     (.=),
   )
-import Data.Aeson.Types (Parser)
 import Data.Char (toLower)
 import Data.Int (Int64)
+import Data.Scientific (Scientific, toRealFloat)
 import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -62,23 +61,59 @@ type InfernoMlServerAPI uid gid =
   -- to recover the original list with the correct dimensions
   "inference"
     :> ReqBody '[JSON] (InferenceRequest uid gid)
-    :> StreamPost NewlineFraming JSON (ConduitT () AsValue IO ())
+    :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
 
-data AsValue
-  = AsValue1 DType [DValue]
-  | AsValue2 DType [[DValue]]
-  | AsValue3 DType [[[DValue]]]
-  | AsValue4 DType [[[[DValue]]]]
+data AsValueTyped
+  = Floats (AsValue Float)
+  | Doubles (AsValue Double)
+  | Int64s (AsValue Int64)
   deriving stock (Show, Eq, Generic)
 
-instance ToJSON AsValue where
+toAsValueTyped :: AsValue Scientific -> AsValueTyped
+toAsValueTyped = \case
+  AsValue1 dt xs -> case dt of
+    Float -> Floats . AsValue1 Float $ toRealFloat <$> xs
+    Double -> Doubles . AsValue1 Double $ toRealFloat <$> xs
+    Int64 -> Int64s . AsValue1 Int64 $ round <$> xs
+  AsValue2 dt xs -> case dt of
+    Float -> Floats . AsValue2 Float $ fmap toRealFloat <$> xs
+    Double -> Doubles . AsValue2 Double $ fmap toRealFloat <$> xs
+    Int64 -> Int64s . AsValue2 Int64 $ fmap round <$> xs
+  AsValue3 dt xs -> case dt of
+    Float -> Floats . AsValue3 Float $ (fmap . fmap) toRealFloat <$> xs
+    Double -> Doubles . AsValue3 Double $ (fmap . fmap) toRealFloat <$> xs
+    Int64 -> Int64s . AsValue3 Int64 $ (fmap . fmap) round <$> xs
+  AsValue4 dt xs -> case dt of
+    Float -> Floats . AsValue4 Float $ (fmap . fmap . fmap) toRealFloat <$> xs
+    Double -> Doubles . AsValue4 Double $ (fmap . fmap . fmap) toRealFloat <$> xs
+    Int64 -> Int64s . AsValue4 Int64 $ (fmap . fmap . fmap) round <$> xs
+
+data AsValue a
+  = AsValue1 DType [a]
+  | AsValue2 DType [[a]]
+  | AsValue3 DType [[[a]]]
+  | AsValue4 DType [[[[a]]]]
+  deriving stock (Show, Eq, Generic)
+
+catAsValues :: AsValue a -> AsValue a -> Maybe (AsValue a)
+catAsValues (AsValue1 dt xs) (AsValue1 dt2 xs2)
+  | dt == dt2 = pure . AsValue1 dt $ xs <> xs2
+catAsValues (AsValue2 dt xs) (AsValue2 dt2 xs2)
+  | dt == dt2 = pure . AsValue2 dt $ xs <> xs2
+catAsValues (AsValue3 dt xs) (AsValue3 dt2 xs2)
+  | dt == dt2 = pure . AsValue3 dt $ xs <> xs2
+catAsValues (AsValue4 dt xs) (AsValue4 dt2 xs2)
+  | dt == dt2 = pure . AsValue4 dt $ xs <> xs2
+catAsValues _ _ = Nothing
+
+instance ToJSON a => ToJSON (AsValue a) where
   toEncoding = \case
     AsValue1 dt xs -> mkPairs One dt xs
     AsValue2 dt xs -> mkPairs Two dt xs
     AsValue3 dt xs -> mkPairs Three dt xs
     AsValue4 dt xs -> mkPairs Four dt xs
     where
-      mkPairs :: ToJSON a => Dim -> DType -> a -> Encoding
+      mkPairs :: ToJSON b => Dim -> DType -> b -> Encoding
       mkPairs dim dt xs =
         pairs $
           mconcat
@@ -87,37 +122,13 @@ instance ToJSON AsValue where
               "chunk" .= xs
             ]
 
-instance FromJSON AsValue where
+instance FromJSON a => FromJSON (AsValue a) where
   parseJSON = withObject "AsValue" $ \o ->
-    ((,) <$> o .: "dim" <*> o .: "dtype") >>= \case
-      (One, dt) -> AsValue1 dt <$> getChunk1 o dt
-      (Two, dt) -> AsValue2 dt <$> getChunk2 o dt
-      (Three, dt) -> AsValue3 dt <$> getChunk3 o dt
-      (Four, dt) -> AsValue4 dt <$> getChunk4 o dt
-    where
-      getChunk1 :: Object -> DType -> Parser [DValue]
-      getChunk1 o = \case
-        Float -> fmap DFloat <$> o .: "chunk"
-        Double -> fmap DDouble <$> o .: "chunk"
-        Int64 -> fmap DInt64 <$> o .: "chunk"
-
-      getChunk2 :: Object -> DType -> Parser [[DValue]]
-      getChunk2 o = \case
-        Float -> (fmap . fmap) DFloat <$> o .: "chunk"
-        Double -> (fmap . fmap) DDouble <$> o .: "chunk"
-        Int64 -> (fmap . fmap) DInt64 <$> o .: "chunk"
-
-      getChunk3 :: Object -> DType -> Parser [[[DValue]]]
-      getChunk3 o = \case
-        Float -> (fmap . fmap . fmap) DFloat <$> o .: "chunk"
-        Double -> (fmap . fmap . fmap) DDouble <$> o .: "chunk"
-        Int64 -> (fmap . fmap . fmap) DInt64 <$> o .: "chunk"
-
-      getChunk4 :: Object -> DType -> Parser [[[[DValue]]]]
-      getChunk4 o = \case
-        Float -> (fmap . fmap . fmap . fmap) DFloat <$> o .: "chunk"
-        Double -> (fmap . fmap . fmap . fmap) DDouble <$> o .: "chunk"
-        Int64 -> (fmap . fmap . fmap . fmap) DInt64 <$> o .: "chunk"
+    o .: "dim" >>= \case
+      One -> AsValue1 <$> o .: "dtype" <*> o .: "chunk"
+      Two -> AsValue2 <$> o .: "dtype" <*> o .: "chunk"
+      Three -> AsValue3 <$> o .: "dtype" <*> o .: "chunk"
+      Four -> AsValue4 <$> o .: "dtype" <*> o .: "chunk"
 
 -- | Supported tensor datatypes.
 data DType
@@ -138,21 +149,6 @@ instance ToJSON DType where
     String . \case
       Int64 -> "int"
       dt -> Text.pack $ toLower <$> show dt
-
-data DValue
-  = DInt64 Int64
-  | DFloat Float
-  | DDouble Double
-  deriving stock (Show, Eq, Generic)
-
-instance FromJSON DValue where
-  parseJSON = undefined
-
-instance ToJSON DValue where
-  toJSON = \case
-    DInt64 i -> toJSON i
-    DFloat f -> toJSON f
-    DDouble d -> toJSON d
 
 -- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
 -- tensors and Haskell lists for up to four dimensions. This is included in the

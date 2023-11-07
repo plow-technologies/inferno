@@ -48,6 +48,7 @@ library
     , inferno-core
     , inferno-types
     , postgresql-simple
+    , scientific
     , servant-client
     , servant-conduit
     , servant-server
