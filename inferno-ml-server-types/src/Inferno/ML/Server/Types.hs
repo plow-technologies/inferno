@@ -1,6 +1,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -16,17 +17,13 @@
 module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
+import Control.Applicative (asum)
 import Data.Aeson
-  ( Encoding,
-    FromJSON (parseJSON),
-    ToJSON (toEncoding, toJSON),
-    Value (Number, String),
-    pairs,
-    withObject,
-    withScientific,
+  ( FromJSON (parseJSON),
+    ToJSON (toJSON),
+    Value (Array, String),
+    withArray,
     withText,
-    (.:),
-    (.=),
   )
 import Data.Char (toLower)
 import Data.Int (Int64)
@@ -71,64 +68,51 @@ data AsValueTyped
 
 toAsValueTyped :: AsValue Scientific -> AsValueTyped
 toAsValueTyped = \case
-  AsValue1 dt xs -> case dt of
-    Float -> Floats . AsValue1 Float $ toRealFloat <$> xs
-    Double -> Doubles . AsValue1 Double $ toRealFloat <$> xs
-    Int64 -> Int64s . AsValue1 Int64 $ round <$> xs
-  AsValue2 dt xs -> case dt of
-    Float -> Floats . AsValue2 Float $ fmap toRealFloat <$> xs
-    Double -> Doubles . AsValue2 Double $ fmap toRealFloat <$> xs
-    Int64 -> Int64s . AsValue2 Int64 $ fmap round <$> xs
-  AsValue3 dt xs -> case dt of
-    Float -> Floats . AsValue3 Float $ (fmap . fmap) toRealFloat <$> xs
-    Double -> Doubles . AsValue3 Double $ (fmap . fmap) toRealFloat <$> xs
-    Int64 -> Int64s . AsValue3 Int64 $ (fmap . fmap) round <$> xs
-  AsValue4 dt xs -> case dt of
-    Float -> Floats . AsValue4 Float $ (fmap . fmap . fmap) toRealFloat <$> xs
-    Double -> Doubles . AsValue4 Double $ (fmap . fmap . fmap) toRealFloat <$> xs
-    Int64 -> Int64s . AsValue4 Int64 $ (fmap . fmap . fmap) round <$> xs
+  AsValue dt xs -> case dt of
+    Float -> Floats . AsValue dt $ toRealFloat <$> xs
+    Double -> Doubles . AsValue dt $ toRealFloat <$> xs
+    Int64 -> Int64s . AsValue dt $ round <$> xs
 
-data AsValue a
-  = AsValue1 DType [a]
-  | AsValue2 DType [[a]]
-  | AsValue3 DType [[[a]]]
-  | AsValue4 DType [[[[a]]]]
+data AsValue a = AsValue
+  { dtype :: DType,
+    values :: Dims a
+  }
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 catAsValues :: AsValue a -> AsValue a -> Maybe (AsValue a)
-catAsValues (AsValue1 dt xs) (AsValue1 dt2 xs2)
-  | dt == dt2 = pure . AsValue1 dt $ xs <> xs2
-catAsValues (AsValue2 dt xs) (AsValue2 dt2 xs2)
-  | dt == dt2 = pure . AsValue2 dt $ xs <> xs2
-catAsValues (AsValue3 dt xs) (AsValue3 dt2 xs2)
-  | dt == dt2 = pure . AsValue3 dt $ xs <> xs2
-catAsValues (AsValue4 dt xs) (AsValue4 dt2 xs2)
-  | dt == dt2 = pure . AsValue4 dt $ xs <> xs2
-catAsValues _ _ = Nothing
+catAsValues (AsValue dt1 x) = \case
+  AsValue dt2 y
+    | dt1 == dt2 -> case (x, y) of
+        (Ones xs, Ones ys) -> Just . AsValue dt1 . Ones $ xs <> ys
+        (Twos xs, Twos ys) -> Just . AsValue dt1 . Twos $ xs <> ys
+        (Threes xs, Threes ys) -> Just . AsValue dt1 . Threes $ xs <> ys
+        (Fours xs, Fours ys) -> Just . AsValue dt1 . Fours $ xs <> ys
+        _ -> Nothing
+    | otherwise -> Nothing
 
-instance ToJSON a => ToJSON (AsValue a) where
-  toEncoding = \case
-    AsValue1 dt xs -> mkPairs One dt xs
-    AsValue2 dt xs -> mkPairs Two dt xs
-    AsValue3 dt xs -> mkPairs Three dt xs
-    AsValue4 dt xs -> mkPairs Four dt xs
-    where
-      mkPairs :: ToJSON b => Dim -> DType -> b -> Encoding
-      mkPairs dim dt xs =
-        pairs $
-          mconcat
-            [ "dim" .= dim,
-              "dtype" .= dt,
-              "chunk" .= xs
-            ]
+data Dims a
+  = Ones [a]
+  | Twos [[a]]
+  | Threes [[[a]]]
+  | Fours [[[[a]]]]
+  deriving stock (Show, Eq, Generic, Functor)
 
-instance FromJSON a => FromJSON (AsValue a) where
-  parseJSON = withObject "AsValue" $ \o ->
-    o .: "dim" >>= \case
-      One -> AsValue1 <$> o .: "dtype" <*> o .: "chunk"
-      Two -> AsValue2 <$> o .: "dtype" <*> o .: "chunk"
-      Three -> AsValue3 <$> o .: "dtype" <*> o .: "chunk"
-      Four -> AsValue4 <$> o .: "dtype" <*> o .: "chunk"
+instance FromJSON a => FromJSON (Dims a) where
+  parseJSON = withArray "Dims" $ \a ->
+    asum
+      [ Ones <$> parseJSON (Array a),
+        Twos <$> parseJSON (Array a),
+        Threes <$> parseJSON (Array a),
+        Fours <$> parseJSON (Array a)
+      ]
+
+instance ToJSON a => ToJSON (Dims a) where
+  toJSON = \case
+    Ones xs -> toJSON xs
+    Twos xs -> toJSON xs
+    Threes xs -> toJSON xs
+    Fours xs -> toJSON xs
 
 -- | Supported tensor datatypes.
 data DType
@@ -149,47 +133,6 @@ instance ToJSON DType where
     String . \case
       Int64 -> "int"
       dt -> Text.pack $ toLower <$> show dt
-
--- | Tensor dimensions. Currently, @inferno-ml@ supports converting between
--- tensors and Haskell lists for up to four dimensions. This is included in the
--- response when running an inference parameter.
-data Dim
-  = One
-  | Two
-  | Three
-  | Four
-  deriving stock
-    ( Show,
-      Eq,
-      Ord,
-      Bounded,
-      Generic
-    )
-
-instance Enum Dim where
-  toEnum = \case
-    1 -> One
-    2 -> Two
-    3 -> Three
-    4 -> Four
-    _ -> error "Dimension out of bounds (1, 4)"
-
-  fromEnum = \case
-    One -> 1
-    Two -> 2
-    Three -> 3
-    Four -> 4
-
-instance FromJSON Dim where
-  parseJSON = withScientific "Dim" $ \case
-    1 -> pure One
-    2 -> pure Two
-    3 -> pure Three
-    4 -> pure Four
-    n -> fail $ unwords ["Invalid dimension:", show n]
-
-instance ToJSON Dim where
-  toJSON = Number . fromIntegral . fromEnum
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
