@@ -21,8 +21,9 @@ import Control.Applicative (asum)
 import Data.Aeson
   ( FromJSON (parseJSON),
     ToJSON (toJSON),
-    Value (Array, String),
+    Value (Array, Number, String),
     withArray,
+    withScientific,
     withText,
   )
 import Data.Char (toLower)
@@ -133,6 +134,28 @@ instance ToJSON DType where
     String . \case
       Int64 -> "int"
       dt -> Text.pack $ toLower <$> show dt
+
+data Dim
+  = One
+  | Two
+  | Three
+  | Four
+  deriving stock (Show, Eq, Ord, Generic)
+
+instance FromJSON Dim where
+  parseJSON = withScientific "Dim" $ \case
+    1 -> pure One
+    2 -> pure Two
+    3 -> pure Three
+    4 -> pure Four
+    n -> fail $ unwords ["Dim out of range:", show n]
+
+instance ToJSON Dim where
+  toJSON = \case
+    One -> Number 1
+    Two -> Number 2
+    Three -> Number 3
+    Four -> Number 4
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
