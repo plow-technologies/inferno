@@ -20,11 +20,13 @@ import Conduit (ConduitT)
 import Control.Applicative (asum)
 import Data.Aeson
   ( FromJSON (parseJSON),
-    ToJSON (toJSON),
+    ToJSON (toEncoding, toJSON),
     Value (Array, Number, String),
+    pairs,
     withArray,
     withScientific,
     withText,
+    (.=),
   )
 import Data.Char (toLower)
 import Data.Int (Int64)
@@ -79,7 +81,15 @@ data AsValue a = AsValue
     values :: Dims a
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON)
+
+instance ToJSON a => ToJSON (AsValue a) where
+  toEncoding (AsValue dt xs) =
+    pairs $
+      mconcat
+        [ "dtype" .= dt,
+          "values" .= xs
+        ]
 
 catAsValues :: AsValue a -> AsValue a -> Maybe (AsValue a)
 catAsValues (AsValue dt1 x) = \case
@@ -109,11 +119,11 @@ instance FromJSON a => FromJSON (Dims a) where
       ]
 
 instance ToJSON a => ToJSON (Dims a) where
-  toJSON = \case
-    Ones xs -> toJSON xs
-    Twos xs -> toJSON xs
-    Threes xs -> toJSON xs
-    Fours xs -> toJSON xs
+  toEncoding = \case
+    Ones xs -> toEncoding xs
+    Twos xs -> toEncoding xs
+    Threes xs -> toEncoding xs
+    Fours xs -> toEncoding xs
 
 -- | Supported tensor datatypes.
 data DType
