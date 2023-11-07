@@ -20,7 +20,7 @@ import qualified Data.Maybe as Maybe
 import Data.Text (pack)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Pinned (pinExpr)
-import Inferno.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap)
+import Inferno.Module.Prelude (baseOpsTable, builtinPrelude, moduleOpsTables, preludePinMap)
 import Inferno.Parse (expr, topLevel)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Utils.QQ.Common
@@ -48,7 +48,7 @@ inferno =
     { quoteExp = \str -> do
         l <- location'
         let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel $ expr) $
+              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, moduleOpsTables @_ @c builtins, []) $ topLevel $ expr) $
                 State
                   (pack str)
                   0
@@ -59,7 +59,7 @@ inferno =
             let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
              in fail $ intercalate "\n\n" errs'
           Right (ast, comments) ->
-            case pinExpr (builtinModulesPinMap @_ @c builtins) ast of
+            case pinExpr (preludePinMap @_ @c builtins) ast of
               Left err -> fail $ "Pinning expression failed:\n" <> show err
               Right pinnedAST ->
                 case inferExpr builtins pinnedAST of
@@ -72,7 +72,7 @@ inferno =
       quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
     }
   where
-    builtins = builtinModules @m @c
+    builtins = builtinPrelude @m @c
     vcObjectHashToValue :: Crypto.Digest Crypto.SHA256 -> Maybe TH.ExpQ
     vcObjectHashToValue h =
       let str = (convert h) :: ByteString

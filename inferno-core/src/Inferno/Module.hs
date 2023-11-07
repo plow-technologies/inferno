@@ -1,15 +1,24 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Inferno.Module
   ( Module (..),
     PinnedModule,
+    Prelude (..),
     BuiltinModuleHash (..),
     BuiltinFunHash (..),
     BuiltinEnumHash (..),
+    baseOpsTable,
+    moduleOpsTables,
+    preludePinMap,
+    preludeTermEnv,
+    preludeNameToTypeMap,
     buildPinnedQQModules,
     combineTermEnvs,
+    emptyPrelude,
+    buildInitPrelude,
     pinnedModuleNameToHash,
     pinnedModuleHashToTy,
     pinnedModuleTerms,
@@ -29,6 +38,7 @@ import Inferno.Infer (inferExpr)
 import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
 import qualified Inferno.Infer.Pinned as Pinned
+import Inferno.Module.Builtin (builtinModule)
 import Inferno.Module.Cast (ToValue (..))
 import Inferno.Parse (OpsTable, TopLevelDefn (..))
 import Inferno.Types.Module
@@ -62,36 +72,93 @@ import Inferno.Types.VersionControl (Pinned (..), VCObjectHash, pinnedToMaybe, v
 import Prettyprinter (Pretty)
 import Text.Megaparsec (SourcePos)
 
+data Prelude m c = Prelude
+  { moduleMap :: Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))),
+    pinnedModuleMap :: Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
+    -- TODO is pinnedModuleMap not the same as the first component of the PinnedModule of moduleMap above?
+  }
+
+emptyPrelude :: Prelude m c
+emptyPrelude = Prelude mempty mempty
+
+baseOpsTable :: (Pretty c, Eq c) => Prelude m c -> OpsTable
+baseOpsTable Prelude {moduleMap} =
+  case Map.lookup "Base" moduleMap of
+    Just (Module {moduleOpsTable = ops, moduleName = modNm}) ->
+      IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
+    Nothing -> mempty
+
+moduleOpsTables :: (Pretty c, Eq c) => Prelude m c -> Map.Map ModuleName OpsTable
+moduleOpsTables Prelude {moduleMap} = Map.map (\Module {moduleOpsTable} -> moduleOpsTable) moduleMap
+
+-- | Map from Module.name to the pinned hash for all names in the given prelude.
+-- This functions includes the Inferno.Module.Builtin module and also "exports"
+-- the Base module so that it can be used without prefix.
+preludePinMap :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
+preludePinMap prelude =
+  Pinned.openModule "Base" $
+    Pinned.insertBuiltinModule $
+      Map.foldrWithKey Pinned.insertHardcodedModule mempty $
+        Map.map (Map.map Builtin . pinnedModuleNameToHash) $
+          moduleMap prelude
+
+preludeTermEnv :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+preludeTermEnv = combineTermEnvs . moduleMap
+
+preludeNameToTypeMap :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
+preludeNameToTypeMap prelude =
+  let unqualifiedN2h = pinnedModuleNameToHash $ modules Map.! "Base"
+      n2h =
+        Map.unions $
+          Map.mapKeys (Nothing,) (pinnedModuleNameToHash builtinModule)
+            : Map.mapKeys (Nothing,) unqualifiedN2h
+            : [Map.mapKeys (Just nm,) (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList modules]
+      h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems modules]
+   in Map.mapMaybe (`Map.lookup` h2ty) n2h
+  where
+    modules = moduleMap prelude
+
 combineTermEnvs ::
   MonadThrow m =>
   Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
   ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
 
-buildPinnedQQModules ::
+-- | A specialiazation of @buildPinnedQQModules@ below with an empty initial prelude.
+-- This is to be used in the QuasiQuoter to build the initial/core Inferno prelude.
+-- We can't use @buildPinnedQQModules emptyPrelude@ in the QuasiQuoter because TH
+-- doesn't like that.
+buildInitPrelude ::
   (MonadThrow m, Pretty c) =>
   [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
-  Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
-buildPinnedQQModules modules =
-  snd $
-    foldl'
-      ( \(alreadyPinnedModulesMap, alreadyBuiltModules) (moduleNm, opsTable, sigs) ->
-          -- first build the new module
-          let newMod =
-                buildModule alreadyPinnedModulesMap alreadyBuiltModules sigs $
-                  Module
-                    { moduleName = moduleNm,
-                      moduleOpsTable = opsTable,
-                      moduleTypeClasses = mempty,
-                      moduleObjects = (Map.singleton (ModuleNamespace moduleNm) $ vcHash $ BuiltinModuleHash moduleNm, mempty, pure mempty)
-                    }
-           in -- then insert it into the temporary module pin map as well as the final module map
-              ( Pinned.insertHardcodedModule moduleNm (Map.map Builtin $ pinnedModuleNameToHash newMod) alreadyPinnedModulesMap,
-                Map.insert moduleNm newMod alreadyBuiltModules
-              )
-      )
-      mempty
-      modules
+  Prelude m c
+buildInitPrelude = buildPinnedQQModules emptyPrelude
+
+buildPinnedQQModules ::
+  (MonadThrow m, Pretty c) =>
+  Prelude m c ->
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
+  Prelude m c
+buildPinnedQQModules initPrelude modules =
+  foldl'
+    ( \Prelude {pinnedModuleMap, moduleMap} (moduleNm, opsTable, sigs) ->
+        -- first build the new module
+        let newMod =
+              buildModule pinnedModuleMap moduleMap sigs $
+                Module
+                  { moduleName = moduleNm,
+                    moduleOpsTable = opsTable,
+                    moduleTypeClasses = mempty,
+                    moduleObjects = (Map.singleton (ModuleNamespace moduleNm) $ vcHash $ BuiltinModuleHash moduleNm, mempty, pure mempty)
+                  }
+         in -- then insert it into the temporary module pin map as well as the final module map
+            Prelude
+              { pinnedModuleMap = Pinned.insertHardcodedModule moduleNm (Map.map Builtin $ pinnedModuleNameToHash newMod) pinnedModuleMap,
+                moduleMap = Map.insert moduleNm newMod moduleMap
+              }
+    )
+    initPrelude
+    modules
   where
     buildModule ::
       (MonadThrow m, Pretty c) =>

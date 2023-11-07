@@ -7,7 +7,7 @@ import qualified Data.Map as Map
 import qualified Data.Text.IO as Text
 import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Types.Value (MlValue, customTypes)
+import Inferno.ML.Types.Value (MlValue, mlTypes)
 import Inferno.Utils.Prettyprinter (showPretty)
 import System.Environment (getArgs)
 
@@ -16,7 +16,7 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno mlPrelude customTypes :: IO (Interpreter IO MlValue)
+    mkInferno mlPrelude mlTypes :: IO (Interpreter IO MlValue)
   case parseAndInferTypeReps src of
     Left err -> print err
     Right ast ->

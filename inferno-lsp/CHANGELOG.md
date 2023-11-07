@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0.0 -- 2023-11-07
+* Use new Prelude type and new Inferno.Core.Interpreter API
+
 ## 0.2.1.0 -- 2023-11-01
 * Update inferno-types version
 
