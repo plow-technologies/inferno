@@ -51,6 +51,7 @@ import Servant
     (:>),
   )
 import Servant.Conduit ()
+import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 type InfernoMlServerAPI uid gid =
   -- Evaluate an inference script. The script must evaluate to a tensor, which
@@ -183,7 +184,9 @@ newtype Id a = Id Int64
       FromField,
       ToField,
       FromJSON,
-      ToJSON
+      ToJSON,
+      ToHttpApiData,
+      FromHttpApiData
     )
 
 -- Row of the model table, parameterized by the user and group type
