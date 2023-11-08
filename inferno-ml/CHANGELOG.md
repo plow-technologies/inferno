@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.1.3.0 -- 2024-01-22
+* Use new Prelude chaining and new Inferno.Core.Interpreter API
+
 ## 0.1.2.1 -- 2023-10-24
 * Update to use changed Interpreter API type
 

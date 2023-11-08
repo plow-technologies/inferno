@@ -8,13 +8,8 @@ module Inferno.Module.Prelude where
 
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO)
-import qualified Data.IntMap as IntMap
-import qualified Data.Map as Map
-import Inferno.Eval (TermEnv)
-import qualified Inferno.Infer.Pinned as Pinned
-import Inferno.Module (Module (..), PinnedModule, combineTermEnvs, pinnedModuleHashToTy, pinnedModuleNameToHash)
-import Inferno.Module.Builtin (builtinModule)
-import Inferno.Module.Cast (Kind0 (toType), ToValue (toValue))
+import Inferno.Module (Prelude)
+import Inferno.Module.Cast (Kind0 (toType))
 import Inferno.Module.Prelude.Defs
   ( absFun,
     andFun,
@@ -117,44 +112,8 @@ import Inferno.Module.Prelude.Defs
     zeroFun,
     zipFun,
   )
-import Inferno.Parse (OpsTable)
-import Inferno.Types.Syntax (ModuleName, Scoped (..))
-import Inferno.Types.Type (Namespace, TCScheme, TypeMetadata)
-import Inferno.Types.Value (ImplEnvM)
-import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
-import Inferno.Utils.QQ.Module (infernoModules)
+import Inferno.Utils.QQ.Module (builtinPreludeQuoter)
 import Prettyprinter (Pretty)
-
-type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
-
-baseOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> OpsTable
-baseOpsTable moduleMap =
-  let Module {moduleOpsTable = ops, moduleName = modNm} = moduleMap Map.! "Base"
-   in IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
-
-builtinModulesOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map ModuleName OpsTable
-builtinModulesOpsTable = Map.map (\Module {moduleOpsTable} -> moduleOpsTable)
-
-builtinModulesPinMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
-builtinModulesPinMap moduleMap =
-  Pinned.openModule "Base" $
-    Pinned.insertBuiltinModule $
-      Map.foldrWithKey Pinned.insertHardcodedModule mempty $
-        Map.map (Map.map Builtin . pinnedModuleNameToHash) moduleMap
-
-builtinModulesTerms :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
-builtinModulesTerms = combineTermEnvs
-
-preludeNameToTypeMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
-preludeNameToTypeMap moduleMap =
-  let unqualifiedN2h = pinnedModuleNameToHash $ moduleMap Map.! "Base"
-      n2h =
-        Map.unions $
-          Map.mapKeys (Nothing,) (pinnedModuleNameToHash builtinModule)
-            : Map.mapKeys (Nothing,) unqualifiedN2h
-            : [Map.mapKeys (Just nm,) (pinnedModuleNameToHash m `Map.difference` unqualifiedN2h) | (nm, m) <- Map.toList moduleMap]
-      h2ty = Map.unions $ pinnedModuleHashToTy builtinModule : [pinnedModuleHashToTy m | m <- Map.elems moduleMap]
-   in Map.mapMaybe (`Map.lookup` h2ty) n2h
 
 -- In the definitions below, ###!x### is an anti-quotation to a haskell variable `x` of type `Monad m => (Value m)`
 -- This sort of Value is necessary for polymorphic functions such as `map` or `id`
@@ -166,9 +125,9 @@ preludeNameToTypeMap moduleMap =
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinModules :: (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => ModuleMap m c
-builtinModules =
-  [infernoModules|
+builtinPrelude :: (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => Prelude m c
+builtinPrelude =
+  [builtinPreludeQuoter|
 
 module Number
 
