@@ -85,6 +85,7 @@ baseOpsTable :: (Pretty c, Eq c) => Prelude m c -> OpsTable
 baseOpsTable Prelude {moduleMap} =
   case Map.lookup "Base" moduleMap of
     Just (Module {moduleOpsTable = ops, moduleName = modNm}) ->
+      -- TODO is 'Scope modNm' below correct? or should it be the name of the module '_' below?
       IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
     Nothing -> mempty
 

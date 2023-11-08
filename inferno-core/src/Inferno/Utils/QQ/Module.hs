@@ -62,8 +62,10 @@ parseAndMakePrelude ::
 parseAndMakePrelude initPrelude customTypes str = do
   l <- location'
   let parse =
-        -- TODO not sure about baseOpsTable. should we add opsTable to Prelude type?
-        runParser' (runWriterT $ flip runReaderT (baseOpsTable initPrelude, moduleOpsTables initPrelude, customTypes) $ topLevel modulesParser)
+        runParser' $
+          runWriterT $
+            flip runReaderT (baseOpsTable initPrelude, moduleOpsTables initPrelude, customTypes) $
+              topLevel modulesParser
   let (_, res) =
         parse $ State (pack str) 0 (PosState (pack str) 0 l defaultTabWidth "") []
   case res of
