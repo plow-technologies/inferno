@@ -5,24 +5,18 @@
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
-import Control.Monad.Catch (MonadThrow (throwM))
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
 import GHC.IO.Unsafe (unsafePerformIO)
-import Inferno.Eval as Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (..))
+import Inferno.ML.Module.QQ (preludeQuoter)
 import Inferno.ML.Types.Value
+import Inferno.Module (Prelude)
 import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
-import qualified Inferno.Module.Prelude as Prelude
-import Inferno.Types.Module (PinnedModule)
-import Inferno.Types.Syntax
-  ( Ident,
-    ModuleName (..),
-  )
-import Inferno.Types.Value (ImplEnvM, Value (..))
-import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Types.Syntax (Ident)
+import Inferno.Types.Value (Value (..))
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -143,9 +137,9 @@ toDeviceFun d t =
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
 
-mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
-mlModules =
-  [mlQuoter|
+mlPrelude :: (MonadThrow m, MonadCatch m, MonadIO m) => Prelude m MlValue
+mlPrelude =
+  [preludeQuoter|
 
 module ML
 
@@ -208,10 +202,3 @@ module ML
   forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 
 |]
-
-mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
-mlPrelude =
-  Map.unionWith
-    (error "Duplicate module name in builtinModules")
-    (Prelude.builtinModules @IO @MlValue)
-    (mlModules @IO)

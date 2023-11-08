@@ -6,7 +6,7 @@ module Main where
 import qualified Data.Map as Map
 import qualified Data.Text.IO as Text
 import Inferno.Core (Interpreter (..), mkInferno)
-import Inferno.Module.Prelude (builtinModules)
+import Inferno.Module.Prelude (builtinPrelude)
 import Inferno.Utils.Prettyprinter (showPretty)
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -17,7 +17,7 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno builtinModules [] :: IO (Interpreter IO ())
+    mkInferno builtinPrelude [] :: IO (Interpreter IO ())
   case parseAndInferTypeReps src of
     Left err -> do
       hPutStrLn stderr $ show err
