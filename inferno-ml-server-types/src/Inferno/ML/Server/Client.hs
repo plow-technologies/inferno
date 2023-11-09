@@ -1,19 +1,25 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-module Inferno.ML.Server.Client where
+module Inferno.ML.Server.Client
+  ( healthC,
+    inferenceC,
+  )
+where
 
 import Conduit (ConduitT)
 import Data.Proxy (Proxy (Proxy))
 import Data.Scientific (Scientific)
 import Inferno.ML.Server.Types
+import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
-runInference ::
+healthC :: ClientM ()
+inferenceC ::
   forall uid gid.
   InferenceRequest uid gid ->
   ClientM (ConduitT () (AsValue Scientific) IO ())
-runInference = client api
+healthC :<|> inferenceC = client api
 
 api :: Proxy (InfernoMlServerAPI uid gid)
 api = Proxy

@@ -44,25 +44,31 @@ import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Servant
-  ( JSON,
+  ( Get,
+    JSON,
     NewlineFraming,
     ReqBody,
     StreamPost,
+    (:<|>),
     (:>),
   )
 import Servant.Conduit ()
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 type InfernoMlServerAPI uid gid =
-  -- Evaluate an inference script. The script must evaluate to a tensor, which
-  -- will then be converted to an array, which will subsequently be streamed in chunks
-  --
-  -- NOTE: The endpoint streams back individual chunks of the list with the same
-  -- depth as the converted tensor. The resulting lists can then be concatenated
-  -- to recover the original list with the correct dimensions
-  "inference"
-    :> ReqBody '[JSON] (InferenceRequest uid gid)
-    :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
+  -- Check if the server is running
+  -- NOTE: In the future, this may include actual output, e.g. the number of
+  -- processes running, if any
+  "health" :> Get '[JSON] ()
+    -- Evaluate an inference script. The script must evaluate to a tensor, which
+    -- will then be converted to an array, which will subsequently be streamed in chunks
+    --
+    -- NOTE: The endpoint streams back individual chunks of the list with the same
+    -- depth as the converted tensor. The resulting lists can then be concatenated
+    -- to recover the original list with the correct dimensions
+    :<|> "inference"
+      :> ReqBody '[JSON] (InferenceRequest uid gid)
+      :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
 
 data AsValueTyped
   = Floats (AsValue Float)
