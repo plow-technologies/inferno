@@ -11,7 +11,8 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
 import Data.Text.Lazy (toStrict)
 import Inferno.Instances.Arbitrary ()
-import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModules, builtinModulesOpsTable)
+import Inferno.Module (Prelude, baseOpsTable, moduleOpsTables)
+import Inferno.Module.Prelude (builtinPrelude)
 import Inferno.Parse (parseExpr, prettyError)
 import Inferno.Types.Syntax
   ( BlockUtils (removeComments),
@@ -40,8 +41,8 @@ import Test.QuickCheck
   )
 import Text.Pretty.Simple (pShow)
 
-prelude :: ModuleMap IO ()
-prelude = builtinModules
+prelude :: Prelude IO ()
+prelude = builtinPrelude
 
 normalizePat :: Pat h a -> Pat h a
 normalizePat = ana $ \case
@@ -81,7 +82,7 @@ parsingTests = describe "pretty printing/parsing" $ do
   prop "parseExpr and pretty are inverse up to normalizeExpr" $
     \(x :: Expr () ()) ->
       within 10000000 $
-        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] (renderPretty x) of
+        case parseExpr (baseOpsTable prelude) (moduleOpsTables prelude) [] (renderPretty x) of
           Left err ->
             property False
               <?> ( "Pretty: \n"
@@ -254,11 +255,11 @@ parsingTests = describe "pretty printing/parsing" $ do
   where
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $
-        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
+        case parseExpr (baseOpsTable prelude) (moduleOpsTables prelude) [] str of
           Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NonEmpty.head err)
           Right (res, _) -> fmap (const ()) res `shouldBe` ast
     shouldFailFor str =
       it ("should fail for \"" <> unpack str <> "\"") $
-        case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
+        case parseExpr (baseOpsTable prelude) (moduleOpsTables prelude) [] str of
           Left _err -> pure ()
           Right _res -> expectationFailure $ "This should not parse"

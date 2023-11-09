@@ -168,11 +168,11 @@ instance FromJSON Dim where
     n -> fail $ unwords ["Dim out of range:", show n]
 
 instance ToJSON Dim where
-  toJSON = \case
-    One -> Number 1
-    Two -> Number 2
-    Three -> Number 3
-    Four -> Number 4
+  toJSON = Number . \case
+    One -> 1
+    Two -> 2
+    Three -> 3
+    Four -> 4
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
