@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Client
-  ( healthC,
+  ( statusC,
     inferenceC,
   )
 where
@@ -14,12 +14,12 @@ import Inferno.ML.Server.Types
 import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
-healthC :: ClientM ()
+statusC :: ClientM (Maybe ())
 inferenceC ::
   forall uid gid.
   InferenceRequest uid gid ->
   ClientM (ConduitT () (AsValue Scientific) IO ())
-healthC :<|> inferenceC = client api
+statusC :<|> inferenceC = client api
 
 api :: Proxy (InfernoMlServerAPI uid gid)
 api = Proxy

@@ -56,10 +56,13 @@ import Servant.Conduit ()
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 type InfernoMlServerAPI uid gid =
-  -- Check if the server is running
-  -- NOTE: In the future, this may include actual output, e.g. the number of
-  -- processes running, if any
-  "health" :> Get '[JSON] ()
+  -- Check if the server is up and if any job is currently running:
+  --
+  --  * `Nothing` -> The server is evaluating a script
+  --  * `Just ()` -> The server is not doing anything and can be killed
+  --
+  -- This can be implemented using an `MVar ()`
+  "status" :> Get '[JSON] (Maybe ())
     -- Evaluate an inference script. The script must evaluate to a tensor, which
     -- will then be converted to an array, which will subsequently be streamed in chunks
     --
