@@ -1,4 +1,5 @@
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Inferno.Module.Prelude.Defs where
 
@@ -45,6 +46,7 @@ import Numeric.Statistics.Median (median)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
+import Data.Foldable (Foldable(foldl'))
 
 zeroVal :: Value c m
 zeroVal = VInt 0
@@ -461,82 +463,119 @@ keepNumberValues =
         _ -> Nothing
     )
 
+extractInts :: (MonadThrow m) => [Value custom m] -> m [Int64]
+extractInts = \case
+  [] -> pure []
+  VInt x : vs -> (x :) <$> extractInts vs
+  _ -> throwM $ RuntimeError "extractInts: got an array with mixed types"
+
+extractDoubles :: (MonadThrow m) => [Value custom m] -> m [Double]
+extractDoubles = \case
+  [] -> pure []
+  VDouble x : vs -> (x :) <$> extractDoubles vs
+  _ -> throwM $ RuntimeError "extractDoubles: got an array with mixed types"
+
+extractEpochTimes :: (MonadThrow m) => [Value custom m] -> m [EpochTime]
+extractEpochTimes = \case
+  [] -> pure []
+  VEpochTime x : vs -> (x :) <$> extractEpochTimes vs
+  _ -> throwM $ RuntimeError "extractEpochTimes: got an array with mixed types"
+
 minimumFun :: (MonadThrow m) => Value c m
 minimumFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ fst $ minimumBy (comparing snd) $ keepNumberValues xs
+    VArray vs@(VInt _ : _) -> VOne . VInt . minimum <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VDouble . minimum <$> extractDoubles vs
+    VArray vs@(VEpochTime _ : _) -> VOne . VEpochTime . minimum <$> extractEpochTimes vs
+    VArray _ -> throwM $ RuntimeError "minimum: unsupported array type"
     _ -> throwM $ RuntimeError "minimum: expecting an array"
 
 maximumFun :: (MonadThrow m) => Value c m
 maximumFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ fst $ maximumBy (comparing snd) $ keepNumberValues xs
+    VArray vs@(VInt _ : _) -> VOne . VInt . maximum <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VDouble . maximum <$> extractDoubles vs
+    VArray vs@(VEpochTime _ : _) -> VOne . VEpochTime . maximum <$> extractEpochTimes vs
+    VArray _ -> throwM $ RuntimeError "maximum: unsupported array type"
     _ -> throwM $ RuntimeError "maximum: expecting an array"
 
 averageFun :: (MonadThrow m) => Value c m
 averageFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ VDouble $ sum (mapMaybe toDouble xs) / fromIntegral (length xs)
+    VArray vs@(VInt _ : _) -> VOne . VDouble . average . map fromIntegral <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VDouble . average <$> extractDoubles vs
+    VArray _ -> throwM $ RuntimeError "average: unsupported array type"
     _ -> throwM $ RuntimeError "average: expecting an array"
   where
-    toDouble :: Value c m -> Maybe Double
-    toDouble = \case
-      VInt v -> Just $ fromIntegral v
-      VDouble v -> Just v
-      _ -> Nothing
+    average :: (Foldable f, Fractional a) => f a -> a
+    average xs
+        | null xs = error "average: impossible"
+        | otherwise =
+            uncurry (/)
+            . foldl' (\(!total, !count) x -> (total + x, count + 1)) (0,0)
+            $ xs
 
 medianFun :: (MonadThrow m) => Value c m
 medianFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ VDouble $ median (mapMaybe toDouble xs)
+    VArray vs@(VInt _ : _) -> VOne . VDouble . median . map fromIntegral <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VDouble . median <$> extractDoubles vs
+    VArray _ -> throwM $ RuntimeError "median: unsupported array type"
     _ -> throwM $ RuntimeError "median: expecting an array"
-  where
-    toDouble :: Value c m -> Maybe Double
-    toDouble = \case
-      VInt v -> Just $ fromIntegral v
-      VDouble v -> Just v
-      _ -> Nothing
 
 argminFun :: (MonadThrow m) => Value c m
 argminFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ VInt $ fromIntegral $ argMin' $ map snd $ keepNumberValues xs
+    VArray vs@(VInt _ : _) -> VOne . VInt . argMin' <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VInt . argMin' <$> extractDoubles vs
+    VArray vs@(VEpochTime _ : _) -> VOne . VInt . argMin' <$> extractEpochTimes vs
+    VArray _ -> throwM $ RuntimeError "argmin: unsupported array type"
     _ -> throwM $ RuntimeError "argmin: expecting an array"
   where
-    argMin' :: [Double] -> Int
+    argMin' :: (Ord a) => [a] -> Int64
     argMin' = fst . minimumBy (comparing snd) . zip [0 ..]
 
 argmaxFun :: (MonadThrow m) => Value c m
 argmaxFun =
   VFun $ \case
     VArray [] -> pure VEmpty
-    VArray xs -> pure $ VOne $ VInt $ fromIntegral $ argMax' $ map snd $ keepNumberValues xs
+    VArray vs@(VInt _ : _) -> VOne . VInt . argMax' <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VInt . argMax' <$> extractDoubles vs
+    VArray vs@(VEpochTime _ : _) -> VOne . VInt . argMax' <$> extractEpochTimes vs
+    VArray _ -> throwM $ RuntimeError "argmax: unsupported array type"
     _ -> throwM $ RuntimeError "argmax: expecting an array"
   where
-    argMax' :: [Double] -> Int
+    argMax' :: (Ord a) => [a] -> Int64
     argMax' = fst . maximumBy (comparing snd) . zip [0 ..]
 
 argsortFun :: (MonadThrow m) => Value c m
 argsortFun =
   VFun $ \case
-    VArray xs -> pure $ VArray $ argsort' $ keepNumberValues xs
+    VArray [] -> pure VEmpty
+    VArray vs@(VInt _ : _) -> VArray . argsort' <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VArray . argsort' <$> extractDoubles vs
+    VArray vs@(VEpochTime _ : _) -> VArray . argsort' <$> extractEpochTimes vs
+    VArray _ -> throwM $ RuntimeError "argmax: unsupported array type"
     _ -> throwM $ RuntimeError "argsort: expecting an array"
   where
-    argsort' :: [(Value c m, Double)] -> [Value c m]
-    argsort' xs = map (VInt . fst) $ sortOn (snd . snd) $ zip [0 ..] xs
+    argsort' :: (Ord a) => [a] -> [Value c m]
+    argsort' xs = map (VInt . fst) $ sortOn snd $ zip [0 ..] xs
 
 magnitudeFun :: (MonadThrow m) => Value c m
 magnitudeFun =
   VFun $ \case
-    VDouble x -> pure $ VDouble $ abs x
-    VInt x -> pure $ VInt $ abs x
-    VArray xs -> pure $ VDouble $ sqrt $ sum $ map (\x -> x ** 2) $ map snd (keepNumberValues xs)
+    VArray [] -> pure VEmpty
+    VArray vs@(VInt _ : _) -> VOne . VDouble . magnitude . map fromIntegral <$> extractInts vs
+    VArray vs@(VDouble _ : _) -> VOne . VDouble . magnitude <$> extractDoubles vs
+    VArray _ -> throwM $ RuntimeError "magnitude: unsupported array type"
     _ -> throwM $ RuntimeError "magnitude: expecting a number"
+  where
+    magnitude = sqrt . sum . map (\x -> x ** 2)
 
 normFun :: (MonadThrow m) => Value c m
 normFun = magnitudeFun

@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.9.0.0 -- 2023-11-14
+* Breaking change: Fix Array primitive type signatures. Add Option.join
+
 ## 0.9.0.0 -- 2023-11-07
 * Breaking change: Chain prelude evaluation. New Prelude type. Interpreter API changes slightly.
 
