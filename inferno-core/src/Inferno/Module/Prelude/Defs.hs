@@ -1,5 +1,5 @@
-{-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BinaryLiterals #-}
 
 module Inferno.Module.Prelude.Defs where
 
@@ -20,7 +20,7 @@ import Data.Bits
     (.&.),
     (.|.),
   )
-import Data.Foldable (foldrM, maximumBy, minimumBy)
+import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
 import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.List.Extra ((!?))
@@ -46,7 +46,6 @@ import Numeric.Statistics.Median (median)
 import Prettyprinter (Pretty)
 import System.Posix.Types (EpochTime)
 import System.Random (randomIO)
-import Data.Foldable (Foldable(foldl'))
 
 zeroVal :: Value c m
 zeroVal = VInt 0
@@ -452,17 +451,6 @@ lengthFun =
     VArray xs -> pure $ VInt $ fromIntegral $ length xs
     _ -> throwM $ RuntimeError "length: expecting an array"
 
--- | Convenience function for comparing numbered value
--- in an array while maintaining the original value type
-keepNumberValues :: [Value c m] -> [(Value c m, Double)]
-keepNumberValues =
-  mapMaybe
-    ( \case
-        m@(VInt v) -> Just (m, fromIntegral v)
-        m@(VDouble v) -> Just (m, v)
-        _ -> Nothing
-    )
-
 extractInts :: (MonadThrow m) => [Value custom m] -> m [Int64]
 extractInts = \case
   [] -> pure []
@@ -512,10 +500,10 @@ averageFun =
   where
     average :: (Foldable f, Fractional a) => f a -> a
     average xs
-        | null xs = error "average: impossible"
-        | otherwise =
-            uncurry (/)
-            . foldl' (\(!total, !count) x -> (total + x, count + 1)) (0,0)
+      | null xs = error "average: impossible"
+      | otherwise =
+          uncurry (/)
+            . foldl' (\(!total, !count) x -> (total + x, count + 1)) (0, 0)
             $ xs
 
 medianFun :: (MonadThrow m) => Value c m
