@@ -170,9 +170,8 @@ import Prettyprinter
     rbracket,
     rparen,
     sep,
-    vsep,
-    -- sep,
     -- tupled,
+    vsep,
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
@@ -408,18 +407,16 @@ instance Pretty TypeClassShape where
 
 instance Pretty TCScheme where
   pretty (ForallTC xs tcs (ImplType impl ty)) =
-    prettyXs xs
-      <+> prettyPrecondition
-      <+> pretty ty
+    group $ prettyXs xs <> prettyPrecondition <> pretty ty
     where
       prettyXs [] = mempty
-      prettyXs xs' = "forall" <+> sep (fmap pretty xs') <+> "."
+      prettyXs xs' = "forall" <+> sep (fmap pretty xs') <> "." <> line
       prettyTcs tcs' = map (("requires" <+>) . pretty) $ Set.toList tcs'
       prettyImpls impls = map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impls
       prettyPrecondition =
         case prettyTcs tcs ++ prettyImpls impl of
           [] -> mempty
-          precs -> encloseSep lbrace rbrace comma precs <+> "⇒"
+          precs -> encloseSep lbrace rbrace comma precs <+> "⇒" <> line
 
 newtype Subst = Subst (Map.Map TV InfernoType)
   deriving stock (Eq, Ord)
@@ -1375,17 +1372,18 @@ prettyPrec isBracketed prec expr =
           [x] -> prettyAppAux x $ prettyPrec True 0 x
           (x : xs) -> (prettyAppAux x $ prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
     Lam _ xs _ e ->
-      let fun = "fun" <+> align (sep $ map (fromMaybe "_" . fmap pretty . snd) $ toList xs) <+> "->"
-          body = align $ prettyPrec False 0 e
-       in group $ nest 2 $ vsep [fun, body]
+      let fun = "fun" <+> group (nest 2 (sep $ map (fromMaybe "_" . fmap pretty . snd) $ toList xs)) <+> "->"
+          body = group $ nest 2 $ prettyPrec False 0 e
+       in group $ nest 2 $ fun <> line <> body
     Let _ _ x _ e1 _ e2 ->
-      let letPretty = "let" <+> align (pretty x <+> "=" <+> align (prettyPrec False 0 e1))
-          body = "in" <+> prettyPrec False 0 e2
-       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+      let e1Pretty = group $ (nest 2 $ line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
+          letPretty = group $ "let" <+> pretty x <+> "=" <> e1Pretty <> "in"
+       in group $ letPretty <> line <> prettyPrec False 0 e2
     LetAnnot _ _ x _ t _ e1 _ e2 ->
-      let letPretty = "let" <+> align (pretty x <+> ":" <+> pretty t <+> "=" <+> align (prettyPrec False 0 e1))
-          body = "in" <+> prettyPrec False 0 e2
-       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+      let e1Pretty = group $ (nest 2 $ line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
+          tPretty = group $ (nest 2 $ line <> pretty t) <> line
+          letPretty = group $ "let" <+> pretty x <+> ":" <> tPretty <> "=" <> e1Pretty <> "in"
+       in group $ letPretty <> line <> prettyPrec False 0 e2
     Lit _ l -> pretty l
     InterpolatedString _ istr _ -> enclose "`" "`" $
       group $
