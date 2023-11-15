@@ -24,7 +24,6 @@ import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
 import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.List.Extra ((!?))
-import Data.Maybe (mapMaybe)
 import Data.Ord (comparing)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as Text
