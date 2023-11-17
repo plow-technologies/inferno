@@ -1,4 +1,3 @@
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFunctor #-}
@@ -6,11 +5,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
@@ -67,12 +62,36 @@ type InfernoMlServerAPI uid gid =
     -- will then be converted to an array, which will subsequently be streamed in chunks
     --
     -- NOTE: The endpoint streams back individual chunks of the list with the same
-    -- depth as the converted tensor. The resulting lists can then be concatenated
-    -- to recover the original list with the correct dimensions
+    -- number of dimensions as the converted tensor. The resulting lists can then be
+    -- concatenated to recover the original list
+    --
+    -- For example, the following output tensor
+    --
+    -- `[ [ 0.0, 0.0, ...], [ 0.0, 0.0, ...], ...]`
+    --
+    -- will be converted to
+    --
+    -- `Twos @Float [ [ 0.0, 0.0, ...], [ 0.0, 0.0, ...], ...]`
+    --
+    -- and then streamed back in the conduit as individual chunks of `Twos`, e.g.
+    --
+    -- `Twos @Float [ [ 0.0, 0.0, ...] ]`
+    --
+    -- `sinkList` or similar can be used to collect all of the individual chunks,
+    --  which, when concatenated, will evaluate to the converted tensor
+    --
+    -- NOTE: Each output tensor is converted to a list of `Scientific`. This is
+    -- to avoid dealing with any variables in the API type, or existentials, etc...
+    -- Since the output will be serialized as JSON anyway, where conversion to
+    -- `Scientific`s will already take place, it is more convenient to explicitly
+    -- return this
     :<|> "inference"
       :> ReqBody '[JSON] (InferenceRequest uid gid)
       :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
 
+-- | Convenience type for dealing with 'AsValue's, rather than pattern matching
+-- on the @dtype@ inside the 'AsValue', as well as allowing different numerical
+-- representations inside the same type
 data AsValueTyped
   = Floats (AsValue Float)
   | Doubles (AsValue Double)
@@ -80,20 +99,28 @@ data AsValueTyped
   deriving stock (Show, Eq, Generic)
 
 toAsValueTyped :: AsValue Scientific -> AsValueTyped
-toAsValueTyped = \case
-  AsValue dt xs -> case dt of
-    Float -> Floats . AsValue dt $ toRealFloat <$> xs
-    Double -> Doubles . AsValue dt $ toRealFloat <$> xs
-    Int64 -> Int64s . AsValue dt $ round <$> xs
+toAsValueTyped (AsValue dt xs) = case dt of
+  Float -> Floats . AsValue dt $ toRealFloat <$> xs
+  Double -> Doubles . AsValue dt $ toRealFloat <$> xs
+  -- NOTE: As long as the `AsValue` is only obtained from the streaming endpoint
+  -- above, using `round` should be fine (since the `Scientific` was originally
+  -- an `Int64` anyway). Using `round` avoids the `Maybe` context of other ways of
+  -- converting from a `Scientific` to an integral type
+  Int64 -> Int64s . AsValue dt $ round <$> xs
 
+-- | A converted output tensor, tagged with its 'DType' and holding a list ('Dims')
+-- representing the original tensor. Using this representation keeps track of both
+-- the number of dimensions and the datatype, which must be retained when serializing
+-- the list
 data AsValue a = AsValue
   { dtype :: DType,
     values :: Dims a
   }
-  deriving stock (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic, Functor)
   deriving anyclass (FromJSON)
 
 instance ToJSON a => ToJSON (AsValue a) where
+  -- NOTE: See the note on the `ToJSON` instance for `Dims` below
   toEncoding (AsValue dt xs) =
     pairs $
       mconcat
@@ -102,16 +129,17 @@ instance ToJSON a => ToJSON (AsValue a) where
         ]
 
 catAsValues :: AsValue a -> AsValue a -> Maybe (AsValue a)
-catAsValues (AsValue dt1 x) = \case
-  AsValue dt2 y
-    | dt1 == dt2 -> case (x, y) of
-        (Ones xs, Ones ys) -> Just . AsValue dt1 . Ones $ xs <> ys
-        (Twos xs, Twos ys) -> Just . AsValue dt1 . Twos $ xs <> ys
-        (Threes xs, Threes ys) -> Just . AsValue dt1 . Threes $ xs <> ys
-        (Fours xs, Fours ys) -> Just . AsValue dt1 . Fours $ xs <> ys
-        _ -> Nothing
-    | otherwise -> Nothing
+catAsValues (AsValue dt1 x) (AsValue dt2 y)
+  | dt1 == dt2 = case (x, y) of
+      (Ones xs, Ones ys) -> Just . AsValue dt1 . Ones $ xs <> ys
+      (Twos xs, Twos ys) -> Just . AsValue dt1 . Twos $ xs <> ys
+      (Threes xs, Threes ys) -> Just . AsValue dt1 . Threes $ xs <> ys
+      (Fours xs, Fours ys) -> Just . AsValue dt1 . Fours $ xs <> ys
+      _ -> Nothing
+  | otherwise = Nothing
 
+-- | The actual converted output tensor (i.e. from @Torch.asValue@), up to a fixed
+-- number of dimensions
 data Dims a
   = Ones [a]
   | Twos [[a]]
@@ -129,6 +157,11 @@ instance FromJSON a => FromJSON (Dims a) where
       ]
 
 instance ToJSON a => ToJSON (Dims a) where
+  -- NOTE
+  -- `toEncoding` must be used to retain the correct serialized representation of
+  -- numeric values. For example, `toJSON @Float 0.0 = "0"`, but
+  -- `toEncoding @Float 0.0 = "0.0"`. There may be decoding issues later
+  -- if this is not done
   toEncoding = \case
     Ones xs -> toEncoding xs
     Twos xs -> toEncoding xs
@@ -155,6 +188,7 @@ instance ToJSON DType where
       Int64 -> "int"
       dt -> Text.pack $ toLower <$> show dt
 
+-- | Tensor dimension
 data Dim
   = One
   | Two
@@ -171,11 +205,12 @@ instance FromJSON Dim where
     n -> fail $ unwords ["Dim out of range:", show n]
 
 instance ToJSON Dim where
-  toJSON = Number . \case
-    One -> 1
-    Two -> 2
-    Three -> 3
-    Four -> 4
+  toJSON =
+    Number . \case
+      One -> 1
+      Two -> 2
+      Three -> 3
+      Four -> 4
 
 -- | A request to run an inference parameter
 data InferenceRequest uid gid = InferenceRequest
