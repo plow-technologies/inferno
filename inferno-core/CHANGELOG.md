@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.9.0.0 -- 2023-11-21
+* Breaking change: Fix Array primitive type signatures. Add Option.join
+
 ## 0.8.2.0 -- 2023-11-02
 * Add median
 

@@ -32,7 +32,7 @@ library
     , bytestring                         >= 0.10.10 && < 0.12
     , co-log-core                        >= 0.3.1 && < 0.4
     , containers                         >= 0.6.2 && < 0.7
-    , inferno-core                       >= 0.8.0 && < 0.9
+    , inferno-core                       >= 0.8.0 && < 0.10
     , inferno-types                      >= 0.2.0 && < 0.4
     , inferno-vc                         >= 0.3.0 && < 0.4
     , lsp                                >= 1.6.0 && < 1.7

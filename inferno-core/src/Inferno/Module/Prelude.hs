@@ -372,6 +372,14 @@ module Option
       | _ -> None
     };
 
+  @doc `Option.join` removes the outer "layer" of a nesteed option. (By definition, `Option.join == Option.reduce id None`).
+  ~~~inferno
+  Option.join None == None
+  Option.join (Some None) == None
+  Option.join (Some (Some a)) == Some a
+  ~~~;
+  join : forall 'a. option of (option of 'a) -> option of 'a := reduce Number.id None;
+
 module Array
 
   @doc Array indexing: gets the ith element of an array. Throws a RuntimeError if i is out of bounds.;
@@ -389,31 +397,31 @@ module Array
   length : forall 'a. array of 'a -> int := ###!lengthFun###;
 
   @doc The minimum value in an array, or `None` if empty;
-  minimum: forall 'a. array of 'a -> option of double := ###!minimumFun###;
+  minimum: forall 'a. {requires order on 'a} => array of 'a -> option of 'a := ###!minimumFun###;
 
   @doc The maximum value in an array, or `None` if empty;
-  maximum: forall 'a. array of 'a -> option of double := ###!maximumFun###;
+  maximum: forall 'a. {requires order on 'a} => array of 'a -> option of 'a := ###!maximumFun###;
 
   @doc The average of the values in an array, or `None` if empty;
-  average: forall 'a. array of 'a -> option of double := ###!averageFun###;
+  average: forall 'a. {requires numeric on 'a} => array of 'a -> option of double := ###!averageFun###;
 
-  @doc Return the median element in an array, or `None` if empty;
-  median: forall 'a. array of 'a -> option of double := ###!medianFun###;
+  @doc Return the median of the values in an array, or `None` if empty;
+  median: forall 'a. {requires numeric on 'a} => array of 'a -> option of double := ###!medianFun###;
 
   @doc The index of the minimum value in an array, or `None` if empty;
-  argmin: forall 'a. array of 'a -> option of int := ###!argminFun###;
+  argmin: forall 'a. {requires order on 'a} => array of 'a -> option of int := ###!argminFun###;
 
   @doc The index of the maximum value in an array, or `None` if empty;
-  argmax: forall 'a. array of 'a -> option of int := ###!argmaxFun###;
+  argmax: forall 'a. {requires order on 'a} => array of 'a -> option of int := ###!argmaxFun###;
 
   @doc Returns the indices that would sort an array;
-  argsort: forall 'a. array of 'a -> array of int := ###!argsortFun###;
+  argsort: forall 'a. {requires order on 'a} => array of 'a -> array of int := ###!argsortFun###;
 
-  @doc Returns the Euclidean norm of an array;
-  magnitude: forall 'a. array of 'a -> double := ###!magnitudeFun###;
+  @doc Returns the Euclidean norm of an array, or `None` if empty;
+  magnitude: forall 'a. {requires numeric on 'a} => array of 'a -> option of double := ###!magnitudeFun###;
 
-  @doc Returns the Euclidean norm of an array;
-  norm: forall 'a. array of 'a -> double := ###!normFun###;
+  @doc Returns the Euclidean norm of an array, or `None` if empty;
+  norm: forall 'a. {requires numeric on 'a} => array of 'a -> option of double := ###!normFun###;
 
   @doc The `Array.range` function takes two `int` arguments `n` and `m` and produces an array `[n,...,m]`.
   If `m` > `n`, the empty array is returned.;
@@ -618,7 +626,9 @@ module Base
   infix 6 ==;
   infix 6 !=;
   infix 19 ..;
-  infix 5 ?;
+
+  infixr 5 ?;
+  // infixl 5 <|>;
 
   infixl 12 <<;
   infixl 12 |>;
@@ -690,6 +700,18 @@ module Base
       | Some a -> a
       | None -> default
     };
+
+  // TODO fix parser and re-introduce this
+  // @doc The `<|>` operator implements choice: it returns the left value if not `None`, otherwise the right value.
+  // ~~~inferno
+  // (Some "hello") <|> Some "hi" == Some "hello"
+  // None <|> Some "hi" == Some "hi"
+  // ~~~;
+  // (<|>) : forall 'a. option of 'a -> option of 'a -> option of 'a :=
+  //   fun ma default -> match ma with {
+  //     | Some a -> Some a
+  //     | None -> default
+  //   };
 
   @doc Gets the first component of a tuple: `fst (x, y) == x`;
   fst : forall 'a 'b. ('a, 'b) -> 'a := fun t -> match t with { (x, y) -> x };
