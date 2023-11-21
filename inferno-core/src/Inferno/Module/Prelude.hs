@@ -331,11 +331,11 @@ module Option
       | _ -> None
     };
 
-  @doc `Option.join` removes one "layer" of option. By definition, `Option.join == Option.reduce id None`.
+  @doc `Option.join` removes the outer "layer" of a nesteed option. (By definition, `Option.join == Option.reduce id None`).
   ~~~inferno
   Option.join None == None
   Option.join (Some None) == None
-  Option.join (Some (Some a)) == a
+  Option.join (Some (Some a)) == Some a
   ~~~;
   join : forall 'a. option of (option of 'a) -> option of 'a := reduce Number.id None;
 
