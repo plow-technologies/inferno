@@ -225,7 +225,9 @@ signedFloat = Lexer.signed (takeWhileP Nothing isHSpace *> pure ()) Lexer.float
 enumE :: (SourcePos -> () -> Scoped ModuleName -> Ident -> f) -> Parser f
 enumE f = do
   startPos <- getSourcePos
-  lexeme $ try (f startPos () <$> (Scope . ModuleName <$> variable) <*> (char '.' *> enumConstructor)) <|> f startPos () LocalScope <$> enumConstructor <* notFollowedBy (char '.')
+  lexeme $
+    try (f startPos () <$> (Scope . ModuleName <$> variable) <*> (char '.' *> enumConstructor))
+      <|> f startPos () LocalScope <$> enumConstructor
 
 implVarE :: Parser (Expr () SourcePos)
 implVarE = do
