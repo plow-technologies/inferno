@@ -18,7 +18,7 @@ import qualified Data.Text as Text
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
-import Inferno.Module (Prelude)
+import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Parse (parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
@@ -567,7 +567,7 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
                                 Just (s, e) -> Left [errorDiagnosticInfer (unPos $ sourceLine s) (unPos $ sourceColumn s) (unPos $ sourceLine e) (unPos $ sourceColumn e) err]
             _ -> Right ()
 
-parseAndInferPretty :: forall c. (Pretty c, Eq c) => Prelude IO c -> Text -> IO ()
+parseAndInferPretty :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> IO ()
 parseAndInferPretty prelude txt = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   (parseAndInferDiagnostics @IO @c interpreter) [] txt (const $ Right ()) >>= \case
@@ -581,7 +581,7 @@ parseAndInferPretty prelude txt = do
 
       putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
 
-parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => Prelude IO c -> Text -> [Text] -> Text -> IO ()
+parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> Text -> IO ()
 parseAndInferTypeReps prelude expr inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
@@ -603,7 +603,7 @@ parseAndInferTypeReps prelude expr inTys outTy = do
                 putStrLn ("type reps:" :: String)
                 print res
 
-parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => Prelude IO c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
+parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
 parseAndInferPossibleTypes prelude expr inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case

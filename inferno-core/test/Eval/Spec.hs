@@ -13,14 +13,14 @@ import qualified Data.Map as Map
 import Data.Text (unpack)
 import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
-import Inferno.Module (Prelude (..))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Prelude (builtinPrelude)
+import Inferno.Module.Prelude (ModuleMap)
+import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (ImplEnvM (..), Value (..), liftImplEnvM)
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Inferno.Utils.QQ.Module (builtinPreludeQuoter)
+import Inferno.Utils.QQ.Module (infernoModules)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 
 type TestCustomValue = ()
@@ -53,7 +53,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
-      runIO $ (mkInferno builtinPrelude [] :: IO (Interpreter IO TestCustomValue))
+      runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
@@ -426,16 +426,11 @@ cachedGet =
     TestEnv {cache} <- liftImplEnvM $ ask
     pure $ VInt cache
 
--- Since this is a test, we build a prelude from scratch, instead of extending the
--- builtin/core Inferno prelude from Inferno.Module.Prelude.
--- To keep the rest of the code happy, we need to include a dummy Base module.
-evalInMonadPrelude :: Prelude (ReaderT TestEnv IO) TestCustomValue
+evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
 evalInMonadPrelude =
-  [builtinPreludeQuoter|
-module Base
-  zero : int := 0;
-
+  [infernoModules|
 module EvalInMonad
+
   cachedGet : () -> int := ###!cachedGet###;
 |]
 
@@ -443,10 +438,13 @@ evalInMonadTest :: Spec
 evalInMonadTest = do
   let testEnv = TestEnv {cache = 4}
 
+  let modules =
+        Map.unionWith
+          (error "Duplicate module name in builtinModules")
+          (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
+          evalInMonadPrelude
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    runIO $
-      flip runReaderT testEnv $
-        (mkInferno evalInMonadPrelude [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
+    runIO $ flip runReaderT testEnv $ (mkInferno modules [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
 
   let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
         it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
@@ -459,5 +457,5 @@ evalInMonadTest = do
                 Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
   let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
 
-  describe "evaluate in custom monad" $ do
+  describe "TODO" $ do
     shouldEvaluateTo "EvalInMonad.cachedGet ()" $ VInt 4

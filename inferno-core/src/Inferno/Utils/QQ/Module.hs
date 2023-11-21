@@ -1,6 +1,4 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Inferno.Utils.QQ.Module where
 
@@ -12,14 +10,13 @@ import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import Data.Text (pack)
 import Inferno.Infer (closeOverType)
-import Inferno.Module (Prelude (..), baseOpsTable, buildInitPrelude, emptyPrelude, moduleOpsTables)
-import Inferno.Module.Cast (ToValue (..))
-import Inferno.Parse (OpsTable, QQDefinition (..), TopLevelDefn (..), modulesParser, topLevel)
-import Inferno.Types.Syntax
-  ( CustomType,
-    ModuleName,
-    TCScheme (..),
+import Inferno.Module (buildPinnedQQModules)
+import Inferno.Parse
+  ( QQDefinition (..),
+    modulesParser,
+    topLevel,
   )
+import Inferno.Types.Syntax (CustomType)
 import qualified Inferno.Types.Type as Type
 import Inferno.Utils.QQ.Common
   ( liftText,
@@ -28,8 +25,7 @@ import Inferno.Utils.QQ.Common
   )
 import qualified Language.Haskell.TH.Lib as TH
 import Language.Haskell.TH.Quote (QuasiQuoter (..), dataToExpQ)
-import Language.Haskell.TH.Syntax (Q, mkName)
-import Prettyprinter (Pretty)
+import Language.Haskell.TH.Syntax (mkName)
 import Text.Megaparsec
   ( ParseErrorBundle (ParseErrorBundle),
     PosState (PosState),
@@ -53,39 +49,30 @@ metaToValue = \case
   (sch, InlineDef e) ->
     Just [|Right ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(dataToExpQ (\a -> liftText <$> cast a) e))|]
 
-parseAndMakePrelude ::
-  (Eq c, Pretty c) =>
-  Prelude m c ->
-  [CustomType] ->
-  String ->
-  Q [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
-parseAndMakePrelude initPrelude customTypes str = do
-  l <- location'
-  let parse =
-        runParser' $
-          runWriterT $
-            flip runReaderT (baseOpsTable initPrelude, moduleOpsTables initPrelude, customTypes) $
-              topLevel modulesParser
-  let (_, res) =
-        parse $ State (pack str) 0 (PosState (pack str) 0 l defaultTabWidth "") []
-  case res of
-    Left (ParseErrorBundle errs pos) ->
-      let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
-       in fail $ intercalate "\n\n" errs'
-    Right (modules, _comments) ->
-      pure modules
+-- | QuasiQuoter for builtin Inferno modules. TH dictates that QQs have to be imported,
+-- not defined locally, so this instantiation is done in this module.
+infernoModules :: QuasiQuoter
+infernoModules = moduleQuoter []
 
-modulesToExpQ :: [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])] -> TH.ExpQ
-modulesToExpQ modules = dataToExpQ ((\a -> liftText <$> cast a) `extQ` metaToValue) modules
-
--- | QuasiQuoter for builtin Inferno prelude.
-builtinPreludeQuoter :: QuasiQuoter
-builtinPreludeQuoter =
+moduleQuoter :: [CustomType] -> QuasiQuoter
+moduleQuoter customTypes =
   QuasiQuoter
     { quoteExp = \str -> do
-        modules <- parseAndMakePrelude @() emptyPrelude [] str
-        [|buildInitPrelude $(modulesToExpQ modules)|],
-      quotePat = error "builtinPreludeQuoter: Invalid use of this quasi-quoter in pattern context.",
-      quoteType = error "builtinPreludeQuoter: Invalid use of this quasi-quoter in type context.",
-      quoteDec = error "builtinPreludeQuoter: Invalid use of this quasi-quoter in top-level declaration context."
+        l <- location'
+        let (_, res) =
+              runParser' (runWriterT $ flip runReaderT (mempty, mempty, customTypes) $ topLevel modulesParser) $
+                State
+                  (pack str)
+                  0
+                  (PosState (pack str) 0 l defaultTabWidth "")
+                  []
+        case res of
+          Left (ParseErrorBundle errs pos) ->
+            let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
+             in fail $ intercalate "\n\n" errs'
+          Right (modules, _comments) ->
+            [|buildPinnedQQModules $(dataToExpQ ((\a -> liftText <$> cast a) `extQ` metaToValue) modules)|],
+      quotePat = error "moduleQuoter: Invalid use of this quasi-quoter in pattern context.",
+      quoteType = error "moduleQuoter: Invalid use of this quasi-quoter in type context.",
+      quoteDec = error "moduleQuoter: Invalid use of this quasi-quoter in top-level declaration context."
     }

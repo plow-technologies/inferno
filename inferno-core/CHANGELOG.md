@@ -1,9 +1,6 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.9.0.0 -- 2023-11-07
-* Breaking change: Chain prelude evaluation. New Prelude type. Interpreter API changes slightly.
-
 ## 0.8.2.0 -- 2023-11-02
 * Add median
 
