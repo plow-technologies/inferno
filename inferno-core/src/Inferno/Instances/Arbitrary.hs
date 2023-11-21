@@ -30,7 +30,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as Text (Text, all, null, pack)
 import GHC.Generics (Generic (..), Rep)
 import Inferno.Infer.Env (closeOver)
-import qualified Inferno.Module as Prelude (baseOpsTable)
 import qualified Inferno.Module.Prelude as Prelude
 import qualified Inferno.Types.Module as Module (Module)
 import Inferno.Types.Syntax
@@ -103,7 +102,7 @@ instance (Generic a, GArbitrary ga, ga ~ Rep a) => Arbitrary (GenericArbitrary a
   arbitrary = GenericArbitrary <$> genericArbitrary
 
 baseOpsTable :: OpsTable
-baseOpsTable = Prelude.baseOpsTable @() $ Prelude.builtinPrelude @IO @()
+baseOpsTable = Prelude.baseOpsTable @IO @() $ Prelude.builtinModules @IO @()
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Module
 deriving instance Arbitrary objs => ToADTArbitrary (Module.Module objs)
