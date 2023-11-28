@@ -1372,9 +1372,10 @@ prettyPrec isBracketed prec expr =
           [x] -> prettyAppAux x $ prettyPrec True 0 x
           (x : xs) -> (prettyAppAux x $ prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
     Lam _ xs _ e ->
-      let fun = "fun" <+> group (nest 2 (sep $ map (fromMaybe "_" . fmap pretty . snd) $ toList xs)) <+> "->"
-          body = group $ nest 2 $ prettyPrec False 0 e
-       in group $ nest 2 $ fun <> line <> body
+      let xsPretty = sep $ map (fromMaybe "_" . fmap pretty . snd) $ toList xs
+          fun = group $ "fun" <> (group $ nest 2 $ line <> xsPretty) <> line <> "->"
+          body = group $ nest 2 $ line <> prettyPrec False 0 e
+       in group $ fun <> body
     Let _ _ x _ e1 _ e2 ->
       let e1Pretty = group $ (nest 2 $ line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
           letPretty = group $ "let" <+> pretty x <+> "=" <> e1Pretty <> "in"
@@ -1422,10 +1423,10 @@ prettyPrec isBracketed prec expr =
           [] -> []
           s : xs -> ("}" <> s) : xs
     If _ c _ t _ f ->
-      let ifPretty = "if" <+> align (prettyPrec False 0 c)
-          thenPretty = "then" <+> align (prettyPrec False 0 t)
-          elsePretty = "else" <+> align (prettyPrec False 0 f)
-       in nest 2 $
+      let ifPretty = "if" <> (group $ nest 2 $ line <> prettyPrec False 0 c)
+          thenPretty = "then" <> (group $ nest 2 $ line <> prettyPrec False 0 t)
+          elsePretty = "else" <> (group $ nest 2 $ line <> prettyPrec False 0 f)
+       in group $
             ifPretty
               <> (if hasTrailingComment c then hardline else line)
               <> thenPretty
@@ -1464,11 +1465,11 @@ prettyPrec isBracketed prec expr =
               <> (if hasTrailingComment e then hardline else line')
               <> ", "
               <> prettyTuple False es
-    One _ e -> "Some" <+> align (prettyPrec False 0 e)
+    One _ e -> "Some" <+> nest 2 (prettyPrec False 0 e)
     Empty _ -> "None"
     Assert _ c _ e ->
-      let assertPretty = "assert" <+> align (prettyPrec False 0 c)
-          body = (flatAlt "    in" "in") <+> align (prettyPrec False 0 e)
+      let assertPretty = "assert" <+> nest 2 (prettyPrec False 0 c)
+          body = (flatAlt "    in" "in") <+> nest 2 (prettyPrec False 0 e)
        in assertPretty <> (if hasTrailingComment c then hardline else line) <> body
     Case _ e_case _ patExprs _ ->
       group $
