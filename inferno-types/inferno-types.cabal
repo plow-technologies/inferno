@@ -60,3 +60,15 @@ library
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
+
+executable pretty-test
+  main-is: Main.hs
+  hs-source-dirs: pretty-test
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , inferno-types
+    , prettyprinter
+    , text
+  default-language: Haskell2010
