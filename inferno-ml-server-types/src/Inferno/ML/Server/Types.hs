@@ -39,10 +39,10 @@ import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Servant
-  ( Get,
+  ( Capture,
+    Get,
     JSON,
     NewlineFraming,
-    ReqBody,
     StreamPost,
     (:<|>),
     (:>),
@@ -86,7 +86,7 @@ type InfernoMlServerAPI uid gid =
     -- `Scientific`s will already take place, it is more convenient to explicitly
     -- return this
     :<|> "inference"
-      :> ReqBody '[JSON] (InferenceRequest uid gid)
+      :> Capture "id" (Id (InferenceParam uid gid))
       :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
 
 -- | Convenience type for dealing with 'AsValue's, rather than pattern matching
@@ -211,14 +211,6 @@ instance ToJSON Dim where
       Two -> 2
       Three -> 3
       Four -> 4
-
--- | A request to run an inference parameter
-data InferenceRequest uid gid = InferenceRequest
-  { parameter :: Id (InferenceParam uid gid),
-    model :: Id (Model uid gid)
-  }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
 
 -- | The ID of a database entity
 newtype Id a = Id Int64

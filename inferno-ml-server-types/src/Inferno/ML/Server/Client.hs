@@ -17,7 +17,7 @@ import Servant.Client.Streaming (ClientM, client)
 statusC :: ClientM (Maybe ())
 inferenceC ::
   forall uid gid.
-  InferenceRequest uid gid ->
+  Id (InferenceParam uid gid) ->
   ClientM (ConduitT () (AsValue Scientific) IO ())
 statusC :<|> inferenceC = client api
 
