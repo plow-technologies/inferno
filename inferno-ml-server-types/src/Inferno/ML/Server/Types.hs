@@ -43,6 +43,7 @@ import Servant
     Get,
     JSON,
     NewlineFraming,
+    Put,
     StreamPost,
     (:<|>),
     (:>),
@@ -88,6 +89,9 @@ type InfernoMlServerAPI uid gid =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid))
       :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
+    :<|> "inference"
+      :> "cancel"
+      :> Put '[JSON] ()
 
 -- | Convenience type for dealing with 'AsValue's, rather than pattern matching
 -- on the @dtype@ inside the 'AsValue', as well as allowing different numerical

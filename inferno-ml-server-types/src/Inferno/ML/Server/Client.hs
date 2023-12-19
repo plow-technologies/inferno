@@ -4,6 +4,7 @@
 module Inferno.ML.Server.Client
   ( statusC,
     inferenceC,
+    cancelC,
   )
 where
 
@@ -19,7 +20,11 @@ inferenceC ::
   forall uid gid.
   Id (InferenceParam uid gid) ->
   ClientM (ConduitT () (AsValue Scientific) IO ())
-statusC :<|> inferenceC = client api
+cancelC :: ClientM ()
+statusC
+  :<|> inferenceC
+  :<|> cancelC =
+    client api
 
 api :: Proxy (InfernoMlServerAPI uid gid)
 api = Proxy
