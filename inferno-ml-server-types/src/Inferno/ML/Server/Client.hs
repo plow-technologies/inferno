@@ -5,6 +5,8 @@ module Inferno.ML.Server.Client
   ( statusC,
     inferenceC,
     cancelC,
+    registerBridgeC,
+    checkBridgeC,
   )
 where
 
@@ -21,9 +23,13 @@ inferenceC ::
   Id (InferenceParam uid gid) ->
   ClientM (ConduitT () (AsValue Scientific) IO ())
 cancelC :: ClientM ()
+registerBridgeC :: BridgeInfo -> ClientM ()
+checkBridgeC :: ClientM (Maybe BridgeInfo)
 statusC
   :<|> inferenceC
-  :<|> cancelC =
+  :<|> cancelC
+  :<|> registerBridgeC
+  :<|> checkBridgeC =
     client api
 
 api :: Proxy (InfernoMlServerAPI uid gid)

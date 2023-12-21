@@ -24,6 +24,7 @@ import Data.Aeson
     (.=),
   )
 import Data.Char (toLower)
+import Data.IP (IPv4)
 import Data.Int (Int64)
 import Data.Scientific (Scientific, toRealFloat)
 import Data.String (IsString)
@@ -31,6 +32,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
+import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( FromRow,
     ToRow,
@@ -39,13 +41,16 @@ import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
+import Inferno.ML.Server.Types.Orphans ()
 import Servant
   ( Capture,
     Get,
     JSON,
     NewlineFraming,
+    Post,
     Put,
     QueryParam',
+    ReqBody,
     Required,
     StreamPost,
     (:<|>),
@@ -92,11 +97,15 @@ type InfernoMlServerAPI uid gid =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid))
       :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
-    :<|> "inference"
-      :> "cancel"
-      :> Put '[JSON] ()
+    :<|> "inference" :> "cancel" :> Put '[JSON] ()
+    -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
+    -- bridge endpoint
+    :<|> "bridge" :> ReqBody '[JSON] BridgeInfo :> Post '[JSON] ()
+    -- Check for bridge registration
+    :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
--- A bridge to get data for use with Inferno scripts
+-- A bridge to get data for use with Inferno scripts. This is implemented by
+-- the bridge, not by `inferno-ml-server`
 type BridgeAPI p t =
   "bridge"
     :> "value-at"
@@ -104,6 +113,13 @@ type BridgeAPI p t =
     :> QueryParam' '[Required] "p" p
     :> QueryParam' '[Required] "time" t
     :> Get '[JSON] IValue
+
+data BridgeInfo = BridgeInfo
+  { host :: IPv4,
+    port :: Word64
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 -- | Convenience type for dealing with 'AsValue's, rather than pattern matching
 -- on the @dtype@ inside the 'AsValue', as well as allowing different numerical
