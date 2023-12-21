@@ -34,7 +34,9 @@ library
   import:          common
   exposed-modules:
     Inferno.ML.Server.Client
+    Inferno.ML.Server.Client.Bridge
     Inferno.ML.Server.Types
+    Inferno.ML.Server.Types.Orphans
 
   hs-source-dirs:  src
   build-depends:
@@ -47,10 +49,12 @@ library
     , http-api-data
     , inferno-core
     , inferno-types
+    , iproute
     , postgresql-simple
     , scientific
     , servant-client
     , servant-conduit
     , servant-server
     , text
+    , unix
     , vector

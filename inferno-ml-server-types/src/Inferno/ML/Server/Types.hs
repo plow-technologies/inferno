@@ -30,6 +30,7 @@ import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( FromRow,
     ToRow,
@@ -44,6 +45,8 @@ import Servant
     JSON,
     NewlineFraming,
     Put,
+    QueryParam',
+    Required,
     StreamPost,
     (:<|>),
     (:>),
@@ -92,6 +95,15 @@ type InfernoMlServerAPI uid gid =
     :<|> "inference"
       :> "cancel"
       :> Put '[JSON] ()
+
+-- A bridge to get data for use with Inferno scripts
+type BridgeAPI p t =
+  "bridge"
+    :> "value-at"
+    :> QueryParam' '[Required] "res" Int64
+    :> QueryParam' '[Required] "p" p
+    :> QueryParam' '[Required] "time" t
+    :> Get '[JSON] IValue
 
 -- | Convenience type for dealing with 'AsValue's, rather than pattern matching
 -- on the @dtype@ inside the 'AsValue', as well as allowing different numerical
@@ -273,3 +285,27 @@ newtype Script = Script Text
       FromField,
       ToField
     )
+
+-- Bridge-related types
+
+-- A value that can be used with Inferno. Note that this is significantly more
+-- restrictive than Inferno's `Value` type, which cannot have sensible `ToJSON`
+-- and `FromJSON` instances
+data IValue
+  = IText Text
+  | IDouble Double
+  | IEmpty
+  deriving stock (Show, Eq, Generic)
+
+instance FromJSON IValue where
+  parseJSON = \case
+    String t -> pure $ IText t
+    Number n -> pure . IDouble $ toRealFloat n
+    Array a | Vector.null a -> pure IEmpty
+    _ -> fail "Expected one of: string, double, empty array"
+
+instance ToJSON IValue where
+  toJSON = \case
+    IDouble d -> toJSON d
+    IText t -> toJSON t
+    IEmpty -> toJSON ()
