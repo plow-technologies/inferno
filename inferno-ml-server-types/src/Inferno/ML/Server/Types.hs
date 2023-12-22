@@ -97,7 +97,7 @@ type InfernoMlServerAPI uid gid =
     -- return this
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid))
-      :> StreamPost NewlineFraming JSON (TStream IO)
+      :> StreamPost NewlineFraming JSON (TStream Scientific IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
@@ -106,7 +106,7 @@ type InfernoMlServerAPI uid gid =
     :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
 -- Stream of tensor elements
-type TStream m = ConduitT () (AsValue Scientific) m ()
+type TStream a m = ConduitT () (AsValue a) m ()
 
 -- A bridge to get data for use with Inferno scripts. This is implemented by
 -- the bridge, not by `inferno-ml-server`
