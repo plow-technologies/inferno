@@ -13,6 +13,7 @@ module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
 import Control.Applicative (asum)
+import Control.DeepSeq (NFData (rnf), rwhnf)
 import Data.Aeson
   ( FromJSON (parseJSON),
     ToJSON (toEncoding, toJSON),
@@ -96,13 +97,16 @@ type InfernoMlServerAPI uid gid =
     -- return this
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid))
-      :> StreamPost NewlineFraming JSON (ConduitT () (AsValue Scientific) IO ())
+      :> StreamPost NewlineFraming JSON (TStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
     :<|> "bridge" :> ReqBody '[JSON] BridgeInfo :> Post '[JSON] ()
     -- Check for bridge registration
     :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
+
+-- Stream of tensor elements
+type TStream m = ConduitT () (AsValue Scientific) m ()
 
 -- A bridge to get data for use with Inferno scripts. This is implemented by
 -- the bridge, not by `inferno-ml-server`
@@ -119,7 +123,7 @@ data BridgeInfo = BridgeInfo
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, NFData)
 
 -- | Convenience type for dealing with 'AsValue's, rather than pattern matching
 -- on the @dtype@ inside the 'AsValue', as well as allowing different numerical
@@ -129,6 +133,7 @@ data AsValueTyped
   | Doubles (AsValue Double)
   | Int64s (AsValue Int64)
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 toAsValueTyped :: AsValue Scientific -> AsValueTyped
 toAsValueTyped (AsValue dt xs) = case dt of
@@ -149,7 +154,7 @@ data AsValue a = AsValue
     values :: Dims a
   }
   deriving stock (Show, Eq, Generic, Functor)
-  deriving anyclass (FromJSON)
+  deriving anyclass (FromJSON, NFData)
 
 instance ToJSON a => ToJSON (AsValue a) where
   -- NOTE: See the note on the `ToJSON` instance for `Dims` below
@@ -178,6 +183,7 @@ data Dims a
   | Threes [[[a]]]
   | Fours [[[[a]]]]
   deriving stock (Show, Eq, Generic, Functor)
+  deriving anyclass (NFData)
 
 instance FromJSON a => FromJSON (Dims a) where
   parseJSON = withArray "Dims" $ \a ->
@@ -206,6 +212,7 @@ data DType
   | Float
   | Double
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON DType where
   parseJSON = withText "DType" $ \case
@@ -227,6 +234,7 @@ data Dim
   | Three
   | Four
   deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON Dim where
   parseJSON = withScientific "Dim" $ \case
@@ -256,6 +264,7 @@ newtype Id a = Id Int64
       ToHttpApiData,
       FromHttpApiData
     )
+  deriving anyclass (NFData)
 
 -- Row of the model table, parameterized by the user and group type
 data Model uid gid = Model
@@ -272,6 +281,9 @@ data Model uid gid = Model
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
 
+instance NFData (Model uid gid) where
+  rnf = rwhnf
+
 -- | Row of the inference parameter table, parameterized by the user type
 data InferenceParam uid gid = InferenceParam
   { id :: Maybe (Id (InferenceParam uid gid)),
@@ -281,7 +293,7 @@ data InferenceParam uid gid = InferenceParam
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromRow, ToRow)
+  deriving anyclass (FromRow, ToRow, NFData)
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
@@ -289,7 +301,7 @@ data User uid gid = User
     groups :: Vector gid
   }
   deriving stock (Show, Generic, Eq)
-  deriving anyclass (FromRow, ToRow)
+  deriving anyclass (FromRow, ToRow, NFData)
 
 newtype Script = Script Text
   deriving stock (Show, Generic)
@@ -299,7 +311,8 @@ newtype Script = Script Text
       ToJSON,
       IsString,
       FromField,
-      ToField
+      ToField,
+      NFData
     )
 
 -- Bridge-related types
@@ -312,6 +325,7 @@ data IValue
   | IDouble Double
   | IEmpty
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON IValue where
   parseJSON = \case

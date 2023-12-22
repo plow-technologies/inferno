@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -5,6 +6,7 @@
 
 module Inferno.ML.Server.Types.Orphans where
 
+import Control.DeepSeq (NFData)
 import Data.Aeson
   ( FromJSON (parseJSON),
     ToJSON (toJSON),
@@ -65,3 +67,5 @@ instance FromField IPv4 where
 
 instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
+
+deriving anyclass instance NFData IPv4

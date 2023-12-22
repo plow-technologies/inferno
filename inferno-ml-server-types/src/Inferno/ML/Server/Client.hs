@@ -10,18 +10,14 @@ module Inferno.ML.Server.Client
   )
 where
 
-import Conduit (ConduitT)
 import Data.Proxy (Proxy (Proxy))
-import Data.Scientific (Scientific)
 import Inferno.ML.Server.Types
 import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
 statusC :: ClientM (Maybe ())
 inferenceC ::
-  forall uid gid.
-  Id (InferenceParam uid gid) ->
-  ClientM (ConduitT () (AsValue Scientific) IO ())
+  forall uid gid. Id (InferenceParam uid gid) -> ClientM (TStream IO)
 cancelC :: ClientM ()
 registerBridgeC :: BridgeInfo -> ClientM ()
 checkBridgeC :: ClientM (Maybe BridgeInfo)
