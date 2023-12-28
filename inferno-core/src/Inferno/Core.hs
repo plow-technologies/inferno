@@ -1,4 +1,3 @@
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -19,8 +18,9 @@ import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
 import Inferno.Infer.Error (Location)
 import Inferno.Infer.Pinned (pinExpr)
-import Inferno.Module (Module (..), Prelude (..), baseOpsTable, moduleOpsTables, preludeNameToTypeMap, preludePinMap, preludeTermEnv)
+import Inferno.Module (Module (..))
 import Inferno.Module.Builtin (builtinModule)
+import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms, preludeNameToTypeMap)
 import Inferno.Parse (InfernoParsingError, parseExpr)
 import Inferno.Types.Syntax (Comment, CustomType, Expr (App, TypeRep), ExtIdent, ModuleName, Namespace, SourcePos, TypeClass, TypeMetadata, collectArrs)
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
@@ -71,11 +71,11 @@ data Interpreter m c = Interpreter
       Set.Set TypeClass
   }
 
-mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c) => Prelude m c -> [CustomType] -> m (Interpreter m c)
-mkInferno prelude@(Prelude {moduleMap}) customTypes = do
+mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c) => ModuleMap m c -> [CustomType] -> m (Interpreter m c)
+mkInferno prelude customTypes = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts
-  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ preludeTermEnv prelude
+  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
   return $
     Interpreter
       { evalExpr = runEvalM,
@@ -89,16 +89,16 @@ mkInferno prelude@(Prelude {moduleMap}) customTypes = do
   where
     parseAndInfer src =
       -- parse
-      case parseExpr (baseOpsTable prelude) (moduleOpsTables prelude) customTypes src of
+      case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) customTypes src of
         Left err ->
           Left $ ParseError err
         Right (ast, comments) ->
           -- pin free variables to builtin prelude function hashes
-          case pinExpr (preludePinMap prelude) ast of
+          case pinExpr (builtinModulesPinMap prelude) ast of
             Left err -> Left $ PinError err
             Right pinnedAST ->
               -- typecheck
-              case inferExpr moduleMap pinnedAST of
+              case inferExpr prelude pinnedAST of
                 Left err -> Left $ InferenceError err
                 Right (pinnedAST', sch, tyMap) ->
                   Right (pinnedAST', sch, tyMap, comments)
@@ -120,7 +120,7 @@ mkInferno prelude@(Prelude {moduleMap}) customTypes = do
                           [TypeRep (initialPos "dummy") ty | ty <- runtimeReps]
                    in Right finalAst
 
-    typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems moduleMap]
+    typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
 
     -- TODO at some point: instead of evaluating closure and putting into pinned env,
     -- add closure into the expression being evaluated by using let bindings.
