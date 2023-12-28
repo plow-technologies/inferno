@@ -23,6 +23,7 @@ import Inferno.Types.Syntax
   )
 import Inferno.Types.Value (ImplEnvM, Value (..))
 import Inferno.Types.VersionControl (VCObjectHash)
+import Prettyprinter (Pretty)
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -33,9 +34,9 @@ getDtype funName = \case
   "int" -> return TD.Int64
   "float" -> return TD.Float
   "double" -> return TD.Double
-  s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
+  s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ show s
 
-zerosFun :: (MonadThrow m) => Value MlValue m
+zerosFun :: (MonadThrow m, Pretty a) => Value (MlValue a) m
 zerosFun =
   VFun $ \case
     VEnum _ e -> do
@@ -45,7 +46,7 @@ zerosFun =
         toValue $ zeros shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
-onesFun :: (MonadThrow m) => Value MlValue m
+onesFun :: (MonadThrow m, Pretty x) => Value (MlValue x) m
 onesFun =
   VFun $ \case
     VEnum _ e -> do
@@ -55,29 +56,40 @@ onesFun =
         toValue $ ones shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
-asTensorFun :: forall a m. (TensorLike a, FromValue MlValue m a, MonadThrow m) => String -> Proxy a -> Value MlValue m
+asTensorFun ::
+  forall a x m.
+  ( TensorLike a,
+    FromValue
+      (MlValue x)
+      m
+      a,
+    MonadThrow m
+  ) =>
+  String ->
+  Proxy a ->
+  Value (MlValue x) m
 asTensorFun funName _proxy =
   VFun $ \case
     VEnum _ e -> do
       dType <- getDtype funName e
       pure $ VFun $ \v -> do
         xs :: a <- fromValue v
-        pure $ VCustom $ VTensor $ toType dType $ asTensor $ xs
+        pure $ VCustom $ VTensor $ toType dType $ asTensor xs
     _ -> throwM $ RuntimeError $ funName ++ ": expecting a dtype enum"
 
-asTensor0Fun :: (MonadThrow m) => Value MlValue m
+asTensor0Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor0Fun = asTensorFun "asTensor0" (Proxy :: Proxy Double)
 
-asTensor1Fun :: (MonadThrow m) => Value MlValue m
+asTensor1Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor1Fun = asTensorFun "asTensor1" (Proxy :: Proxy [Double])
 
-asTensor2Fun :: (MonadThrow m) => Value MlValue m
+asTensor2Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor2Fun = asTensorFun "asTensor2" (Proxy :: Proxy [[Double]])
 
-asTensor3Fun :: (MonadThrow m) => Value MlValue m
+asTensor3Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor3Fun = asTensorFun "asTensor3" (Proxy :: Proxy [[[Double]]])
 
-asTensor4Fun :: (MonadThrow m) => Value MlValue m
+asTensor4Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor4Fun = asTensorFun "asTensor4" (Proxy :: Proxy [[[[Double]]]])
 
 asDouble :: Tensor -> Double
@@ -120,11 +132,16 @@ forwardFun m ts =
     unIV = \case
       IVTensor t' -> [t']
       IVTensorList ts' -> ts'
-      IVTuple ivs ->
-        concat $ map unIV ivs
-      res -> error $ "expected tensor result, got " ++ (show res)
+      IVTuple ivs -> concatMap unIV ivs
+      res -> error $ "expected tensor result, got " ++ show res
 
-randnIOFun :: (MonadThrow m, MonadIO m) => Value MlValue m
+randnIOFun ::
+  forall m x.
+  ( MonadThrow m,
+    MonadIO m,
+    Pretty x
+  ) =>
+  Value (MlValue x) m
 randnIOFun =
   VFun $ \case
     VEnum _ e -> do
@@ -143,7 +160,13 @@ toDeviceFun d t =
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
 
-mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
+mlModules ::
+  forall m x.
+  ( MonadThrow m,
+    MonadIO m,
+    Pretty x
+  ) =>
+  Prelude.ModuleMap m (MlValue x)
 mlModules =
   [mlQuoter|
 
@@ -209,9 +232,21 @@ module ML
 
 |]
 
-mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
+mlPrelude ::
+  forall x.
+  (Pretty x, Eq x) =>
+  Map.Map
+    ModuleName
+    ( PinnedModule
+        ( ImplEnvM
+            IO
+            (MlValue x)
+            ( Eval.TermEnv VCObjectHash (MlValue x) (ImplEnvM IO (MlValue x))
+            )
+        )
+    )
 mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")
-    (Prelude.builtinModules @IO @MlValue)
+    (Prelude.builtinModules @IO @(MlValue x))
     (mlModules @IO)
