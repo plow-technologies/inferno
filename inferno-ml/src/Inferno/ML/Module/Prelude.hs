@@ -5,7 +5,7 @@
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
-import Control.Monad.Catch (MonadThrow (throwM))
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
@@ -233,20 +233,24 @@ module ML
 |]
 
 mlPrelude ::
-  forall x.
-  (Pretty x, Eq x) =>
+  forall m x.
+  ( MonadIO m,
+    MonadCatch m,
+    Pretty x,
+    Eq x
+  ) =>
   Map.Map
     ModuleName
     ( PinnedModule
         ( ImplEnvM
-            IO
+            m
             (MlValue x)
-            ( Eval.TermEnv VCObjectHash (MlValue x) (ImplEnvM IO (MlValue x))
+            ( Eval.TermEnv VCObjectHash (MlValue x) (ImplEnvM m (MlValue x))
             )
         )
     )
 mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")
-    (Prelude.builtinModules @IO @(MlValue x))
-    (mlModules @IO)
+    (Prelude.builtinModules @m @(MlValue x))
+    (mlModules @m)
