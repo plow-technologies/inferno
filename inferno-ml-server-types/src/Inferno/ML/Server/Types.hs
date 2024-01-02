@@ -60,7 +60,7 @@ import Servant
 import Servant.Conduit ()
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
-type InfernoMlServerAPI uid gid =
+type InfernoMlServerAPI uid gid p =
   -- Check if the server is up and if any job is currently running:
   --
   --  * `Nothing` -> The server is evaluating a script
@@ -96,7 +96,7 @@ type InfernoMlServerAPI uid gid =
     -- `Scientific`s will already take place, it is more convenient to explicitly
     -- return this
     :<|> "inference"
-      :> Capture "id" (Id (InferenceParam uid gid))
+      :> Capture "id" (Id (InferenceParam uid gid p))
       :> StreamPost NewlineFraming JSON (TStream Scientific IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
@@ -285,11 +285,12 @@ instance NFData (Model uid gid) where
   rnf = rwhnf
 
 -- | Row of the inference parameter table, parameterized by the user type
-data InferenceParam uid gid = InferenceParam
-  { id :: Maybe (Id (InferenceParam uid gid)),
+data InferenceParam uid gid p = InferenceParam
+  { id :: Maybe (Id (InferenceParam uid gid p)),
     -- FIXME Better type
     script :: Script,
     model :: Id (Model uid gid),
+    input :: Maybe p,
     user :: uid
   }
   deriving stock (Show, Eq, Generic)

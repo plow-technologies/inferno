@@ -18,8 +18,8 @@ import Servant.Client.Streaming (ClientM, client)
 
 statusC :: ClientM (Maybe ())
 inferenceC ::
-  forall uid gid.
-  Id (InferenceParam uid gid) ->
+  forall uid gid p.
+  Id (InferenceParam uid gid p) ->
   ClientM (TStream Scientific IO)
 cancelC :: ClientM ()
 registerBridgeC :: BridgeInfo -> ClientM ()
@@ -31,5 +31,5 @@ statusC
   :<|> checkBridgeC =
     client api
 
-api :: Proxy (InfernoMlServerAPI uid gid)
+api :: Proxy (InfernoMlServerAPI uid gid p)
 api = Proxy
