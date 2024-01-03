@@ -50,6 +50,7 @@ import Servant
     NewlineFraming,
     Post,
     Put,
+    QueryParam,
     QueryParam',
     ReqBody,
     Required,
@@ -97,6 +98,7 @@ type InfernoMlServerAPI uid gid p =
     -- return this
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p))
+      :> QueryParam "res" Int64
       :> StreamPost NewlineFraming JSON (TStream Scientific IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a

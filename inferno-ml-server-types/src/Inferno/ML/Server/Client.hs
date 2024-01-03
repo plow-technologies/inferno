@@ -10,6 +10,7 @@ module Inferno.ML.Server.Client
   )
 where
 
+import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
 import Data.Scientific (Scientific)
 import Inferno.ML.Server.Types
@@ -18,8 +19,8 @@ import Servant.Client.Streaming (ClientM, client)
 
 statusC :: ClientM (Maybe ())
 inferenceC ::
-  forall uid gid p.
   Id (InferenceParam uid gid p) ->
+  Maybe Int64 ->
   ClientM (TStream Scientific IO)
 cancelC :: ClientM ()
 registerBridgeC :: BridgeInfo -> ClientM ()
