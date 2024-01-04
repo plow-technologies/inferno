@@ -17,11 +17,13 @@ import Control.DeepSeq (NFData (rnf), rwhnf)
 import Data.Aeson
   ( FromJSON (parseJSON),
     ToJSON (toEncoding, toJSON),
-    Value (Array, Number, String),
+    Value (Array, Number, Object, String),
+    object,
     pairs,
     withArray,
     withScientific,
     withText,
+    (.:),
     (.=),
   )
 import Data.Char (toLower)
@@ -59,6 +61,7 @@ import Servant
     (:>),
   )
 import Servant.Conduit ()
+import System.Posix (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 type InfernoMlServerAPI uid gid p =
@@ -119,6 +122,11 @@ type BridgeAPI p t =
     :> QueryParam' '[Required] "p" p
     :> QueryParam' '[Required] "time" t
     :> Get '[JSON] IValue
+    :<|> "bridge"
+      :> "latest-value-and-time-before"
+      :> QueryParam' '[Required] "time" t
+      :> QueryParam' '[Required] "p" p
+      :> Get '[JSON] IValue
 
 data BridgeInfo = BridgeInfo
   { host :: IPv4,
@@ -326,6 +334,8 @@ newtype Script = Script Text
 data IValue
   = IText Text
   | IDouble Double
+  | ITuple (IValue, IValue)
+  | ITime EpochTime
   | IEmpty
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -334,11 +344,21 @@ instance FromJSON IValue where
   parseJSON = \case
     String t -> pure $ IText t
     Number n -> pure . IDouble $ toRealFloat n
-    Array a | Vector.null a -> pure IEmpty
+    -- It's easier to just mark the time explicitly in an object,
+    -- rather than try to deal with distinguishing times and doubles
+    Object o -> ITime <$> o .: "time"
+    Array a
+      | [x, y] <- Vector.toList a ->
+          fmap ITuple $
+            (,) <$> parseJSON x <*> parseJSON y
+      | Vector.null a -> pure IEmpty
     _ -> fail "Expected one of: string, double, empty array"
 
 instance ToJSON IValue where
   toJSON = \case
     IDouble d -> toJSON d
     IText t -> toJSON t
+    ITuple t -> toJSON t
+    -- See above
+    ITime t -> object ["time" .= t]
     IEmpty -> toJSON ()
