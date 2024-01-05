@@ -216,6 +216,12 @@ instance ToJSON a => ToJSON (Dims a) where
     Threes xs -> toEncoding xs
     Fours xs -> toEncoding xs
 
+  toJSON = \case
+    Ones xs -> toJSON xs
+    Twos xs -> toJSON xs
+    Threes xs -> toJSON xs
+    Fours xs -> toJSON xs
+
 -- | Supported tensor datatypes.
 data DType
   = Int64
