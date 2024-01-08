@@ -272,12 +272,8 @@ module Number
   @doc Negation (unary) on `int`, `double`, or `timeDiff`;
   - : forall 'a. {requires negate on 'a} => 'a -> 'a := ###negateFun###;
 
-  define abs on int;
-  define abs on double;
-  define abs on timeDiff;
-
-  @doc Absolute value (sometimes written |x|) on `int`, `double`, or `timeDiff`;
-  abs : forall 'a. {requires abs on 'a} => 'a -> 'a := ###absFun###;
+  @doc Absolute value (sometimes written |x|) on `double`;
+  abs : double -> double := ###absFun###;
 
   (%) : int -> int -> int := ###modFun###;
 
