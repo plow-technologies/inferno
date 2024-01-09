@@ -345,7 +345,7 @@ gtFun = bimap (>) (bimap (>) (>))
 geqFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Bool) (Double -> Bool) (EpochTime -> Bool)
 geqFun = bimap (>=) (bimap (>=) (>=))
 
-ltFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Bool) (Double -> Bool) (EpochTime -> Bool)
+ltFun :: Either3 Double Int64 EpochTime -> Either3 (Double -> Bool) (Int64 -> Bool) (EpochTime -> Bool)
 ltFun = bimap (<) (bimap (<) (<))
 
 leqFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Bool) (Double -> Bool) (EpochTime -> Bool)
