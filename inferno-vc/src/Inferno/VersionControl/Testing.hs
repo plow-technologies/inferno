@@ -25,7 +25,7 @@ import Inferno.VersionControl.Types
     VCObject (VCFunction),
     VCObjectHash,
     VCObjectPred (..),
-    VCObjectVisibility (VCObjectPublic, VCObjectPrivate),
+    VCObjectVisibility (VCObjectPrivate, VCObjectPublic),
   )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant ((:<|>) (..))
