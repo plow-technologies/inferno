@@ -6,13 +6,11 @@ module Inferno.Eval where
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM), try)
 import Control.Monad.Except (forM)
 import Control.Monad.Reader (ask, local)
-import Data.Bifunctor (bimap)
 import Data.Foldable (foldrM)
 import Data.List.NonEmpty (NonEmpty (..), toList)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import qualified Data.Text as Text
-import Debug.Trace (trace)
 import Inferno.Eval.Error
   ( EvalError (AssertionFailed, RuntimeError),
   )
@@ -62,7 +60,6 @@ emptyTmenv :: TermEnv hash c m
 emptyTmenv = (Map.empty, Map.empty)
 
 eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
-eval _ expr | trace ("eval " ++ show (bimap (const (Nothing :: Maybe VCObjectHash)) (const ()) expr)) False = undefined
 eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LInt k) -> return $
     VFun $ \case

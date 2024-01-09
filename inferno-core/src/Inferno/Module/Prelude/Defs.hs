@@ -272,8 +272,8 @@ sqrtFun = sqrt
 negateFun :: Either3 Int64 Double EpochTime -> Either3 Int64 Double EpochTime
 negateFun = bimap negate (bimap negate negate)
 
-absFun :: Double -> Double
-absFun = abs
+absFun :: Either3 Int64 Double EpochTime -> Either3 Int64 Double EpochTime
+absFun = bimap abs (bimap abs abs)
 
 floorFun :: Either Double Int64 -> Int64
 floorFun = either floor id
@@ -303,8 +303,8 @@ limitFun = (\l u -> min u . max l)
 piFun :: Double
 piFun = pi
 
-sinFun :: Int -> Int
-sinFun = id
+sinFun :: Double -> Double
+sinFun = sin
 
 sinhFun :: Double -> Double
 sinhFun = sinh
