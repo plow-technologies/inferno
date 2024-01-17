@@ -5,7 +5,6 @@ module Inferno.Eval where
 
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM), try)
 import Control.Monad.Except (forM)
-import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.List.NonEmpty (NonEmpty (..), toList)
 import qualified Data.Map as Map
@@ -28,8 +27,7 @@ import Inferno.Types.Syntax
     toEitherList,
   )
 import Inferno.Types.Value
-  ( ImplEnvM,
-    Value
+  ( Value
       ( VArray,
         VDouble,
         VEmpty,
@@ -42,7 +40,6 @@ import Inferno.Types.Value
         VTypeRep,
         VWord64
       ),
-    runImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -59,10 +56,15 @@ type TermEnv hash c m = (Map.Map ExtIdent (Value c m), Map.Map hash (Value c m))
 emptyTmenv :: TermEnv hash c m
 emptyTmenv = (Map.empty, Map.empty)
 
-eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
-eval env@(localEnv, pinnedEnv) expr = case expr of
+eval ::
+  (MonadThrow m, Pretty c) =>
+  TermEnv VCObjectHash c m ->
+  Map.Map ExtIdent (Value c m) ->
+  Expr (Maybe VCObjectHash) a ->
+  m (Value c m)
+eval env@(localEnv, pinnedEnv) implEnv expr = case expr of
   Lit_ (LInt k) -> return $
-    VFun $ \case
+    VFun $ \_implEnv -> \case
       VTypeRep (TBase TInt) -> return $ VInt k
       VTypeRep (TBase TDouble) -> return $ VDouble $ fromIntegral k
       _ -> throwM $ RuntimeError "Invalid runtime rep for numeric constant."
@@ -70,27 +72,27 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LHex w) -> return $ VWord64 w
   Lit_ (LText t) -> return $ VText t
   InterpolatedString_ es -> do
-    res <- forM (toEitherList es) $ either (return . VText) (\(_, e, _) -> eval env e)
+    res <- forM (toEitherList es) $ either (return . VText) (\(_, e, _) -> eval env implEnv e)
     return $ VText $ Text.concat $ map toText res
     where
       toText (VText t) = t
       toText e = renderStrict $ layoutPretty (LayoutOptions Unbounded) $ pretty e
   Array_ es ->
-    foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] es >>= return . VArray
+    foldrM (\(e, _) vs -> eval env implEnv e >>= return . (: vs)) [] es >>= return . VArray
   ArrayComp_ e srcs mCond -> do
     vals <- sequence' env srcs
     VArray <$> case mCond of
       Nothing ->
         forM vals $ \vs ->
-          let nenv = foldr (uncurry Map.insert) localEnv vs in eval (nenv, pinnedEnv) e
+          let nenv = foldr (uncurry Map.insert) localEnv vs in eval (nenv, pinnedEnv) implEnv e
       Just (_, cond) ->
         catMaybes
           <$> ( forM vals $ \vs -> do
                   let nenv = foldr (uncurry Map.insert) localEnv vs
-                  eval (nenv, pinnedEnv) cond >>= \case
+                  eval (nenv, pinnedEnv) implEnv cond >>= \case
                     VEnum hash "true" ->
                       if hash == enumBoolHash
-                        then Just <$> (eval (nenv, pinnedEnv) e)
+                        then Just <$> (eval (nenv, pinnedEnv) implEnv e)
                         else throwM $ RuntimeError "failed to match with a bool"
                     VEnum hash "false" ->
                       if hash == enumBoolHash
@@ -99,14 +101,13 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                     _ -> throwM $ RuntimeError "failed to match with a bool"
               )
     where
-      sequence' :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
       sequence' env'@(localEnv', pinnedEnv') = \case
         (_, Ident x, _, e_s, _) :| [] -> do
-          eval env' e_s >>= \case
+          eval env' implEnv e_s >>= \case
             VArray vals -> return $ map ((: []) . (ExtIdent $ Right x,)) vals
             _ -> throwM $ RuntimeError "failed to match with an array"
         (_, Ident x, _, e_s, _) :| (r : rs) -> do
-          eval env' e_s >>= \case
+          eval env' implEnv e_s >>= \case
             VArray vals ->
               concat
                 <$> ( forM vals $ \v -> do
@@ -125,7 +126,6 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       Just v -> return v
       Nothing -> throwM $ RuntimeError $ show x <> " not found in the unpinned env"
   Var_ Nothing _ (Impl x) -> do
-    implEnv <- ask
     case Map.lookup x implEnv of
       Just v -> return v
       Nothing -> throwM $ RuntimeError $ show x <> " not found in the implicit env"
@@ -140,83 +140,83 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   TypeRep_ t -> pure $ VTypeRep t
   Op_ _ Nothing _ op _ -> throwM $ RuntimeError $ show op <> " should be pinned"
   Op_ a (Just hash) _ns op b -> do
-    a' <- eval env a
-    b' <- eval env b
+    a' <- eval env implEnv a
+    b' <- eval env implEnv b
     case Map.lookup hash pinnedEnv of
       Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
       Just (VFun f) ->
-        f a' >>= \case
-          VFun f' -> f' b'
+        f implEnv a' >>= \case
+          VFun f' -> f' implEnv b'
           _ -> throwM $ RuntimeError $ show op <> " not bound to a binary function in env"
       Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
   PreOp_ Nothing _ op _ -> throwM $ RuntimeError $ show op <> " should be pinned"
   PreOp_ (Just hash) _ns op a -> do
-    a' <- eval env a
+    a' <- eval env implEnv a
     case Map.lookup hash pinnedEnv of
       Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
-      Just (VFun f) -> f a'
+      Just (VFun f) -> f implEnv a'
       Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
   Lam_ args body -> go localEnv $ toList args
     where
       go nenv = \case
-        [] -> eval (nenv, pinnedEnv) body
+        [] -> eval (nenv, pinnedEnv) implEnv body
         (_, Just x) : xs ->
-          return $ VFun $ \arg -> go (Map.insert x arg nenv) xs
-        (_, Nothing) : xs -> return $ VFun $ \_arg -> go nenv xs
+          return $ VFun $ \_implEnv arg -> go (Map.insert x arg nenv) xs
+        (_, Nothing) : xs -> return $ VFun $ \_implEnv _arg -> go nenv xs
   App_ fun arg -> do
-    eval env fun >>= \case
+    eval env implEnv fun >>= \case
       VFun f -> do
-        argv <- eval env arg
-        f argv
+        argv <- eval env implEnv arg
+        f implEnv argv
       _ -> throwM $ RuntimeError "failed to match with a function"
   LetAnnot_ x e body -> do
-    e' <- eval env e
+    e' <- eval env implEnv e
     let nenv = Map.insert x e' localEnv
-    eval (nenv, pinnedEnv) body
+    eval (nenv, pinnedEnv) implEnv body
   Let_ (Expl x) e body -> do
-    e' <- eval env e
+    e' <- eval env implEnv e
     let nenv = Map.insert x e' localEnv
-    eval (nenv, pinnedEnv) body
+    eval (nenv, pinnedEnv) implEnv body
   Let_ (Impl x) e body -> do
-    e' <- eval env e
-    local (\impEnv -> Map.insert x e' impEnv) $ eval env body
+    e' <- eval env implEnv e
+    eval env (Map.insert x e' implEnv) body
   If_ cond tr fl ->
-    eval env cond >>= \case
+    eval env implEnv cond >>= \case
       VEnum hash "true" ->
         if hash == enumBoolHash
-          then eval env tr
+          then eval env implEnv tr
           else throwM $ RuntimeError "failed to match with a bool"
       VEnum hash "false" ->
         if hash == enumBoolHash
-          then eval env fl
+          then eval env implEnv fl
           else throwM $ RuntimeError "failed to match with a bool"
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Tuple_ es ->
-    foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] (tListToList es) >>= return . VTuple
-  One_ e -> eval env e >>= return . VOne
+    foldrM (\(e, _) vs -> eval env implEnv e >>= return . (: vs)) [] (tListToList es) >>= return . VTuple
+  One_ e -> eval env implEnv e >>= return . VOne
   Empty_ -> return $ VEmpty
   Assert_ cond e ->
-    eval env cond >>= \case
+    eval env implEnv cond >>= \case
       VEnum hash "false" ->
         if hash == enumBoolHash
           then throwM AssertionFailed
           else throwM $ RuntimeError "failed to match with a bool"
       VEnum hash "true" ->
         if hash == enumBoolHash
-          then eval env e
+          then eval env implEnv e
           else throwM $ RuntimeError "failed to match with a bool"
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Case_ e pats -> do
-    v <- eval env e
+    v <- eval env implEnv e
     matchAny v pats
     where
       matchAny v ((_, p, _, body) :| []) = case match v p of
         Just nenv ->
           -- (<>) is left biased so this will correctly override any shadowed vars from nenv onto env
-          eval (nenv <> env) body
+          eval (nenv <> env) implEnv body
         Nothing -> throwM $ RuntimeError $ "non-exhaustive patterns in case detected in " <> (Text.unpack $ renderPretty v)
       matchAny v ((_, p, _, body) :| (r : rs)) = case match v p of
-        Just nenv -> eval (nenv <> env) body
+        Just nenv -> eval (nenv <> env) implEnv body
         Nothing -> matchAny v (r :| rs)
 
       match v p = case (v, p) of
@@ -257,12 +257,12 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
         -- matter which way around we combine
         return $ env1 <> env2
       matchElems _ _ = Nothing
-  CommentAbove _ e -> eval env e
-  CommentAfter e _ -> eval env e
-  CommentBelow e _ -> eval env e
-  Bracketed_ e -> eval env e
-  RenameModule_ _ _ e -> eval env e
-  OpenModule_ _ _ e -> eval env e
+  CommentAbove _ e -> eval env implEnv e
+  CommentAfter e _ -> eval env implEnv e
+  CommentBelow e _ -> eval env implEnv e
+  Bracketed_ e -> eval env implEnv e
+  RenameModule_ _ _ e -> eval env implEnv e
+  OpenModule_ _ _ e -> eval env implEnv e
 
 -- | Evaluate an expression with the provided environments.
 --   If an 'EvalError' exception is thrown during evaluation, it will be
@@ -270,11 +270,11 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
 runEvalM ::
   (MonadThrow m, MonadCatch m, Pretty c) =>
   -- | Environment.
-  TermEnv VCObjectHash c (ImplEnvM m c) ->
+  TermEnv VCObjectHash c m ->
   -- | Implicit environment.
-  Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
+  Map.Map ExtIdent (Value c m) ->
   -- | Expression to evaluate.
   Expr (Maybe VCObjectHash) a ->
-  m (Either EvalError (Value c (ImplEnvM m c)))
+  m (Either EvalError (Value c m))
 runEvalM env implicitEnv ex =
-  try $ runImplEnvM implicitEnv $ eval env ex
+  try $ eval env implicitEnv ex

@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.9.1.0 -- 2024-01-17
+* Remove `ImplEnvM` and pass implicit env to `eval` as argument instead
+
 ## 0.9.0.0 -- 2023-11-21
 * Breaking change: Fix Array primitive type signatures. Add Option.join
 

@@ -7,7 +7,6 @@
 module Inferno.Module.Cast where
 
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
-import Control.Monad.Reader (ask)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (..))
@@ -21,7 +20,7 @@ import Inferno.Eval.Error (EvalError (CastError, NotFoundInImplicitEnv))
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Types.Syntax (ExtIdent (..), Lit (..), TList (..))
 import Inferno.Types.Type (BaseType (..), InfernoType (..))
-import Inferno.Types.Value (ImplEnvM, ImplicitCast (..), Value (..))
+import Inferno.Types.Value (ImplicitCast (..), Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Prettyprinter (Pretty)
 
@@ -206,16 +205,17 @@ instance (Kind0 a) => Kind0 [a] where
 
 instance (FromValue c m a, ToValue c m b) => ToValue c m (a -> b) where
   toValue f = pure $
-    VFun $ \v -> do
+    VFun $ \_implEnv v -> do
       x <- fromValue v
       toValue $ f x
 
-instance (Monad m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2, ToValue c (ImplEnvM m c) a3, KnownSymbol lbl) => ToValue c (ImplEnvM m c) (ImplicitCast lbl a1 a2 a3) where
+-- TODO add a test for ImplicitCast
+
+instance (Monad m, FromValue c m a1, FromValue c m a2, ToValue c m a3, KnownSymbol lbl) => ToValue c m (ImplicitCast lbl a1 a2 a3) where
   toValue (ImplicitCast f) = pure $
-    VFun $ \b' -> do
-      impl <- ask
+    VFun $ \implEnv b' -> do
       let i = ExtIdent $ Right $ pack $ symbolVal (Proxy :: Proxy lbl)
-      case Map.lookup i impl of
+      case Map.lookup i implEnv of
         Just v -> do
           x <- fromValue v
           b <- fromValue b'

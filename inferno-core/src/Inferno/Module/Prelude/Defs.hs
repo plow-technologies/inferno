@@ -122,11 +122,11 @@ formatTime t f =
    in pack $ Time.Format.formatTime Time.Format.defaultTimeLocale (unpack f) t1
 
 randomFun :: (MonadIO m) => Value c m
-randomFun = VFun $ \_ -> VDouble <$> randomIO
+randomFun = VFun $ \_implEnv _ -> VDouble <$> randomIO
 
 keepSomesFun :: (MonadThrow m) => Value c m
 keepSomesFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray xs ->
       pure $
         VArray $
@@ -141,16 +141,17 @@ keepSomesFun =
 
 foldlFun :: (MonadThrow m) => Value c m
 foldlFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VFun f ->
       return $
-        VFun $ \z -> return $
-          VFun $ \case
+        VFun $ \_implEnv z -> return $
+          VFun $ \implEnv -> \case
             VArray xs ->
               foldM
                 ( \acc x ->
-                    f acc >>= \case
-                      VFun f' -> f' x
+                    -- TODO test that it's using the correct implicit env!
+                    f implEnv acc >>= \case
+                      VFun f' -> f' implEnv x
                       _ -> throwM $ RuntimeError "reduce: expecting a function when folding"
                 )
                 z
@@ -160,16 +161,16 @@ foldlFun =
 
 foldrFun :: (MonadThrow m) => Value c m
 foldrFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VFun f ->
       return $
-        VFun $ \z -> return $
-          VFun $ \case
+        VFun $ \_implEnv z -> return $
+          VFun $ \implEnv -> \case
             VArray xs ->
               foldrM
                 ( \x acc ->
-                    f x >>= \case
-                      VFun f' -> f' acc
+                    f implEnv x >>= \case
+                      VFun f' -> f' implEnv acc
                       _ -> throwM $ RuntimeError "reduceRight: expecting a function when folding"
                 )
                 z
@@ -178,16 +179,16 @@ foldrFun =
     _ -> throwM $ RuntimeError "reduceRight: expecting a function in the first argument"
 
 traceFun :: (Monad m, Pretty c) => (Value c m)
-traceFun = VFun $ \msg -> trace ("TRACE: " <> unpack (renderPretty msg)) $ return idFun
+traceFun = VFun $ \_implEnv msg -> trace ("TRACE: " <> unpack (renderPretty msg)) $ return idFun
 
 idFun :: Monad m => (Value c m)
-idFun = VFun $ \x -> return x
+idFun = VFun $ \_implEnv x -> return x
 
 eqFun :: (Monad m, Eq c) => (Value c m)
-eqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VEnum enumBoolHash "true" else VEnum enumBoolHash "false"
+eqFun = VFun $ \_implEnv x -> return $ VFun $ \_implEnv y -> return $ if x == y then VEnum enumBoolHash "true" else VEnum enumBoolHash "false"
 
 neqFun :: (Monad m, Eq c) => (Value c m)
-neqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VEnum enumBoolHash "false" else VEnum enumBoolHash "true"
+neqFun = VFun $ \_implEnv x -> return $ VFun $ \_implEnv y -> return $ if x == y then VEnum enumBoolHash "false" else VEnum enumBoolHash "true"
 
 enumFromToInt64 :: Int64 -> Int64 -> [Int64]
 enumFromToInt64 = enumFromTo
@@ -359,8 +360,8 @@ maxFun = bimap (max) (bimap (max) (max))
 
 arrayIndexOptFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
 arrayIndexOptFun =
-  VFun $ \case
-    VArray a -> pure $ VFun $ \v -> do
+  VFun $ \_implEnv -> \case
+    VArray a -> pure $ VFun $ \_implEnv v -> do
       i <- fromValue v
       when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
       case a !? i of
@@ -370,8 +371,8 @@ arrayIndexOptFun =
 
 arrayIndexFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
 arrayIndexFun =
-  VFun $ \case
-    VArray a -> pure $ VFun $ \v -> do
+  VFun $ \_implEnv -> \case
+    VArray a -> pure $ VFun $ \_implEnv v -> do
       i <- fromValue v
       when (i > 1000) $ liftIO $ putStrLn $ "WARNING: Inferno: large array indexing: " <> show i
       case a !? i of
@@ -380,7 +381,7 @@ arrayIndexFun =
     _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
 singletonFun :: Monad m => (Value c m)
-singletonFun = VFun $ \v -> return $ VArray [v]
+singletonFun = VFun $ \_implEnv v -> return $ VArray [v]
 
 -- The following functions use Int and not Int64, but that should be fine
 -- because they don't create ints, these are only argument types.
@@ -425,7 +426,7 @@ fromWordFun :: Either4 Bool Word16 Word32 Word64 -> Int64
 fromWordFun = either fromBool (either fromIntegral (either fromIntegral fromIntegral))
 
 zeroFun :: MonadThrow m => (Value c m)
-zeroFun = VFun $ \case
+zeroFun = VFun $ \_implEnv -> \case
   VTypeRep (TBase TInt) -> return $ VInt 0
   VTypeRep (TBase TDouble) -> return $ VDouble 0
   VTypeRep (TBase TTimeDiff) -> return $ VEpochTime 0
@@ -436,9 +437,9 @@ zeroFun = VFun $ \case
   _ -> throwM $ RuntimeError "zeroFun: expecting a runtimeRep"
 
 zipFun :: (MonadThrow m) => Value c m
-zipFun = VFun $ \case
+zipFun = VFun $ \_implEnv -> \case
   VArray xs ->
-    return $ VFun $ \case
+    return $ VFun $ \_implEnv -> \case
       VArray ys ->
         return $ VArray $ map (\(v1, v2) -> VTuple [v1, v2]) $ zip xs ys
       _ -> throwM $ RuntimeError "zip: expecting an array"
@@ -446,7 +447,7 @@ zipFun = VFun $ \case
 
 lengthFun :: (MonadThrow m) => Value c m
 lengthFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray xs -> pure $ VInt $ fromIntegral $ length xs
     _ -> throwM $ RuntimeError "length: expecting an array"
 
@@ -470,7 +471,7 @@ extractEpochTimes = \case
 
 minimumFun :: (MonadThrow m) => Value c m
 minimumFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VInt . minimum <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VDouble . minimum <$> extractDoubles vs
@@ -480,7 +481,7 @@ minimumFun =
 
 maximumFun :: (MonadThrow m) => Value c m
 maximumFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VInt . maximum <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VDouble . maximum <$> extractDoubles vs
@@ -490,7 +491,7 @@ maximumFun =
 
 averageFun :: (MonadThrow m) => Value c m
 averageFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VDouble . average . map fromIntegral <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VDouble . average <$> extractDoubles vs
@@ -507,7 +508,7 @@ averageFun =
 
 medianFun :: (MonadThrow m) => Value c m
 medianFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VDouble . median . map fromIntegral <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VDouble . median <$> extractDoubles vs
@@ -516,7 +517,7 @@ medianFun =
 
 argminFun :: (MonadThrow m) => Value c m
 argminFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VInt . argMin' <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VInt . argMin' <$> extractDoubles vs
@@ -529,7 +530,7 @@ argminFun =
 
 argmaxFun :: (MonadThrow m) => Value c m
 argmaxFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VInt . argMax' <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VInt . argMax' <$> extractDoubles vs
@@ -542,7 +543,7 @@ argmaxFun =
 
 argsortFun :: (MonadThrow m) => Value c m
 argsortFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VArray . argsort' <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VArray . argsort' <$> extractDoubles vs
@@ -555,7 +556,7 @@ argsortFun =
 
 magnitudeFun :: (MonadThrow m) => Value c m
 magnitudeFun =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VArray [] -> pure VEmpty
     VArray vs@(VInt _ : _) -> VOne . VDouble . magnitude . map fromIntegral <$> extractInts vs
     VArray vs@(VDouble _ : _) -> VOne . VDouble . magnitude <$> extractDoubles vs
@@ -578,9 +579,9 @@ stripText = Text.strip
 
 textSplitAt :: (MonadThrow m) => Value c m
 textSplitAt =
-  VFun $ \case
+  VFun $ \_implEnv -> \case
     VInt n -> pure $
-      VFun $ \case
+      VFun $ \_implEnv -> \case
         VText txt ->
           let (a, b) = Text.splitAt (fromIntegral n) txt
            in pure $ VTuple [VText a, VText b]

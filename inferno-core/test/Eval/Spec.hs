@@ -5,7 +5,6 @@
 
 module Eval.Spec where
 
-import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT))
 import Data.Bifunctor (bimap)
 import Data.Int (Int64)
@@ -17,7 +16,7 @@ import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Prelude (ModuleMap)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
-import Inferno.Types.Value (ImplEnvM (..), Value (..), liftImplEnvM)
+import Inferno.Types.Value (Value (..))
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Inferno.Utils.QQ.Module (infernoModules)
@@ -432,10 +431,10 @@ evalTests = describe "evaluate" $
 
 data TestEnv = TestEnv {cache :: Int64}
 
-cachedGet :: (MonadReader TestEnv m, MonadThrow m) => Value TestCustomValue (ImplEnvM m TestCustomValue)
+cachedGet :: Value c (ReaderT TestEnv IO)
 cachedGet =
-  VFun $ \_ -> do
-    TestEnv {cache} <- liftImplEnvM $ ask
+  VFun $ \_implEnv _ -> do
+    TestEnv {cache} <- ask
     pure $ VInt cache
 
 evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
