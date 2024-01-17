@@ -21,8 +21,8 @@ import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow (..))
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
-import qualified Data.IntMap as IntMap
-import qualified Data.Map as Map
+import qualified Data.IntMap.Strict as IntMap
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Inferno.Eval (TermEnv, eval)
 import Inferno.Infer (inferExpr)
