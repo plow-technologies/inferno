@@ -24,7 +24,7 @@ import Inferno.Module.Builtin (builtinModule)
 import Inferno.Parse (InfernoParsingError, parseExpr)
 import Inferno.Types.Syntax (Comment, CustomType, Expr (App, TypeRep), ExtIdent, ModuleName, Namespace, SourcePos, TypeClass, TypeMetadata, collectArrs)
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
-import Inferno.Types.Value (ImplEnvM, Value, runImplEnvM)
+import Inferno.Types.Value (Value)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
 import Prettyprinter (Pretty)
@@ -45,10 +45,10 @@ data Interpreter m c = Interpreter
     -- @mkEnvFromClosure@.
     evalExpr ::
       forall a.
-      TermEnv VCObjectHash c (ImplEnvM m c) ->
-      Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
+      TermEnv VCObjectHash c m ->
+      Map.Map ExtIdent (Value c m) ->
       Expr (Maybe VCObjectHash) a ->
-      m (Either EvalError (Value c (ImplEnvM m c))),
+      m (Either EvalError (Value c m)),
     parseAndInferTypeReps ::
       Text ->
       Either InfernoError (Expr (Maybe VCObjectHash) SourcePos),
@@ -57,12 +57,12 @@ data Interpreter m c = Interpreter
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme, Map.Map (Location SourcePos) (TypeMetadata TCScheme), [Comment SourcePos]),
     -- | Evaluates all functions in given closure and creates a pinned env containing them
     mkEnvFromClosure ::
-      Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
+      Map.Map ExtIdent (Value c m) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)),
+      m (TermEnv VCObjectHash c m),
     -- | The default pinned env containing only the prelude
     defaultEnv ::
-      TermEnv VCObjectHash c (ImplEnvM m c),
+      TermEnv VCObjectHash c m,
     -- | The type of each name in this interpreter's prelude
     nameToTypeMap ::
       Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme),
@@ -75,7 +75,7 @@ mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c
 mkInferno prelude@(Prelude {moduleMap}) customTypes = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts
-  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ preludeTermEnv prelude
+  (preludeIdentEnv, preludePinnedEnv) <- preludeTermEnv prelude
   return $
     Interpreter
       { evalExpr = runEvalM,
@@ -132,6 +132,7 @@ mkInferno prelude@(Prelude {moduleMap}) customTypes = do
                 VCFunction expr _ -> do
                   eval
                     (localEnv, pinnedEnv')
+                    Map.empty
                     (bimap pinnedToMaybe id expr)
                     >>= \val ->
                       pure $ Map.insert hash val env

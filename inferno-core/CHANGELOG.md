@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.10.1.0 -- 2024-01-17
+* Remove `ImplEnvM` and pass implicit env to `eval` as argument instead
+
 ## 0.10.0.0 -- 2024-01-22
 * Breaking change: Chain prelude evaluation. New Prelude type. Interpreter API changes slightly.
 

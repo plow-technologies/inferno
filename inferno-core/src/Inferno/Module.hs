@@ -30,8 +30,8 @@ import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow (..))
 import Data.Bifunctor (bimap)
 import Data.Foldable (foldl')
-import qualified Data.IntMap as IntMap
-import qualified Data.Map as Map
+import qualified Data.IntMap.Strict as IntMap
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Inferno.Eval (TermEnv, eval)
 import Inferno.Infer (inferExpr)
@@ -67,13 +67,13 @@ import Inferno.Types.Type
     InfernoType (TBase),
     TCScheme (..),
   )
-import Inferno.Types.Value (ImplEnvM, Value)
+import Inferno.Types.Value (Value)
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash, pinnedToMaybe, vcHash)
 import Prettyprinter (Pretty)
 import Text.Megaparsec (SourcePos)
 
 data Prelude m c = Prelude
-  { moduleMap :: Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))),
+  { moduleMap :: Map.Map ModuleName (PinnedModule (m (TermEnv VCObjectHash c m))),
     pinnedModuleMap :: Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
     -- TODO is pinnedModuleMap not the same as the first component of the PinnedModule of moduleMap above?
   }
@@ -103,7 +103,7 @@ preludePinMap prelude =
         Map.map (Map.map Builtin . pinnedModuleNameToHash) $
           moduleMap prelude
 
-preludeTermEnv :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+preludeTermEnv :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> m (TermEnv VCObjectHash c m)
 preludeTermEnv = combineTermEnvs . moduleMap
 
 preludeNameToTypeMap :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
@@ -121,8 +121,8 @@ preludeNameToTypeMap prelude =
 
 combineTermEnvs ::
   MonadThrow m =>
-  Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
-  ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+  Map.Map ModuleName (PinnedModule (m (TermEnv VCObjectHash c m))) ->
+  m (TermEnv VCObjectHash c m)
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
 
 -- | A specialiazation of @buildPinnedQQModules@ below with an empty initial prelude.
@@ -131,14 +131,14 @@ combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mem
 -- doesn't like that.
 buildInitPrelude ::
   (MonadThrow m, Pretty c) =>
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, m (Value c m)) (Maybe TCScheme, Expr () SourcePos))])] ->
   Prelude m c
 buildInitPrelude = buildPinnedQQModules emptyPrelude
 
 buildPinnedQQModules ::
   (MonadThrow m, Pretty c) =>
   Prelude m c ->
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, m (Value c m)) (Maybe TCScheme, Expr () SourcePos))])] ->
   Prelude m c
 buildPinnedQQModules initPrelude modules =
   foldl'
@@ -164,10 +164,10 @@ buildPinnedQQModules initPrelude modules =
     buildModule ::
       (MonadThrow m, Pretty c) =>
       Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash)) ->
-      Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
-      [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))] ->
-      PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))) ->
-      PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))
+      Map.Map ModuleName (PinnedModule (m (TermEnv VCObjectHash c m))) ->
+      [TopLevelDefn (Either (TCScheme, m (Value c m)) (Maybe TCScheme, Expr () SourcePos))] ->
+      PinnedModule (m (TermEnv VCObjectHash c m)) ->
+      PinnedModule (m (TermEnv VCObjectHash c m))
     buildModule _ _ [] m = m
     buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature {..} : xs) m@Module {moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       let sigVarToNamespace = \case
@@ -195,7 +195,7 @@ buildPinnedQQModules initPrelude modules =
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
                   mVal =
                     combineTermEnvs alreadyBuiltModules >>= \env ->
-                      mTrmEnv >>= \env' -> eval (env <> env') $ bimap pinnedToMaybe id pinnedExpr'
+                      mTrmEnv >>= \env' -> eval (env <> env') Map.empty $ bimap pinnedToMaybe id pinnedExpr'
                in (sig', ns', hsh', (\val (local, pinned) -> (local, Map.insert hsh val pinned)) <$> mVal <*> mTrmEnv)
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m

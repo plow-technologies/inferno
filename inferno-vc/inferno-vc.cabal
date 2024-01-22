@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-vc
-version:             0.3.3.0
+version:             0.3.4.0
 synopsis:            Version control server for Inferno
 description:         A version control server for Inferno scripts
 category:            DSL,Scripting
@@ -48,7 +48,7 @@ library
     , generic-lens                       >= 2.2.1 && < 2.3
     , http-client                        >= 0.7.13 && < 0.8
     , http-types                         >= 0.12.3 && < 0.13
-    , inferno-types                      >= 0.2.0 && < 0.4
+    , inferno-types                      >= 0.2.0 && < 0.5
     , lens                               >= 5.2 && < 5.3
     , mtl                                >= 2.2.2 && < 2.3
     , plow-log                           >= 0.1.6 && < 0.2

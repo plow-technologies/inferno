@@ -5,11 +5,6 @@
 module Inferno.Types.Value where
 
 import Control.DeepSeq (NFData, rnf)
-import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
-import Control.Monad.Except (MonadError, lift)
-import Control.Monad.Fix (MonadFix)
-import Control.Monad.IO.Class (MonadIO)
-import Control.Monad.Reader (MonadReader, ReaderT (..))
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -44,7 +39,8 @@ data Value custom m
   | VTuple [Value custom m]
   | VOne (Value custom m)
   | VEmpty
-  | VFun (Value custom m -> m (Value custom m))
+  | -- | VFun is a function from the implicit env to argument to result
+    VFun (Map.Map ExtIdent (Value custom m) -> Value custom m -> m (Value custom m))
   | VTypeRep InfernoType
   | VCustom custom
 
@@ -99,21 +95,5 @@ instance Pretty c => Pretty (Value c m) where
     VEpochTime t -> pretty $ show t <> "s"
     VTypeRep t -> "@" <> pretty t
     VCustom c -> pretty c
-
-newtype ImplEnvM m c a = ImplEnvM {unImplEnvM :: ReaderT (Map.Map ExtIdent (Value c (ImplEnvM m c))) m a}
-  deriving (Applicative, Functor, Monad, MonadReader (Map.Map ExtIdent (Value c (ImplEnvM m c))), MonadError e, MonadFix, MonadIO)
-
-instance MonadThrow m => MonadThrow (ImplEnvM m c) where
-  throwM = ImplEnvM . lift . throwM
-
-instance MonadCatch m => MonadCatch (ImplEnvM m c) where
-  catch (ImplEnvM (ReaderT m)) c = ImplEnvM $ ReaderT $ \env ->
-    m env `catch` \e -> runImplEnvM env (c e)
-
-liftImplEnvM :: Monad m => m a -> ImplEnvM m c a
-liftImplEnvM = ImplEnvM . lift
-
-runImplEnvM :: Map.Map ExtIdent (Value c (ImplEnvM m c)) -> ImplEnvM m c a -> m a
-runImplEnvM env = flip runReaderT env . unImplEnvM
 
 newtype ImplicitCast (lbl :: Symbol) a b c = ImplicitCast (a -> b -> c)

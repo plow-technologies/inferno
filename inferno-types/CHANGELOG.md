@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.0.0 -- 2024-01-17
+* Remove `ImplEnvM` and change `VFun` to accept implicit environment instead
+
 ## 0.3.0.0 -- 2023-11-01
 * Fix pretty printing of types to be parser-copmatible. Now prints as `bool{#true, #false}`
 

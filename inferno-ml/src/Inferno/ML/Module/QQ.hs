@@ -14,7 +14,7 @@ import Inferno.Types.Syntax
     ModuleName,
     TCScheme (..),
   )
-import Inferno.Types.Value (ImplEnvM, Value)
+import Inferno.Types.Value (Value)
 import Inferno.Utils.QQ.Module (modulesToExpQ, parseAndMakePrelude)
 import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Prettyprinter (Pretty)
@@ -22,7 +22,7 @@ import Text.Megaparsec (SourcePos)
 
 buildPrelude ::
   (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) =>
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, m (Value c m)) (Maybe TCScheme, Expr () SourcePos))])] ->
   Prelude m c
 buildPrelude = buildPinnedQQModules builtinPrelude
 
