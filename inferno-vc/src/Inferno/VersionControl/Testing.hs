@@ -25,7 +25,7 @@ import Inferno.VersionControl.Types
     VCObject (VCFunction),
     VCObjectHash,
     VCObjectPred (..),
-    VCObjectVisibility (VCObjectPublic),
+    VCObjectVisibility (VCObjectPrivate, VCObjectPublic),
   )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant ((:<|>) (..))
@@ -61,14 +61,15 @@ createObj ::
   IO (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
 createObj predecessor = do
   g <- generate arbitrary
-  createObjForGroup g predecessor
+  createObjForGroup g VCObjectPublic predecessor
 
 createObjForGroup ::
   (Arbitrary a) =>
   g ->
+  VCObjectVisibility ->
   VCObjectPred ->
   IO (VCMeta a g (Expr (Pinned VCObjectHash) (), TCScheme))
-createObjForGroup group predecessor = do
+createObjForGroup group visibility predecessor = do
   ctime <- CTime . round . toRational . utcTimeToPOSIXSeconds <$> getCurrentTime
   d <- generate arbitrary
   author <- generate arbitrary
@@ -80,7 +81,7 @@ createObjForGroup group predecessor = do
         name = "Test",
         description = "",
         Inferno.VersionControl.Types.pred = predecessor,
-        visibility = VCObjectPublic,
+        visibility = visibility,
         obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
       }
 
@@ -105,13 +106,13 @@ vcServerSpec url = do
   describe "inferno-vc server" $ do
     it "basics" $ do
       g <- generate arbitrary
-      o1 <- createObjForGroup g Init
+      o1 <- createObjForGroup g VCObjectPublic Init
       h1 <- runOperation vcClientEnv (pushFunction o1)
-      o2 <- createObjForGroup g $ MarkedBreakingWithPred h1
+      o2 <- createObjForGroup g VCObjectPublic $ MarkedBreakingWithPred h1
       h2 <- runOperation vcClientEnv (pushFunction o2)
-      o3 <- createObjForGroup g $ MarkedBreakingWithPred h2
+      o3 <- createObjForGroup g VCObjectPublic $ MarkedBreakingWithPred h2
       h3 <- runOperation vcClientEnv (pushFunction o3)
-      o4 <- createObjForGroup g $ MarkedBreakingWithPred h3
+      o4 <- createObjForGroup g VCObjectPublic $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
 
       -- Test fetchFunction:
@@ -145,6 +146,27 @@ vcServerSpec url = do
       -- The closure of h4 should be empty as it has no dependencies:
       metas' <- runOperation vcClientEnv (fetchVCObjectClosureHashes h4)
       metas' `shouldBe` []
+
+      -- After cloning h4 to h5, fetchFunctionsForGroups should return h4 and h5:
+      o5 <- createObjForGroup g VCObjectPublic $ CloneOf h4
+      h5 <- runOperation vcClientEnv (pushFunction o5)
+      heads <- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g))
+      Set.fromList (map obj heads) `shouldBe` Set.fromList [h4, h5]
+
+      -- Since the above scripts were public, group shouldn't matter:
+      g' <- generate arbitrary
+      heads' <- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g'))
+      Set.fromList (map obj heads') `shouldBe` Set.fromList [h4, h5]
+
+      -- Also test fetchFunctionsForGroups on private scripts:
+      o1' <- createObjForGroup g VCObjectPrivate Init
+      h1' <- runOperation vcClientEnv (pushFunction o1')
+      o2' <- createObjForGroup g VCObjectPrivate $ MarkedBreakingWithPred h1'
+      h2' <- runOperation vcClientEnv (pushFunction o2')
+      o3' <- createObjForGroup g VCObjectPrivate $ CloneOf h2'
+      h3' <- runOperation vcClientEnv (pushFunction o3')
+      heads'' <- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g))
+      Set.fromList (map obj heads'') `shouldBe` Set.fromList [h4, h5, h2', h3']
 
     it "deletion" $ do
       o1 <- createObj Init

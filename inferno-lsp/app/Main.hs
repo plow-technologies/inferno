@@ -4,11 +4,11 @@
 module Main where
 
 import Inferno.LSP.Server (runInfernoLspServer)
-import Inferno.Module.Prelude (builtinPrelude)
+import Inferno.Module.Prelude (builtinModules)
 import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 
 main :: IO ()
 main = do
-  runInfernoLspServer @() builtinPrelude [] >>= \case
+  runInfernoLspServer @() builtinModules [] >>= \case
     0 -> exitSuccess
     c -> exitWith . ExitFailure $ c

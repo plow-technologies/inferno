@@ -13,14 +13,14 @@ import qualified Data.Map as Map
 import Data.Text (unpack)
 import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.Eval.Error (EvalError (..))
-import Inferno.Module (Prelude (..))
 import Inferno.Module.Builtin (enumBoolHash)
-import Inferno.Module.Prelude (builtinPrelude)
+import Inferno.Module.Prelude (ModuleMap)
+import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (BaseType (..), Expr (..), ExtIdent (..), Ident (..), InfernoType (..))
 import Inferno.Types.Value (ImplEnvM (..), Value (..), liftImplEnvM)
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (renderPretty)
-import Inferno.Utils.QQ.Module (builtinPreludeQuoter)
+import Inferno.Utils.QQ.Module (infernoModules)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 
 type TestCustomValue = ()
@@ -53,7 +53,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
-      runIO $ (mkInferno builtinPrelude [] :: IO (Interpreter IO TestCustomValue))
+      runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
@@ -244,16 +244,19 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.length []" $ VInt 0
     shouldEvaluateTo "Array.length [3.0, 4.0]" $ VInt 2
     shouldEvaluateTo "Array.minimum [3.0, 4.0] ? -999" $ VDouble 3.0
+    shouldEvaluateTo "Array.minimum [3.0, 1.0] ? -999" $ VDouble 1.0
     shouldEvaluateTo "Array.maximum [3.0, 4.0] ? 999" $ VDouble 4.0
+    shouldEvaluateTo "Array.average [round 0, round 1] ? 0" $ VDouble 0.5
     shouldEvaluateTo "Array.average [0.0, 1.0] ? 0" $ VDouble 0.5
     shouldEvaluateTo "Array.median [0.0, 1.0, 2.0] ? 0" $ VDouble 1.0
-    shouldEvaluateTo "Array.median [0, 1] ? 0" $ VDouble 0.5
+    shouldEvaluateTo "Array.median [round 0, round 1] ? 0" $ VDouble 0.5
     shouldEvaluateTo "Array.median [] ? 9" $ VDouble 9.0
     shouldEvaluateTo "Array.argmin [3.0, 4.0] ? 1" $ VInt 0
     shouldEvaluateTo "Array.argmax [3.0, 4.0] ? 0" $ VInt 1
     shouldEvaluateTo "Array.argsort [3.0, 1.0, 2.0]" $ VArray [VInt 1, VInt 2, VInt 0]
-    shouldEvaluateTo "Array.magnitude [1.0, 2.0, 3.0]" $ VDouble (sqrt (1.0 + 4.0 + 9.0))
-    shouldEvaluateTo "Array.norm [1.0, -2.0, 3.0]" $ VDouble (sqrt (1.0 + 4.0 + 9.0))
+    shouldEvaluateTo "Array.magnitude []" $ VEmpty
+    shouldEvaluateTo "Array.magnitude [1.0, 2.0, 3.0]" $ VOne $ VDouble (sqrt (1.0 + 4.0 + 9.0))
+    shouldEvaluateTo "Array.norm [1.0, -2.0, 3.0]" $ VOne $ VDouble (sqrt (1.0 + 4.0 + 9.0))
 
     shouldEvaluateTo "Array.range 4 3" $ VArray []
     shouldEvaluateTo "Array.range 4 13" $ VArray (map VInt [4 .. 13])
@@ -281,10 +284,19 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "fromOption 0.0 None" $ VDouble 0
     shouldEvaluateTo "(Some 4.0) ? 0" $ VDouble 4
     shouldEvaluateTo "None ? 0.0" $ VDouble 0
+    shouldEvaluateTo "(Some 4.0) ? None ? 0" $ VDouble 4
+    shouldEvaluateTo "None ? (Some 4.0) ? 0" $ VDouble 4
+    shouldEvaluateTo "None ? None ? 4.0" $ VDouble 4
+    -- shouldEvaluateTo "(Some 4.0) <|> None <|> None" $ VOne $ VDouble 4
+    -- shouldEvaluateTo "None <|> (Some 4.0) <|> Some 3" $ VOne $ VDouble 4
+    -- shouldEvaluateTo "None <|> None <|> Some 4.0" $ VOne $ VDouble 4
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0.0 (Some 4)" $ VDouble 6
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0.0 (Some 4.0)" $ VDouble 6
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0 (Some 4.0)" $ VDouble 6
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0.0 None" $ VDouble 0
+    shouldEvaluateTo "Option.join None" $ VEmpty
+    shouldEvaluateTo "Option.join (Some None)" $ VEmpty
+    shouldEvaluateTo "Option.join (Some (Some 2.3))" $ VOne $ VDouble 2.3
     -- Time
     shouldEvaluateTo "Time.seconds 5" $ VEpochTime 5
     shouldEvaluateTo "Time.minutes 5 == 5 * Time.seconds 60" vTrue
@@ -426,16 +438,11 @@ cachedGet =
     TestEnv {cache} <- liftImplEnvM $ ask
     pure $ VInt cache
 
--- Since this is a test, we build a prelude from scratch, instead of extending the
--- builtin/core Inferno prelude from Inferno.Module.Prelude.
--- To keep the rest of the code happy, we need to include a dummy Base module.
-evalInMonadPrelude :: Prelude (ReaderT TestEnv IO) TestCustomValue
+evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
 evalInMonadPrelude =
-  [builtinPreludeQuoter|
-module Base
-  zero : int := 0;
-
+  [infernoModules|
 module EvalInMonad
+
   cachedGet : () -> int := ###!cachedGet###;
 |]
 
@@ -443,10 +450,13 @@ evalInMonadTest :: Spec
 evalInMonadTest = do
   let testEnv = TestEnv {cache = 4}
 
+  let modules =
+        Map.unionWith
+          (error "Duplicate module name in builtinModules")
+          (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
+          evalInMonadPrelude
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    runIO $
-      flip runReaderT testEnv $
-        (mkInferno evalInMonadPrelude [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
+    runIO $ flip runReaderT testEnv $ (mkInferno modules [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
 
   let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
         it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
@@ -459,5 +469,5 @@ evalInMonadTest = do
                 Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
   let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
 
-  describe "evaluate in custom monad" $ do
+  describe "TODO" $ do
     shouldEvaluateTo "EvalInMonad.cachedGet ()" $ VInt 4

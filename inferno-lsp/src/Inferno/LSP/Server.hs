@@ -33,7 +33,7 @@ import qualified Data.UUID.V4 as UUID.V4
 import Inferno.Core (Interpreter (..), mkInferno)
 import Inferno.LSP.Completion (completionQueryAt, filterModuleNameCompletionItems, findInPrelude, identifierCompletionItems, mkCompletionItem, rwsCompletionItems)
 import Inferno.LSP.ParseInfer (errorDiagnostic, parseAndInferDiagnostics)
-import Inferno.Module (Prelude)
+import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (CustomType, Expr, Ident (..), InfernoType)
 import Inferno.Types.Type (TCScheme)
 import Inferno.Types.VersionControl (Pinned)
@@ -80,7 +80,7 @@ runInfernoLspServerWith ::
   IOTracer T.Text ->
   IO BS.ByteString ->
   (BSL.ByteString -> IO ()) ->
-  Prelude IO c ->
+  ModuleMap IO c ->
   [CustomType] ->
   IO [Maybe Ident] ->
   (InfernoType -> Either T.Text ()) ->
@@ -117,7 +117,7 @@ runInfernoLspServerWith tracer clientIn clientOut prelude customTypes getIdents 
     ioExcept (e :: E.IOException) = traceWith tracer (T.pack (show e)) >> return 1
     someExcept (e :: E.SomeException) = traceWith tracer (T.pack (show e)) >> return 1
 
-runInfernoLspServer :: forall c. (Pretty c, Eq c) => Prelude IO c -> [CustomType] -> IO Int
+runInfernoLspServer :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> [CustomType] -> IO Int
 runInfernoLspServer prelude customTypes = do
   hSetBuffering stdin NoBuffering
   hSetEncoding stdin utf8
