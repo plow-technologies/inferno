@@ -1,6 +1,9 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.3.0 -- 2024-01-09
+* Add some tests for `fetchFunctionsForGroups` that should have caught recent bug in Cardith backend
+
 ## 0.3.2.0 -- 2023-11-01
 * Update inferno-types version
 
