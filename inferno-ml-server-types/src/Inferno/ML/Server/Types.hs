@@ -292,7 +292,8 @@ data Model uid gid = Model
     -- The groups able to access the model
     groups :: Vector gid,
     -- Not currently used
-    user :: Maybe uid
+    user :: Maybe uid,
+    description :: Text
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
