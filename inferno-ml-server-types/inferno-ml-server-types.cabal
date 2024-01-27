@@ -41,6 +41,7 @@ library
   hs-source-dirs:  src
   build-depends:
     , aeson
+    , attoparsec
     , base
     , bytestring
     , conduit
@@ -51,6 +52,7 @@ library
     , inferno-core
     , inferno-types
     , iproute
+    , microlens-platform
     , postgresql-simple
     , scientific
     , servant-client

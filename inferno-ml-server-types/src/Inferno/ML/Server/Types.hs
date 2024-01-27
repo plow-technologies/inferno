@@ -6,14 +6,16 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
-import Control.Applicative (asum)
+import Control.Applicative (asum, optional)
 import Control.DeepSeq (NFData (rnf), rwhnf)
+import Control.Monad (void)
 import Data.Aeson
   ( FromJSON (parseJSON),
     ToJSON (toEncoding, toJSON),
@@ -21,30 +23,46 @@ import Data.Aeson
     object,
     pairs,
     withArray,
+    withObject,
     withScientific,
     withText,
     (.:),
+    (.:?),
     (.=),
   )
+import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
+import Data.Bool (bool)
 import Data.Char (toLower)
+import Data.Generics.Labels ()
+import Data.Generics.Product (HasType (typed))
 import Data.IP (IPv4)
 import Data.Int (Int64)
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
+import Data.Ord (comparing)
 import Data.Scientific (Scientific, toRealFloat)
 import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text.Encoding
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
-import Data.Word (Word64)
+import Data.Word (Word32, Word64)
 import Database.PostgreSQL.Simple
   ( FromRow,
     ToRow,
   )
-import Database.PostgreSQL.Simple.FromField (FromField)
-import Database.PostgreSQL.Simple.LargeObjects (Oid)
-import Database.PostgreSQL.Simple.ToField (ToField)
+import Database.PostgreSQL.Simple.FromField
+  ( FromField (fromField),
+    ResultError (ConversionFailed, UnexpectedNull),
+    returnError,
+  )
+import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
+import Database.PostgreSQL.Simple.ToField (Action (Escape), ToField (toField))
+import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
+import Lens.Micro.Platform hiding ((.=))
 import Servant
   ( Capture,
     Get,
@@ -288,7 +306,7 @@ data Model uid gid = Model
     name :: Text,
     -- The actual contents of the model
     contents :: Oid,
-    version :: Text,
+    version :: Version,
     -- The groups able to access the model
     groups :: Vector gid,
     -- Not currently used
@@ -298,8 +316,100 @@ data Model uid gid = Model
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
 
+{- ORMOLU_DISABLE -}
+instance (FromJSON uid, FromJSON gid) => FromJSON (Model uid gid) where
+  parseJSON = withObject "Model" $ \o ->
+    Model
+      <$> fmap Just (o .: "id")
+      <*> o .: "name"
+      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "version"
+      <*> o .: "groups"
+      <*> o .:? "user"
+      <*> o .: "description"
+{- ORMOLU_ENABLE -}
+
+instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
+  toJSON m =
+    object
+      [ "id" .= view #id m,
+        "name" .= view #name m,
+        "version" .= view #version m,
+        "contents" .= view (#contents . to unOid) m,
+        "user" .= view #user m,
+        "groups" .= view #groups m,
+        "description" .= view #description m
+      ]
+    where
+      unOid :: Oid -> Word32
+      unOid (Oid (CUInt x)) = x
+
 instance NFData (Model uid gid) where
   rnf = rwhnf
+
+-- | Similar to the @Version@ type from base, but allows for a leading @v@ and
+-- guarantees that there is at least one digit. Digits must be separated by @.@;
+-- multiple tags are allowed, separated by @-@
+data Version
+  = Version
+      (NonEmpty Int)
+      -- ^ List of digits for version string
+      [Text]
+      -- ^ Any tags
+  deriving stock (Show, Eq, Generic)
+
+instance Ord Version where
+  compare = comparing . view $ typed @(NonEmpty Int)
+
+instance FromJSON Version where
+  parseJSON =
+    withText "Version" $
+      either fail pure
+        . Attoparsec.parseOnly versionP
+        . Text.Encoding.encodeUtf8
+
+instance ToJSON Version where
+  toJSON = String . showVersion
+
+instance FromField Version where
+  fromField f =
+    maybe (returnError UnexpectedNull f mempty) $
+      maybe (returnError ConversionFailed f mempty) pure
+        . Attoparsec.maybeResult
+        . Attoparsec.parse versionP
+
+instance ToField Version where
+  toField = Escape . Text.Encoding.encodeUtf8 . showVersion
+
+versionP :: Attoparsec.Parser Version
+versionP = do
+  void . optional $ Attoparsec.char 'v'
+  Version <$> numbersP <*> tagsP
+  where
+    numbersP :: Attoparsec.Parser (NonEmpty Int)
+    numbersP =
+      -- Note that `sepBy1` will fail if there is not at least one occurrence,
+      -- so using `fromList` is OK here
+      fmap NonEmpty.fromList
+        -- Note that if `many1` succeeds, `read` must also succeed
+        . Attoparsec.sepBy1 (read <$> Attoparsec.many1 Attoparsec.digit)
+        $ Attoparsec.char '.'
+
+    tagsP :: Attoparsec.Parser [Text]
+    tagsP =
+      fmap (filter (not . Text.null) . fmap Text.Encoding.decodeUtf8)
+        . Attoparsec.sepBy
+          ( Attoparsec.takeWhile (Attoparsec.inClass "a-zA-Z")
+          )
+        $ Attoparsec.char '-'
+
+showVersion :: Version -> Text
+showVersion (Version ns tags) =
+  mconcat
+    [ "v",
+      Text.intercalate "." . fmap tshow $ NonEmpty.toList ns,
+      bool ("-" <> Text.intercalate "-" tags) mempty $ null tags
+    ]
 
 -- | Row of the inference parameter table, parameterized by the user type
 data InferenceParam uid gid p = InferenceParam
@@ -369,3 +479,6 @@ instance ToJSON IValue where
     -- See above
     ITime t -> object ["time" .= t]
     IEmpty -> toJSON ()
+
+tshow :: Show a => a -> Text
+tshow = Text.pack . show
