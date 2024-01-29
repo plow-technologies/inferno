@@ -125,7 +125,7 @@ import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.QQ.Module (infernoModules)
 import Prettyprinter (Pretty)
 
-type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
+type ModuleMap m c = Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ())))
 
 baseOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> OpsTable
 baseOpsTable moduleMap =
@@ -142,7 +142,7 @@ builtinModulesPinMap moduleMap =
       Map.foldrWithKey Pinned.insertHardcodedModule mempty $
         Map.map (Map.map Builtin . pinnedModuleNameToHash) moduleMap
 
-builtinModulesTerms :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+builtinModulesTerms :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ())
 builtinModulesTerms = combineTermEnvs
 
 preludeNameToTypeMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)

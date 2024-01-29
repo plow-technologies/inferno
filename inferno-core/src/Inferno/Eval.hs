@@ -54,12 +54,15 @@ import Prettyprinter
   )
 import Prettyprinter.Render.Text (renderStrict)
 
-type TermEnv hash c m = (Map.Map ExtIdent (Value c m), Map.Map hash (Value c m))
+-- | Evaluation environment: (localEnv, pinnedEnv).
+-- The pinnedEnv contains functions in the prelude, and their definitions are either
+-- inferno expressions or values (wrapped Haskell functions or direct VFun definitions).
+type TermEnv hash c m a = (Map.Map ExtIdent (Value c m), Map.Map hash (Either (Expr (Maybe VCObjectHash) a) (Value c m)))
 
-emptyTmenv :: TermEnv hash c m
+emptyTmenv :: TermEnv hash c m a
 emptyTmenv = (Map.empty, Map.empty)
 
-eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
+eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) a -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
 eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LInt k) -> return $
     VFun $ \case
@@ -99,7 +102,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                     _ -> throwM $ RuntimeError "failed to match with a bool"
               )
     where
-      sequence' :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
+      sequence' :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) a -> NonEmpty (a, Ident, a, Expr (Maybe VCObjectHash) a, Maybe a) -> ImplEnvM m c [[(ExtIdent, Value c (ImplEnvM m c))]]
       sequence' env'@(localEnv', pinnedEnv') = \case
         (_, Ident x, _, e_s, _) :| [] -> do
           eval env' e_s >>= \case
@@ -118,7 +121,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   Enum_ Nothing _ _ -> throwM $ RuntimeError "All enums must be pinned"
   Var_ (Just hash) _ x ->
     case Map.lookup hash pinnedEnv of
-      Just v -> return v
+      Just (Left e) -> eval env e
+      Just (Right v) -> return v
       Nothing -> throwM $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
   Var_ Nothing _ (Expl x) -> do
     case Map.lookup x localEnv of
@@ -131,7 +135,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       Nothing -> throwM $ RuntimeError $ show x <> " not found in the implicit env"
   OpVar_ (Just hash) _ x ->
     case Map.lookup hash pinnedEnv of
-      Just v -> return v
+      Just (Left e) -> eval env e
+      Just (Right v) -> return v
       Nothing -> throwM $ RuntimeError $ show x <> "(" <> show hash <> ") not found in the pinned env"
   OpVar_ Nothing _ (Ident x) -> do
     case Map.lookup (ExtIdent $ Right x) localEnv of
@@ -142,20 +147,26 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   Op_ a (Just hash) _ns op b -> do
     a' <- eval env a
     b' <- eval env b
-    case Map.lookup hash pinnedEnv of
+    vF <- case Map.lookup hash pinnedEnv of
       Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
-      Just (VFun f) ->
+      Just (Left e) -> eval env e
+      Just (Right v) -> pure v
+    case vF of
+      VFun f ->
         f a' >>= \case
           VFun f' -> f' b'
           _ -> throwM $ RuntimeError $ show op <> " not bound to a binary function in env"
-      Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
+      _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
   PreOp_ Nothing _ op _ -> throwM $ RuntimeError $ show op <> " should be pinned"
   PreOp_ (Just hash) _ns op a -> do
     a' <- eval env a
-    case Map.lookup hash pinnedEnv of
+    vF <- case Map.lookup hash pinnedEnv of
       Nothing -> throwM $ RuntimeError $ show op <> "(" <> show hash <> ") not found in the pinned env"
-      Just (VFun f) -> f a'
-      Just _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
+      Just (Left e) -> eval env e
+      Just (Right v) -> pure v
+    case vF of
+      VFun f -> f a'
+      _ -> throwM $ RuntimeError $ show op <> " not bound to a function in env"
   Lam_ args body -> go localEnv $ toList args
     where
       go nenv = \case
@@ -270,7 +281,7 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
 runEvalM ::
   (MonadThrow m, MonadCatch m, Pretty c) =>
   -- | Environment.
-  TermEnv VCObjectHash c (ImplEnvM m c) ->
+  TermEnv VCObjectHash c (ImplEnvM m c) a ->
   -- | Implicit environment.
   Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
   -- | Expression to evaluate.

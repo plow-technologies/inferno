@@ -28,7 +28,7 @@ import Inferno.Types.Value (ImplEnvM, Value, runImplEnvM)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
 import Prettyprinter (Pretty)
-import Text.Megaparsec (ParseError, initialPos)
+import Text.Megaparsec (ParseError)
 
 data InfernoError
   = ParseError (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
@@ -45,13 +45,13 @@ data Interpreter m c = Interpreter
     -- @mkEnvFromClosure@.
     evalExpr ::
       forall a.
-      TermEnv VCObjectHash c (ImplEnvM m c) ->
+      TermEnv VCObjectHash c (ImplEnvM m c) a ->
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Expr (Maybe VCObjectHash) a ->
       m (Either EvalError (Value c (ImplEnvM m c))),
     parseAndInferTypeReps ::
       Text ->
-      Either InfernoError (Expr (Maybe VCObjectHash) SourcePos),
+      Either InfernoError (Expr (Maybe VCObjectHash) ()),
     parseAndInfer ::
       Text ->
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme, Map.Map (Location SourcePos) (TypeMetadata TCScheme), [Comment SourcePos]),
@@ -59,10 +59,10 @@ data Interpreter m c = Interpreter
     mkEnvFromClosure ::
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)),
+      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ()),
     -- | The default pinned env containing only the prelude
     defaultEnv ::
-      TermEnv VCObjectHash c (ImplEnvM m c),
+      TermEnv VCObjectHash c (ImplEnvM m c) (),
     -- | The type of each name in this interpreter's prelude
     nameToTypeMap ::
       Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme),
@@ -116,8 +116,8 @@ mkInferno prelude customTypes = do
                   let finalAst =
                         foldl
                           App
-                          (bimap pinnedToMaybe id pinnedAST')
-                          [TypeRep (initialPos "dummy") ty | ty <- runtimeReps]
+                          (bimap pinnedToMaybe (const ()) pinnedAST')
+                          [TypeRep () ty | ty <- runtimeReps]
                    in Right finalAst
 
     typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
@@ -134,7 +134,7 @@ mkInferno prelude customTypes = do
                     (localEnv, pinnedEnv')
                     (bimap pinnedToMaybe id expr)
                     >>= \val ->
-                      pure $ Map.insert hash val env
+                      pure $ Map.insert hash (Right val) env
                 _ -> pure env
             )
             preludePinnedEnv
