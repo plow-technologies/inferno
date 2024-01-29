@@ -209,7 +209,7 @@ module ML
 
 |]
 
-mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
+mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue) ())))
 mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")

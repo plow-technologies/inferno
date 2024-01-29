@@ -13,7 +13,7 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
-import Inferno.Eval (TermEnv, eval, runEvalM)
+import Inferno.Eval (TermEnv, runEvalM)
 import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
 import Inferno.Infer.Error (Location)
@@ -130,11 +130,8 @@ mkInferno prelude customTypes = do
           foldM
             ( \env (hash, obj) -> case obj of
                 VCFunction expr _ -> do
-                  eval
-                    (localEnv, pinnedEnv')
-                    (bimap pinnedToMaybe id expr)
-                    >>= \val ->
-                      pure $ Map.insert hash (Right val) env
+                  let expr' = bimap pinnedToMaybe id expr
+                  pure $ Map.insert hash (Left expr') env
                 _ -> pure env
             )
             preludePinnedEnv
