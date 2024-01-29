@@ -127,10 +127,11 @@ buildPinnedQQModules modules =
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
                   finalExpr = (bimap pinnedToMaybe (const ()) pinnedExpr')
                in case mSig of
-                Just sig'' | sig' /= sig'' ->
-                  error $ "Type of " <> show name <> " does not matched inferred type " <> show sig'
-                _ ->
-                  (sig', ns', hsh', (\(local, pinned) -> (local, Map.insert hsh (Left finalExpr) pinned)) <$> mTrmEnv)
+                    Just sig''
+                      | sig' /= sig'' ->
+                          error $ "Type of " <> show name <> " does not matched inferred type " <> show sig'
+                    _ ->
+                      (sig', ns', hsh', (\(local, pinned) -> (local, Map.insert hsh (Left finalExpr) pinned)) <$> mTrmEnv)
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m
               { moduleObjects =
