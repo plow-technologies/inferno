@@ -2,11 +2,13 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
@@ -14,12 +16,18 @@ module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
 import Control.Applicative (asum, optional)
+import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Monad (void)
 import Data.Aeson
   ( FromJSON (parseJSON),
+    Options (fieldLabelModifier, omitNothingFields),
     ToJSON (toEncoding, toJSON),
     Value (Array, Number, Object, String),
+    camelTo2,
+    defaultOptions,
+    genericParseJSON,
+    genericToJSON,
     object,
     pairs,
     withArray,
@@ -39,6 +47,8 @@ import Data.IP (IPv4)
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 import Data.Scientific (Scientific, toRealFloat)
 import Data.String (IsString)
@@ -48,17 +58,18 @@ import qualified Data.Text.Encoding as Text.Encoding
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
-import Database.PostgreSQL.Simple
-  ( FromRow,
-    ToRow,
-  )
+import Database.PostgreSQL.Simple (FromRow, ToRow)
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
     ResultError (ConversionFailed, UnexpectedNull),
     returnError,
   )
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
-import Database.PostgreSQL.Simple.ToField (Action (Escape), ToField (toField))
+import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson))
+import Database.PostgreSQL.Simple.ToField
+  ( Action (Escape),
+    ToField (toField),
+  )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
@@ -309,12 +320,15 @@ data Model uid gid = Model
     version :: Version,
     -- The groups able to access the model
     groups :: Vector gid,
-    -- Not currently used
     user :: Maybe uid,
-    description :: Text
+    -- Stored as JSON in the DB
+    card :: ModelCard
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
+
+instance NFData (Model uid gid) where
+  rnf = rwhnf
 
 {- ORMOLU_DISABLE -}
 instance (FromJSON uid, FromJSON gid) => FromJSON (Model uid gid) where
@@ -338,14 +352,59 @@ instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
         "contents" .= view (#contents . to unOid) m,
         "user" .= view #user m,
         "groups" .= view #groups m,
-        "description" .= view #description m
+        "card" .= view #card m
       ]
     where
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
-instance NFData (Model uid gid) where
-  rnf = rwhnf
+data ModelCard = ModelCard
+  { languages :: Vector ISO63912,
+    tags :: Vector Text,
+    license :: Maybe Text,
+    datasets :: Vector Text,
+    description :: NotNull Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving (FromField, ToField) via Aeson ModelCard
+
+instance FromJSON ModelCard where
+  parseJSON =
+    genericParseJSON
+      defaultOptions
+        { fieldLabelModifier = camelTo2 '_',
+          omitNothingFields = True
+        }
+
+instance ToJSON ModelCard where
+  toJSON =
+    genericToJSON
+      defaultOptions
+        { fieldLabelModifier = camelTo2 '_',
+          omitNothingFields = True
+        }
+
+newtype NotNull a = NotNull a
+  deriving stock (Show, Eq, Generic)
+
+instance FromJSON (NotNull Text) where
+  parseJSON = withText "NotNull Text" $ \case
+    t
+      | Text.null t -> fail "Text cannot be empty"
+      | otherwise -> pure $ NotNull t
+
+deriving newtype instance ToJSON (NotNull Text)
+
+instance FromField (NotNull Text) where
+  fromField f =
+    maybe (returnError UnexpectedNull f mempty) $
+      Text.Encoding.decodeUtf8 >>> \case
+        t
+          | Text.null t ->
+              returnError ConversionFailed f "Expected non-empty text"
+          | otherwise -> pure $ NotNull t
+
+deriving newtype instance ToField (NotNull Text)
 
 -- | Similar to the @Version@ type from base, but allows for a leading @v@ and
 -- guarantees that there is at least one digit. Digits must be separated by @.@;
@@ -403,11 +462,11 @@ versionP = do
         $ Attoparsec.char '-'
 
 showVersion :: Version -> Text
-showVersion (Version ns tags) =
+showVersion (Version ns ts) =
   mconcat
     [ "v",
       Text.intercalate "." . fmap tshow $ NonEmpty.toList ns,
-      bool ("-" <> Text.intercalate "-" tags) mempty $ null tags
+      bool ("-" <> Text.intercalate "-" ts) mempty $ null ts
     ]
 
 -- | Row of the inference parameter table, parameterized by the user type
@@ -481,3 +540,95 @@ instance ToJSON IValue where
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+-- ISO63912 language tag for model card
+
+data ISO63912 = ISO63912
+  { code :: (Char, Char),
+    name :: Text
+  }
+  deriving stock (Show, Eq, Ord, Generic)
+
+instance FromJSON ISO63912 where
+  parseJSON = withText "ISO63912" $ \case
+    t
+      | Just (f, r) <- Text.uncons t,
+        Just (s, l) <- Text.uncons r,
+        l == mempty ->
+          maybe (fail "Missing ISO6391 language") pure $ fromChars (f, s)
+      | otherwise -> fail "Invalid ISO63912 code"
+
+instance ToJSON ISO63912 where
+  toJSON (ISO63912 (f, s) _) = String . flip Text.snoc s $ Text.singleton f
+
+fromChars :: (Char, Char) -> Maybe ISO63912
+fromChars c = ISO63912 c <$> Map.lookup c languagesByCode
+
+{- ORMOLU_DISABLE -}
+languagesByCode :: Map (Char, Char) Text
+languagesByCode =
+  Map.fromList
+    [ (('a', 'a'), "Afar"), (('a', 'b'), "Abkhazian"), (('a', 'e'), "Avestan"),
+      (('a', 'f'), "Afrikaans"), (('a', 'k'), "Akan"), (('a', 'm'), "Amharic"),
+      (('a', 'n'), "Aragonese"), (('a', 'r'), "Arabic"), (('a', 's'), "Assamese"),
+      (('a', 'v'), "Avaric"), (('a', 'y'), "Aymara"), (('a', 'z'), "Azerbaijani"),
+      (('b', 'a'), "Bashkir"), (('b', 'e'), "Belarusian"), (('b', 'g'), "Bulgarian"),
+      (('b', 'h'), "Bihari"), (('b', 'm'), "Bambara"), (('b', 'i'), "Bislama"),
+      (('b', 'n'), "Bengali"), (('b', 'o'), "Tibetan"), (('b', 'r'), "Breton"),
+      (('b', 's'), "Bosnian"), (('c', 'a'), "Catalan"), (('c', 'e'), "Chechen"),
+      (('c', 'h'), "Chamorro"), (('c', 'o'), "Corsican"), (('c', 'r'), "Cree"),
+      (('c', 's'), "Czech"), (('c', 'u'), "Church Slavic"), (('c', 'v'), "Chuvash"),
+      (('c', 'y'), "Welsh"), (('d', 'a'), "Danish"), (('d', 'e'), "German"),
+      (('d', 'v'), "Divehi"), (('d', 'z'), "Dzongkha"), (('e', 'e'), "Ewe"),
+      (('e', 'l'), "Greek"), (('e', 'n'), "English"), (('e', 'o'), "Esperanto"),
+      (('e', 's'), "Spanish"), (('e', 't'), "Estonian"), (('e', 'u'), "Basque"),
+      (('f', 'a'), "Persian"), (('f', 'f'), "Fulah"), (('f', 'i'), "Finnish"),
+      (('f', 'j'), "Fijian"), (('f', 'o'), "Faroese"), (('f', 'r'), "French"),
+      (('f', 'y'), "Frisian"), (('g', 'a'), "Irish"), (('g', 'd'), "Gaelic"),
+      (('g', 'l'), "Galician"), (('g', 'n'), "Guarani"), (('g', 'u'), "Gujarati"),
+      (('g', 'v'), "Manx"), (('h', 'a'), "Hausa"), (('h', 'e'), "Hebrew"),
+      (('h', 'i'), "Hindi"), (('h', 'o'), "Hiri Motu"), (('h', 'r'), "Croatian"),
+      (('h', 't'), "Haitian"), (('h', 'u'), "Hungarian"), (('h', 'y'), "Armenian"),
+      (('h', 'z'), "Herero"), (('i', 'a'), "Interlingua"), (('i', 'd'), "Indonesian"),
+      (('i', 'e'), "Interlingue"), (('i', 'g'), "Igbo"), (('i', 'i'), "Sichuan Yi"),
+      (('i', 'k'), "Inupiaq"), (('i', 'o'), "Ido"), (('i', 's'), "Icelandic"),
+      (('i', 't'), "Italian"), (('i', 'u'), "Inuktitut"), (('j', 'a'), "Japanese"),
+      (('j', 'v'), "Javanese"), (('k', 'a'), "Georgian"), (('k', 'g'), "Kongo"),
+      (('k', 'i'), "Kikuyu"), (('k', 'j'), "Kuanyama"), (('k', 'k'), "Kazakh"),
+      (('k', 'l'), "Kalaallisut"), (('k', 'm'), "Khmer"), (('k', 'n'), "Kannada"),
+      (('k', 'o'), "Korean"), (('k', 'r'), "Kanuri"), (('k', 's'), "Kashmiri"),
+      (('k', 'u'), "Kurdish"), (('k', 'v'), "Komi"), (('k', 'w'), "Cornish"),
+      (('k', 'y'), "Kirghiz"), (('l', 'a'), "Latin"), (('l', 'b'), "Luxembourgish"),
+      (('l', 'g'), "Ganda"), (('l', 'i'), "Limburgan"), (('l', 'n'), "Lingala"),
+      (('l', 'o'), "Lao"), (('l', 't'), "Lithuanian"), (('l', 'u'), "Luba-Katanga"),
+      (('l', 'v'), "Latvian"), (('m', 'g'), "Malagasy"), (('m', 'h'), "Marshallese"),
+      (('m', 'i'), "Maori"), (('m', 'k'), "Macedonian"), (('m', 'l'), "Malayalam"),
+      (('m', 'n'), "Mongolian"), (('m', 'r'), "Marathi"), (('m', 's'), "Malay"),
+      (('m', 't'), "Maltese"), (('m', 'y'), "Burmese"), (('n', 'a'), "Nauru"),
+      (('n', 'b'), "Bokmål"), (('n', 'd'), "Ndebele, North"), (('n', 'e'), "Nepali"),
+      (('n', 'g'), "Ndonga"), (('n', 'l'), "Dutch"), (('n', 'n'), "Nynorsk"),
+      (('n', 'o'), "Norwegian"), (('n', 'r'), "Ndebele"), (('n', 'v'), "Navajo"),
+      (('n', 'y'), "Chichewa"), (('o', 'c'), "Occitan"), (('o', 'j'), "Ojibwa"),
+      (('o', 'm'), "Oromo"), (('o', 'r'), "Oriya"), (('o', 's'), "Ossetian"),
+      (('p', 'a'), "Panjabi"), (('p', 'i'), "Pali"), (('p', 'l'), "Polish"),
+      (('p', 's'), "Pushto"), (('p', 't'), "Portuguese"), (('q', 'u'), "Quechua"),
+      (('r', 'm'), "Romansh"), (('r', 'n'), "Rundi"), (('r', 'o'), "Romanian"),
+      (('r', 'u'), "Russian"), (('r', 'w'), "Kinyarwanda"), (('s', 'a'), "Sanskrit"),
+      (('s', 'c'), "Sardinian"), (('s', 'd'), "Sindhi"), (('s', 'e'), "Sami"),
+      (('s', 'g'), "Sango"), (('s', 'i'), "Sinhala"), (('s', 'k'), "Slovak"),
+      (('s', 'l'), "Slovenian"), (('s', 'm'), "Samoan"), (('s', 'n'), "Shona"),
+      (('s', 'o'), "Somali"), (('s', 'q'), "Albanian"), (('s', 'r'), "Serbian"),
+      (('s', 's'), "Swati"), (('s', 't'), "Sotho"), (('s', 'u'), "Sundanese"),
+      (('s', 'v'), "Swedish"), (('s', 'w'), "Swahili"), (('t', 'a'), "Tamil"),
+      (('t', 'e'), "Telugu"), (('t', 'g'), "Tajik"), (('t', 'h'), "Thai"),
+      (('t', 'i'), "Tigrinya"), (('t', 'k'), "Turkmen"), (('t', 'l'), "Tagalog"),
+      (('t', 'n'), "Tswana"), (('t', 'o'), "Tonga"), (('t', 'r'), "Turkish"),
+      (('t', 's'), "Tsonga"), (('t', 't'), "Tatar"), (('t', 'w'), "Twi"),
+      (('t', 'y'), "Tahitian"), (('u', 'g'), "Uighur"), (('u', 'k'), "Ukrainian"),
+      (('u', 'r'), "Urdu"), (('u', 'z'), "Uzbek"), (('v', 'e'), "Venda"),
+      (('v', 'i'), "Vietnamese"), (('v', 'o'), "Volapük"), (('w', 'a'), "Walloon"),
+      (('w', 'o'), "Wolof"), (('x', 'h'), "Xhosa"), (('y', 'i'), "Yiddish"),
+      (('y', 'o'), "Yoruba"), (('z', 'a'), "Zhuang"), (('z', 'h'), "Chinese"),
+      (('z', 'u'), "Zulu")
+    ]
+{- ORMOLU_ENABLE -}

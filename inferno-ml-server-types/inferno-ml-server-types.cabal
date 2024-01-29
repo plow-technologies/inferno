@@ -45,6 +45,7 @@ library
     , base
     , bytestring
     , conduit
+    , containers
     , deepseq
     , extra
     , generic-lens
