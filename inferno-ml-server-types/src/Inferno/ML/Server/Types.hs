@@ -374,9 +374,8 @@ instance ToJSON Version where
 instance FromField Version where
   fromField f =
     maybe (returnError UnexpectedNull f mempty) $
-      maybe (returnError ConversionFailed f mempty) pure
-        . Attoparsec.maybeResult
-        . Attoparsec.parse versionP
+      either (returnError ConversionFailed f) pure
+        . Attoparsec.parseOnly versionP
 
 instance ToField Version where
   toField = Escape . Text.Encoding.encodeUtf8 . showVersion
