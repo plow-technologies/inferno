@@ -26,7 +26,6 @@ import Data.Aeson
     Value (Array, Number, Object, String),
     camelTo2,
     defaultOptions,
-    genericParseJSON,
     genericToJSON,
     object,
     pairs,
@@ -34,6 +33,7 @@ import Data.Aeson
     withObject,
     withScientific,
     withText,
+    (.!=),
     (.:),
     (.:?),
     (.=),
@@ -359,24 +359,34 @@ instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
       unOid (Oid (CUInt x)) = x
 
 data ModelCard = ModelCard
-  { languages :: Vector ISO63912,
-    tags :: Vector Text,
-    license :: Maybe Text,
-    datasets :: Vector Text,
-    description :: NotNull Text
+  { description :: NotNull Text,
+    metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
   deriving (FromField, ToField) via Aeson ModelCard
 
-instance FromJSON ModelCard where
-  parseJSON =
-    genericParseJSON
-      defaultOptions
-        { fieldLabelModifier = camelTo2 '_',
-          omitNothingFields = True
-        }
+data ModelMetadata = ModelMetadata
+  { languages :: Vector ISO63912,
+    tags :: Vector Text,
+    datasets :: Vector Text,
+    metrics :: Vector Text,
+    license :: Maybe Text,
+    baseModel :: Maybe Text
+  }
+  deriving stock (Show, Eq, Generic)
 
-instance ToJSON ModelCard where
+instance FromJSON ModelMetadata where
+  parseJSON = withObject "ModelMetadata" $ \o ->
+    ModelMetadata
+      <$> o .:? "languages" .!= mempty
+      <*> o .:? "tags" .!= mempty
+      <*> o .:? "datasets" .!= mempty
+      <*> o .:? "metrics" .!= mempty
+      <*> o .:? "license"
+      <*> o .:? "base_model"
+
+instance ToJSON ModelMetadata where
   toJSON =
     genericToJSON
       defaultOptions
