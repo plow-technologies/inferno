@@ -58,10 +58,6 @@ couldNotCast v =
         <> " to "
         <> (show $ typeRep (Proxy :: Proxy a))
 
--- TODO not possible anymore
--- instance ToValue c m (m (Value c m)) where
---   toValue = pure
-
 instance ToValue c m (Value c m) where
   toValue = id
 
@@ -211,7 +207,17 @@ instance (MonadThrow m, FromValue c m a, ToValue c m b) => ToValue c m (a -> b) 
       x <- fromValue v
       pure $ toValue $ f x
 
-instance (MonadThrow m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2, ToValue c (ImplEnvM m c) a3, KnownSymbol lbl) => ToValue c (ImplEnvM m c) (ImplicitCast lbl a1 a2 a3) where
+-- We have a separate instance for functions that run in the monad m.
+-- This is because we cannot `toValue` the result, as it is impossible to have
+-- toValue :: ImplEnvM m c (Value c (ImplEnvM m c)) -> Value c (ImplEnvM m c)
+-- as that would entail running the ImplEnvM monad.
+instance {-# OVERLAPPING #-} (MonadThrow m, FromValue c m a) => ToValue c m (a -> m (Value c m)) where
+  toValue f =
+    VFun $ \v -> do
+      x <- fromValue v
+      f x
+
+instance (MonadThrow m, FromValue c (ImplEnvM m c) a1, ToValue c (ImplEnvM m c) (a2 -> a3), KnownSymbol lbl) => ToValue c (ImplEnvM m c) (ImplicitCast lbl a1 a2 a3) where
   toValue (ImplicitCast f) =
     VFun $ \b' -> do
       impl <- ask
@@ -219,8 +225,15 @@ instance (MonadThrow m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c
       case Map.lookup i impl of
         Just v -> do
           x <- fromValue v
-          b <- fromValue b'
-          pure $ toValue $ f x b
+          let f' = f x
+          -- f' :: a2 -> a3, and a3 might be ImplEnvM m c (Value c (ImplEnvM m c)),
+          -- so we cannot apply f' to (fromValue b') and toValue the result, see the above
+          -- instance. Instead, we convert f' to a value and let the compiler pick the
+          -- appropriate instance of ToValue c m (a -> b) from the 2 choices above.
+          case toValue f' of
+            VFun f'' ->
+              f'' b'
+            _ -> error ""
         Nothing -> throwM $ NotFoundInImplicitEnv i
 
 -- | In this instance, the 'IO' in the type is ignored.
