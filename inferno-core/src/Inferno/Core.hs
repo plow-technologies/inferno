@@ -24,7 +24,7 @@ import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, 
 import Inferno.Parse (InfernoParsingError, parseExpr)
 import Inferno.Types.Syntax (Comment, CustomType, Expr (App, TypeRep), ExtIdent, ModuleName, Namespace, SourcePos, TypeClass, TypeMetadata, collectArrs)
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
-import Inferno.Types.Value (ImplEnvM, Value, runImplEnvM)
+import Inferno.Types.Value (ImplEnvM, Value)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
 import Prettyprinter (Pretty)
@@ -75,7 +75,7 @@ mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c
 mkInferno prelude customTypes = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts
-  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
+  let (preludeIdentEnv, preludePinnedEnv) = builtinModulesTerms prelude
   return $
     Interpreter
       { evalExpr = runEvalM,

@@ -23,14 +23,14 @@ instance Pretty MlValue where
     VModel m -> align (pretty $ Text.pack $ show m)
 
 instance ToValue MlValue m T.Tensor where
-  toValue = pure . VCustom . VTensor
+  toValue = VCustom . VTensor
 
 instance FromValue MlValue m T.Tensor where
   fromValue (VCustom (VTensor t)) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue MlValue m T.ScriptModule where
-  toValue = pure . VCustom . VModel
+  toValue = VCustom . VModel
 
 instance FromValue MlValue m T.ScriptModule where
   fromValue (VCustom (VModel t)) = pure t

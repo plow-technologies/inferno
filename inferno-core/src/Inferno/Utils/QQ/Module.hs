@@ -44,7 +44,7 @@ metaToValue = \case
   (Just sch, QQToValueDef x) -> Just [|Left ($(dataToExpQ (\a -> liftText <$> cast a) sch), toValue $(TH.varE (mkName x)))|]
   (Nothing, QQToValueDef x) ->
     Just [|Left (closeOverType (toType (mkProxy $(TH.varE (mkName x)))), toValue $(TH.varE (mkName x)))|]
-  (Just sch, QQRawDef x) -> Just [|Left ($(dataToExpQ (\a -> liftText <$> cast a) sch), pure $(TH.varE (mkName x)))|]
+  (Just sch, QQRawDef x) -> Just [|Left ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(TH.varE (mkName x)))|]
   (Nothing, QQRawDef _) -> error "QQRawDef must have an explicit type"
   (sch, InlineDef e) ->
     Just [|Right ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(dataToExpQ (\a -> liftText <$> cast a) e))|]
