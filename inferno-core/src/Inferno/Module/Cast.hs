@@ -35,11 +35,11 @@ type Either6 a b c d e f = Either a (Either5 b c d e f)
 
 type Either7 a b c d e f g = Either a (Either6 b c d e f g)
 
--- | Types that can be converted to script values, allowing IO in the process.
+-- | Types that can be converted to script values.
 class ToValue c m a where
-  toValue :: MonadThrow m => a -> m (Value c m)
+  toValue :: a -> Value c m
 
--- | Class of types that can be converted from script values.
+-- | Class of types that can be converted from script values, allowing IO in the process.
 class FromValue c m a where
   fromValue :: MonadThrow m => (Value c m) -> m a
 
@@ -58,25 +58,26 @@ couldNotCast v =
         <> " to "
         <> (show $ typeRep (Proxy :: Proxy a))
 
-instance ToValue c m (m (Value c m)) where
-  toValue = id
+-- TODO not possible anymore
+-- instance ToValue c m (m (Value c m)) where
+--   toValue = pure
 
 instance ToValue c m (Value c m) where
-  toValue = pure
+  toValue = id
 
 instance FromValue c m (Value c m) where
   fromValue = pure
 
 instance ToValue c m Lit where
-  toValue l = pure $ case l of
+  toValue l = case l of
     LInt i -> VInt i
     LDouble x -> VDouble x
     LText t -> VText t
     LHex w -> VWord64 w
 
 instance ToValue c m Bool where
-  toValue True = pure $ VEnum enumBoolHash "true"
-  toValue False = pure $ VEnum enumBoolHash "false"
+  toValue True = VEnum enumBoolHash "true"
+  toValue False = VEnum enumBoolHash "false"
 
 instance Pretty c => FromValue c m Bool where
   fromValue (VEnum hash ident) =
@@ -89,7 +90,7 @@ instance Pretty c => FromValue c m Bool where
   fromValue v = couldNotCast v
 
 instance ToValue c m Double where
-  toValue = pure . VDouble
+  toValue = VDouble
 
 instance Pretty c => FromValue c m Double where
   fromValue (VDouble x) = pure x
@@ -97,7 +98,7 @@ instance Pretty c => FromValue c m Double where
   fromValue v = couldNotCast v
 
 instance ToValue c m Int64 where
-  toValue = pure . VInt
+  toValue = VInt
 
 instance Pretty c => FromValue c m Int64 where
   fromValue (VInt x) = pure x
@@ -114,49 +115,49 @@ instance (Pretty c) => FromValue c m Int where
   fromValue v = couldNotCast v
 
 instance ToValue c m Integer where
-  toValue = pure . VInt . fromInteger
+  toValue = VInt . fromInteger
 
 instance Pretty c => FromValue c m Integer where
   fromValue (VInt x) = pure $ fromIntegral x
   fromValue v = couldNotCast v
 
 instance ToValue c m Word16 where
-  toValue = pure . VWord16
+  toValue = VWord16
 
 instance Pretty c => FromValue c m Word16 where
   fromValue (VWord16 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m Word32 where
-  toValue = pure . VWord32
+  toValue = VWord32
 
 instance Pretty c => FromValue c m Word32 where
   fromValue (VWord32 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m Word64 where
-  toValue = pure . VWord64
+  toValue = VWord64
 
 instance Pretty c => FromValue c m Word64 where
   fromValue (VWord64 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m () where
-  toValue _ = pure $ VTuple []
+  toValue _ = VTuple []
 
 instance Pretty c => FromValue c m () where
   fromValue (VTuple []) = pure ()
   fromValue v = couldNotCast v
 
 instance ToValue c m CTime where
-  toValue = pure . VEpochTime
+  toValue = VEpochTime
 
 instance Pretty c => FromValue c m CTime where
   fromValue (VEpochTime t) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue c m Text where
-  toValue = pure . VText
+  toValue = VText
 
 instance Pretty c => FromValue c m Text where
   fromValue (VText t) = pure t
@@ -204,14 +205,14 @@ instance (Kind0 a, Kind0 b) => Kind0 (a -> b) where
 instance (Kind0 a) => Kind0 [a] where
   toType _ = TArray (toType (Proxy :: Proxy a))
 
-instance (FromValue c m a, ToValue c m b) => ToValue c m (a -> b) where
-  toValue f = pure $
+instance (MonadThrow m, FromValue c m a, ToValue c m b) => ToValue c m (a -> b) where
+  toValue f =
     VFun $ \v -> do
       x <- fromValue v
-      toValue $ f x
+      pure $ toValue $ f x
 
-instance (Monad m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2, ToValue c (ImplEnvM m c) a3, KnownSymbol lbl) => ToValue c (ImplEnvM m c) (ImplicitCast lbl a1 a2 a3) where
-  toValue (ImplicitCast f) = pure $
+instance (MonadThrow m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2, ToValue c (ImplEnvM m c) a3, KnownSymbol lbl) => ToValue c (ImplEnvM m c) (ImplicitCast lbl a1 a2 a3) where
+  toValue (ImplicitCast f) =
     VFun $ \b' -> do
       impl <- ask
       let i = ExtIdent $ Right $ pack $ symbolVal (Proxy :: Proxy lbl)
@@ -219,7 +220,7 @@ instance (Monad m, FromValue c (ImplEnvM m c) a1, FromValue c (ImplEnvM m c) a2,
         Just v -> do
           x <- fromValue v
           b <- fromValue b'
-          toValue $ f x b
+          pure $ toValue $ f x b
         Nothing -> throwM $ NotFoundInImplicitEnv i
 
 -- | In this instance, the 'IO' in the type is ignored.
@@ -227,8 +228,8 @@ instance Kind0 a => Kind0 (IO a) where
   toType _ = toType (Proxy :: Proxy a)
 
 instance ToValue c m a => ToValue c m (Maybe a) where
-  toValue (Just x) = VOne <$> toValue x
-  toValue _ = pure VEmpty
+  toValue (Just x) = VOne $ toValue x
+  toValue _ = VEmpty
 
 instance (Typeable a, FromValue c m a, Pretty c) => FromValue c m (Maybe a) where
   fromValue VEmpty = pure Nothing
@@ -243,7 +244,7 @@ instance (ToValue c m a, ToValue c m b) => ToValue c m (Either a b) where
   toValue (Right x) = toValue x
 
 instance ToValue c m a => ToValue c m [a] where
-  toValue xs = VArray <$> (mapM toValue xs)
+  toValue xs = VArray $ map toValue xs
 
 instance (Typeable a, FromValue c m a, Pretty c) => FromValue c m [a] where
   fromValue (VArray vs) = mapM fromValue vs
