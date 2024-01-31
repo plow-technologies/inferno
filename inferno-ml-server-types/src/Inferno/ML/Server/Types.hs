@@ -21,6 +21,7 @@ import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Monad (void)
 import Data.Aeson
   ( FromJSON (parseJSON),
+    Object,
     Options (fieldLabelModifier, omitNothingFields),
     ToJSON (toEncoding, toJSON),
     Value (Array, Number, Object, String),
@@ -38,6 +39,7 @@ import Data.Aeson
     (.:?),
     (.=),
   )
+import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.Char (toLower)
@@ -91,6 +93,8 @@ import Servant
   )
 import Servant.Conduit ()
 import System.Posix (EpochTime)
+import URI.ByteString (Absolute, URIRef)
+import URI.ByteString.Aeson ()
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 type InfernoMlServerAPI uid gid p =
@@ -358,13 +362,40 @@ instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
+-- | Full description and metadata of the model
 data ModelCard = ModelCard
-  { description :: NotNull Text,
+  { -- | High-level, structured overview of model details and summary
+    description :: ModelDescription,
     metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
   deriving (FromField, ToField) via Aeson ModelCard
+
+data ModelDescription = ModelDescription
+  { -- | General summary of model, cannot be empty
+    summary :: NotNull Text,
+    -- | How the model is intended to be used
+    uses :: Text,
+    -- | Applicable limitations, risks, biases, etc...
+    risks :: Text,
+    -- | Details on training data, speed\/size of training elements, etc...
+    training :: Text,
+    evaluation :: Text
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON)
+
+{- ORMOLU_DISABLE -}
+instance FromJSON ModelDescription where
+  parseJSON = withObject "ModelDescription" $ \o ->
+    ModelDescription
+      <$> o .: "summary"
+      <*> o .:? "uses" .!= mempty
+      <*> o .:? "risks" .!= mempty
+      <*> o .:? "training" .!= mempty
+      <*> o .:? "evaluation" .!= mempty
+{- ORMOLU_ENABLE -}
 
 data ModelMetadata = ModelMetadata
   { languages :: Vector ISO63912,
@@ -372,7 +403,8 @@ data ModelMetadata = ModelMetadata
     datasets :: Vector Text,
     metrics :: Vector Text,
     license :: Maybe Text,
-    baseModel :: Maybe Text
+    baseModel :: Maybe Text,
+    thumbnail :: Maybe (Text, URIRef Absolute)
   }
   deriving stock (Show, Eq, Generic)
 
@@ -385,6 +417,12 @@ instance FromJSON ModelMetadata where
       <*> o .:? "metrics" .!= mempty
       <*> o .:? "license"
       <*> o .:? "base_model"
+      <*> (thumbnailP =<< o .:? "thumbnail")
+    where
+      thumbnailP :: Maybe Object -> Parser (Maybe (Text, URIRef Absolute))
+      thumbnailP = \case
+        Nothing -> pure Nothing
+        Just o -> fmap Just $ (,) <$> o .: "description" <*> o .: "url"
 
 instance ToJSON ModelMetadata where
   toJSON =
