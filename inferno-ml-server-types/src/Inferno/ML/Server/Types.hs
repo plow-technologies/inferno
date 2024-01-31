@@ -322,11 +322,11 @@ data Model uid gid = Model
     -- The actual contents of the model
     contents :: Oid,
     version :: Version,
+    -- Stored as JSON in the DB
+    card :: ModelCard,
     -- The groups able to access the model
     groups :: Vector gid,
-    user :: Maybe uid,
-    -- Stored as JSON in the DB
-    card :: ModelCard
+    user :: Maybe uid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromRow, ToRow)
@@ -338,13 +338,16 @@ instance NFData (Model uid gid) where
 instance (FromJSON uid, FromJSON gid) => FromJSON (Model uid gid) where
   parseJSON = withObject "Model" $ \o ->
     Model
+      -- Note that for a model serialized as JSON, the `id` must be present
+      -- (this assumes that a serialized model always refers to one that exists
+      -- in the DB already)
       <$> fmap Just (o .: "id")
       <*> o .: "name"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
+      <*> o .: "card"
       <*> o .: "groups"
       <*> o .:? "user"
-      <*> o .: "description"
 {- ORMOLU_ENABLE -}
 
 instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
@@ -352,11 +355,11 @@ instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
     object
       [ "id" .= view #id m,
         "name" .= view #name m,
-        "version" .= view #version m,
         "contents" .= view (#contents . to unOid) m,
-        "user" .= view #user m,
+        "version" .= view #version m,
+        "card" .= view #card m,
         "groups" .= view #groups m,
-        "card" .= view #card m
+        "user" .= view #user m
       ]
     where
       unOid :: Oid -> Word32
