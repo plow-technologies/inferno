@@ -171,6 +171,26 @@ toAsValueTyped (AsValue dt xs) = case dt of
   -- converting from a `Scientific` to an integral type
   Int64 -> Int64s . AsValue dt $ round <$> xs
 
+instance ToJSON AsValueTyped where
+  toJSON = \case
+    Floats xs -> mkObj Float xs
+    Doubles xs -> mkObj Double xs
+    Int64s xs -> mkObj Int64 xs
+    where
+      mkObj :: ToJSON a => DType -> AsValue a -> Value
+      mkObj t xs =
+        object
+          [ "dtype" .= t,
+            "value" .= xs
+          ]
+
+instance FromJSON AsValueTyped where
+  parseJSON = withObject "AsValueTyped" $ \o ->
+    o .: "dtype" >>= \case
+      Float -> Floats <$> o .: "value"
+      Double -> Doubles <$> o .: "value"
+      Int64 -> Int64s <$> o .: "value"
+
 -- | A converted output tensor, tagged with its 'DType' and holding a list ('Dims')
 -- representing the original tensor. Using this representation keeps track of both
 -- the number of dimensions and the datatype, which must be retained when serializing
@@ -298,12 +318,13 @@ newtype Id a = Id Int64
     )
   deriving anyclass (NFData)
 
--- Row of the model table, parameterized by the user and group type
-data Model uid gid = Model
-  { id :: Maybe (Id (Model uid gid)),
+-- Row of the model table, parameterized by the user and group type as well
+-- as the contents of the model (normally this will be an `Oid`)
+data Model uid gid c = Model
+  { id :: Maybe (Id (Model uid gid c)),
     name :: Text,
     -- | The actual contents of the model
-    contents :: Oid,
+    contents :: c,
     version :: Version,
     -- | Stored as JSON in the DB
     card :: ModelCard,
@@ -322,7 +343,7 @@ data Model uid gid = Model
   }
   deriving stock (Show, Eq, Generic)
 
-instance NFData (Model uid gid) where
+instance NFData (Model uid gid c) where
   rnf = rwhnf
 
 instance
@@ -333,7 +354,7 @@ instance
     FromJSONKey gid,
     Ord gid
   ) =>
-  FromRow (Model uid gid)
+  FromRow (Model uid gid Oid)
   where
   -- NOTE
   -- Order of fields must align exactly with DB schema
@@ -354,7 +375,7 @@ instance
     ToField gid,
     ToJSONKey gid
   ) =>
-  ToRow (Model uid gid)
+  ToRow (Model uid gid Oid)
   where
   -- NOTE
   -- Order of fields must align exactly with DB schema
@@ -375,7 +396,7 @@ instance
     FromJSONKey gid,
     Ord gid
   ) =>
-  FromJSON (Model uid gid)
+  FromJSON (Model uid gid Oid)
   where
   parseJSON = withObject "Model" $ \o ->
     Model
@@ -396,7 +417,7 @@ instance
     ToJSON gid,
     ToJSONKey gid
   ) =>
-  ToJSON (Model uid gid)
+  ToJSON (Model uid gid Oid)
   where
   toJSON m =
     object
@@ -599,7 +620,7 @@ data InferenceParam uid gid p = InferenceParam
   { id :: Maybe (Id (InferenceParam uid gid p)),
     -- FIXME Better type
     script :: Script,
-    model :: Id (Model uid gid),
+    model :: Id (Model uid gid Oid),
     input :: Maybe p,
     user :: uid
   }
