@@ -442,18 +442,16 @@ data ModelPermissions
   deriving stock (Show, Eq, Generic)
 
 instance FromJSON ModelPermissions where
-  parseJSON =
-    genericParseJSON
-      defaultOptions
-        { constructorTagModifier = fmap toLower . take 4
-        }
+  parseJSON = withText "ModelPermissions" $ \case
+    "read" -> pure ReadModel
+    "write" -> pure WriteModel
+    t -> fail $ unwords ["Invalid model permissions:", Text.unpack t]
 
 instance ToJSON ModelPermissions where
   toJSON =
-    genericToJSON
-      defaultOptions
-        { constructorTagModifier = fmap toLower . take 4
-        }
+    String . \case
+      ReadModel -> "read"
+      WriteModel -> "write"
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
