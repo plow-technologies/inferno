@@ -20,29 +20,11 @@ import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Monad (void)
 import Data.Aeson
-  ( FromJSON (parseJSON),
-    Object,
-    Options (fieldLabelModifier, omitNothingFields),
-    ToJSON (toEncoding, toJSON),
-    Value (Array, Number, Object, String),
-    camelTo2,
-    defaultOptions,
-    genericToJSON,
-    object,
-    pairs,
-    withArray,
-    withObject,
-    withScientific,
-    withText,
-    (.!=),
-    (.:),
-    (.:?),
-    (.=),
-  )
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.Char (toLower)
+import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
 import Data.IP (IPv4)
@@ -60,18 +42,19 @@ import qualified Data.Text.Encoding as Text.Encoding
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
-import Database.PostgreSQL.Simple (FromRow, ToRow)
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
     ResultError (ConversionFailed, UnexpectedNull),
     returnError,
   )
+import Database.PostgreSQL.Simple.FromRow (FromRow (fromRow), field)
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
-import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson))
+import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson), getAeson)
 import Database.PostgreSQL.Simple.ToField
   ( Action (Escape),
     ToField (toField),
   )
+import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
@@ -319,23 +302,81 @@ newtype Id a = Id Int64
 data Model uid gid = Model
   { id :: Maybe (Id (Model uid gid)),
     name :: Text,
-    -- The actual contents of the model
+    -- | The actual contents of the model
     contents :: Oid,
     version :: Version,
-    -- Stored as JSON in the DB
+    -- | Stored as JSON in the DB
     card :: ModelCard,
-    -- The groups able to access the model
-    groups :: Vector gid,
+    -- | Permissions for reading or updating the model, organized by group ID
+    --
+    -- NOTE
+    -- This is stored as a @jsonb@ rather than as @hstore@. It could
+    -- currently be stored as an @hstore@, but later we might want to
+    -- use a more complex type that we could not easily convert to\/from
+    -- text (which is required to use @hstore@). So using @jsonb@ allows
+    -- for greater potential flexibility
+    permissions :: Map gid ModelPermissions,
+    -- | The user who owns the model, if any. Note that owning a model
+    -- will implicitly set permissions
     user :: Maybe uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromRow, ToRow)
 
 instance NFData (Model uid gid) where
   rnf = rwhnf
 
+instance
+  ( Typeable uid,
+    Typeable gid,
+    FromField uid,
+    FromField gid,
+    FromJSONKey gid,
+    Ord gid
+  ) =>
+  FromRow (Model uid gid)
+  where
+  -- NOTE
+  -- Order of fields must align exactly with DB schema
+  fromRow =
+    Model
+      <$> field
+      <*> field
+      <*> field
+      <*> field
+      <*> field
+      <*> fmap getAeson field
+      <*> field
+
+instance
+  ( Typeable uid,
+    Typeable gid,
+    ToField uid,
+    ToField gid,
+    ToJSONKey gid
+  ) =>
+  ToRow (Model uid gid)
+  where
+  -- NOTE
+  -- Order of fields must align exactly with DB schema
+  toRow m =
+    [ m ^. #id & toField,
+      m ^. #name & toField,
+      m ^. #contents & toField,
+      m ^. #version & toField,
+      m ^. #card & toField,
+      m ^. #permissions & Aeson & toField,
+      m ^. #user & toField
+    ]
+
 {- ORMOLU_DISABLE -}
-instance (FromJSON uid, FromJSON gid) => FromJSON (Model uid gid) where
+instance
+  ( FromJSON uid,
+    FromJSON gid,
+    FromJSONKey gid,
+    Ord gid
+  ) =>
+  FromJSON (Model uid gid)
+  where
   parseJSON = withObject "Model" $ \o ->
     Model
       -- Note that for a model serialized as JSON, the `id` must be present
@@ -346,11 +387,17 @@ instance (FromJSON uid, FromJSON gid) => FromJSON (Model uid gid) where
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
       <*> o .: "card"
-      <*> o .: "groups"
+      <*> o .: "permissions"
       <*> o .:? "user"
 {- ORMOLU_ENABLE -}
 
-instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
+instance
+  ( ToJSON uid,
+    ToJSON gid,
+    ToJSONKey gid
+  ) =>
+  ToJSON (Model uid gid)
+  where
   toJSON m =
     object
       [ "id" .= view #id m,
@@ -358,12 +405,34 @@ instance (ToJSON uid, ToJSON gid) => ToJSON (Model uid gid) where
         "contents" .= view (#contents . to unOid) m,
         "version" .= view #version m,
         "card" .= view #card m,
-        "groups" .= view #groups m,
+        "permissions" .= view #permissions m,
         "user" .= view #user m
       ]
     where
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
+
+data ModelPermissions
+  = -- | The model can be read e.g. for running inference
+    ReadModel
+  | -- | The model can be updated e.g. during training. If write permissions
+    -- are set for a group, read permissions are implicitly granted
+    WriteModel
+  deriving stock (Show, Eq, Generic)
+
+instance FromJSON ModelPermissions where
+  parseJSON =
+    genericParseJSON
+      defaultOptions
+        { constructorTagModifier = fmap toLower . take 4
+        }
+
+instance ToJSON ModelPermissions where
+  toJSON =
+    genericToJSON
+      defaultOptions
+        { constructorTagModifier = fmap toLower . take 4
+        }
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
@@ -372,7 +441,7 @@ data ModelCard = ModelCard
     metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, NFData)
   deriving (FromField, ToField) via Aeson ModelCard
 
 data ModelDescription = ModelDescription
@@ -387,7 +456,7 @@ data ModelDescription = ModelDescription
     evaluation :: Text
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToJSON)
+  deriving anyclass (ToJSON, NFData)
 
 {- ORMOLU_DISABLE -}
 instance FromJSON ModelDescription where
@@ -410,6 +479,9 @@ data ModelMetadata = ModelMetadata
     thumbnail :: Maybe (Text, URIRef Absolute)
   }
   deriving stock (Show, Eq, Generic)
+
+instance NFData ModelMetadata where
+  rnf = rwhnf
 
 instance FromJSON ModelMetadata where
   parseJSON = withObject "ModelMetadata" $ \o ->
@@ -437,6 +509,7 @@ instance ToJSON ModelMetadata where
 
 newtype NotNull a = NotNull a
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON (NotNull Text) where
   parseJSON = withText "NotNull Text" $ \case
@@ -467,6 +540,7 @@ data Version
       [Text]
       -- ^ Any tags
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 instance Ord Version where
   compare = comparing . view $ typed @(NonEmpty Int)
@@ -540,6 +614,8 @@ data User uid gid = User
   deriving stock (Show, Generic, Eq)
   deriving anyclass (FromRow, ToRow, NFData)
 
+-- FIXME
+-- Will be removed after integrating `inferno-vc`
 newtype Script = Script Text
   deriving stock (Show, Generic)
   deriving newtype
@@ -599,6 +675,7 @@ data ISO63912 = ISO63912
     name :: Text
   }
   deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON ISO63912 where
   parseJSON = withText "ISO63912" $ \case
@@ -608,12 +685,12 @@ instance FromJSON ISO63912 where
         l == mempty ->
           maybe (fail "Missing ISO6391 language") pure $ fromChars (f, s)
       | otherwise -> fail "Invalid ISO63912 code"
+    where
+      fromChars :: (Char, Char) -> Maybe ISO63912
+      fromChars c = ISO63912 c <$> Map.lookup c languagesByCode
 
 instance ToJSON ISO63912 where
   toJSON (ISO63912 (f, s) _) = String . flip Text.snoc s $ Text.singleton f
-
-fromChars :: (Char, Char) -> Maybe ISO63912
-fromChars c = ISO63912 c <$> Map.lookup c languagesByCode
 
 {- ORMOLU_DISABLE -}
 languagesByCode :: Map (Char, Char) Text
