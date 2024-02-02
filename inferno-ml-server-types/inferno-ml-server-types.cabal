@@ -52,6 +52,7 @@ library
     , http-api-data
     , inferno-core
     , inferno-types
+    , inferno-vc
     , iproute
     , microlens-platform
     , postgresql-simple

@@ -35,7 +35,6 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 import Data.Scientific (Scientific, toRealFloat)
-import Data.String (IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
@@ -58,6 +57,8 @@ import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
+import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.VersionControl.Types (VCMeta, VCObject)
 import Lens.Micro.Platform hiding ((.=))
 import Servant
   ( Capture,
@@ -317,6 +318,36 @@ newtype Id a = Id Int64
       FromHttpApiData
     )
   deriving anyclass (NFData)
+
+-- | Row for the table containing inference script closures
+data InferenceScript uid gid = InferenceScript
+  { -- NOTE: This is the ID for each row
+    hash :: VCObjectHash,
+    obj :: VCMeta uid gid VCObject
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- The `ToRow` instance can recycle the `ToJSON` instances (for both field)
+instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
+  toRow s =
+    -- NOTE: Don't change the order!
+    [ s ^. #hash & Aeson & toField,
+      s ^. #obj & Aeson & toField
+    ]
+
+-- The `FromRow` instance can also recycle the Aeson instances
+instance
+  ( FromJSON uid,
+    FromJSON gid,
+    Typeable uid,
+    Typeable gid
+  ) =>
+  FromRow (InferenceScript uid gid)
+  where
+  fromRow =
+    InferenceScript
+      <$> fmap getAeson field
+      <*> fmap getAeson field
 
 -- Row of the model table, parameterized by the user and group type as well
 -- as the contents of the model (normally this will be an `Oid`)
@@ -616,10 +647,12 @@ showVersion (Version ns ts) =
 -- | Row of the inference parameter table, parameterized by the user type
 data InferenceParam uid gid p = InferenceParam
   { id :: Maybe (Id (InferenceParam uid gid p)),
-    -- FIXME Better type
-    script :: Script,
+    -- This is the foreign key for the specific script in the
+    -- `InferenceScript` table
+    script :: VCObjectHash,
     model :: Id (Model uid gid Oid),
-    input :: Maybe p,
+    inputs :: Vector p,
+    outputs :: Vector p,
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
@@ -632,20 +665,6 @@ data User uid gid = User
   }
   deriving stock (Show, Generic, Eq)
   deriving anyclass (FromRow, ToRow, NFData)
-
--- FIXME
--- Will be removed after integrating `inferno-vc`
-newtype Script = Script Text
-  deriving stock (Show, Generic)
-  deriving newtype
-    ( Eq,
-      FromJSON,
-      ToJSON,
-      IsString,
-      FromField,
-      ToField,
-      NFData
-    )
 
 -- Bridge-related types
 

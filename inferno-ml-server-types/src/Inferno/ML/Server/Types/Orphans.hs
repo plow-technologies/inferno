@@ -28,6 +28,7 @@ import Database.PostgreSQL.Simple.ToField
     ToField (toField),
   )
 import Foreign.C (CTime (CTime))
+import Inferno.Types.VersionControl (VCObjectHash)
 import System.Posix (EpochTime)
 import Text.Read (readMaybe)
 import Web.HttpApiData
@@ -69,3 +70,9 @@ instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
 
 deriving anyclass instance NFData IPv4
+
+instance FromField VCObjectHash where
+  fromField = undefined
+
+instance ToField VCObjectHash where
+  toField = undefined
