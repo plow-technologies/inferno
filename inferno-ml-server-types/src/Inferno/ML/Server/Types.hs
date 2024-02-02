@@ -8,6 +8,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
@@ -651,8 +652,8 @@ data InferenceParam uid gid p = InferenceParam
     -- `InferenceScript` table
     script :: VCObjectHash,
     model :: Id (Model uid gid Oid),
-    inputs :: Vector p,
-    outputs :: Vector p,
+    inputs :: Vector (SingleOrMany p),
+    outputs :: Vector (SingleOrMany p),
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
@@ -702,6 +703,54 @@ instance ToJSON IValue where
     -- See above
     ITime t -> object ["time" .= t]
     IEmpty -> toJSON ()
+
+data SingleOrMany a
+  = Single a
+  | Many (Vector a)
+  deriving stock (Show, Eq, Generic, Functor)
+  deriving anyclass (NFData)
+
+instance FromJSON a => FromJSON (SingleOrMany a) where
+  parseJSON v =
+    asum
+      [ Single <$> parseJSON v,
+        Many <$> parseJSON v
+      ]
+
+instance ToJSON a => ToJSON (SingleOrMany a) where
+  toJSON = \case
+    Single a -> toJSON a
+    Many as -> toJSON as
+
+instance Ord a => Ord (SingleOrMany a) where
+  compare a =
+    (a,) >>> \case
+      (Single x, Single y) -> compare x y
+      (Many xs, Many ys) -> compare xs ys
+      (Single _, Many _) -> LT
+      (Many _, Single _) -> GT
+
+-- The `FromField` instance always parses a vector, even for one element;
+-- distinguishing between a `Single` and `Many` is done by the length of
+-- the vector, which must contain at least one element
+instance (FromField a, Typeable a) => FromField (SingleOrMany a) where
+  -- fromField :: forall a. FieldParser (SingleOrMany a)
+  fromField f = \case
+    Nothing -> returnError UnexpectedNull f "Expected non-empty vector"
+    Just bs ->
+      fromField @(Vector a) f (Just bs) >>= \case
+        v
+          | Vector.null v ->
+              returnError ConversionFailed f "Expected non-empty vector"
+          | Vector.length v == 1, x <- Vector.head v -> pure $ Single x
+          | otherwise -> pure $ Many v
+
+-- Also uses a vector as the representation, to correspond to the `FromField`
+-- instance
+instance ToField a => ToField (SingleOrMany a) where
+  toField = \case
+    Single x -> toField $ Vector.singleton x
+    Many xs -> toField xs
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
