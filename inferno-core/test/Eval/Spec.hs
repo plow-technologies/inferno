@@ -445,7 +445,7 @@ evalInMonadPrelude :: Prelude (ReaderT TestEnv IO) TestCustomValue
 evalInMonadPrelude =
   [builtinPreludeQuoter|
 module Base
-  zero : int := 0;
+  zero : double := 0.0;
 
 module EvalInMonad
   cachedGet : () -> int := ###!cachedGet###;

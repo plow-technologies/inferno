@@ -36,7 +36,7 @@ zerosFun =
       dType <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ zeros shp $ withDType dType defaultOpts
+        pure $ toValue $ zeros shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
 onesFun :: (MonadThrow m) => Value MlValue m
@@ -46,7 +46,7 @@ onesFun =
       dType <- getDtype "ones" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ ones shp $ withDType dType defaultOpts
+        pure $ toValue $ ones shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
 asTensorFun :: forall a m. (TensorLike a, FromValue MlValue m a, MonadThrow m) => String -> Proxy a -> Value MlValue m

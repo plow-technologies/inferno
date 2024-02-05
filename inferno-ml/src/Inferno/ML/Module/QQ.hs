@@ -22,7 +22,7 @@ import Text.Megaparsec (SourcePos)
 
 buildPrelude ::
   (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) =>
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, Value c (ImplEnvM m c)) (Maybe TCScheme, Expr () SourcePos))])] ->
   Prelude m c
 buildPrelude = buildPinnedQQModules builtinPrelude
 
