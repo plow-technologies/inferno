@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Inferno.Module
   ( Module (..),
@@ -81,7 +82,7 @@ data Prelude m c = Prelude
 emptyPrelude :: Prelude m c
 emptyPrelude = Prelude mempty mempty
 
-baseOpsTable :: (Pretty c, Eq c) => Prelude m c -> OpsTable
+baseOpsTable :: forall c m. Prelude m c -> OpsTable
 baseOpsTable Prelude {moduleMap} =
   case Map.lookup "Base" moduleMap of
     Just (Module {moduleOpsTable = ops, moduleName = modNm}) ->
@@ -89,13 +90,13 @@ baseOpsTable Prelude {moduleMap} =
       IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
     Nothing -> mempty
 
-moduleOpsTables :: (Pretty c, Eq c) => Prelude m c -> Map.Map ModuleName OpsTable
+moduleOpsTables :: Prelude m c -> Map.Map ModuleName OpsTable
 moduleOpsTables Prelude {moduleMap} = Map.map (\Module {moduleOpsTable} -> moduleOpsTable) moduleMap
 
 -- | Map from Module.name to the pinned hash for all names in the given prelude.
 -- This functions includes the Inferno.Module.Builtin module and also "exports"
 -- the Base module so that it can be used without prefix.
-preludePinMap :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
+preludePinMap :: Prelude m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
 preludePinMap prelude =
   Pinned.openModule "Base" $
     Pinned.insertBuiltinModule $
@@ -103,10 +104,10 @@ preludePinMap prelude =
         Map.map (Map.map Builtin . pinnedModuleNameToHash) $
           moduleMap prelude
 
-preludeTermEnv :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> TermEnv VCObjectHash c (ImplEnvM m c) ()
+preludeTermEnv :: Prelude m c -> TermEnv VCObjectHash c (ImplEnvM m c) ()
 preludeTermEnv = combineTermEnvs . moduleMap
 
-preludeNameToTypeMap :: (MonadThrow m, Pretty c, Eq c) => Prelude m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
+preludeNameToTypeMap :: Prelude m c -> Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
 preludeNameToTypeMap prelude =
   let unqualifiedN2h = pinnedModuleNameToHash $ modules Map.! "Base"
       n2h =
@@ -120,7 +121,6 @@ preludeNameToTypeMap prelude =
     modules = moduleMap prelude
 
 combineTermEnvs ::
-  MonadThrow m =>
   Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) a)) ->
   TermEnv VCObjectHash c (ImplEnvM m c) a
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules

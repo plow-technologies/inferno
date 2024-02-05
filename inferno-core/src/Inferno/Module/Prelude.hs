@@ -6,7 +6,7 @@
 
 module Inferno.Module.Prelude where
 
-import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
+import Control.Monad.Catch (MonadCatch (..))
 import Control.Monad.IO.Class (MonadIO)
 import Inferno.Module (Prelude)
 import Inferno.Module.Cast (Kind0 (toType))
@@ -125,7 +125,7 @@ import Prettyprinter (Pretty)
 -- as these require an accompanying definition of a typeclass, via the syntax:
 -- `define typeclass_name on t1 ... tn;`.
 
-builtinPrelude :: (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => Prelude m c
+builtinPrelude :: (MonadIO m, MonadCatch m, Pretty c, Eq c) => Prelude m c
 builtinPrelude =
   [builtinPreludeQuoter|
 

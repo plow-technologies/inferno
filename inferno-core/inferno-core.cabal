@@ -21,7 +21,17 @@ source-repository head
   type: git
   location: https://github.com/plow-technologies/inferno.git
 
+common warnings
+  ghc-options:
+    -Wall
+    -Wincomplete-uni-patterns
+    -Wincomplete-record-updates
+    -fwarn-redundant-constraints
+  if impl(ghc >= 9)
+    ghc-options: -Wunused-packages
+
 library
+  import: warnings
   exposed-modules:
       Inferno.Core
     , Inferno.Eval
@@ -45,7 +55,6 @@ library
     , Inferno.Utils.QQ.Common
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
       base                      >= 4.13 && < 4.17
     , bimap                     >= 0.5.0 && < 0.6
@@ -91,6 +100,7 @@ test-suite inferno-tests
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
+  import: warnings
   other-modules:
       Eval.Spec
     , Golden.Spec
@@ -123,13 +133,13 @@ test-suite inferno-tests
     , OverloadedStrings
     , TupleSections
     , RecordWildCards
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2 -threaded
+  ghc-options: -O2 -threaded
 
 executable inferno
   main-is: Main.hs
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
+  ghc-options: -O2 -threaded -rtsopts
   build-depends:
       base >=4.7 && <5
     , containers

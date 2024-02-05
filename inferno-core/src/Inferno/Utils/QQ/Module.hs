@@ -1,6 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Inferno.Utils.QQ.Module where
 
@@ -29,7 +30,6 @@ import Inferno.Utils.QQ.Common
 import qualified Language.Haskell.TH.Lib as TH
 import Language.Haskell.TH.Quote (QuasiQuoter (..), dataToExpQ)
 import Language.Haskell.TH.Syntax (Q, mkName)
-import Prettyprinter (Pretty)
 import Text.Megaparsec
   ( ParseErrorBundle (ParseErrorBundle),
     PosState (PosState),
@@ -54,7 +54,7 @@ metaToValue = \case
     Just [|Right ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(dataToExpQ (\a -> liftText <$> cast a) e))|]
 
 parseAndMakePrelude ::
-  (Eq c, Pretty c) =>
+  forall c m.
   Prelude m c ->
   [CustomType] ->
   String ->

@@ -7,8 +7,7 @@
 module Inferno.Core where
 
 import Control.Monad (foldM)
-import Control.Monad.Catch (MonadCatch, MonadThrow)
-import Control.Monad.Except (MonadFix)
+import Control.Monad.Catch (MonadCatch)
 import Data.Bifunctor (bimap)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
@@ -71,7 +70,7 @@ data Interpreter m c = Interpreter
       Set.Set TypeClass
   }
 
-mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c) => Prelude m c -> [CustomType] -> m (Interpreter m c)
+mkInferno :: forall m c. (MonadCatch m, Pretty c) =>Prelude m c -> [CustomType] -> m (Interpreter m c)
 mkInferno prelude@(Prelude {moduleMap}) customTypes = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts

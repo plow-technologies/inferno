@@ -347,7 +347,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           ]
       arbitraryEnum :: (Arbitrary hash, Arbitrary pos) => Gen (Expr hash pos)
       arbitraryEnum = Enum <$> arbitrary <*> arbitrary <*> pure LocalScope <*> arbitrary
-      arbitraryLit :: (Arbitrary hash, Arbitrary pos) => Gen (Expr hash pos)
+      arbitraryLit :: (Arbitrary pos) => Gen (Expr hash pos)
       arbitraryLit = Lit <$> arbitrary <*> arbitrary
 
       arbitraryApp n =
