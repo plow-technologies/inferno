@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -13,22 +14,31 @@ import Data.Aeson
     Value (String),
     withText,
   )
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import Data.Data (Typeable)
 import Data.IP (IPv4)
 import qualified Data.Text as Text
 import Database.PostgreSQL.Simple
-  ( ResultError (ConversionFailed, UnexpectedNull),
+  ( Binary (Binary),
+    ResultError (ConversionFailed, UnexpectedNull),
   )
 import Database.PostgreSQL.Simple.FromField
-  ( FromField (fromField),
+  ( Conversion,
+    Field,
+    FromField (fromField),
     returnError,
   )
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape),
+  ( Action (Escape, EscapeByteA),
     ToField (toField),
   )
 import Foreign.C (CTime (CTime))
-import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Types.VersionControl
+  ( VCObjectHash,
+    byteStringToVCObjectHash,
+    vcObjectHashToByteString,
+  )
 import System.Posix (EpochTime)
 import Text.Read (readMaybe)
 import Web.HttpApiData
@@ -60,11 +70,7 @@ instance ToHttpApiData IPv4 where
   toUrlPiece = Text.pack . show
 
 instance FromField IPv4 where
-  fromField f =
-    maybe (returnError UnexpectedNull f mempty) $
-      maybe (returnError ConversionFailed f mempty) pure
-        . readMaybe @IPv4
-        . ByteString.Char8.unpack
+  fromField = maybeConversion $ readMaybe @IPv4 . ByteString.Char8.unpack
 
 instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
@@ -72,7 +78,19 @@ instance ToField IPv4 where
 deriving anyclass instance NFData IPv4
 
 instance FromField VCObjectHash where
-  fromField = undefined
+  fromField f = \case
+    Nothing -> returnError UnexpectedNull f "Expected non-empty bytea"
+    Just bs ->
+      fromField @(Binary ByteString) f (Just bs) >>= \case
+        Binary b | Just h <- byteStringToVCObjectHash b -> pure h
+        _ -> returnError ConversionFailed f "Invalid hash"
 
 instance ToField VCObjectHash where
-  toField = undefined
+  toField = EscapeByteA . vcObjectHashToByteString
+
+maybeConversion ::
+  Typeable b => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
+maybeConversion f fld =
+  maybe (returnError UnexpectedNull fld mempty) $
+    maybe (returnError ConversionFailed fld mempty) pure
+      . f

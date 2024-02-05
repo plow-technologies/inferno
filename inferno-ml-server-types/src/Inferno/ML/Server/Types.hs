@@ -332,7 +332,7 @@ data InferenceScript uid gid = InferenceScript
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
-    [ s ^. #hash & Aeson & toField,
+    [ s ^. #hash & toField,
       s ^. #obj & Aeson & toField
     ]
 
@@ -347,7 +347,7 @@ instance
   where
   fromRow =
     InferenceScript
-      <$> fmap getAeson field
+      <$> field
       <*> fmap getAeson field
 
 -- Row of the model table, parameterized by the user and group type as well
