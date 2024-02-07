@@ -152,6 +152,11 @@ pinExpr m expr =
         InterpolatedString p1 xs p2 -> do
           xs' <- mapM (\(p3, e, p4) -> (\e' -> (p3, e', p4)) <$> pinExpr m e) xs
           pure $ InterpolatedString p1 xs' p2
+        Record p1 es p2 -> do
+          es' <- mapM (\(f, e, p3) -> (f,,p3) <$> pinExpr m e) es
+          pure $ Record p1 es' p2
+        RecordField p1 r p2 f ->
+          pure $ RecordField p1 r p2 f
         Array p1 es p2 -> do
           es' <- mapM (\(e, p3) -> (,p3) <$> pinExpr m e) es
           pure $ Array p1 es' p2

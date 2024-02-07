@@ -131,6 +131,7 @@ fv (TArray t) = fv t
 fv (TSeries t) = fv t
 fv (TOptional t) = fv t
 fv (TTuple ts) = foldr ((++) . fv) [] ts
+fv (TRecord ts) = foldr ((++) . fv) [] ts
 fv (TRep t) = fv t
 
 normtype :: Map.Map TV TV -> InfernoType -> InfernoType
@@ -140,6 +141,7 @@ normtype ord (TArray a) = TArray $ normtype ord a
 normtype ord (TSeries a) = TSeries $ normtype ord a
 normtype ord (TOptional a) = TOptional $ normtype ord a
 normtype ord (TTuple as) = TTuple $ fmap (normtype ord) as
+normtype ord (TRecord as) = TRecord $ fmap (normtype ord) as
 normtype ord (TRep a) = TRep $ normtype ord a
 normtype ord (TVar a) =
   case Map.lookup a ord of

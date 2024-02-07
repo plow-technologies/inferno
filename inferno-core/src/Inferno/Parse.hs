@@ -215,7 +215,7 @@ enumConstructor =
     <?> "an enum constructor\nfor example: #true, #false"
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
-signedInteger :: Num a => Parser a
+signedInteger :: (Num a) => Parser a
 signedInteger = Lexer.signed (takeWhileP Nothing isHSpace *> pure ()) Lexer.decimal
 
 -- | 'signedInteger' parses a float/double with an optional sign (with no space)
@@ -336,7 +336,7 @@ arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, i
       ifPos <- getSourcePos
       (ifPos,) <$> (rword "if" *> expr)
 
-array :: SomeParser r a -> SomeParser r (SourcePos, [(a, Maybe SourcePos)], SourcePos)
+array :: Parser a -> Parser (SourcePos, [(a, Maybe SourcePos)], SourcePos)
 array p = label "array\nfor example: [1,2,3,4,5]" $
   lexeme $ do
     startPos <- getSourcePos
@@ -359,6 +359,36 @@ array p = label "array\nfor example: [1,2,3,4,5]" $
           ( do
               e1 <- p
               return [(e1, Nothing)]
+          )
+        <|> pure []
+
+record :: Parser a -> Parser (SourcePos, [(Ident, a, Maybe SourcePos)], SourcePos)
+record p = label "record\nfor example: {name: \"Zaphod\", age: 391}" $
+  lexeme $ do
+    startPos <- getSourcePos
+    symbol "{"
+    args <- argsE
+    endPos <- getSourcePos
+    char '}'
+    return (startPos, args, endPos)
+  where
+    argsE =
+      try
+        ( do
+            f <- lexeme $ Ident <$> variable
+            symbol ":"
+            e <- p
+            commaPos <- getSourcePos
+            symbol ","
+            es <- argsE
+            return ((f, e, Just commaPos) : es)
+        )
+        <|> try
+          ( do
+              f <- lexeme $ Ident <$> variable
+              symbol ":"
+              e1 <- p
+              return [(f, e1, Nothing)]
           )
         <|> pure []
 
@@ -647,6 +677,15 @@ bracketedE = do
         [(e, _)] -> Bracketed startPos e endPos
         _ -> Tuple startPos (tListFromList es) endPos
 
+recordFieldE :: Parser (Expr () SourcePos)
+recordFieldE = label "a record field access expression\nfor example: rec.field" $ do
+  startPos <- getSourcePos
+  r <- Ident <$> variable
+  char ':'
+  fieldPos <- getSourcePos
+  f <- lexeme $ Ident <$> variable
+  return $ RecordField startPos r fieldPos f
+
 term :: Parser (Expr () SourcePos)
 term =
   bracketedE
@@ -654,6 +693,7 @@ term =
     <|> try doubleE
     <|> intE
     <|> enumE Enum
+    <|> try recordFieldE -- Try record:field first so that record isn't parsed as Var
     <|> do
       -- Variable: foo or Mod.foo or Mod.(+)
       startPos <- getSourcePos
@@ -687,6 +727,7 @@ term =
     <|> stringE Lit
     <|> interpolatedStringE
     <|> (try (uncurry3 Array <$> array expr))
+    <|> try (uncurry3 Record <$> record expr)
     <|> arrayComprE
 
 app :: Parser (Expr () SourcePos)

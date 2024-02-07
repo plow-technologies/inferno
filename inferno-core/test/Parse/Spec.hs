@@ -165,6 +165,13 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldSucceedFor "[]" $ Array () [] ()
     shouldSucceedFor "[None, None]" $ Array () [(Empty (), Just ()), (Empty (), Nothing)] ()
 
+  describe "parsing records" $ do
+    let r = Record () [(Ident "name", Lit () (LText "Zaphod"), Just ()), (Ident "age", Lit () (LInt 391), Nothing)] ()
+    shouldSucceedFor "{}" $ Record () [] ()
+    shouldSucceedFor "{name: \"Zaphod\", age: 391}" $ r
+    shouldSucceedFor "let r = {name: \"Zaphod\", age: 391} in r:age" $
+      Let () () (Expl $ ExtIdent $ Right "r") () r () (RecordField () (Ident "r") () (Ident "age"))
+
   describe "parsing infix operators" $ do
     shouldSucceedFor "2*3+7/2" $
       Op

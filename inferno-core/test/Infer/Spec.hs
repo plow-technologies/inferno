@@ -21,7 +21,7 @@ import Inferno.Infer.Exhaustiveness
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
+import Inferno.Types.Syntax (ExtIdent (..), Ident (..), typeText)
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe, shouldNotBe)
@@ -123,6 +123,14 @@ inferTests = describe "infer" $
     -- this should fail because it parses '-' as infix
     shouldFailToInferTypeFor "round -1425"
     shouldInferTypeFor "round (-1425)" $ simpleType typeInt
+
+    -- Records:
+    shouldInferTypeFor "{}" $ simpleType $ TRecord Map.empty
+    shouldInferTypeFor "{name: \"Zaphod\", age: 391.4}" $ simpleType $ TRecord $ Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]
+    shouldInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in r:age" $ simpleType typeDouble
+    shouldInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in let f = fun r -> r:age in f r + 1" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in r:age + \" is too old\""
+    -- TODO try in functions
 
     -- Type annotations:
     shouldInferTypeFor "let xBoo : double = 1 in truncateTo 2 xBoo" $ simpleType typeDouble

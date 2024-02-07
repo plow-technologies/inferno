@@ -597,6 +597,42 @@ infer expr =
                   )
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) is
           return (InterpolatedString p1 (fromEitherList xs') p2, ImplType isMerged typeText, Set.unions css `Set.union` Set.fromList ics)
+        Record p1 fes p2 -> do
+          let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
+          (es', impls, tys, cs) <- go es
+          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
+          let inferredTy = ImplType isMerged $ TRecord $ Map.fromList $ zip fs tys
+          let fes' = zipWith (\f (e, p) -> (f, e, p)) fs es'
+
+          attachTypeToPosition
+            exprLoc
+            TypeMetadata
+              { identExpr = bimap (const ()) (const ()) $ removeComments expr,
+                ty = (Set.empty, inferredTy),
+                docs = Nothing
+              }
+          return
+            ( Record p1 fes' p2,
+              inferredTy,
+              Set.fromList ics `Set.union` cs
+            )
+          where
+            go [] = return ([], [], [], Set.empty)
+            go ((e', p3) : es') = do
+              (e'', ImplType i t, cs) <- infer e'
+              (es'', impls, tRest, csRest) <- go es'
+              return ((e'', p3) : es'', i : impls, t : tRest, cs `Set.union` csRest)
+        RecordField p_r (Ident r) p_f (Ident f) -> do
+          (_e', ImplType i_r t_r, cs_r) <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right r
+          case t_r of
+            TRecord tys ->
+              case Map.lookup (Ident f) tys of
+                Just t ->
+                  return (expr, ImplType i_r t, cs_r)
+                Nothing -> error $ "Record does not have field " <> Text.unpack f -- TODO proper Error message here?
+            _ ->
+              -- TODO if we want to support this, we need a way of adding a IsRecordWithField constraint to solver here
+              error "Record field access on non-record typed variable"
         Array _ [] _ -> do
           tv <- fresh
           let meta =
@@ -1271,7 +1307,7 @@ pick = state $ \st@(current, marked) ->
 --   We then filter out any fully resolved classes in the marked set only!! to avoid extra unnecessary steps.
 --   (Filtering the unprocessed, i.e. current classes may lead to subtle bugs if the class is fully instantiated but
 --   is not in fact an instance found in `allClasses`)
-applySubsts :: Ord loc => Subst -> SolveState (Set.Set (loc, TypeClass), Set.Set (loc, TypeClass)) ()
+applySubsts :: (Ord loc) => Subst -> SolveState (Set.Set (loc, TypeClass), Set.Set (loc, TypeClass)) ()
 applySubsts su = state $ \(current, marked) ->
   (\(c, m) -> ((), (c, filterFullyInstantiated m))) $
     foldr
@@ -1495,5 +1531,5 @@ bind err a t
   | occursCheck a t = throwError [InfiniteType a t loc | loc <- (getLocFromErrs err)]
   | otherwise = return (Subst $ Map.singleton a t)
 
-occursCheck :: Substitutable a => TV -> a -> Bool
+occursCheck :: (Substitutable a) => TV -> a -> Bool
 occursCheck a t = a `Set.member` ftv t
