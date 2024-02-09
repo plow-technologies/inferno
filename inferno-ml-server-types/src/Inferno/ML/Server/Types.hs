@@ -82,7 +82,7 @@ import URI.ByteString (Absolute, URIRef)
 import URI.ByteString.Aeson ()
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
-type InfernoMlServerAPI uid gid p =
+type InfernoMlServerAPI uid gid p s =
   -- Check if the server is up and if any job is currently running:
   --
   --  * `Nothing` -> The server is evaluating a script
@@ -118,7 +118,7 @@ type InfernoMlServerAPI uid gid p =
     -- `Scientific`s will already take place, it is more convenient to explicitly
     -- return this
     :<|> "inference"
-      :> Capture "id" (Id (InferenceParam uid gid p))
+      :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
       :> StreamPost NewlineFraming JSON (TStream Scientific IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
@@ -645,19 +645,39 @@ showVersion (Version ns ts) =
       bool ("-" <> Text.intercalate "-" ts) mempty $ null ts
     ]
 
--- | Row of the inference parameter table, parameterized by the user type
-data InferenceParam uid gid p = InferenceParam
-  { id :: Maybe (Id (InferenceParam uid gid p)),
-    -- This is the foreign key for the specific script in the
-    -- `InferenceScript` table
-    script :: VCObjectHash,
+-- | Row of the inference parameter table, parameterized by the user, group, and
+-- script type
+data InferenceParam uid gid p s = InferenceParam
+  { id :: Maybe (Id (InferenceParam uid gid p s)),
+    -- The script of the parameter
+    --
+    -- For new parameters, this will be text
+    --
+    -- For existing inference params, this is the foreign key for the specific
+    -- script in the `InferenceScript` table
+    script :: s,
     model :: Id (Model uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromRow, ToRow, NFData)
+  deriving anyclass (NFData)
+
+-- We only want instances if the `script` is a `VCObjectHash`
+
+deriving anyclass instance
+  ( FromJSON p,
+    Typeable p,
+    FromField uid
+  ) =>
+  FromRow (InferenceParam uid gid p VCObjectHash)
+
+deriving anyclass instance
+  ( ToJSON p,
+    ToField uid
+  ) =>
+  ToRow (InferenceParam uid gid p VCObjectHash)
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
