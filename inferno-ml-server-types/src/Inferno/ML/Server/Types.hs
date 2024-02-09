@@ -51,7 +51,7 @@ import Database.PostgreSQL.Simple.FromRow (FromRow (fromRow), field)
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
 import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson), getAeson)
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape),
+  ( Action (Escape, EscapeIdentifier),
     ToField (toField),
   )
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
@@ -412,7 +412,7 @@ instance
   -- NOTE
   -- Order of fields must align exactly with DB schema
   toRow m =
-    [ m ^. #id & toField,
+    [ EscapeIdentifier "DEFAULT",
       m ^. #name & toField,
       m ^. #contents & toField,
       m ^. #version & toField,
@@ -673,11 +673,21 @@ deriving anyclass instance
   ) =>
   FromRow (InferenceParam uid gid p VCObjectHash)
 
-deriving anyclass instance
+instance
   ( ToJSON p,
     ToField uid
   ) =>
   ToRow (InferenceParam uid gid p VCObjectHash)
+  where
+  -- NOTE: Do not change the order of the field actions
+  toRow ip =
+    [ EscapeIdentifier "DEFAULT",
+      ip ^. #script & toField,
+      ip ^. #model & toField,
+      ip ^. #inputs & toField,
+      ip ^. #outputs & toField,
+      ip ^. #user & toField
+    ]
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
