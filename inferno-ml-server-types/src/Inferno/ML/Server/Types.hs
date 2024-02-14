@@ -51,10 +51,11 @@ import Database.PostgreSQL.Simple.FromRow (FromRow (fromRow), field)
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
 import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson), getAeson)
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape, EscapeIdentifier),
+  ( Action (Escape),
     ToField (toField),
   )
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
+import Database.PostgreSQL.Simple.Types (Default (Default))
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
@@ -412,7 +413,7 @@ instance
   -- NOTE
   -- Order of fields must align exactly with DB schema
   toRow m =
-    [ EscapeIdentifier "DEFAULT",
+    [ toField Default,
       m ^. #name & toField,
       m ^. #contents & toField,
       m ^. #version & toField,
@@ -681,7 +682,7 @@ instance
   where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
-    [ EscapeIdentifier "DEFAULT",
+    [ toField Default,
       ip ^. #script & toField,
       ip ^. #model & toField,
       ip ^. #inputs & toField,
