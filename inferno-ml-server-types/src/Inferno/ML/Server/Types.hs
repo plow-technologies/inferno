@@ -9,7 +9,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
@@ -437,12 +436,18 @@ instance
       -- (this assumes that a serialized model always refers to one that exists
       -- in the DB already)
       <$> fmap Just (o .: "id")
-      <*> o .: "name"
+      <*> (ensureNotNull =<< o .: "name")
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
       <*> o .: "card"
       <*> o .: "permissions"
       <*> o .:? "user"
+    where
+      ensureNotNull :: Text -> Parser Text
+      ensureNotNull
+        t
+          | Text.null t = fail "Field cannot be empty"
+          | otherwise = pure t
 {- ORMOLU_ENABLE -}
 
 instance
@@ -498,7 +503,7 @@ data ModelCard = ModelCard
 
 data ModelDescription = ModelDescription
   { -- | General summary of model, cannot be empty
-    summary :: NotNull Text,
+    summary :: Text,
     -- | How the model is intended to be used
     uses :: Text,
     -- | Applicable limitations, risks, biases, etc...
@@ -558,29 +563,6 @@ instance ToJSON ModelMetadata where
         { fieldLabelModifier = camelTo2 '_',
           omitNothingFields = True
         }
-
-newtype NotNull a = NotNull a
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
-
-instance FromJSON (NotNull Text) where
-  parseJSON = withText "NotNull Text" $ \case
-    t
-      | Text.null t -> fail "Text cannot be empty"
-      | otherwise -> pure $ NotNull t
-
-deriving newtype instance ToJSON (NotNull Text)
-
-instance FromField (NotNull Text) where
-  fromField f =
-    maybe (returnError UnexpectedNull f mempty) $
-      Text.Encoding.decodeUtf8 >>> \case
-        t
-          | Text.null t ->
-              returnError ConversionFailed f "Expected non-empty text"
-          | otherwise -> pure $ NotNull t
-
-deriving newtype instance ToField (NotNull Text)
 
 -- | Similar to the @Version@ type from base, but allows for a leading @v@ and
 -- guarantees that there is at least one digit. Digits must be separated by @.@;
