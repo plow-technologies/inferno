@@ -667,12 +667,24 @@ data InferenceParam uid gid p s = InferenceParam
 
 -- We only want instances if the `script` is a `VCObjectHash`
 
-deriving anyclass instance
+instance
   ( FromJSON p,
     Typeable p,
     FromField uid
   ) =>
   FromRow (InferenceParam uid gid p VCObjectHash)
+  where
+  fromRow =
+    InferenceParam
+      <$> field
+      <*> field
+      <*> field
+      -- HACK / FIXME This is a pretty awful hack (storing as `jsonb`),
+      -- but Postgres sub-arrays need to be the same length and writing
+      -- a custom parser might be painful
+      <*> fmap getAeson field
+      <*> fmap getAeson field
+      <*> field
 
 instance
   ( ToJSON p,
@@ -685,8 +697,9 @@ instance
     [ toField Default,
       ip ^. #script & toField,
       ip ^. #model & toField,
-      ip ^. #inputs & toField,
-      ip ^. #outputs & toField,
+      -- HACK / FIXME See above
+      ip ^. #inputs & Aeson & toField,
+      ip ^. #outputs & Aeson & toField,
       ip ^. #user & toField
     ]
 
@@ -740,9 +753,6 @@ data SingleOrMany a
   | Many (Vector a)
   deriving stock (Show, Eq, Generic, Functor)
   deriving anyclass (NFData)
-  -- FIXME This is a pretty awful hack, but Postgres sub-arrays need to be
-  -- the same length and writing a custom parser might be painful
-  deriving (FromField, ToField) via Aeson (SingleOrMany a)
 
 instance FromJSON a => FromJSON (SingleOrMany a) where
   parseJSON v =
