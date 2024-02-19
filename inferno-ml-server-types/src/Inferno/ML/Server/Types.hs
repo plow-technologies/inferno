@@ -23,7 +23,6 @@ import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
-import Data.Char (toLower)
 import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
@@ -34,7 +33,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
-import Data.Scientific (Scientific, toRealFloat)
+import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
@@ -90,37 +89,11 @@ type InfernoMlServerAPI uid gid p s =
   --
   -- This can be implemented using an `MVar ()`
   "status" :> Get '[JSON] (Maybe ())
-    -- Evaluate an inference script. The script must evaluate to a tensor, which
-    -- will then be converted to an array, which will subsequently be streamed in chunks
-    --
-    -- NOTE: The endpoint streams back individual chunks of the list with the same
-    -- number of dimensions as the converted tensor. The resulting lists can then be
-    -- concatenated to recover the original list
-    --
-    -- For example, the following output tensor
-    --
-    -- `[ [ 0.0, 0.0, ...], [ 0.0, 0.0, ...], ...]`
-    --
-    -- will be converted to
-    --
-    -- `Twos @Float [ [ 0.0, 0.0, ...], [ 0.0, 0.0, ...], ...]`
-    --
-    -- and then streamed back in the conduit as individual chunks of `Twos`, e.g.
-    --
-    -- `Twos @Float [ [ 0.0, 0.0, ...] ]`
-    --
-    -- `sinkList` or similar can be used to collect all of the individual chunks,
-    --  which, when concatenated, will evaluate to the converted tensor
-    --
-    -- NOTE: Each output tensor is converted to a list of `Scientific`. This is
-    -- to avoid dealing with any variables in the API type, or existentials, etc...
-    -- Since the output will be serialized as JSON anyway, where conversion to
-    -- `Scientific`s will already take place, it is more convenient to explicitly
-    -- return this
+    -- Evaluate an inference script
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
-      :> StreamPost NewlineFraming JSON (TStream Scientific IO)
+      :> Post '[JSON] ()
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
@@ -128,23 +101,23 @@ type InfernoMlServerAPI uid gid p s =
     -- Check for bridge registration
     :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
--- Stream of tensor elements
-type TStream a m = ConduitT () (AsValue a) m ()
-
 -- A bridge to get data for use with Inferno scripts. This is implemented by
 -- the bridge, not by `inferno-ml-server`
 type BridgeAPI p t =
-  "bridge"
-    :> "value-at"
-    :> QueryParam' '[Required] "res" Int64
-    :> QueryParam' '[Required] "p" p
-    :> QueryParam' '[Required] "time" t
-    :> Get '[JSON] IValue
+  "bridge" :> "write" :> Capture "p" p :> StreamPost NewlineFraming JSON (WriteStream t IO)
+    :<|> "bridge"
+      :> "value-at"
+      :> QueryParam' '[Required] "res" Int64
+      :> QueryParam' '[Required] "p" p
+      :> QueryParam' '[Required] "time" t
+      :> Get '[JSON] IValue
     :<|> "bridge"
       :> "latest-value-and-time-before"
       :> QueryParam' '[Required] "time" t
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
+
+type WriteStream t m = ConduitT () (t, Double) m ()
 
 data BridgeInfo = BridgeInfo
   { host :: IPv4,
@@ -152,159 +125,6 @@ data BridgeInfo = BridgeInfo
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
-
--- | Convenience type for dealing with 'AsValue's, rather than pattern matching
--- on the @dtype@ inside the 'AsValue', as well as allowing different numerical
--- representations inside the same type
-data AsValueTyped
-  = Floats (AsValue Float)
-  | Doubles (AsValue Double)
-  | Int64s (AsValue Int64)
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
-
-toAsValueTyped :: AsValue Scientific -> AsValueTyped
-toAsValueTyped (AsValue dt xs) = case dt of
-  Float -> Floats . AsValue dt $ toRealFloat <$> xs
-  Double -> Doubles . AsValue dt $ toRealFloat <$> xs
-  -- NOTE: As long as the `AsValue` is only obtained from the streaming endpoint
-  -- above, using `round` should be fine (since the `Scientific` was originally
-  -- an `Int64` anyway). Using `round` avoids the `Maybe` context of other ways of
-  -- converting from a `Scientific` to an integral type
-  Int64 -> Int64s . AsValue dt $ round <$> xs
-
-instance ToJSON AsValueTyped where
-  toJSON = \case
-    Floats xs -> mkObj Float xs
-    Doubles xs -> mkObj Double xs
-    Int64s xs -> mkObj Int64 xs
-    where
-      mkObj :: ToJSON a => DType -> AsValue a -> Value
-      mkObj t xs =
-        object
-          [ "dtype" .= t,
-            "value" .= xs
-          ]
-
-instance FromJSON AsValueTyped where
-  parseJSON = withObject "AsValueTyped" $ \o ->
-    o .: "dtype" >>= \case
-      Float -> Floats <$> o .: "value"
-      Double -> Doubles <$> o .: "value"
-      Int64 -> Int64s <$> o .: "value"
-
--- | A converted output tensor, tagged with its 'DType' and holding a list ('Dims')
--- representing the original tensor. Using this representation keeps track of both
--- the number of dimensions and the datatype, which must be retained when serializing
--- the list
-data AsValue a = AsValue
-  { dtype :: DType,
-    values :: Dims a
-  }
-  deriving stock (Show, Eq, Generic, Functor)
-  deriving anyclass (FromJSON, NFData)
-
-instance ToJSON a => ToJSON (AsValue a) where
-  -- NOTE: See the note on the `ToJSON` instance for `Dims` below
-  toEncoding (AsValue dt xs) =
-    pairs $
-      mconcat
-        [ "dtype" .= dt,
-          "values" .= xs
-        ]
-
-catAsValues :: AsValue a -> AsValue a -> Maybe (AsValue a)
-catAsValues (AsValue dt1 x) (AsValue dt2 y)
-  | dt1 == dt2 = case (x, y) of
-      (Ones xs, Ones ys) -> Just . AsValue dt1 . Ones $ xs <> ys
-      (Twos xs, Twos ys) -> Just . AsValue dt1 . Twos $ xs <> ys
-      (Threes xs, Threes ys) -> Just . AsValue dt1 . Threes $ xs <> ys
-      (Fours xs, Fours ys) -> Just . AsValue dt1 . Fours $ xs <> ys
-      _ -> Nothing
-  | otherwise = Nothing
-
--- | The actual converted output tensor (i.e. from @Torch.asValue@), up to a fixed
--- number of dimensions
-data Dims a
-  = Ones [a]
-  | Twos [[a]]
-  | Threes [[[a]]]
-  | Fours [[[[a]]]]
-  deriving stock (Show, Eq, Generic, Functor)
-  deriving anyclass (NFData)
-
-instance FromJSON a => FromJSON (Dims a) where
-  parseJSON = withArray "Dims" $ \a ->
-    asum
-      [ Ones <$> parseJSON (Array a),
-        Twos <$> parseJSON (Array a),
-        Threes <$> parseJSON (Array a),
-        Fours <$> parseJSON (Array a)
-      ]
-
-instance ToJSON a => ToJSON (Dims a) where
-  -- NOTE
-  -- `toEncoding` must be used to retain the correct serialized representation of
-  -- numeric values. For example, `toJSON @Float 0.0 = "0"`, but
-  -- `toEncoding @Float 0.0 = "0.0"`. There may be decoding issues later
-  -- if this is not done
-  toEncoding = \case
-    Ones xs -> toEncoding xs
-    Twos xs -> toEncoding xs
-    Threes xs -> toEncoding xs
-    Fours xs -> toEncoding xs
-
-  toJSON = \case
-    Ones xs -> toJSON xs
-    Twos xs -> toJSON xs
-    Threes xs -> toJSON xs
-    Fours xs -> toJSON xs
-
--- | Supported tensor datatypes.
-data DType
-  = Int64
-  | Float
-  | Double
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
-
-instance FromJSON DType where
-  parseJSON = withText "DType" $ \case
-    "int" -> pure Int64
-    "float" -> pure Float
-    "double" -> pure Double
-    d -> fail $ unwords ["Invalid dtype:", show d]
-
-instance ToJSON DType where
-  toJSON =
-    String . \case
-      Int64 -> "int"
-      dt -> Text.pack $ toLower <$> show dt
-
--- | Tensor dimension
-data Dim
-  = One
-  | Two
-  | Three
-  | Four
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData)
-
-instance FromJSON Dim where
-  parseJSON = withScientific "Dim" $ \case
-    1 -> pure One
-    2 -> pure Two
-    3 -> pure Three
-    4 -> pure Four
-    n -> fail $ unwords ["Dim out of range:", show n]
-
-instance ToJSON Dim where
-  toJSON =
-    Number . \case
-      One -> 1
-      Two -> 2
-      Three -> 3
-      Four -> 4
 
 -- | The ID of a database entity
 newtype Id a = Id Int64

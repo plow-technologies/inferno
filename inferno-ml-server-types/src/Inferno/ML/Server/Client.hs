@@ -12,16 +12,12 @@ where
 
 import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
-import Data.Scientific (Scientific)
 import Inferno.ML.Server.Types
 import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
 statusC :: ClientM (Maybe ())
-inferenceC ::
-  Id (InferenceParam uid gid p s) ->
-  Maybe Int64 ->
-  ClientM (TStream Scientific IO)
+inferenceC :: Id (InferenceParam uid gid p s) -> Maybe Int64 -> ClientM ()
 cancelC :: ClientM ()
 registerBridgeC :: BridgeInfo -> ClientM ()
 checkBridgeC :: ClientM (Maybe BridgeInfo)
