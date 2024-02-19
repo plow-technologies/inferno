@@ -15,12 +15,12 @@ import Test.Hspec
 main :: IO ()
 main =
   withSystemTempDirectory "vc_store_" $ \vcPath -> do
-    putStrLn $ "Store is at: " ++ (show vcPath)
-
+    putStrLn $ "Store is at: " ++ show vcPath
     putStr "Starting Inferno VC..."
     _ <-
       forkIO $
         runServerConfig
+          id
           FSOps.withEnv
           (FSOps.runInfernoVCFilesystemM @Int @Int)
           ServerConfig

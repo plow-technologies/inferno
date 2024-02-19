@@ -49,6 +49,7 @@ import Inferno.VersionControl.Types
     VCObjectHash,
     showVCObjectType,
   )
+import Network.Wai (Middleware)
 import Network.Wai.Handler.Warp
   ( defaultSettings,
     runSettings,
@@ -140,7 +141,7 @@ runServer ::
 runServer withEnv runOp = do
   readServerConfig "config.yml" >>= \case
     Left err -> putStrLn err
-    Right serverConfig -> runServerConfig withEnv runOp serverConfig
+    Right serverConfig -> runServerConfig id withEnv runOp serverConfig
 
 runServerConfig ::
   forall m env config.
@@ -154,11 +155,12 @@ runServerConfig ::
     ToJSON (Ops.Group m),
     Ops.InfernoVCOperations VCServerError m
   ) =>
+  Middleware ->
   (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   config ->
   IO ()
-runServerConfig withEnv runOp serverConfig = do
+runServerConfig middleware withEnv runOp serverConfig = do
   let host = serverConfig ^. the @"serverHost" . to T.unpack . to fromString
       port = serverConfig ^. the @"serverPort"
       settingsWithTimeout = setTimeout 300 defaultSettings
@@ -182,8 +184,9 @@ runServerConfig withEnv runOp serverConfig = do
       runSettings (setPort port $ setHost host settingsWithTimeout) $
         ungzipRequest $
           gzip def $
-            serve (Proxy :: Proxy (VersionControlAPI a g)) $
-              vcServer (liftIO . liftTypedError . flip runOp env)
+            middleware $
+              serve (Proxy :: Proxy (VersionControlAPI a g)) $
+                vcServer (liftIO . liftTypedError . flip runOp env)
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g
