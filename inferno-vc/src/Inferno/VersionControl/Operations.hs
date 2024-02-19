@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
@@ -7,15 +8,18 @@
 -- This module defines operations on the Inferno VC store.
 module Inferno.VersionControl.Operations
   ( InfernoVCOperations (..),
+    throwTyped
   )
 where
 
 import Control.Monad.Except (MonadError)
-import Data.Generics.Sum (AsType)
+import Data.Generics.Sum (AsType(..))
 import Data.Kind (Type)
 import qualified Data.Set as Set
+import Control.Monad.Error.Lens (throwing)
 import Data.Time.Clock.POSIX (POSIXTime)
 import Inferno.VersionControl.Operations.Error (VCStoreError)
+import Inferno.Types.Syntax (getDependencies)
 import Inferno.VersionControl.Types
   ( VCHashUpdate,
     VCMeta (..),
@@ -61,6 +65,11 @@ class
 
   -- | Fetch all dependencies of an object.
   fetchVCObjectClosureHashes :: VCObjectHash -> m [VCObjectHash]
+  fetchVCObjectClosureHashes h0 = fmap (Set.toList . Set.delete h0) . go $ h0
+    where
+      go h = do
+        o <- fetchVCObject h
+        mconcat . (Set.singleton h :) <$> mapM go (Set.toList (getDependencies (obj o)))
 
   -- | Retrieves the full history of the chain which the given hash belongs to.
   -- History is given from newest (head) to oldest (root)
@@ -75,3 +84,6 @@ class
 
   -- | Delete all auto-saved objects older than a given time
   deleteAutosavedVCObjectsOlderThan :: POSIXTime -> m ()
+
+throwTyped :: forall e err m x. (MonadError err m, AsType e err) => e -> m x
+throwTyped = throwing _Typed

@@ -36,7 +36,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
+import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError, ThrownVCOtherError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (readServerConfig)
@@ -68,9 +68,11 @@ import Servant.Typed.Error
     liftTypedError,
   )
 
-newtype VCServerError = VCServerError {serverError :: Ops.VCStoreError}
+data VCServerError
+  = VCServerError { serverError :: Ops.VCStoreError }
+  | VCOtherError { otherError :: T.Text }
   deriving (Generic, Show)
-  deriving newtype (ToJSON, FromJSON)
+  deriving anyclass (ToJSON, FromJSON)
 
 type GetThrowingVCStoreError resp ty = GetTypedError resp ty VCServerError
 
@@ -170,6 +172,8 @@ runServerConfig withEnv runOp serverConfig = do
           runExceptT (runOp (Ops.deleteAutosavedVCObjectsOlderThan cutoff) env) >>= \case
             Left (VCServerError {serverError}) ->
               traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
+            Left (VCOtherError {otherError}) ->
+              traceWith @IOTracer serverTracer (ThrownVCOtherError otherError)
             Right _ -> pure ()
     print ("running..." :: String)
     -- Cleanup stale autosave scripts in a separate thread every hour:
