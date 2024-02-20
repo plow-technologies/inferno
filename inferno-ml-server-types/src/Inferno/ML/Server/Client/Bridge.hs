@@ -4,7 +4,7 @@
 
 module Inferno.ML.Server.Client.Bridge where
 
-import Data.Aeson (FromJSON)
+import Data.Aeson (ToJSON)
 import Data.Data (Proxy (Proxy))
 import Data.Int (Int64)
 import Inferno.ML.Server.Types
@@ -12,8 +12,16 @@ import Servant ((:<|>) (..))
 import Servant.Client.Streaming (ClientM, client)
 import Web.HttpApiData (ToHttpApiData)
 
+writePairsC ::
+  ( ToJSON t,
+    ToHttpApiData p,
+    ToHttpApiData t
+  ) =>
+  p ->
+  PairStream t IO ->
+  ClientM ()
 valueAtC ::
-  ( FromJSON t,
+  ( ToJSON t,
     ToHttpApiData p,
     ToHttpApiData t
   ) =>
@@ -22,20 +30,13 @@ valueAtC ::
   t ->
   ClientM IValue
 latestValueAndTimeBeforeC ::
-  ( FromJSON t,
+  ( ToJSON t,
     ToHttpApiData p,
     ToHttpApiData t
   ) =>
   t ->
   p ->
   ClientM IValue
-writePairsC ::
-  ( FromJSON t,
-    ToHttpApiData p,
-    ToHttpApiData t
-  ) =>
-  p ->
-  ClientM (PairStream t IO)
 writePairsC
   :<|> valueAtC
   :<|> latestValueAndTimeBeforeC =

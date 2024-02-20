@@ -71,7 +71,7 @@ import Servant
     QueryParam',
     ReqBody,
     Required,
-    StreamPost,
+    StreamBody,
     (:<|>),
     (:>),
   )
@@ -108,7 +108,8 @@ type BridgeAPI p t =
     :> "write"
     :> "pairs"
     :> Capture "p" p
-    :> StreamPost NewlineFraming JSON (PairStream t IO)
+    :> StreamBody NewlineFraming JSON (PairStream t IO)
+    :> Post '[JSON] ()
     :<|> "bridge"
       :> "value-at"
       :> QueryParam' '[Required] "res" Int64
