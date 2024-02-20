@@ -29,14 +29,14 @@ latestValueAndTimeBeforeC ::
   t ->
   p ->
   ClientM IValue
-writeC ::
+writePairsC ::
   ( FromJSON t,
     ToHttpApiData p,
     ToHttpApiData t
   ) =>
   p ->
-  ClientM (WriteStream t IO)
-writeC
+  ClientM (PairStream t IO)
+writePairsC
   :<|> valueAtC
   :<|> latestValueAndTimeBeforeC =
     client api

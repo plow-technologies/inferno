@@ -104,7 +104,11 @@ type InfernoMlServerAPI uid gid p s =
 -- A bridge to get data for use with Inferno scripts. This is implemented by
 -- the bridge, not by `inferno-ml-server`
 type BridgeAPI p t =
-  "bridge" :> "write" :> Capture "p" p :> StreamPost NewlineFraming JSON (WriteStream t IO)
+  "bridge"
+    :> "write"
+    :> "pairs"
+    :> Capture "p" p
+    :> StreamPost NewlineFraming JSON (PairStream t IO)
     :<|> "bridge"
       :> "value-at"
       :> QueryParam' '[Required] "res" Int64
@@ -117,7 +121,7 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
 
-type WriteStream t m = ConduitT () (t, Double) m ()
+type PairStream t m = ConduitT () (t, Double) m ()
 
 data BridgeInfo = BridgeInfo
   { host :: IPv4,
