@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -20,6 +19,7 @@ where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
+import Control.Exception (Exception)
 import Control.Lens (to, (^.))
 import Control.Monad (forM, forever)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -36,7 +36,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError, ThrownVCOtherError), vcServerTraceToText)
+import Inferno.VersionControl.Log (VCServerTrace (ThrownVCOtherError, ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (readServerConfig)
@@ -70,10 +70,10 @@ import Servant.Typed.Error
   )
 
 data VCServerError
-  = VCServerError { serverError :: Ops.VCStoreError }
-  | VCOtherError { otherError :: T.Text }
+  = VCServerError {serverError :: Ops.VCStoreError}
+  | VCOtherError {otherError :: T.Text}
   deriving (Generic, Show)
-  deriving anyclass (ToJSON, FromJSON)
+  deriving anyclass (ToJSON, FromJSON, Exception)
 
 type GetThrowingVCStoreError resp ty = GetTypedError resp ty VCServerError
 

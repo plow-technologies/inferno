@@ -1,7 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
 
 module Inferno.VersionControl.Client where
 
@@ -42,7 +40,7 @@ mkVCClientEnv man@Manager {mModifyRequest = modReq} baseUrl =
       RequestBodyIO iob -> RequestBodyIO $ compressBody <$> iob
       b -> b
 
-api :: Proxy (VersionControlAPI a g)
+api :: forall a g. Proxy (VersionControlAPI a g)
 api = Proxy
 
 infernoVcClient :: (FromJSON a, FromJSON g, ToJSON a, ToJSON g) => Client ClientM (VersionControlAPI a g)
