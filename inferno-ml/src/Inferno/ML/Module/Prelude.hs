@@ -7,6 +7,7 @@ module Inferno.ML.Module.Prelude (mlPrelude) where
 
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Functor ((<&>))
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
@@ -76,6 +77,14 @@ asTensorFun funName _proxy =
         xs :: a <- fromValue v
         pure $ VCustom $ VTensor $ toType dType $ asTensor xs
     _ -> throwM $ RuntimeError $ funName ++ ": expecting a dtype enum"
+
+toTypeFun :: forall m x. (Pretty x, MonadThrow m) => Value (MlValue x) m
+toTypeFun =
+  VFun $ \case
+    VEnum _ e ->
+      getDtype "toType" e <&> \dt ->
+        VFun $ fmap (VCustom . VTensor . toType dt) . fromValue
+    _ -> throwM . RuntimeError $ "toType : expecting a dtype enum"
 
 asTensor0Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor0Fun = asTensorFun "asTensor0" (Proxy :: Proxy Double)
@@ -179,6 +188,8 @@ module ML
   ones : dtype{#int, #float, #double} -> array of int -> tensor := ###!onesFun###;
 
   add : tensor -> tensor -> tensor := ###add###;
+
+  toType : dtype{#int, #float, #double} -> tensor -> tensor := ###!toTypeFun###;
 
   asTensor0 : dtype{#int, #float, #double} -> double -> tensor := ###!asTensor0Fun###;
 

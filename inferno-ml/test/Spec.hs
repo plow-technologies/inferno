@@ -76,6 +76,9 @@ evalTests = describe "evaluate" $
         VTensor $
           T.toType TD.Float $
             T.asTensor [[1, 2, 4 :: Double]]
+    shouldEvaluateTo "open ML in toType #float (asTensor1 #int [1, 2, 4])" $
+      VCustom . VTensor . T.toType TD.Float $
+        T.asTensor [1, 2, 4 :: Double]
     shouldFailToInferTypeFor "open ML in asTensor4 #float [[1, 2, 4]]"
     shouldEvaluateTo "open ML in asDouble (sumAll (ones #int [2, 4]))" $ VDouble 8.0
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])
