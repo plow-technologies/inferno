@@ -14,14 +14,12 @@ import Data.Aeson
     Value (String),
     withText,
   )
-import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.IP (IPv4)
 import qualified Data.Text as Text
 import Database.PostgreSQL.Simple
-  ( Binary (Binary),
-    ResultError (ConversionFailed, UnexpectedNull),
+  ( ResultError (ConversionFailed, UnexpectedNull),
   )
 import Database.PostgreSQL.Simple.FromField
   ( Conversion,
@@ -30,15 +28,10 @@ import Database.PostgreSQL.Simple.FromField
     returnError,
   )
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape, EscapeByteA),
+  ( Action (Escape),
     ToField (toField),
   )
 import Foreign.C (CTime (CTime))
-import Inferno.Types.VersionControl
-  ( VCObjectHash,
-    byteStringToVCObjectHash,
-    vcObjectHashToByteString,
-  )
 import System.Posix (EpochTime)
 import Text.Read (readMaybe)
 import Web.HttpApiData
@@ -76,17 +69,6 @@ instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
 
 deriving anyclass instance NFData IPv4
-
-instance FromField VCObjectHash where
-  fromField f = \case
-    Nothing -> returnError UnexpectedNull f "Expected non-empty bytea"
-    Just bs ->
-      fromField @(Binary ByteString) f (Just bs) >>= \case
-        Binary b | Just h <- byteStringToVCObjectHash b -> pure h
-        _ -> returnError ConversionFailed f "Invalid hash"
-
-instance ToField VCObjectHash where
-  toField = EscapeByteA . vcObjectHashToByteString
 
 maybeConversion ::
   Typeable b => (a -> Maybe b) -> Field -> Maybe a -> Conversion b

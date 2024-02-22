@@ -7,7 +7,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
@@ -23,9 +22,10 @@ import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
+import Data.ByteString (ByteString)
 import Data.Data (Typeable)
-import Data.Generics.Labels ()
-import Data.Generics.Product (HasType (typed))
+import Data.Generics.Product (HasType (typed), the)
+import Data.Generics.Wrapped (wrappedTo)
 import Data.IP (IPv4)
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
@@ -49,15 +49,22 @@ import Database.PostgreSQL.Simple.FromRow (FromRow (fromRow), field)
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
 import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson), getAeson)
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape),
+  ( Action (Escape, EscapeByteA),
     ToField (toField),
   )
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
-import Database.PostgreSQL.Simple.Types (Default (Default))
+import Database.PostgreSQL.Simple.Types
+  ( Binary (Binary),
+    Default (Default),
+  )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types.Orphans ()
-import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Types.VersionControl
+  ( VCObjectHash,
+    byteStringToVCObjectHash,
+    vcObjectHashToByteString,
+  )
 import Inferno.VersionControl.Types (VCMeta, VCObject)
 import Lens.Micro.Platform hiding ((.=))
 import Servant
@@ -153,12 +160,31 @@ data InferenceScript uid gid = InferenceScript
   }
   deriving stock (Show, Eq, Generic)
 
+-- Newtype just for `FromRow`/`ToRow` instances. It would be possible to just
+-- add the instances to `inferno-types`, but then there would be a dependency
+-- on `postgresql-simple`
+newtype VCObjectHashRow = VCObjectHashRow VCObjectHash
+  deriving stock (Generic)
+
+instance FromField VCObjectHashRow where
+  fromField f = \case
+    Nothing -> returnError UnexpectedNull f "Expected non-empty bytea"
+    Just bs ->
+      fromField @(Binary ByteString) f (Just bs) >>= \case
+        Binary b
+          | Just h <- byteStringToVCObjectHash b ->
+              pure $ VCObjectHashRow h
+        _ -> returnError ConversionFailed f "Invalid hash"
+
+instance ToField VCObjectHashRow where
+  toField = EscapeByteA . vcObjectHashToByteString . wrappedTo
+
 -- The `ToRow` instance can recycle the `ToJSON` instances (for both field)
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
-    [ s ^. #hash & toField,
-      s ^. #obj & Aeson & toField
+    [ s ^. the @"hash" & VCObjectHashRow & toField,
+      s ^. the @"obj" & Aeson & toField
     ]
 
 -- The `FromRow` instance can also recycle the Aeson instances
@@ -172,7 +198,7 @@ instance
   where
   fromRow =
     InferenceScript
-      <$> field
+      <$> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
 
 -- Row of the model table, parameterized by the user and group type as well
@@ -238,12 +264,12 @@ instance
   -- Order of fields must align exactly with DB schema
   toRow m =
     [ toField Default,
-      m ^. #name & toField,
-      m ^. #contents & toField,
-      m ^. #version & toField,
-      m ^. #card & toField,
-      m ^. #permissions & Aeson & toField,
-      m ^. #user & toField
+      m ^. the @"name" & toField,
+      m ^. the @"contents" & toField,
+      m ^. the @"version" & toField,
+      m ^. the @"card" & toField,
+      m ^. the @"permissions" & Aeson & toField,
+      m ^. the @"user" & toField
     ]
 
 {- ORMOLU_DISABLE -}
@@ -284,13 +310,13 @@ instance
   where
   toJSON m =
     object
-      [ "id" .= view #id m,
-        "name" .= view #name m,
-        "contents" .= view (#contents . to unOid) m,
-        "version" .= view #version m,
-        "card" .= view #card m,
-        "permissions" .= view #permissions m,
-        "user" .= view #user m
+      [ "id" .= view (the @"id") m,
+        "name" .= view (the @"name") m,
+        "contents" .= view (the @"contents" . to unOid) m,
+        "version" .= view (the @"version") m,
+        "card" .= view (the @"card") m,
+        "permissions" .= view (the @"permissions") m,
+        "user" .= view (the @"user") m
       ]
     where
       unOid :: Oid -> Word32
@@ -484,7 +510,7 @@ instance
   fromRow =
     InferenceParam
       <$> field
-      <*> field
+      <*> fmap wrappedTo (field @VCObjectHashRow)
       <*> field
       -- HACK / FIXME This is a pretty awful hack (storing as `jsonb`),
       -- but Postgres sub-arrays need to be the same length and writing
@@ -502,12 +528,12 @@ instance
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ toField Default,
-      ip ^. #script & toField,
-      ip ^. #model & toField,
+      ip ^. the @"script" & VCObjectHashRow & toField,
+      ip ^. the @"model" & toField,
       -- HACK / FIXME See above
-      ip ^. #inputs & Aeson & toField,
-      ip ^. #outputs & Aeson & toField,
-      ip ^. #user & toField
+      ip ^. the @"inputs" & Aeson & toField,
+      ip ^. the @"outputs" & Aeson & toField,
+      ip ^. the @"user" & toField
     ]
 
 -- | A user, parameterized by the user and group types
