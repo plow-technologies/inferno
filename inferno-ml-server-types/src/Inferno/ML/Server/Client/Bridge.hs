@@ -22,6 +22,7 @@ writePairsC ::
   p ->
   PairStream t IO ->
   ClientM ()
+
 -- | Get the value at the given time via the bridge, for the given entity @p@
 valueAtC ::
   ( ToJSON t,
@@ -32,6 +33,7 @@ valueAtC ::
   p ->
   t ->
   ClientM IValue
+
 -- | Get the latest value and the time
 latestValueAndTimeBeforeC ::
   ( ToJSON t,
