@@ -91,6 +91,7 @@ import URI.ByteString (Absolute, URIRef)
 import URI.ByteString.Aeson ()
 import Web.HttpApiData (FromHttpApiData (parseUrlPiece), ToHttpApiData (toUrlPiece))
 
+-- API type for `inferno-ml-server`
 type InfernoMlServerAPI uid gid p s =
   -- Check if the server is up and if any job is currently running:
   --
@@ -111,8 +112,8 @@ type InfernoMlServerAPI uid gid p s =
     -- Check for bridge registration
     :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
--- A bridge to get data for use with Inferno scripts. This is implemented by
--- the bridge, not by `inferno-ml-server`
+-- A bridge to get or write data for use with Inferno scripts. This is implemented
+-- by a bridge server connected to a data source, not by `inferno-ml-server`
 type BridgeAPI p t =
   "bridge"
     :> "write"
@@ -134,6 +135,7 @@ type BridgeAPI p t =
 
 type PairStream t m = ConduitT () (t, Double) m ()
 
+-- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo = BridgeInfo
   { host :: IPv4,
     port :: Word64
@@ -157,7 +159,7 @@ newtype Id a = Id Int64
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
-  { -- NOTE: This is the ID for each row
+  { -- NOTE: This is the ID for each row, stored as a `bytea` (bytes of the hash)
     hash :: VCObjectHash,
     obj :: VCMeta uid gid VCObject
   }
@@ -182,7 +184,6 @@ instance FromField VCObjectHashRow where
 instance ToField VCObjectHashRow where
   toField = EscapeByteA . vcObjectHashToByteString . wrappedTo
 
--- The `ToRow` instance can recycle the `ToJSON` instances (for both field)
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
@@ -190,7 +191,6 @@ instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
       s ^. the @"obj" & Aeson & toField
     ]
 
--- The `FromRow` instance can also recycle the Aeson instances
 instance
   ( FromJSON uid,
     FromJSON gid,
@@ -204,8 +204,8 @@ instance
       <$> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
 
--- Row of the model table, parameterized by the user and group type as well
--- as the contents of the model (normally this will be an `Oid`)
+-- | Row of the model table, parameterized by the user and group type as well
+-- as the contents of the model (normally this will be an 'Oid')
 data Model uid gid c = Model
   { id :: Maybe (Id (Model uid gid c)),
     name :: Text,
@@ -214,7 +214,8 @@ data Model uid gid c = Model
     version :: Version,
     -- | Stored as JSON in the DB
     card :: ModelCard,
-    -- | Permissions for reading or updating the model, organized by group ID
+    -- | Permissions for reading or updating the model, keyed by the group ID
+    -- type
     --
     -- NOTE
     -- This is stored as a @jsonb@ rather than as @hstore@. It could
@@ -325,11 +326,11 @@ instance
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
+-- | Permissions for reading or writing a model
 data ModelPermissions
-  = -- | The model can be read e.g. for running inference
+  = -- | The model can be read e.g. for inference
     ReadModel
-  | -- | The model can be updated e.g. during training. If write permissions
-    -- are set for a group, read permissions are implicitly granted
+  | -- | The model can be updated e.g. during training
     WriteModel
   deriving stock (Show, Eq, Generic)
 
@@ -355,6 +356,7 @@ data ModelCard = ModelCard
   deriving anyclass (FromJSON, ToJSON, NFData)
   deriving (FromField, ToField) via Aeson ModelCard
 
+-- | Structured description of a model
 data ModelDescription = ModelDescription
   { -- | General summary of model, cannot be empty
     summary :: Text,
@@ -380,6 +382,7 @@ instance FromJSON ModelDescription where
       <*> o .:? "evaluation" .!= mempty
 {- ORMOLU_ENABLE -}
 
+-- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
   { languages :: Vector ISO63912,
     tags :: Vector Text,
@@ -430,6 +433,7 @@ data Version
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
 
+-- Compares based on digits, not on tag
 instance Ord Version where
   compare = comparing . view $ typed @(NonEmpty Int)
 
@@ -486,12 +490,13 @@ showVersion (Version ns ts) =
 -- script type
 data InferenceParam uid gid p s = InferenceParam
   { id :: Maybe (Id (InferenceParam uid gid p s)),
-    -- The script of the parameter
+    -- | The script of the parameter
     --
-    -- For new parameters, this will be text
+    -- For new parameters, this will be textual or some other identifier
+    -- (e.g. a UUID for use with @inferno-lsp@)
     --
     -- For existing inference params, this is the foreign key for the specific
-    -- script in the `InferenceScript` table
+    -- script in the 'InferenceScript' table
     script :: s,
     model :: Id (Model uid gid Oid),
     inputs :: Vector (SingleOrMany p),
@@ -501,8 +506,8 @@ data InferenceParam uid gid p s = InferenceParam
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
 
--- We only want instances if the `script` is a `VCObjectHash`
-
+-- We only want this instance if the `script` is a `VCObjectHash` (because it
+-- should not be possible to store a new param with a raw script)
 instance
   ( FromJSON p,
     Typeable p,
@@ -589,9 +594,11 @@ fromIPv4 =
 
 -- Bridge-related types
 
--- A value that can be used with Inferno. Note that this is significantly more
--- restrictive than Inferno's `Value` type, which cannot have sensible `ToJSON`
--- and `FromJSON` instances
+-- | A value that can be used with Inferno and that will be consumed or returned
+-- by @inferno-ml-server@ or the bridge server
+--
+-- Note that this is significantly more restrictive than Inferno's @Value@ type,
+-- which cannot have sensible @ToJSON@ and @FromJSON@ instances
 data IValue
   = IText Text
   | IDouble Double
@@ -613,17 +620,18 @@ instance FromJSON IValue where
           fmap ITuple $
             (,) <$> parseJSON x <*> parseJSON y
       | Vector.null a -> pure IEmpty
-    _ -> fail "Expected one of: string, double, empty array"
+    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array)"
 
 instance ToJSON IValue where
   toJSON = \case
     IDouble d -> toJSON d
     IText t -> toJSON t
     ITuple t -> toJSON t
-    -- See above
+    -- See `FromJSON` instance above
     ITime t -> object ["time" .= t]
     IEmpty -> toJSON ()
 
+-- | Used to represent inputs to the script. 'Many' allows for an array input
 data SingleOrMany a
   = Single a
   | Many (Vector a)
