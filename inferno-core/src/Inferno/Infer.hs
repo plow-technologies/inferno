@@ -43,7 +43,7 @@ import Data.Bifunctor (bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, unzip4) -- intercalate
+import Data.List (find, intercalate, unzip4) -- intercalate
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
@@ -78,6 +78,7 @@ import Inferno.Types.Syntax
     Lit (LDouble, LHex, LInt, LText),
     ModuleName (..),
     Pat (..),
+    RestOfRecord (..),
     Scoped (..),
     fromEitherList,
     fromScoped,
@@ -95,7 +96,7 @@ import Inferno.Types.Type
     Subst (..),
     Substitutable (..),
     TCScheme (..),
-    TV,
+    TV (..),
     TypeClass (TypeClass),
     typeBool,
     typeDouble,
@@ -107,8 +108,10 @@ import Inferno.Types.Type
   )
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash, pinnedToMaybe, vcHash)
 -- import Inferno.Utils.Prettyprinter (renderPretty)
--- import Prettyprinter (pretty)
+
+import Inferno.Utils.Prettyprinter (renderPretty)
 import qualified Picosat
+import Prettyprinter (Pretty (pretty), (<+>))
 import System.IO.Unsafe (unsafePerformIO)
 import Text.Megaparsec (SourcePos (..), initialPos)
 
@@ -158,6 +161,10 @@ instance Substitutable Constraint where
   apply s (Right (loc, tc)) = Right (loc, apply s tc)
   ftv (Left (t1, t2, _)) = ftv t1 `Set.union` ftv t2
   ftv (Right (_, tc)) = ftv tc
+
+instance Pretty Constraint where
+  pretty (Left (t1, t2, _errs)) = pretty t1 <+> "~" <+> pretty t2
+  pretty (Right (_loc, tc)) = pretty tc
 
 -------------------------------------------------------------------------------
 -- Inference
@@ -289,15 +296,17 @@ inferExpr allModules expr =
         -- if we threw errors whilst inferring, rethrow
         Left err -> Left err
         Right ((expr', ty, cs), InferState {..}) ->
-          -- trace ("new expr: " <> (Text.unpack . renderPretty) expr') $
-          --   trace
-          --     ( "ty: " <> (Text.unpack . renderPretty) ty
+          -- trace ("\ninferExpr: " <> (Text.unpack . renderPretty) expr')
+          --   $ trace
+          --     ( "ty: "
+          --         <> (Text.unpack . renderPretty) ty
           --         <> "\ncs: "
-          --         <> (intercalate "\n" $ map show $ Set.toList cs)
+          --         <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList cs)
+          --         <> "\n"
           --     )
-          --     $
+          --   $
           -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList cs of
-          case runSolve typeClasses $ Set.toList cs of
+          case runSolve count typeClasses $ Set.toList cs of
             Left errs -> Left errs
             Right subst ->
               -- trace ("substs: " <> show subst) $
@@ -379,7 +388,7 @@ inferTypeReps allTypeClasses (ForallTC tvs tyCls (ImplType _impl ty)) inputTys o
   let cs =
         [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
           ++ mkConstraints ty inputTys
-   in case runSolve allTypeClasses cs of
+   in case runSolve 0 allTypeClasses cs of -- TODO what if 't0 is in the type passed as argument to this function?
         Left errs -> Left errs
         Right subst ->
           let tyClsSubst = Set.map (apply subst) tyCls
@@ -407,7 +416,7 @@ inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTy
   let cs =
         [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
           ++ mkMaybeConstraints ty inputTys
-   in case runSolve allTypeClasses cs of
+   in case runSolve 0 allTypeClasses cs of -- TODO what if 't0 is in the type passed as argument to this function?
         Left errs -> Left errs
         Right subst -> do
           let tyClsSubst = Set.map (apply subst) $ Set.filter (\case TypeClass "rep" _ -> False; _ -> True) tyCls
@@ -506,7 +515,7 @@ preOpGetTyComponents :: ImplType -> (InfernoType, InfernoType)
 preOpGetTyComponents (ImplType _ (t1 `TArr` t2)) = (t1, t2)
 preOpGetTyComponents _ = error "Invalid pre-op type signature"
 
-tyConstr :: a -> b -> c -> Either (a, b, c) d
+tyConstr :: InfernoType -> InfernoType -> [TypeError SourcePos] -> Constraint
 tyConstr t1 t2 es = Left (t1, t2, es)
 
 inferLit :: Expr (Pinned VCObjectHash) SourcePos -> Location SourcePos -> Lit -> InfernoType -> Infer (Expr (Pinned VCObjectHash) SourcePos, ImplType, Set.Set Constraint)
@@ -601,7 +610,7 @@ infer expr =
           let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
           (es', impls, tys, cs) <- go es
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
-          let inferredTy = ImplType isMerged $ TRecord $ Map.fromList $ zip fs tys
+          let inferredTy = ImplType isMerged $ TRecord (Map.fromList $ zip fs tys) Absent
           let fes' = zipWith (\f (e, p) -> (f, e, p)) fs es'
 
           attachTypeToPosition
@@ -622,17 +631,30 @@ infer expr =
               (e'', ImplType i t, cs) <- infer e'
               (es'', impls, tRest, csRest) <- go es'
               return ((e'', p3) : es'', i : impls, t : tRest, cs `Set.union` csRest)
-        RecordField p_r (Ident r) p_f (Ident f) -> do
+        RecordField p_r (Ident r) _p_f (Ident f) -> do
           (_e', ImplType i_r t_r, cs_r) <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right r
-          case t_r of
-            TRecord tys ->
-              case Map.lookup (Ident f) tys of
-                Just t ->
-                  return (expr, ImplType i_r t, cs_r)
-                Nothing -> error $ "Record does not have field " <> Text.unpack f -- TODO proper Error message here?
-            _ ->
-              -- TODO if we want to support this, we need a way of adding a IsRecordWithField constraint to solver here
-              error "Record field access on non-record typed variable"
+          -- case t_r of
+          --   TRecord tys ->
+          --     case Map.lookup (Ident f) tys of
+          --       Just t ->
+          --         return (expr, ImplType i_r t, cs_r)
+          --       Nothing -> error $ "Record does not have field " <> Text.unpack f -- TODO proper Error message here?
+          --   _ -> do
+          tv <- fresh
+          trv <-
+            fresh >>= \case
+              (TVar x) -> pure x
+              _ -> error "fresh returned something other than a TVar"
+          let tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_r
+          let tyRec = TRecord (Map.singleton (Ident f) tv) (TRowVar trv)
+          return
+            ( expr,
+              ImplType i_r tv,
+              cs_r
+                `Set.union` Set.fromList
+                  [ tyConstr t_r tyRec [UnificationFail tyCls t_r tyRec $ blockPosition expr]
+                  ]
+            )
         Array _ [] _ -> do
           tv <- fresh
           let meta =
@@ -836,7 +858,7 @@ infer expr =
                 ( x,
                   TypeMetadata
                     { identExpr = Var () () LocalScope $ Expl x,
-                      -- ty = ForallTC [] tyCls $ ImplType i1 t1,
+                      -- TODO should this instead be: ty = t,
                       ty = ForallTC [] tcs (ImplType iT tT),
                       docs = Nothing
                     }
@@ -1242,12 +1264,12 @@ compose :: Subst -> Subst -> Subst
 (Subst s1) `compose` (Subst s2) = Subst $ Map.map (apply (Subst s1)) s2 `Map.union` s1
 
 -- | Run the constraint solver
-runSolve :: Set.Set TypeClass -> [Constraint] -> Either [TypeError SourcePos] Subst
-runSolve allClasses cs = runIdentity $ runExceptT $ flip runReaderT allClasses $ solver st
+runSolve :: Int -> Set.Set TypeClass -> [Constraint] -> Either [TypeError SourcePos] Subst
+runSolve varCount allClasses cs = runIdentity $ runExceptT $ flip runReaderT allClasses $ solver varCount st
   where
     st = (emptySubst, cs)
 
-unifyMany :: [TypeError SourcePos] -> [InfernoType] -> [InfernoType] -> Solve Subst
+unifyMany :: [TypeError SourcePos] -> [InfernoType] -> [InfernoType] -> SolveState Int Subst
 unifyMany _ [] [] = return emptySubst
 unifyMany err (t1 : ts1) (t2 : ts2) = do
   su1 <- unifies err t1 t2
@@ -1255,7 +1277,60 @@ unifyMany err (t1 : ts1) (t2 : ts2) = do
   return (su2 `compose` su1)
 unifyMany err _ _ = trace "throwing in unifyMany " $ throwError err
 
-unifies :: [TypeError SourcePos] -> InfernoType -> InfernoType -> Solve Subst
+-- | Unify the fields of two record types.
+-- We first convert the Map of field types to a *sorted* association list, and recurse
+-- on both association lists in the style of mergesort's merge. When the two smallest
+-- field names are the same, we unify the field types. Otherwise, we take the smallest
+-- and create a fresh type var and add it as a new field to the other side.
+-- This function returns a list of new fields for each record (in *descending* order),
+-- and the list of pairs of field types that must be unified.
+unifyRecords ::
+  [TypeError SourcePos] ->
+  ([(Ident, InfernoType)], RestOfRecord) ->
+  ([(Ident, InfernoType)], RestOfRecord) ->
+  SolveState Int ([(Ident, InfernoType)], [(Ident, InfernoType)], [(InfernoType, InfernoType)])
+unifyRecords _err ([], trv1) ([], trv2) =
+  pure ([], [], unifyRowVars trv1 trv2)
+  where
+    unifyRowVars Absent Absent = []
+    unifyRowVars (TRowVar tv) Absent = [(TVar tv, TRecord mempty Absent)]
+    unifyRowVars Absent (TRowVar tv) = [(TVar tv, TRecord mempty Absent)]
+    unifyRowVars (TRowVar tv) (TRowVar tv') = [(TVar tv, TVar tv')]
+unifyRecords err ([], trv1) ((f2, t2) : ts2, trv2) = do
+  tv <- expandRowVar err trv1
+  (newFields1, newFields2, pairs) <- unifyRecords err ([], trv1) (ts2, trv2)
+  pure ((f2, tv) : newFields1, newFields2, (tv, t2) : pairs)
+unifyRecords err ((f1, t1) : ts1, trv1) ([], trv2) = do
+  tv <- expandRowVar err trv2
+  (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ([], trv2)
+  pure (newFields1, (f1, tv) : newFields2, (tv, t1) : pairs)
+unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2)
+  | f1 == f2 = do
+      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) (ts2, trv2)
+      pure (newFields1, newFields2, (t1, t2) : pairs)
+  | f1 > f2 = do
+      tv <- expandRowVar err trv1
+      (newFields1, newFields2, pairs) <- unifyRecords err ([], trv1) (ts2, trv2)
+      pure ((f2, tv) : newFields1, newFields2, (tv, t2) : pairs)
+  | otherwise = do
+      tv <- expandRowVar err trv2
+      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ([], trv2)
+      pure (newFields1, (f1, tv) : newFields2, (tv, t1) : pairs)
+
+-- | If the rest of the record is a row variable, this generates a fresh type var to
+-- denote a new field. Otherwise, it throws a type error.
+expandRowVar :: [TypeError SourcePos] -> RestOfRecord -> SolveState Int InfernoType
+expandRowVar err Absent = throwError err
+expandRowVar _err (TRowVar _) = TVar <$> freshTypeVar
+
+freshTypeVar :: SolveState Int TV
+freshTypeVar = do
+  count <- get
+  put $ count + 1
+  return $ TV count
+
+unifies :: [TypeError SourcePos] -> InfernoType -> InfernoType -> SolveState Int Subst
+unifies _ t1 t2 | trace (Text.unpack ("unifying " <> renderPretty t1 <> " and " <> renderPretty t2)) False = undefined
 unifies _ t1 t2 | t1 == t2 = return emptySubst
 unifies err (TVar v) t = bind err v t
 unifies err t (TVar v) = bind err v t
@@ -1266,23 +1341,39 @@ unifies err (TOptional t1) (TOptional t2) = unifies err t1 t2
 unifies err (TTuple ts1) (TTuple ts2)
   | length (tListToList ts1) == length (tListToList ts2) = unifyMany err (tListToList ts1) (tListToList ts2)
   | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- (getLocFromErrs err)]
+unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) = do
+  -- In general, we are trying to unify:
+  --   {f1: tf1, ..., g1: tg1, ..., 'a} ~ {g1: tg1', ..., f1': tf1', ..., 'b}
+  -- where g1, ... gN are the common fields. So, we first expand the row vars 'a and 'b
+  -- so that we have the same set of field names on both sides:
+  --   {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c} ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
+  -- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
+  -- Then, we match up the field names and unify the field types.
+  -- Finally, we add the substs: 'c ~> {f1': 't1', ..., 'a} and 'd ~> {f1: 't1, ..., 'b}
+
+  (newFields1, newFields2, pairsToUnify) <- unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2)
+  su <- uncurry (unifyMany err) $ unzip pairsToUnify
+  trv1' <- freshTypeVar
+  trv2' <- freshTypeVar
+  let su' = Subst $ Map.fromList [(trv1', TRecord (Map.fromDescList newFields1) trv1), (trv2', TRecord (Map.fromDescList newFields2) trv2)]
+  pure $ su' `compose` su -- TODO or just do Map union since su' is on fresh vars?
 unifies err _ _ =
   -- trace "throwing in unifies " $
   throwError err
 
 -- Unification solver
-solver :: Unifier -> Solve Subst
-solver (su, cs) =
+solver :: Int -> Unifier -> Solve Subst
+solver varCount (su, cs) =
   case cs of
     [] -> return su
     _ -> do
       let (tyConstrs, typeCls) = partitionEithers cs
-      su1 <- solverTyCs su tyConstrs
+      su1 <- flip evalSolveState varCount $ solverTyCs su tyConstrs
       let partResolvedTyCls = map (\(loc, tc) -> (loc, apply su1 tc)) typeCls
       -- trace ("partResolvedTyCls: " <> (intercalate "\n" $ map (unpack . renderPretty . pretty . snd) partResolvedTyCls)) $
       evalSolveState (solverTypeClasses $ su1 `compose` su) (Set.fromList partResolvedTyCls, mempty)
 
-solverTyCs :: Subst -> [(InfernoType, InfernoType, [TypeError SourcePos])] -> Solve Subst
+solverTyCs :: Subst -> [(InfernoType, InfernoType, [TypeError SourcePos])] -> SolveState Int Subst
 solverTyCs su cs =
   case cs of
     [] -> return su
@@ -1435,9 +1526,11 @@ findTypeClassWitnesses allClasses iters tyCls tvs =
             ((Subst $ Map.fromList $ map snd found) :) <$> getSolutions ((\x -> x - 1) <$> i)
           _ -> pure []
 
+-- NOTE: this function resets the fresh variable counter each time it is called
+-- TODO confirm this doesn't matter
 tryMatchPartial :: [InfernoType] -> TypeClass -> Solve (Maybe Subst)
 tryMatchPartial tys (TypeClass _ tys2) =
-  ((Just <$> unifyMany [] tys tys2) `catchError` (\_ -> return Nothing))
+  (Just <$> evalSolveState (unifyMany [] tys tys2) 0) `catchError` (\_ -> return Nothing)
 
 -- | This is a minor optimisation for the `encodeTypeClasses` function. The `filteredTypeClassSubstitutions` function takes the set of all type class instances,
 -- along with the list of all the current classes we want to unify and computes all the matching substitutions.
@@ -1525,7 +1618,7 @@ xor ls =
       forM_ xs $ \y -> addClause [-x, -y]
       go xs
 
-bind :: [TypeError SourcePos] -> TV -> InfernoType -> Solve Subst
+bind :: [TypeError SourcePos] -> TV -> InfernoType -> SolveState Int Subst
 bind err a t
   | t == TVar a = return emptySubst
   | occursCheck a t = throwError [InfiniteType a t loc | loc <- (getLocFromErrs err)]
