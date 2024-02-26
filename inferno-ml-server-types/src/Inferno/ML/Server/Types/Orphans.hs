@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -31,17 +30,11 @@ import Database.PostgreSQL.Simple.ToField
   ( Action (Escape),
     ToField (toField),
   )
-import Foreign.C (CTime (CTime))
-import System.Posix (EpochTime)
 import Text.Read (readMaybe)
 import Web.HttpApiData
   ( FromHttpApiData (parseUrlPiece),
     ToHttpApiData (toUrlPiece),
   )
-
-deriving newtype instance ToHttpApiData EpochTime
-
-deriving newtype instance FromHttpApiData EpochTime
 
 instance FromJSON IPv4 where
   parseJSON =
