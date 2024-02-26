@@ -34,7 +34,7 @@ valueAtC ::
   t ->
   ClientM IValue
 
--- | Get the latest value and the time
+-- | Get the latest value (and associated time) for entity @p@ before time @t@
 latestValueAndTimeBeforeC ::
   ( ToJSON t,
     ToHttpApiData p,
