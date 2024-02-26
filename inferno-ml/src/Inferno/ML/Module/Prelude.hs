@@ -12,18 +12,12 @@ import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
 import GHC.IO.Unsafe (unsafePerformIO)
-import Inferno.Eval as Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.ML.Types.Value
 import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
-import Inferno.Types.Module (PinnedModule)
-import Inferno.Types.Syntax
-  ( Ident,
-    ModuleName (..),
-  )
-import Inferno.Types.Value (ImplEnvM, Value (..))
-import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Types.Syntax (Ident)
+import Inferno.Types.Value (Value (..))
 import Prettyprinter (Pretty)
 import Torch
 import qualified Torch.DType as TD
@@ -44,7 +38,7 @@ zerosFun =
       dType <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ zeros shp $ withDType dType defaultOpts
+        pure $ toValue $ zeros shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
 onesFun :: (MonadThrow m, Pretty x) => Value (MlValue x) m
@@ -54,7 +48,7 @@ onesFun =
       dType <- getDtype "ones" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ ones shp $ withDType dType defaultOpts
+        pure $ toValue $ ones shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
 asTensorFun ::
@@ -250,16 +244,7 @@ mlPrelude ::
     Pretty x,
     Eq x
   ) =>
-  Map.Map
-    ModuleName
-    ( PinnedModule
-        ( ImplEnvM
-            m
-            (MlValue x)
-            ( Eval.TermEnv VCObjectHash (MlValue x) (ImplEnvM m (MlValue x))
-            )
-        )
-    )
+  Prelude.ModuleMap m (MlValue x)
 mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")

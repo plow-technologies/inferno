@@ -26,14 +26,14 @@ instance Pretty x => Pretty (MlValue x) where
     VExtended x -> align $ pretty x
 
 instance ToValue (MlValue x) m T.Tensor where
-  toValue = pure . VCustom . VTensor
+  toValue = VCustom . VTensor
 
 instance Pretty x => FromValue (MlValue x) m T.Tensor where
   fromValue (VCustom (VTensor t)) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue (MlValue x) m T.ScriptModule where
-  toValue = pure . VCustom . VModel
+  toValue = VCustom . VModel
 
 instance Pretty x => FromValue (MlValue x) m T.ScriptModule where
   fromValue (VCustom (VModel t)) = pure t

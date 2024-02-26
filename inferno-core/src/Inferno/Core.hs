@@ -13,7 +13,7 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
-import Inferno.Eval (TermEnv, eval, runEvalM)
+import Inferno.Eval (TermEnv, runEvalM)
 import Inferno.Eval.Error (EvalError)
 import Inferno.Infer (TypeError, inferExpr, inferTypeReps)
 import Inferno.Infer.Error (Location)
@@ -24,11 +24,11 @@ import Inferno.Module.Prelude (ModuleMap, baseOpsTable, builtinModulesOpsTable, 
 import Inferno.Parse (InfernoParsingError, parseExpr)
 import Inferno.Types.Syntax (Comment, CustomType, Expr (App, TypeRep), ExtIdent, ModuleName, Namespace, SourcePos, TypeClass, TypeMetadata, collectArrs)
 import Inferno.Types.Type (ImplType (ImplType), TCScheme (ForallTC))
-import Inferno.Types.Value (ImplEnvM, Value, runImplEnvM)
+import Inferno.Types.Value (ImplEnvM, Value)
 import Inferno.Types.VersionControl (Pinned, VCObjectHash, pinnedToMaybe)
 import Inferno.VersionControl.Types (VCObject (VCFunction))
 import Prettyprinter (Pretty)
-import Text.Megaparsec (ParseError, initialPos)
+import Text.Megaparsec (ParseError)
 
 data InfernoError
   = ParseError (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
@@ -45,13 +45,13 @@ data Interpreter m c = Interpreter
     -- @mkEnvFromClosure@.
     evalExpr ::
       forall a.
-      TermEnv VCObjectHash c (ImplEnvM m c) ->
+      TermEnv VCObjectHash c (ImplEnvM m c) a ->
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Expr (Maybe VCObjectHash) a ->
       m (Either EvalError (Value c (ImplEnvM m c))),
     parseAndInferTypeReps ::
       Text ->
-      Either InfernoError (Expr (Maybe VCObjectHash) SourcePos),
+      Either InfernoError (Expr (Maybe VCObjectHash) ()),
     parseAndInfer ::
       Text ->
       Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme, Map.Map (Location SourcePos) (TypeMetadata TCScheme), [Comment SourcePos]),
@@ -59,10 +59,10 @@ data Interpreter m c = Interpreter
     mkEnvFromClosure ::
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)),
+      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ()),
     -- | The default pinned env containing only the prelude
     defaultEnv ::
-      TermEnv VCObjectHash c (ImplEnvM m c),
+      TermEnv VCObjectHash c (ImplEnvM m c) (),
     -- | The type of each name in this interpreter's prelude
     nameToTypeMap ::
       Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme),
@@ -75,7 +75,7 @@ mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c
 mkInferno prelude customTypes = do
   -- We pre-compute envs that only depend on the prelude so that they can be
   -- shared among evaluations of different scripts
-  (preludeIdentEnv, preludePinnedEnv) <- runImplEnvM Map.empty $ builtinModulesTerms prelude
+  let (preludeIdentEnv, preludePinnedEnv) = builtinModulesTerms prelude
   return $
     Interpreter
       { evalExpr = runEvalM,
@@ -116,8 +116,8 @@ mkInferno prelude customTypes = do
                   let finalAst =
                         foldl
                           App
-                          (bimap pinnedToMaybe id pinnedAST')
-                          [TypeRep (initialPos "dummy") ty | ty <- runtimeReps]
+                          (bimap pinnedToMaybe (const ()) pinnedAST')
+                          [TypeRep () ty | ty <- runtimeReps]
                    in Right finalAst
 
     typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
@@ -130,11 +130,8 @@ mkInferno prelude customTypes = do
           foldM
             ( \env (hash, obj) -> case obj of
                 VCFunction expr _ -> do
-                  eval
-                    (localEnv, pinnedEnv')
-                    (bimap pinnedToMaybe id expr)
-                    >>= \val ->
-                      pure $ Map.insert hash val env
+                  let expr' = bimap pinnedToMaybe id expr
+                  pure $ Map.insert hash (Left expr') env
                 _ -> pure env
             )
             preludePinnedEnv

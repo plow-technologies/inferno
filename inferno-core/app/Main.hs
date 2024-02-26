@@ -22,7 +22,7 @@ main = do
     Left err -> do
       hPutStrLn stderr $ show err
       exitFailure
-    Right ast ->
+    Right ast -> do
       evalExpr defaultEnv Map.empty ast >>= \case
         Left err -> do
           hPutStrLn stderr $ show err

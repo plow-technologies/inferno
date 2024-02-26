@@ -1,6 +1,12 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.10.1.0 -- 2024-01-30
+* Fix `ToValue` instances for functions and `ImplicitCast`
+
+## 0.10.0.0 -- 2024-01-29
+* Modify `TermEnv` to defer evaluating prelude `Expr` definitions till runtime. Should reduce memory consumption
+
 ## 0.9.0.0 -- 2023-11-21
 * Breaking change: Fix Array primitive type signatures. Add Option.join
 
