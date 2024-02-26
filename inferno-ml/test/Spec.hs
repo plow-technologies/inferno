@@ -2,6 +2,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main (main) where
 
@@ -48,15 +49,15 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
-      runIO $ (mkInferno mlPrelude customTypes :: IO (Interpreter IO MlValue))
-    let shouldEvaluateInEnvTo implEnv str (v :: Value MlValue IO) =
+      runIO $ mkInferno @_ @(MlValue ()) mlPrelude customTypes
+    let shouldEvaluateInEnvTo implEnv str (v :: Value (MlValue ()) IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
             case parseAndInferTypeReps str of
               Left err -> expectationFailure $ show err
               Right ast ->
                 evalExpr defaultEnv implEnv ast >>= \case
                   Left err -> expectationFailure $ "Failed eval with: " <> show err
-                  Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+                  Right v' -> renderPretty v' `shouldBe` renderPretty v
     let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
     let shouldFailToInferTypeFor str =
           it ("should fail to infer type of \"" <> unpack str <> "\"") $
@@ -64,7 +65,7 @@ evalTests = describe "evaluate" $
               Left (ParseError err) -> expectationFailure $ prettyError $ fst $ NEList.head err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
-              Right _ -> expectationFailure $ "Should fail to infer a type"
+              Right _ -> expectationFailure "Should fail to infer a type"
 
     shouldEvaluateTo "open ML in asTensor1 #int [1, 2, 4]" $
       VCustom $
@@ -75,6 +76,9 @@ evalTests = describe "evaluate" $
         VTensor $
           T.toType TD.Float $
             T.asTensor [[1, 2, 4 :: Double]]
+    shouldEvaluateTo "open ML in toType #float (asTensor1 #int [1, 2, 4])" $
+      VCustom . VTensor . T.toType TD.Float $
+        T.asTensor [1, 2, 4 :: Double]
     shouldFailToInferTypeFor "open ML in asTensor4 #float [[1, 2, 4]]"
     shouldEvaluateTo "open ML in asDouble (sumAll (ones #int [2, 4]))" $ VDouble 8.0
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])

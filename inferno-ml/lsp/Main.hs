@@ -10,6 +10,6 @@ import System.Exit (ExitCode (ExitFailure), exitSuccess, exitWith)
 
 main :: IO ()
 main = do
-  runInfernoLspServer @MlValue mlPrelude customTypes >>= \case
+  runInfernoLspServer @(MlValue ()) mlPrelude customTypes >>= \case
     0 -> exitSuccess
     c -> exitWith . ExitFailure $ c
