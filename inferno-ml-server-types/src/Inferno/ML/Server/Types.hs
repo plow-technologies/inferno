@@ -23,10 +23,11 @@ import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
-import Data.IP (IPv4)
+import qualified Data.IP
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -41,7 +42,9 @@ import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
 import Database.PostgreSQL.Simple.FromField
-  ( FromField (fromField),
+  ( Conversion,
+    Field,
+    FromField (fromField),
     ResultError (ConversionFailed, UnexpectedNull),
     returnError,
   )
@@ -59,7 +62,6 @@ import Database.PostgreSQL.Simple.Types
   )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
-import Inferno.ML.Server.Types.Orphans ()
 import Inferno.Types.VersionControl
   ( VCObjectHash,
     byteStringToVCObjectHash,
@@ -84,9 +86,10 @@ import Servant
   )
 import Servant.Conduit ()
 import System.Posix (EpochTime)
+import Text.Read (readMaybe)
 import URI.ByteString (Absolute, URIRef)
 import URI.ByteString.Aeson ()
-import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import Web.HttpApiData (FromHttpApiData (parseUrlPiece), ToHttpApiData (toUrlPiece))
 
 type InfernoMlServerAPI uid gid p s =
   -- Check if the server is up and if any job is currently running:
@@ -544,6 +547,46 @@ data User uid gid = User
   deriving stock (Show, Generic, Eq)
   deriving anyclass (FromRow, ToRow, NFData)
 
+-- | IPv4 address with some useful instances
+newtype IPv4 = IPv4 Data.IP.IPv4
+  deriving stock (Generic)
+  deriving newtype (Show, Eq, Ord, Read)
+
+instance NFData IPv4 where
+  rnf = rwhnf
+
+instance FromJSON IPv4 where
+  parseJSON =
+    withText "IPv4" $
+      maybe (fail "Invalid IPv4") (pure . IPv4)
+        . readMaybe
+        . Text.unpack
+
+instance ToJSON IPv4 where
+  toJSON = String . Text.pack . show
+
+instance FromHttpApiData IPv4 where
+  parseUrlPiece = maybe (Left "Invalid IPv4") Right . readMaybe . Text.unpack
+
+instance ToHttpApiData IPv4 where
+  toUrlPiece = Text.pack . show
+
+instance FromField IPv4 where
+  fromField = maybeConversion $ readMaybe . ByteString.Char8.unpack
+
+instance ToField IPv4 where
+  toField = Escape . ByteString.Char8.pack . show
+
+toIPv4 :: (Int, Int, Int, Int) -> IPv4
+toIPv4 (a, b, c, d) = IPv4 $ Data.IP.toIPv4 [a, b, c, d]
+
+fromIPv4 :: IPv4 -> (Int, Int, Int, Int)
+fromIPv4 =
+  wrappedTo >>> Data.IP.fromIPv4 >>> \case
+    [a, b, c, d] -> (a, b, c, d)
+    -- Should not happen
+    _ -> error "Invalid IP address"
+
 -- Bridge-related types
 
 -- A value that can be used with Inferno. Note that this is significantly more
@@ -609,6 +652,13 @@ instance Ord a => Ord (SingleOrMany a) where
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
+
+maybeConversion ::
+  Typeable b => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
+maybeConversion f fld =
+  maybe (returnError UnexpectedNull fld mempty) $
+    maybe (returnError ConversionFailed fld mempty) pure
+      . f
 
 -- ISO63912 language tag for model card
 
