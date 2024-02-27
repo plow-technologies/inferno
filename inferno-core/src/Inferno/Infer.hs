@@ -296,68 +296,68 @@ inferExpr allModules expr =
         -- if we threw errors whilst inferring, rethrow
         Left err -> Left err
         Right ((expr', ty, cs), InferState {..}) ->
-          -- trace ("\ninferExpr: " <> (Text.unpack . renderPretty) expr')
-          --   $ trace
-          --     ( "ty: "
-          --         <> (Text.unpack . renderPretty) ty
-          --         <> "\ncs: "
-          --         <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList cs)
-          --         <> "\n"
-          --     )
-          --   $
-          -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList cs of
-          case runSolve count typeClasses $ Set.toList cs of
-            Left errs -> Left errs
-            Right subst ->
-              -- trace ("substs: " <> show subst) $
-              -- trace ("patternsToCheck: " <> show patternsToCheck) $
-              case concatMap (uncurry $ checkExhaustivenessAndUsefullness enumSigs) patternsToCheck of
-                errs@(_ : _) -> Left errs
-                _ -> do
-                  -- get type classes and type from solved constraints
-                  let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) $ Set.fromList $ rights $ Set.toList cs
-                  let substitutedTy@(ImplType implTys tyBody) = apply subst ty
-                  -- get current type variables
-                  let tvs = ftv substitutedTy `Set.union` (Set.unions $ Set.elems $ Set.map ftv cls)
-                  let res substNew (mRepTyCls, implTys', expr'') =
-                        let finalTy =
-                              closeOver
-                                ((filterInstantiatedTypeClasses $ Set.map (apply substNew) cls) `Set.union` (maybe mempty Set.singleton mRepTyCls))
-                                $ apply substNew
-                                $ ImplType implTys' tyBody
-                         in Right $
-                              ( expr'',
-                                finalTy,
-                                Map.map
-                                  (\meta@TypeMetadata {ty = (tcs, t)} -> meta {ty = closeOver (filterInstantiatedTypeClasses $ Set.map (apply $ substNew <> subst) tcs) $ apply (substNew <> subst) t})
-                                  typeMap
-                              )
-
-                  if -- trace ("type classes: " <> show cls) $
-                  Set.null cls
-                    then res mempty $ closeOverTypeReps implTys expr'
-                    else case findTypeClassWitnesses typeClasses (Just 2) cls tvs of
-                      [] -> Left [CouldNotFindTypeclassWitness cls $ blockPosition expr]
-                      -- we attempt to find two type assignments. If there is only one satisfying assignment for all the type-classes, we automatically substitute the instantiations
-                      [subst'] -> res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
-                      -- even if there isn't a unique solution, we can still safely apply the substitutions to any types which do not transitively depend on the input or output type variables
-                      -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
-                      (Subst s) : _ ->
-                        let ftvsDependentOnOuterType =
-                              Set.foldl
-                                ( \ftvsTransClosure c ->
-                                    let ftvCls = ftv c
-                                     in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
-                                          then ftvsTransClosure
-                                          else ftvCls `Set.union` ftvsTransClosure
+          trace ("\ninferExpr: " <> (Text.unpack . renderPretty) expr')
+            $ trace
+              ( "ty: "
+                  <> (Text.unpack . renderPretty) ty
+                  <> "\ncs: "
+                  <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList cs)
+                  <> "\n"
+              )
+            $
+            -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList cs of
+            case runSolve count typeClasses $ Set.toList cs of
+              Left errs -> Left errs
+              Right subst ->
+                -- trace ("substs: " <> show subst) $
+                -- trace ("patternsToCheck: " <> show patternsToCheck) $
+                case concatMap (uncurry $ checkExhaustivenessAndUsefullness enumSigs) patternsToCheck of
+                  errs@(_ : _) -> Left errs
+                  _ -> do
+                    -- get type classes and type from solved constraints
+                    let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) $ Set.fromList $ rights $ Set.toList cs
+                    let substitutedTy@(ImplType implTys tyBody) = apply subst ty
+                    -- get current type variables
+                    let tvs = ftv substitutedTy `Set.union` (Set.unions $ Set.elems $ Set.map ftv cls)
+                    let res substNew (mRepTyCls, implTys', expr'') =
+                          let finalTy =
+                                closeOver
+                                  ((filterInstantiatedTypeClasses $ Set.map (apply substNew) cls) `Set.union` (maybe mempty Set.singleton mRepTyCls))
+                                  $ apply substNew
+                                  $ ImplType implTys' tyBody
+                           in Right $
+                                ( expr'',
+                                  finalTy,
+                                  Map.map
+                                    (\meta@TypeMetadata {ty = (tcs, t)} -> meta {ty = closeOver (filterInstantiatedTypeClasses $ Set.map (apply $ substNew <> subst) tcs) $ apply (substNew <> subst) t})
+                                    typeMap
                                 )
-                                -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
-                                -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
-                                (ftv tyBody `Set.union` (Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys))
-                                cls
-                            subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
-                         in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
-                            res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
+
+                    if -- trace ("type classes: " <> show cls) $
+                    Set.null cls
+                      then res mempty $ closeOverTypeReps implTys expr'
+                      else case findTypeClassWitnesses typeClasses (Just 2) cls tvs of
+                        [] -> Left [CouldNotFindTypeclassWitness cls $ blockPosition expr]
+                        -- we attempt to find two type assignments. If there is only one satisfying assignment for all the type-classes, we automatically substitute the instantiations
+                        [subst'] -> res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
+                        -- even if there isn't a unique solution, we can still safely apply the substitutions to any types which do not transitively depend on the input or output type variables
+                        -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
+                        (Subst s) : _ ->
+                          let ftvsDependentOnOuterType =
+                                Set.foldl
+                                  ( \ftvsTransClosure c ->
+                                      let ftvCls = ftv c
+                                       in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
+                                            then ftvsTransClosure
+                                            else ftvCls `Set.union` ftvsTransClosure
+                                  )
+                                  -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
+                                  -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
+                                  (ftv tyBody `Set.union` (Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys))
+                                  cls
+                              subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
+                           in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
+                              res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
   where
     enumSigs :: Map.Map VCObjectHash (Set.Set (VCObjectHash, Text.Text))
     enumSigs =
@@ -1289,6 +1289,7 @@ unifyRecords ::
   ([(Ident, InfernoType)], RestOfRecord) ->
   ([(Ident, InfernoType)], RestOfRecord) ->
   SolveState Int ([(Ident, InfernoType)], [(Ident, InfernoType)], [(InfernoType, InfernoType)])
+unifyRecords _err (ts1, trv1) (ts2, trv2) | trace (Text.unpack ("unifyRecords " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
 unifyRecords _err ([], trv1) ([], trv2) =
   pure ([], [], unifyRowVars trv1 trv2)
   where
@@ -1310,12 +1311,17 @@ unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2)
       pure (newFields1, newFields2, (t1, t2) : pairs)
   | f1 > f2 = do
       tv <- expandRowVar err trv1
-      (newFields1, newFields2, pairs) <- unifyRecords err ([], trv1) (ts2, trv2)
+      (newFields1, newFields2, pairs) <- unifyRecords err ((f1, t1) : ts1, trv1) (ts2, trv2)
       pure ((f2, tv) : newFields1, newFields2, (tv, t2) : pairs)
   | otherwise = do
       tv <- expandRowVar err trv2
-      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ([], trv2)
+      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ((f2, t2) : ts2, trv2)
       pure (newFields1, (f1, tv) : newFields2, (tv, t1) : pairs)
+
+-- TODO CONTINUE:
+-- pass newFields and pairs as args and make tail rec
+-- base case: make and return the su' and remove makeRowVarSubst
+-- expandRowVar should also create fresh RowVar and pass it when recursing
 
 -- | If the rest of the record is a row variable, this generates a fresh type var to
 -- denote a new field. Otherwise, it throws a type error.
@@ -1349,14 +1355,21 @@ unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) = do
   --   {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c} ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
   -- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
   -- Then, we match up the field names and unify the field types.
-  -- Finally, we add the substs: 'c ~> {f1': 't1', ..., 'a} and 'd ~> {f1: 't1, ..., 'b}
+  -- Finally, we add the substs: 'a ~> {f1': 't1', ..., 'c} and 'b ~> {f1: 't1, ..., 'd}
 
-  (newFields1, newFields2, pairsToUnify) <- unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2)
+  (newFields1, newFields2, pairsToUnify) <-
+    unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2)
+  trace ("After unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
   su <- uncurry (unifyMany err) $ unzip pairsToUnify
-  trv1' <- freshTypeVar
-  trv2' <- freshTypeVar
-  let su' = Subst $ Map.fromList [(trv1', TRecord (Map.fromDescList newFields1) trv1), (trv2', TRecord (Map.fromDescList newFields2) trv2)]
-  pure $ su' `compose` su -- TODO or just do Map union since su' is on fresh vars?
+  su' <- mapM makeRowVarSubst [(trv1, newFields1), (trv2, newFields2)]
+  trace ("After makeRowVarSubst: " <> show su') $ pure ()
+  pure $ su `compose` Subst (Map.fromList $ catMaybes su') -- TODO or just do Map union since su' is on row vars and su is field types?
+  where
+    makeRowVarSubst (_trv, []) = pure Nothing
+    makeRowVarSubst (Absent, _) = error "impossible: newFields created when RowVar is Absent"
+    makeRowVarSubst (TRowVar tv, newFields) = do
+      tv' <- freshTypeVar
+      pure $ Just (tv, TRecord (Map.fromDescList newFields) (TRowVar tv'))
 unifies err _ _ =
   -- trace "throwing in unifies " $
   throwError err
@@ -1369,16 +1382,19 @@ solver varCount (su, cs) =
     _ -> do
       let (tyConstrs, typeCls) = partitionEithers cs
       su1 <- flip evalSolveState varCount $ solverTyCs su tyConstrs
+      trace ("After solverTyCs, final su1\n" <> show su1) $ pure ()
       let partResolvedTyCls = map (\(loc, tc) -> (loc, apply su1 tc)) typeCls
       -- trace ("partResolvedTyCls: " <> (intercalate "\n" $ map (unpack . renderPretty . pretty . snd) partResolvedTyCls)) $
       evalSolveState (solverTypeClasses $ su1 `compose` su) (Set.fromList partResolvedTyCls, mempty)
 
 solverTyCs :: Subst -> [(InfernoType, InfernoType, [TypeError SourcePos])] -> SolveState Int Subst
+-- solverTyCs su _cs | trace ("solverTyCs with su: " <> show su) False = undefined
 solverTyCs su cs =
   case cs of
     [] -> return su
     ((t1, t2, errs) : cs0) -> do
       su1 <- unifies errs t1 t2
+      trace ("In solverTyCs, applying su1\n" <> show su1 <> "\nOnto es\n" <> show cs0) $ pure ()
       solverTyCs (su1 `compose` su) (map (\(t1', t2', es) -> (apply su1 t1', apply su1 t2', map (apply su1) es)) cs0)
 
 evalSolveState :: SolveState st a -> st -> Solve a
