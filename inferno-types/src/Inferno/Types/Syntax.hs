@@ -256,11 +256,23 @@ instance Hashable BaseType where
   hashWithSalt s (TCustom t) = hashWithSalt s (11 :: Int, t)
 
 -- | A row variable: a special kind of type variable that represents zero or more fields
--- of a record type. Technically, it is a map from the set of all remaining field names
--- to type variables, or the special value @Absent@ that indicates that the field is not
--- present in the record. For example, a record value `{x = 2.2; y = "z"}` has the type
--- `{x: double; y: text; Absent}`.
-data RestOfRecord = TRowVar TV | Absent -- TODO TRowAbsent?
+-- of a record type. Technically, it is a map from the set of all remaining field names to
+-- @Present(type variable) | RowAbsent@
+-- indicating whether the field is present (and if so, what type) or absent.
+-- In practice, since all records that we consider have finitely many fields, it is
+-- sufficient to encode the remaining fields (rest of the record) as either a row
+-- variable @RowVar TV@ (indicating an unknown rest of record)
+-- or the special value @RowAbsent@ that indicates that no remaining field is
+-- present in the record. For example:
+--
+-- @
+-- {x = 2.2; y = "z"} : {x: double; y: text; RowAbsent}
+-- fun r -> r.x + 1 : {x: double; RowVar 'a} -> double
+-- @
+--
+-- The type of the function above indicates that it accepts any record as argument as
+-- long as it has at least a field called @x@.
+data RestOfRecord = RowVar TV | RowAbsent
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
 
@@ -327,8 +339,8 @@ instance Pretty InfernoType where
       where
         prettyFields = sep $ punctuate' ";" $ map prettyField $ Map.toAscList tys
         prettyField (Ident f, ty) = pretty f <> ":" <+> pretty ty
-        prettyRest (TRowVar tv) = ";" <+> pretty tv
-        prettyRest Absent = mempty
+        prettyRest (RowVar tv) = ";" <+> pretty tv
+        prettyRest RowAbsent = mempty
     TSeries ty@(TVar _) -> "series of" <+> align (pretty ty)
     TSeries ty@(TBase _) -> "series of" <+> align (pretty ty)
     TSeries ty@(TTuple _) -> "series of" <+> align (pretty ty)
@@ -456,8 +468,8 @@ instance Substitutable InfernoType where
   apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
   apply s (TArray t) = TArray $ apply s t
   apply (Subst s) (TRecord ts trv) = case trv of
-    TRowVar tv -> case Map.findWithDefault (TVar tv) tv s of
-      TVar tv' -> TRecord ts' $ TRowVar tv'
+    RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
+      TVar tv' -> TRecord ts' $ RowVar tv'
       -- When performing unification, we will create substitutions that map some row vars
       -- to a bunch of fields and a new row var, e.g. tv ~> f1: t1; f2: t2; tv'
       -- We need to add any new fields to the fields of this record, and use the new row
@@ -470,7 +482,7 @@ instance Substitutable InfernoType where
               ts'
               ts''
       t -> error $ "TRecord substitution with unsupported RHS " <> show t
-    Absent -> TRecord ts' Absent
+    RowAbsent -> TRecord ts' RowAbsent
     where
       ts' = fmap (apply $ Subst s) ts
   apply s (TSeries t) = TSeries $ apply s t
@@ -484,7 +496,7 @@ instance Substitutable InfernoType where
   ftv (TArray t) = ftv t
   ftv (TRecord ts trv) = foldr (Set.union . ftv) tvs ts
     where
-      tvs = case trv of TRowVar tv -> Set.singleton tv; Absent -> Set.empty
+      tvs = case trv of RowVar tv -> Set.singleton tv; RowAbsent -> Set.empty
   ftv (TSeries t) = ftv t
   ftv (TOptional t) = ftv t
   ftv (TTuple ts) = foldr (Set.union . ftv) Set.empty ts

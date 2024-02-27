@@ -610,7 +610,7 @@ infer expr =
           let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
           (es', impls, tys, cs) <- go es
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
-          let inferredTy = ImplType isMerged $ TRecord (Map.fromList $ zip fs tys) Absent
+          let inferredTy = ImplType isMerged $ TRecord (Map.fromList $ zip fs tys) RowAbsent
           let fes' = zipWith (\f (e, p) -> (f, e, p)) fs es'
 
           attachTypeToPosition
@@ -633,20 +633,13 @@ infer expr =
               return ((e'', p3) : es'', i : impls, t : tRest, cs `Set.union` csRest)
         RecordField p_r (Ident r) _p_f (Ident f) -> do
           (_e', ImplType i_r t_r, cs_r) <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right r
-          -- case t_r of
-          --   TRecord tys ->
-          --     case Map.lookup (Ident f) tys of
-          --       Just t ->
-          --         return (expr, ImplType i_r t, cs_r)
-          --       Nothing -> error $ "Record does not have field " <> Text.unpack f -- TODO proper Error message here?
-          --   _ -> do
           tv <- fresh
           trv <-
             fresh >>= \case
               (TVar x) -> pure x
               _ -> error "fresh returned something other than a TVar"
           let tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_r
-          let tyRec = TRecord (Map.singleton (Ident f) tv) (TRowVar trv)
+          let tyRec = TRecord (Map.singleton (Ident f) tv) (RowVar trv)
           return
             ( expr,
               ImplType i_r tv,
@@ -1287,7 +1280,7 @@ unifyMany err _ _ = trace "throwing in unifyMany " $ throwError err
 -- where g1, ... gN are the common fields, then we first expand the row vars 'a and 'b
 -- so that we have the same set of field names on both sides:
 -- @
---  {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c}
+--   {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c}
 -- ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
 -- @
 -- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
@@ -1329,18 +1322,18 @@ unifyRecords err ([], trv1) ([], trv2) newFields1 newFields2 pairs = do
   -- Apply su' to su so that the fields and row vars in su are unified
   pure $ su' `compose` su
   where
-    unifyRowVars Absent Absent = []
-    unifyRowVars (TRowVar tv) Absent = [(TVar tv, TRecord mempty Absent)]
-    unifyRowVars Absent (TRowVar tv) = [(TVar tv, TRecord mempty Absent)]
-    unifyRowVars (TRowVar tv) (TRowVar tv') = [(TVar tv, TVar tv')]
+    unifyRowVars RowAbsent RowAbsent = []
+    unifyRowVars (RowVar tv) RowAbsent = [(TVar tv, TRecord mempty RowAbsent)]
+    unifyRowVars RowAbsent (RowVar tv) = [(TVar tv, TRecord mempty RowAbsent)]
+    unifyRowVars (RowVar tv) (RowVar tv') = [(TVar tv, TVar tv')]
     -- Create a subst from a new row var to the new fields
     makeRowVarSubst trv [] =
       pure (trv, [])
-    makeRowVarSubst Absent _ =
-      error "impossible: newFields created when RowVar is Absent"
-    makeRowVarSubst (TRowVar tv) newFields = do
+    makeRowVarSubst RowAbsent _ =
+      error "impossible: newFields created when RowVar is RowAbsent"
+    makeRowVarSubst (RowVar tv) newFields = do
       tv' <- freshTypeVar
-      pure (TRowVar tv', [(tv, TRecord (Map.fromDescList newFields) (TRowVar tv'))])
+      pure (RowVar tv', [(tv, TRecord (Map.fromDescList newFields) (RowVar tv'))])
 unifyRecords err ([], trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2 pairs = do
   tv <- expandRowVar err trv1
   let pairs' = (tv, t2) : pairs
@@ -1369,8 +1362,8 @@ unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2) newFields1 newFie
 -- | If the rest of the record is a row variable, this generates a fresh type var to
 -- denote a new field. Otherwise, it throws a type error.
 expandRowVar :: [TypeError SourcePos] -> RestOfRecord -> SolveState Int InfernoType
-expandRowVar err Absent = throwError err
-expandRowVar _err (TRowVar _) = TVar <$> freshTypeVar
+expandRowVar err RowAbsent = throwError err
+expandRowVar _err (RowVar _) = TVar <$> freshTypeVar
 
 freshTypeVar :: SolveState Int TV
 freshTypeVar = do
