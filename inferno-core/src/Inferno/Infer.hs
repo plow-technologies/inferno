@@ -1278,50 +1278,93 @@ unifyMany err (t1 : ts1) (t2 : ts2) = do
 unifyMany err _ _ = trace "throwing in unifyMany " $ throwError err
 
 -- | Unify the fields of two record types.
+--
+-- The idea in theory is, if we are trying to unify
+-- @
+--  {f1: tf1, ..., g1: tg1, ..., 'a}
+--              ~ {g1: tg1', ..., f1': tf1', ..., 'b}
+-- @
+-- where g1, ... gN are the common fields, then we first expand the row vars 'a and 'b
+-- so that we have the same set of field names on both sides:
+-- @
+--  {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c}
+-- ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
+-- @
+-- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
+-- Then, we match up the field names and unify the field types.
+-- Finally, we add the substs:
+-- @
+--  'a ~> {f1': 't1', ..., 'c}
+--  'b ~> {f1: 't1, ..., 'd}
+-- @
+--
+-- The implementation in practice proceeds by recursing on the fields of both records.
 -- We first convert the Map of field types to a *sorted* association list, and recurse
 -- on both association lists in the style of mergesort's merge. When the two smallest
 -- field names are the same, we unify the field types. Otherwise, we take the smallest
 -- and create a fresh type var and add it as a new field to the other side.
--- This function returns a list of new fields for each record (in *descending* order),
--- and the list of pairs of field types that must be unified.
+-- This function recurses with arguments that include a list of new fields for each
+-- record (in *descending* order of field names), and the list of pairs of field types
+-- that must be unified.
 unifyRecords ::
   [TypeError SourcePos] ->
   ([(Ident, InfernoType)], RestOfRecord) ->
   ([(Ident, InfernoType)], RestOfRecord) ->
-  SolveState Int ([(Ident, InfernoType)], [(Ident, InfernoType)], [(InfernoType, InfernoType)])
-unifyRecords _err (ts1, trv1) (ts2, trv2) | trace (Text.unpack ("unifyRecords " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
-unifyRecords _err ([], trv1) ([], trv2) =
-  pure ([], [], unifyRowVars trv1 trv2)
+  [(Ident, InfernoType)] ->
+  [(Ident, InfernoType)] ->
+  [(InfernoType, InfernoType)] ->
+  SolveState Int Subst
+unifyRecords _err (ts1, trv1) (ts2, trv2) nf1 nf2 ps
+  | trace (Text.unpack ("unifyRecords " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
+unifyRecords err ([], trv1) ([], trv2) newFields1 newFields2 pairs = do
+  -- Base case: when all fields are expanded and matched up:
+  trace ("End unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
+  -- If new fields were added, create a fresh row var and a substitution for it
+  (trv1', su1) <- makeRowVarSubst trv1 newFields1
+  (trv2', su2) <- makeRowVarSubst trv2 newFields2
+  let su = Subst $ Map.fromList $ su1 ++ su2
+  -- Unify all pairs of field types and the final row vars
+  let pairsToUnify = unifyRowVars trv1' trv2' ++ pairs
+  su' <- uncurry (unifyMany err) $ unzip pairsToUnify
+  -- Apply su' to su so that the fields and row vars in su are unified
+  pure $ su' `compose` su
   where
     unifyRowVars Absent Absent = []
     unifyRowVars (TRowVar tv) Absent = [(TVar tv, TRecord mempty Absent)]
     unifyRowVars Absent (TRowVar tv) = [(TVar tv, TRecord mempty Absent)]
     unifyRowVars (TRowVar tv) (TRowVar tv') = [(TVar tv, TVar tv')]
-unifyRecords err ([], trv1) ((f2, t2) : ts2, trv2) = do
+    -- Create a subst from a new row var to the new fields
+    makeRowVarSubst trv [] =
+      pure (trv, [])
+    makeRowVarSubst Absent _ =
+      error "impossible: newFields created when RowVar is Absent"
+    makeRowVarSubst (TRowVar tv) newFields = do
+      tv' <- freshTypeVar
+      pure (TRowVar tv', [(tv, TRecord (Map.fromDescList newFields) (TRowVar tv'))])
+unifyRecords err ([], trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2 pairs = do
   tv <- expandRowVar err trv1
-  (newFields1, newFields2, pairs) <- unifyRecords err ([], trv1) (ts2, trv2)
-  pure ((f2, tv) : newFields1, newFields2, (tv, t2) : pairs)
-unifyRecords err ((f1, t1) : ts1, trv1) ([], trv2) = do
+  let pairs' = (tv, t2) : pairs
+  let newFields1' = (f2, tv) : newFields1
+  unifyRecords err ([], trv1) (ts2, trv2) newFields1' newFields2 pairs'
+unifyRecords err ((f1, t1) : ts1, trv1) ([], trv2) newFields1 newFields2 pairs = do
   tv <- expandRowVar err trv2
-  (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ([], trv2)
-  pure (newFields1, (f1, tv) : newFields2, (tv, t1) : pairs)
-unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2)
+  let pairs' = (tv, t1) : pairs
+  let newFields2' = (f1, tv) : newFields2
+  unifyRecords err (ts1, trv1) ([], trv2) newFields1 newFields2' pairs'
+unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2 pairs
   | f1 == f2 = do
-      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) (ts2, trv2)
-      pure (newFields1, newFields2, (t1, t2) : pairs)
+      let pairs' = (t1, t2) : pairs
+      unifyRecords err (ts1, trv1) (ts2, trv2) newFields1 newFields2 pairs'
   | f1 > f2 = do
       tv <- expandRowVar err trv1
-      (newFields1, newFields2, pairs) <- unifyRecords err ((f1, t1) : ts1, trv1) (ts2, trv2)
-      pure ((f2, tv) : newFields1, newFields2, (tv, t2) : pairs)
+      let pairs' = (tv, t2) : pairs
+      let newFields1' = (f2, tv) : newFields1
+      unifyRecords err ((f1, t1) : ts1, trv1) (ts2, trv2) newFields1' newFields2 pairs'
   | otherwise = do
       tv <- expandRowVar err trv2
-      (newFields1, newFields2, pairs) <- unifyRecords err (ts1, trv1) ((f2, t2) : ts2, trv2)
-      pure (newFields1, (f1, tv) : newFields2, (tv, t1) : pairs)
-
--- TODO CONTINUE:
--- pass newFields and pairs as args and make tail rec
--- base case: make and return the su' and remove makeRowVarSubst
--- expandRowVar should also create fresh RowVar and pass it when recursing
+      let pairs' = (tv, t1) : pairs
+      let newFields2' = (f1, tv) : newFields2
+      unifyRecords err (ts1, trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2' pairs'
 
 -- | If the rest of the record is a row variable, this generates a fresh type var to
 -- denote a new field. Otherwise, it throws a type error.
@@ -1348,28 +1391,7 @@ unifies err (TTuple ts1) (TTuple ts2)
   | length (tListToList ts1) == length (tListToList ts2) = unifyMany err (tListToList ts1) (tListToList ts2)
   | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- (getLocFromErrs err)]
 unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) = do
-  -- In general, we are trying to unify:
-  --   {f1: tf1, ..., g1: tg1, ..., 'a} ~ {g1: tg1', ..., f1': tf1', ..., 'b}
-  -- where g1, ... gN are the common fields. So, we first expand the row vars 'a and 'b
-  -- so that we have the same set of field names on both sides:
-  --   {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c} ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
-  -- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
-  -- Then, we match up the field names and unify the field types.
-  -- Finally, we add the substs: 'a ~> {f1': 't1', ..., 'c} and 'b ~> {f1: 't1, ..., 'd}
-
-  (newFields1, newFields2, pairsToUnify) <-
-    unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2)
-  trace ("After unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
-  su <- uncurry (unifyMany err) $ unzip pairsToUnify
-  su' <- mapM makeRowVarSubst [(trv1, newFields1), (trv2, newFields2)]
-  trace ("After makeRowVarSubst: " <> show su') $ pure ()
-  pure $ su `compose` Subst (Map.fromList $ catMaybes su') -- TODO or just do Map union since su' is on row vars and su is field types?
-  where
-    makeRowVarSubst (_trv, []) = pure Nothing
-    makeRowVarSubst (Absent, _) = error "impossible: newFields created when RowVar is Absent"
-    makeRowVarSubst (TRowVar tv, newFields) = do
-      tv' <- freshTypeVar
-      pure $ Just (tv, TRecord (Map.fromDescList newFields) (TRowVar tv'))
+  unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2) [] [] []
 unifies err _ _ =
   -- trace "throwing in unifies " $
   throwError err
