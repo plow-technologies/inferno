@@ -389,6 +389,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" $ vTrue
     shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
     shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
+    -- Records
+    shouldEvaluateTo "let r = {x: 2, y: 3} in r:x" $ VDouble 2
+    shouldEvaluateTo "let r = {x: 2, y: 3} in r:y" $ VDouble 3
     -- Type annotations
     shouldEvaluateTo "let x : int = 2 in x" $ VInt 2
     shouldEvaluateTo "let x : double = 2 in x" $ VDouble 2

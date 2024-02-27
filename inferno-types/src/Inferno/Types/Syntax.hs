@@ -66,6 +66,8 @@ module Inferno.Types.Syntax
         Case_,
         Array_,
         ArrayComp_,
+        Record_,
+        RecordField_,
         Bracketed_,
         RenameModule_,
         OpenModule_
@@ -335,9 +337,9 @@ instance Pretty InfernoType where
     TArray ty@(TBase _) -> "array of" <+> align (pretty ty)
     TArray ty@(TTuple _) -> "array of" <+> align (pretty ty)
     TArray ty -> "array of" <+> align (enclose lparen rparen $ pretty ty)
-    TRecord tys rowVar -> "record {" <> prettyFields <> prettyRest rowVar <> "}"
+    TRecord tys rowVar -> "{" <> prettyFields <> prettyRest rowVar <> "}"
       where
-        prettyFields = sep $ punctuate' ";" $ map prettyField $ Map.toAscList tys
+        prettyFields = sep $ Pretty.punctuate ";" $ map prettyField $ Map.toAscList tys
         prettyField (Ident f, ty) = pretty f <> ":" <+> pretty ty
         prettyRest (RowVar tv) = ";" <+> pretty tv
         prettyRest RowAbsent = mempty

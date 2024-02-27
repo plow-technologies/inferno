@@ -24,24 +24,13 @@ import Inferno.Types.Syntax
     InfernoType (TBase),
     Lit (LDouble, LHex, LInt, LText),
     Pat (..),
+    Scoped (LocalScope),
     tListToList,
     toEitherList,
   )
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value
-      ( VArray,
-        VDouble,
-        VEmpty,
-        VEnum,
-        VFun,
-        VInt,
-        VOne,
-        VText,
-        VTuple,
-        VTypeRep,
-        VWord64
-      ),
+    Value (..),
     runImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
@@ -204,6 +193,16 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Tuple_ es ->
     foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] (tListToList es) >>= return . VTuple
+  Record_ fs -> do
+    valMap <- foldrM (\(f, e, _) vs -> eval env e >>= \v -> return ((f, v) : vs)) [] fs
+    return $ VRecord $ Map.fromList valMap
+  RecordField_ (Ident r) f -> do
+    eval env (Var undefined Nothing LocalScope $ Expl $ ExtIdent $ Right r) >>= \case
+      VRecord fs -> do
+        case Map.lookup f fs of
+          Just v -> return v
+          Nothing -> throwM $ RuntimeError "record field not found"
+      _ -> throwM $ RuntimeError "failed to match with a record"
   One_ e -> eval env e >>= return . VOne
   Empty_ -> return $ VEmpty
   Assert_ cond e ->
