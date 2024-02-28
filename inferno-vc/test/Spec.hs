@@ -20,7 +20,7 @@ main =
     _ <-
       forkIO $
         runServerConfig
-          id
+          (const id)
           FSOps.withEnv
           (FSOps.runInfernoVCFilesystemM @Int @Int)
           ServerConfig

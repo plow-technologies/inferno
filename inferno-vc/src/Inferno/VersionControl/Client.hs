@@ -15,14 +15,14 @@ import Servant.Client (BaseUrl, Client, ClientEnv, ClientM, client, mkClientEnv)
 import Servant.Typed.Error (TypedClientM)
 
 mkVCClientEnv :: Manager -> BaseUrl -> ClientEnv
-mkVCClientEnv man@Manager {mModifyRequest = modReq} baseUrl =
-  mkClientEnv man {mModifyRequest = modReq'} baseUrl
+mkVCClientEnv man@Manager {mModifyRequest = modReq} =
+  mkClientEnv man {mModifyRequest = modReq'}
   where
     modReq' :: Request -> IO Request
     modReq' r = do
       x <- modReq r
       pure $
-        if ((hContentEncoding, "gzip") `elem` requestHeaders x)
+        if (hContentEncoding, "gzip") `elem` requestHeaders x
           then x
           else
             let new_hdrs = (hContentEncoding, "gzip") : requestHeaders x

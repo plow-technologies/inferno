@@ -120,7 +120,7 @@ vcServer toHandler =
     pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
 
     fetchVCObjects hs =
-      Map.fromList <$> (forM hs $ \h -> (h,) <$> Ops.fetchVCObject h)
+      Map.fromList <$> forM hs ( \h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
   forall m env config.
@@ -141,7 +141,7 @@ runServer ::
 runServer withEnv runOp = do
   readServerConfig "config.yml" >>= \case
     Left err -> putStrLn err
-    Right serverConfig -> runServerConfig id withEnv runOp serverConfig
+    Right serverConfig -> runServerConfig (const id) withEnv runOp serverConfig
 
 runServerConfig ::
   forall m env config.
@@ -155,7 +155,7 @@ runServerConfig ::
     ToJSON (Ops.Group m),
     Ops.InfernoVCOperations VCServerError m
   ) =>
-  Middleware ->
+  (env -> Middleware) ->
   (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   config ->
@@ -184,7 +184,7 @@ runServerConfig middleware withEnv runOp serverConfig = do
       runSettings (setPort port $ setHost host settingsWithTimeout) $
         ungzipRequest $
           gzip def $
-            middleware $
+            middleware env $
               serve (Proxy :: Proxy (VersionControlAPI a g)) $
                 vcServer (liftIO . liftTypedError . flip runOp env)
 
