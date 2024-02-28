@@ -274,6 +274,8 @@ instance Hashable BaseType where
 --
 -- The type of the function above indicates that it accepts any record as argument as
 -- long as it has at least a field called @x@.
+--
+-- Reference: https://www.cl.cam.ac.uk/teaching/1415/L28/rows.pdf (Sections 8.2 and 8.4.1)
 data RestOfRecord = RowVar TV | RowAbsent
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)

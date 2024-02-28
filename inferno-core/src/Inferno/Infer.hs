@@ -1299,6 +1299,12 @@ unifyMany err _ _ = trace "throwing in unifyMany " $ throwError err
 -- This function recurses with arguments that include a list of new fields for each
 -- record (in *descending* order of field names), and the list of pairs of field types
 -- that must be unified.
+--
+-- Reference:
+-- https://gallium.inria.fr/~remy/ftp/habil.pdf (Chapter 2)
+-- https://gallium.inria.fr/~remy/ftp/record-algebras.pdf
+-- (Though the algorithm implemented here is based on my understanding of how the
+-- theoretical algorithms in the above papers would be implemented in practice.)
 unifyRecords ::
   [TypeError SourcePos] ->
   ([(Ident, InfernoType)], RestOfRecord) ->
