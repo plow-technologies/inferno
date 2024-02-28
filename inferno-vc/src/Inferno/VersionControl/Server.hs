@@ -120,7 +120,7 @@ vcServer toHandler =
     pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
 
     fetchVCObjects hs =
-      Map.fromList <$> forM hs ( \h -> (h,) <$> Ops.fetchVCObject h)
+      Map.fromList <$> forM hs (\h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
   forall m env config.

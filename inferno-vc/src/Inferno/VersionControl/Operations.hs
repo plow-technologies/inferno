@@ -8,18 +8,18 @@
 -- This module defines operations on the Inferno VC store.
 module Inferno.VersionControl.Operations
   ( InfernoVCOperations (..),
-    throwTyped
+    throwTyped,
   )
 where
 
+import Control.Monad.Error.Lens (throwing)
 import Control.Monad.Except (MonadError)
-import Data.Generics.Sum (AsType(..))
+import Data.Generics.Sum (AsType (..))
 import Data.Kind (Type)
 import qualified Data.Set as Set
-import Control.Monad.Error.Lens (throwing)
 import Data.Time.Clock.POSIX (POSIXTime)
-import Inferno.VersionControl.Operations.Error (VCStoreError)
 import Inferno.Types.Syntax (getDependencies)
+import Inferno.VersionControl.Operations.Error (VCStoreError)
 import Inferno.VersionControl.Types
   ( VCHashUpdate,
     VCMeta (..),
