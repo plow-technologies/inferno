@@ -296,68 +296,68 @@ inferExpr allModules expr =
         -- if we threw errors whilst inferring, rethrow
         Left err -> Left err
         Right ((expr', ty, cs), InferState {..}) ->
-          trace ("\ninferExpr: " <> (Text.unpack . renderPretty) expr')
-            $ trace
-              ( "ty: "
-                  <> (Text.unpack . renderPretty) ty
-                  <> "\ncs: "
-                  <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList cs)
-                  <> "\n"
-              )
-            $
-            -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList cs of
-            case runSolve count typeClasses $ Set.toList cs of
-              Left errs -> Left errs
-              Right subst ->
-                -- trace ("substs: " <> show subst) $
-                -- trace ("patternsToCheck: " <> show patternsToCheck) $
-                case concatMap (uncurry $ checkExhaustivenessAndUsefullness enumSigs) patternsToCheck of
-                  errs@(_ : _) -> Left errs
-                  _ -> do
-                    -- get type classes and type from solved constraints
-                    let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) $ Set.fromList $ rights $ Set.toList cs
-                    let substitutedTy@(ImplType implTys tyBody) = apply subst ty
-                    -- get current type variables
-                    let tvs = ftv substitutedTy `Set.union` (Set.unions $ Set.elems $ Set.map ftv cls)
-                    let res substNew (mRepTyCls, implTys', expr'') =
-                          let finalTy =
-                                closeOver
-                                  ((filterInstantiatedTypeClasses $ Set.map (apply substNew) cls) `Set.union` (maybe mempty Set.singleton mRepTyCls))
-                                  $ apply substNew
-                                  $ ImplType implTys' tyBody
-                           in Right $
-                                ( expr'',
-                                  finalTy,
-                                  Map.map
-                                    (\meta@TypeMetadata {ty = (tcs, t)} -> meta {ty = closeOver (filterInstantiatedTypeClasses $ Set.map (apply $ substNew <> subst) tcs) $ apply (substNew <> subst) t})
-                                    typeMap
-                                )
+          -- trace ("\ninferExpr: " <> (Text.unpack . renderPretty) expr')
+          --   $ trace
+          --     ( "ty: "
+          --         <> (Text.unpack . renderPretty) ty
+          --         <> "\ncs: "
+          --         <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList cs)
+          --         <> "\n"
+          --     )
+          --   $
+          -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList cs of
+          case runSolve count typeClasses $ Set.toList cs of
+            Left errs -> Left errs
+            Right subst ->
+              -- trace ("substs: " <> show subst) $
+              -- trace ("patternsToCheck: " <> show patternsToCheck) $
+              case concatMap (uncurry $ checkExhaustivenessAndUsefullness enumSigs) patternsToCheck of
+                errs@(_ : _) -> Left errs
+                _ -> do
+                  -- get type classes and type from solved constraints
+                  let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) $ Set.fromList $ rights $ Set.toList cs
+                  let substitutedTy@(ImplType implTys tyBody) = apply subst ty
+                  -- get current type variables
+                  let tvs = ftv substitutedTy `Set.union` (Set.unions $ Set.elems $ Set.map ftv cls)
+                  let res substNew (mRepTyCls, implTys', expr'') =
+                        let finalTy =
+                              closeOver
+                                ((filterInstantiatedTypeClasses $ Set.map (apply substNew) cls) `Set.union` (maybe mempty Set.singleton mRepTyCls))
+                                $ apply substNew
+                                $ ImplType implTys' tyBody
+                         in Right $
+                              ( expr'',
+                                finalTy,
+                                Map.map
+                                  (\meta@TypeMetadata {ty = (tcs, t)} -> meta {ty = closeOver (filterInstantiatedTypeClasses $ Set.map (apply $ substNew <> subst) tcs) $ apply (substNew <> subst) t})
+                                  typeMap
+                              )
 
-                    if -- trace ("type classes: " <> show cls) $
-                    Set.null cls
-                      then res mempty $ closeOverTypeReps implTys expr'
-                      else case findTypeClassWitnesses typeClasses (Just 2) cls tvs of
-                        [] -> Left [CouldNotFindTypeclassWitness cls $ blockPosition expr]
-                        -- we attempt to find two type assignments. If there is only one satisfying assignment for all the type-classes, we automatically substitute the instantiations
-                        [subst'] -> res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
-                        -- even if there isn't a unique solution, we can still safely apply the substitutions to any types which do not transitively depend on the input or output type variables
-                        -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
-                        (Subst s) : _ ->
-                          let ftvsDependentOnOuterType =
-                                Set.foldl
-                                  ( \ftvsTransClosure c ->
-                                      let ftvCls = ftv c
-                                       in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
-                                            then ftvsTransClosure
-                                            else ftvCls `Set.union` ftvsTransClosure
-                                  )
-                                  -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
-                                  -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
-                                  (ftv tyBody `Set.union` (Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys))
-                                  cls
-                              subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
-                           in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
-                              res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
+                  if -- trace ("type classes: " <> show cls) $
+                  Set.null cls
+                    then res mempty $ closeOverTypeReps implTys expr'
+                    else case findTypeClassWitnesses typeClasses (Just 2) cls tvs of
+                      [] -> Left [CouldNotFindTypeclassWitness cls $ blockPosition expr]
+                      -- we attempt to find two type assignments. If there is only one satisfying assignment for all the type-classes, we automatically substitute the instantiations
+                      [subst'] -> res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
+                      -- even if there isn't a unique solution, we can still safely apply the substitutions to any types which do not transitively depend on the input or output type variables
+                      -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
+                      (Subst s) : _ ->
+                        let ftvsDependentOnOuterType =
+                              Set.foldl
+                                ( \ftvsTransClosure c ->
+                                    let ftvCls = ftv c
+                                     in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
+                                          then ftvsTransClosure
+                                          else ftvCls `Set.union` ftvsTransClosure
+                                )
+                                -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
+                                -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
+                                (ftv tyBody `Set.union` (Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys))
+                                cls
+                            subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
+                         in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
+                            res subst' $ closeOverTypeReps (Map.map (apply subst') implTys) expr'
   where
     enumSigs :: Map.Map VCObjectHash (Set.Set (VCObjectHash, Text.Text))
     enumSigs =
