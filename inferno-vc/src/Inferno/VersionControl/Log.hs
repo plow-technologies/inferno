@@ -7,6 +7,7 @@ import Inferno.VersionControl.Operations.Error (VCStoreError, vcStoreErrorToStri
 
 data VCServerTrace
   = ThrownVCStoreError VCStoreError
+  | ThrownVCOtherError Text
   | WriteJSON FilePath
   | WriteTxt FilePath
   | AlreadyExistsJSON FilePath
@@ -22,4 +23,5 @@ vcServerTraceToText = \case
   ReadJSON fp -> "Reading JSON at: " <> pack fp
   ReadTxt fp -> "Reading TXT at: " <> pack fp
   ThrownVCStoreError e -> pack (vcStoreErrorToString e)
+  ThrownVCOtherError e -> "Other server error: " <> e
   DeleteFile fp -> "Deleting file: " <> pack fp

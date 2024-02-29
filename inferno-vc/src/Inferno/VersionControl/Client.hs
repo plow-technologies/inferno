@@ -1,7 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
 
 module Inferno.VersionControl.Client where
 
@@ -17,14 +15,14 @@ import Servant.Client (BaseUrl, Client, ClientEnv, ClientM, client, mkClientEnv)
 import Servant.Typed.Error (TypedClientM)
 
 mkVCClientEnv :: Manager -> BaseUrl -> ClientEnv
-mkVCClientEnv man@Manager {mModifyRequest = modReq} baseUrl =
-  mkClientEnv man {mModifyRequest = modReq'} baseUrl
+mkVCClientEnv man@Manager {mModifyRequest = modReq} =
+  mkClientEnv man {mModifyRequest = modReq'}
   where
     modReq' :: Request -> IO Request
     modReq' r = do
       x <- modReq r
       pure $
-        if ((hContentEncoding, "gzip") `elem` requestHeaders x)
+        if (hContentEncoding, "gzip") `elem` requestHeaders x
           then x
           else
             let new_hdrs = (hContentEncoding, "gzip") : requestHeaders x
@@ -42,7 +40,7 @@ mkVCClientEnv man@Manager {mModifyRequest = modReq} baseUrl =
       RequestBodyIO iob -> RequestBodyIO $ compressBody <$> iob
       b -> b
 
-api :: Proxy (VersionControlAPI a g)
+api :: forall a g. Proxy (VersionControlAPI a g)
 api = Proxy
 
 infernoVcClient :: (FromJSON a, FromJSON g, ToJSON a, ToJSON g) => Client ClientM (VersionControlAPI a g)
