@@ -168,9 +168,11 @@ parsingTests = describe "pretty printing/parsing" $ do
   describe "parsing records" $ do
     let r = Record () [(Ident "name", Lit () (LText "Zaphod"), Just ()), (Ident "age", Lit () (LInt 391), Nothing)] ()
     shouldSucceedFor "{}" $ Record () [] ()
-    shouldSucceedFor "{name: \"Zaphod\", age: 391}" $ r
-    shouldSucceedFor "let r = {name: \"Zaphod\", age: 391} in r:age" $
-      Let () () (Expl $ ExtIdent $ Right "r") () r () (RecordField () (Ident "r") () (Ident "age"))
+    shouldSucceedFor "{name = \"Zaphod\"; age = 391}" $ r
+    -- Records are parsed as Var, converted to RecordField later in pinExpr:
+    let varRecordAccess = Var () () (Scope (ModuleName "r")) (Expl (ExtIdent (Right "age")))
+    shouldSucceedFor "let r = {name = \"Zaphod\"; age = 391} in r.age" $
+      Let () () (Expl $ ExtIdent $ Right "r") () r () varRecordAccess
 
   describe "parsing infix operators" $ do
     shouldSucceedFor "2*3+7/2" $

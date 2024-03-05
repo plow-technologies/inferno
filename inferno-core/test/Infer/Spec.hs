@@ -124,12 +124,21 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "round -1425"
     shouldInferTypeFor "round (-1425)" $ simpleType typeInt
 
-    -- Records: TODO
+    -- Records:
     shouldInferTypeFor "{}" $ simpleType $ TRecord Map.empty RowAbsent
-    shouldInferTypeFor "{name: \"Zaphod\", age: 391.4}" $ simpleType $ TRecord (Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]) RowAbsent
-    shouldInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in r:age" $ simpleType typeDouble
-    shouldInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in let f = fun r -> r:age in f r + 1" $ simpleType typeDouble
-    shouldFailToInferTypeFor "let r = {name: \"Zaphod\", age: 391.4} in r:age + \" is too old\""
+    shouldInferTypeFor "{name = \"Zaphod\"; age = 391.4}" $ simpleType $ TRecord (Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]) RowAbsent
+    shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age" $ simpleType typeDouble
+    shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in let f = fun r -> r.age in f r + 1" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age + \" is too old\""
+    shouldFailToInferTypeFor "rec.foo"
+    shouldInferTypeFor "Array.length []" $ simpleType typeInt
+    shouldFailToInferTypeFor "let r = {} in r.x"
+    shouldFailToInferTypeFor "let r = {y = 3} in r.x"
+    shouldInferTypeFor "let r = {y = 3.2; x = 4.3} in r.x" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let Array = {} in Array.length"
+    shouldInferTypeFor "let Array = {x = 2.2} in Array.x" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let module r = Array in r.x"
+    shouldInferTypeFor "let module r = Array in r.length []" $ simpleType typeInt
     -- TODO try in functions
 
     -- Type annotations:

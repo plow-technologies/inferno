@@ -139,9 +139,22 @@ pinExpr m expr =
         Lit p l -> pure $ Lit p l
         Var p _hash modNm (Impl x) -> pure $ Var p Local modNm (Impl x)
         Var p _hash modNm i@(Expl (ExtIdent (Left _))) -> pure $ Var p Local modNm i
-        Var p _hash modNm i@(Expl (ExtIdent (Right x))) -> do
-          hash <- lookupName exprPos modNm (FunNamespace $ Ident x) m
-          pure $ Var p hash modNm i
+        Var p _hash modNm i@(Expl (ExtIdent (Right x))) ->
+          case modNm of
+            Scope (ModuleName a) ->
+              -- `a.b` can be either Mod.foo or record.field
+              -- First check if `a` is a local var (record)
+              case lookupName exprPos LocalScope (FunNamespace $ Ident a) m of
+                Right _ ->
+                  pure $ RecordField p (Ident a) p (Ident x)
+                Left _ ->
+                  -- Else assume `a.b` is Mod.foo
+                  pinScopedVar
+            LocalScope -> pinScopedVar
+          where
+            pinScopedVar = do
+              hash <- lookupName exprPos modNm (FunNamespace $ Ident x) m
+              pure $ Var p hash modNm i
         OpVar p _hash modNm x -> do
           hash <- lookupName exprPos modNm (OpNamespace x) m
           pure $ OpVar p hash modNm x

@@ -363,7 +363,7 @@ array p = label "array\nfor example: [1,2,3,4,5]" $
         <|> pure []
 
 record :: Parser a -> Parser (SourcePos, [(Ident, a, Maybe SourcePos)], SourcePos)
-record p = label "record\nfor example: {name: \"Zaphod\", age: 391}" $
+record p = label "record\nfor example: {name = \"Zaphod\"; age = 391}" $
   lexeme $ do
     startPos <- getSourcePos
     symbol "{"
@@ -376,17 +376,17 @@ record p = label "record\nfor example: {name: \"Zaphod\", age: 391}" $
       try
         ( do
             f <- lexeme $ Ident <$> variable
-            symbol ":"
+            symbol "="
             e <- p
             commaPos <- getSourcePos
-            symbol ","
+            symbol ";"
             es <- argsE
             return ((f, e, Just commaPos) : es)
         )
         <|> try
           ( do
               f <- lexeme $ Ident <$> variable
-              symbol ":"
+              symbol "="
               e1 <- p
               return [(f, e1, Nothing)]
           )
@@ -677,15 +677,6 @@ bracketedE = do
         [(e, _)] -> Bracketed startPos e endPos
         _ -> Tuple startPos (tListFromList es) endPos
 
-recordFieldE :: Parser (Expr () SourcePos)
-recordFieldE = label "a record field access expression\nfor example: rec.field" $ do
-  startPos <- getSourcePos
-  r <- Ident <$> variable
-  char ':'
-  fieldPos <- getSourcePos
-  f <- lexeme $ Ident <$> variable
-  return $ RecordField startPos r fieldPos f
-
 term :: Parser (Expr () SourcePos)
 term =
   bracketedE
@@ -693,9 +684,10 @@ term =
     <|> try doubleE
     <|> intE
     <|> enumE Enum
-    <|> try recordFieldE -- Try record:field first so that record isn't parsed as Var
     <|> do
       -- Variable: foo or Mod.foo or Mod.(+)
+      -- Record field access rec.field is also parsed as Var and converted to RecordField
+      -- in pinExpr
       startPos <- getSourcePos
       lexeme $
         try
