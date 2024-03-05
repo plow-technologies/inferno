@@ -106,9 +106,9 @@ baseOpsTable :: OpsTable
 baseOpsTable = Prelude.baseOpsTable @IO @() $ Prelude.builtinModules @IO @()
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Module
-deriving instance (Arbitrary objs) => ToADTArbitrary (Module.Module objs)
+deriving instance Arbitrary objs => ToADTArbitrary (Module.Module objs)
 
-deriving via (GenericArbitrary (Module.Module objs)) instance (Arbitrary objs) => Arbitrary (Module.Module objs)
+deriving via (GenericArbitrary (Module.Module objs)) instance Arbitrary objs => Arbitrary (Module.Module objs)
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Syntax
 deriving instance ToADTArbitrary TV
@@ -232,7 +232,7 @@ deriving instance ToADTArbitrary Fixity
 
 deriving via (GenericArbitrary Fixity) instance Arbitrary Fixity
 
-instance (Arbitrary pos) => Arbitrary (Comment pos) where
+instance Arbitrary pos => Arbitrary (Comment pos) where
   shrink = shrinkNothing
   arbitrary =
     oneof
@@ -257,26 +257,26 @@ instance Arbitrary Lit where
         LHex <$> arbitrary
       ]
 
-deriving instance (Arbitrary a) => ToADTArbitrary (TList a)
+deriving instance Arbitrary a => ToADTArbitrary (TList a)
 
-instance (Arbitrary a) => Arbitrary (TList a) where
+instance Arbitrary a => Arbitrary (TList a) where
   arbitrary =
     oneof
       [ pure TNil,
         TCons <$> arbitrary <*> arbitrary <*> listOf arbitrary
       ]
 
-instance (Arbitrary a) => Arbitrary (SomeIStr a) where
+instance Arbitrary a => Arbitrary (SomeIStr a) where
   arbitrary = sized $ \n -> do
     k <- choose (0, n)
     oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
     where
-      goT :: (Arbitrary a) => Int -> Gen (IStr 'True a)
+      goT :: Arbitrary a => Int -> Gen (IStr 'True a)
       goT = \case
         0 -> pure ISEmpty
         n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
 
-      goF :: (Arbitrary a) => Int -> Gen (IStr 'False a)
+      goF :: Arbitrary a => Int -> Gen (IStr 'False a)
       goF = \case
         0 -> ISStr <$> arbitrary <*> pure ISEmpty
         n -> ISStr <$> arbitrary <*> goT (n - 1)
@@ -304,7 +304,7 @@ instance (Arbitrary a) => Arbitrary (SomeIStr a) where
 --   Perhaps the best way would be to use a size bound on the recursive constructors like "ICommentAbove"
 -- deriving instance Arbitrary pos => ToADTArbitrary (Import pos)
 -- deriving via (GenericArbitrary (Import pos)) instance Arbitrary pos => Arbitrary (Import pos)
-instance (Arbitrary pos) => Arbitrary (Import pos) where
+instance Arbitrary pos => Arbitrary (Import pos) where
   shrink = shrinkNothing
   arbitrary =
     oneof
@@ -313,9 +313,9 @@ instance (Arbitrary pos) => Arbitrary (Import pos) where
         IEnum <$> arbitrary <*> arbitrary <*> arbitrary
       ]
 
-deriving instance (Arbitrary a) => ToADTArbitrary (Scoped a)
+deriving instance Arbitrary a => ToADTArbitrary (Scoped a)
 
-deriving via (GenericArbitrary (Scoped a)) instance (Arbitrary a) => Arbitrary (Scoped a)
+deriving via (GenericArbitrary (Scoped a)) instance Arbitrary a => Arbitrary (Scoped a)
 
 -- NOTE: this instance doesn't generate all Exprs, it only generates some valid ones
 -- This is because the parser tests use this. However, golden tests in theory should
@@ -367,7 +367,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> (arbitrarySized $ n `div` 3)
         where
           -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
-          arbitraryLamVars :: (Arbitrary pos) => Gen (NonEmpty (pos, Maybe ExtIdent))
+          arbitraryLamVars :: Arbitrary pos => Gen (NonEmpty (pos, Maybe ExtIdent))
           arbitraryLamVars = arbitrary `suchThat` (all isSomeRight . snd . NonEmpty.unzip)
           isSomeRight (Just (ExtIdent (Right _))) = True
           isSomeRight _ = False
@@ -631,9 +631,9 @@ deriving instance ToADTArbitrary VersionControl.VCObjectHash
 instance Arbitrary VersionControl.VCObjectHash where
   arbitrary = VersionControl.VCObjectHash . hash . Char8.pack <$> arbitrary
 
-deriving instance (Arbitrary a) => ToADTArbitrary (VersionControl.Pinned a)
+deriving instance Arbitrary a => ToADTArbitrary (VersionControl.Pinned a)
 
-deriving via (GenericArbitrary (VersionControl.Pinned a)) instance (Arbitrary a) => Arbitrary (VersionControl.Pinned a)
+deriving via (GenericArbitrary (VersionControl.Pinned a)) instance Arbitrary a => Arbitrary (VersionControl.Pinned a)
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.VersionControl.Types
 deriving instance ToADTArbitrary VersionControl.VCObject
