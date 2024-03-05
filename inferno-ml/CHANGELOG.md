@@ -1,6 +1,11 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0.0 -- 2024-02-26
+* Breaking change: add `VExtended` constructor to `MlValue`
+* Add `toType` primitive
+* Make `mlPrelude` polymorphic
+
 ## 0.2.0.0 -- 2024-01-29
 * Update inferno-core version and types of prelude and ToValue
 

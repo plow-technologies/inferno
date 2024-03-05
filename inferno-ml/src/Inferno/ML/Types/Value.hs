@@ -9,30 +9,33 @@ import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Prettyprinter (Pretty (pretty), align)
 import qualified Torch as T
 
-data MlValue
+data MlValue x
   = VTensor T.Tensor
   | VModel T.ScriptModule
+  | VExtended x
 
-instance Eq MlValue where
-  (VTensor t1) == (VTensor t2) = t1 == t2
+instance Eq x => Eq (MlValue x) where
+  VTensor t1 == VTensor t2 = t1 == t2
+  VExtended x == VExtended y = x == y
   _ == _ = False
 
-instance Pretty MlValue where
+instance Pretty x => Pretty (MlValue x) where
   pretty = \case
     VTensor t -> align (pretty $ Text.pack $ show t)
     VModel m -> align (pretty $ Text.pack $ show m)
+    VExtended x -> align $ pretty x
 
-instance ToValue MlValue m T.Tensor where
+instance ToValue (MlValue x) m T.Tensor where
   toValue = VCustom . VTensor
 
-instance FromValue MlValue m T.Tensor where
+instance Pretty x => FromValue (MlValue x) m T.Tensor where
   fromValue (VCustom (VTensor t)) = pure t
   fromValue v = couldNotCast v
 
-instance ToValue MlValue m T.ScriptModule where
+instance ToValue (MlValue x) m T.ScriptModule where
   toValue = VCustom . VModel
 
-instance FromValue MlValue m T.ScriptModule where
+instance Pretty x => FromValue (MlValue x) m T.ScriptModule where
   fromValue (VCustom (VModel t)) = pure t
   fromValue v = couldNotCast v
 

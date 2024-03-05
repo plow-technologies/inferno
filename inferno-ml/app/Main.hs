@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Main where
 
@@ -16,7 +17,7 @@ main = do
   file <- head <$> getArgs
   src <- Text.readFile file
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno mlPrelude customTypes :: IO (Interpreter IO MlValue)
+    mkInferno @_ @(MlValue ()) mlPrelude customTypes
   case parseAndInferTypeReps src of
     Left err -> print err
     Right ast ->

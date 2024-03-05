@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-ml
-version:             0.2.0.0
+version:             0.3.0.0
 synopsis:            Machine Learning primitives for Inferno
 description:         Machine Learning primitives for Inferno
 homepage:            https://github.com/plow-technologies/inferno.git#readme
