@@ -108,9 +108,6 @@ import Inferno.Types.Type
     (.->),
   )
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash, pinnedToMaybe, vcHash)
--- import Inferno.Utils.Prettyprinter (renderPretty)
-
-import Inferno.Utils.Prettyprinter (renderPretty)
 import qualified Picosat
 import Prettyprinter (Pretty (pretty), (<+>))
 import System.IO.Unsafe (unsafePerformIO)
@@ -1314,11 +1311,11 @@ unifyRecords ::
   [(Ident, InfernoType)] ->
   [(InfernoType, InfernoType)] ->
   SolveState Int Subst
-unifyRecords _err (ts1, trv1) (ts2, trv2) nf1 nf2 ps
-  | trace (Text.unpack ("\nunifyRecords called with " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
+-- unifyRecords _err (ts1, trv1) (ts2, trv2) nf1 nf2 ps
+--   | trace (Text.unpack ("\nunifyRecords called with " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
 unifyRecords err ([], trv1) ([], trv2) newFields1 newFields2 pairs = do
   -- Base case: when all fields are expanded and matched up:
-  trace ("End unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
+  -- trace ("End unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
   -- If new fields were added, create a fresh row var and a substitution for it
   (trv1', su1) <- makeRowVarSubst trv1 newFields1
   (trv2', su2) <- makeRowVarSubst trv2 newFields2
@@ -1379,7 +1376,7 @@ freshTypeVar = do
   return $ TV count
 
 unifies :: [TypeError SourcePos] -> InfernoType -> InfernoType -> SolveState Int Subst
-unifies _ t1 t2 | trace (Text.unpack ("unifying " <> renderPretty t1 <> " and " <> renderPretty t2)) False = undefined
+-- unifies _ t1 t2 | trace (Text.unpack ("unifying " <> renderPretty t1 <> " and " <> renderPretty t2)) False = undefined
 unifies _ t1 t2 | t1 == t2 = return emptySubst
 unifies err (TVar v) t = bind err v t
 unifies err t (TVar v) = bind err v t
@@ -1404,7 +1401,7 @@ solver varCount (su, cs) =
     _ -> do
       let (tyConstrs, typeCls) = partitionEithers cs
       su1 <- flip evalSolveState varCount $ solverTyCs su tyConstrs
-      trace ("After solverTyCs, final su1\n" <> show su1) $ pure ()
+      -- trace ("After solverTyCs, final su1\n" <> show su1) $ pure ()
       let partResolvedTyCls = map (\(loc, tc) -> (loc, apply su1 tc)) typeCls
       -- trace ("partResolvedTyCls: " <> (intercalate "\n" $ map (unpack . renderPretty . pretty . snd) partResolvedTyCls)) $
       evalSolveState (solverTypeClasses $ su1 `compose` su) (Set.fromList partResolvedTyCls, mempty)
@@ -1416,7 +1413,7 @@ solverTyCs su cs =
     [] -> return su
     ((t1, t2, errs) : cs0) -> do
       su1 <- unifies errs t1 t2
-      trace ("In solverTyCs, applying su1\n" <> show su1 <> "\nOnto es\n" <> show cs0) $ pure ()
+      -- trace ("In solverTyCs, applying su1\n" <> show su1 <> "\nOnto es\n" <> show cs0) $ pure ()
       solverTyCs (su1 `compose` su) (map (\(t1', t2', es) -> (apply su1 t1', apply su1 t2', map (apply su1) es)) cs0)
 
 evalSolveState :: SolveState st a -> st -> Solve a

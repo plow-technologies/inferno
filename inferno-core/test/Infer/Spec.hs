@@ -131,7 +131,9 @@ inferTests = describe "infer" $
 
     -- Records:
     shouldInferTypeFor "{}" $ simpleType $ TRecord Map.empty RowAbsent
-    shouldInferTypeFor "{name = \"Zaphod\"; age = 391.4}" $ simpleType $ TRecord (Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]) RowAbsent
+    shouldInferTypeFor "{name = \"Zaphod\"; age = 391.4}" $
+      simpleType $
+        TRecord (Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]) RowAbsent
     shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age" $ simpleType typeDouble
     shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in let f = fun r -> r.age in f r + 1" $ simpleType typeDouble
     shouldFailToInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age + \" is too old\""
@@ -144,7 +146,13 @@ inferTests = describe "infer" $
     shouldInferTypeFor "let Array = {x = 2.2} in Array.x" $ simpleType typeDouble
     shouldFailToInferTypeFor "let module r = Array in r.x"
     shouldInferTypeFor "let module r = Array in r.length []" $ simpleType typeInt
-    -- TODO try in functions
+    shouldInferTypeFor "let f = fun r -> r.age in f {age = 21.1; x = 5.4}" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in f {age = 2; ht = 3}"
+    shouldInferTypeFor "let f = fun r -> truncateTo 2 r.ht + truncateTo 2 r.wt in f" $
+      makeType 0 [] (TArr (TRecord (Map.fromList [(Ident {unIdent = "ht"}, typeDouble), (Ident {unIdent = "wt"}, typeDouble)]) (RowVar (TV {unTV = 0}))) typeDouble)
+    shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in fun r -> let x = r.ht + r.age + 1.1 in f r"
+    shouldFailToInferTypeFor "let f = fun r -> r.age in let x = f {age = 21.1} in let y = f {age = \"t\"} in 1"
+    shouldFailToInferTypeFor "let f = fun r -> truncateTo 2 r.age in f {age = \"t\"}"
 
     -- Type annotations:
     shouldInferTypeFor "let xBoo : double = 1 in truncateTo 2 xBoo" $ simpleType typeDouble
