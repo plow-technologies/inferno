@@ -13,6 +13,7 @@ module Inferno.Infer
     findTypeClassWitnesses,
     inferTypeReps,
     inferPossibleTypes,
+    unifyRecords,
   )
 where
 
@@ -43,7 +44,7 @@ import Data.Bifunctor (bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, intercalate, unzip4) -- intercalate
+import Data.List (find, unzip4) -- intercalate
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
@@ -631,7 +632,7 @@ infer expr =
               (e'', ImplType i t, cs) <- infer e'
               (es'', impls, tRest, csRest) <- go es'
               return ((e'', p3) : es'', i : impls, t : tRest, cs `Set.union` csRest)
-        RecordField p_r (Ident r) _p_f (Ident f) -> do
+        RecordField p_r (Ident r) (Ident f) -> do
           (_e', ImplType i_r t_r, cs_r) <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right r
           tv <- fresh
           trv <-
@@ -1314,7 +1315,7 @@ unifyRecords ::
   [(InfernoType, InfernoType)] ->
   SolveState Int Subst
 unifyRecords _err (ts1, trv1) (ts2, trv2) nf1 nf2 ps
-  | trace (Text.unpack ("unifyRecords " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
+  | trace (Text.unpack ("\nunifyRecords called with " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
 unifyRecords err ([], trv1) ([], trv2) newFields1 newFields2 pairs = do
   -- Base case: when all fields are expanded and matched up:
   trace ("End unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()

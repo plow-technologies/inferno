@@ -139,7 +139,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Serialize (Serialize)
+import Data.Serialize (Serialize (..))
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
@@ -460,7 +460,9 @@ newtype Subst = Subst (Map.Map TV InfernoType)
   deriving newtype (Semigroup, Monoid)
 
 instance Show Subst where
-  show (Subst m) = intercalate "\n" $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
+  show (Subst m) = "[" <> xs <> "]"
+    where
+      xs = intercalate ", " $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
 
 class Substitutable a where
   apply :: Subst -> a -> a
@@ -561,8 +563,8 @@ newtype Ident = Ident {unIdent :: Text}
   deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData, Hashable)
 
 instance Serialize Ident where
-  put = undefined -- TODO
-  get = undefined -- TODO
+  put = put . Text.encodeUtf8 . unIdent
+  get = Ident . Text.decodeUtf8 <$> get
 
 newtype ModuleName = ModuleName {unModuleName :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
@@ -953,7 +955,6 @@ data Expr hash pos
   | RecordField -- r.f
       pos
       Ident -- the record var name
-      pos
       Ident -- field name
   | Array
       pos -- position of `[`
@@ -1093,7 +1094,7 @@ pattern Record_ :: forall hash pos. [(Ident, Expr hash pos, Maybe pos)] -> Expr 
 pattern Record_ xs <- Record _ xs _
 
 pattern RecordField_ :: forall hash pos. Ident -> Ident -> Expr hash pos
-pattern RecordField_ r f <- RecordField _ r _ f
+pattern RecordField_ r f <- RecordField _ r f
 
 pattern Array_ :: forall hash pos. [(Expr hash pos, Maybe pos)] -> Expr hash pos
 pattern Array_ xs <- Array _ xs _
@@ -1276,8 +1277,8 @@ instance BlockUtils (Expr hash) where
         AssertF pos1 _ _ (_, pos2) -> (pos1, pos2)
         CaseF pos1 _ _ _ pos2 -> (pos1, incSourceCol pos2 1)
         RecordF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
-        RecordFieldF pos1 _ pos2 (Ident f) -> (pos1, incSourceCol pos2 $ Text.length f + 1)
-        -- TODO if we only allow var.field then no need for pos2?
+        RecordFieldF pos1 (Ident r) (Ident f) ->
+          (pos1, incSourceCol pos1 $ Text.length r + Text.length f + 1)
         ArrayF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         ArrayCompF pos1 _ _ _ _ pos2 -> (pos1, incSourceCol pos2 1)
         CommentAboveF c (_, pos2) -> let (pos1, _) = blockPosition c in (pos1, pos2)
@@ -1448,7 +1449,7 @@ prettyPrec isBracketed prec expr =
           Empty _ -> p
           -- TODO test that these do the right thing!
           Record _ _ _ -> p
-          RecordField _ _ _ _ -> p
+          RecordField _ _ _ -> p
           Array _ _ _ -> p
           ArrayComp _ _ _ _ _ _ -> p
           Bracketed _ _ _ -> p
@@ -1598,18 +1599,18 @@ prettyPrec isBracketed prec expr =
           [] -> mempty
           [(Ident f, e, _)] ->
             pretty f
-              <> ": "
-              <> align (prettyPrec False 0 e)
+              <+> "="
+              <+> align (prettyPrec False 0 e)
               <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
           (Ident f, e, _) : es ->
             (if not firstElement && hasLeadingComment e then line else mempty)
               <> pretty f
-              <> ": "
-              <> align (prettyPrec False 0 e)
+              <+> "="
+              <+> align (prettyPrec False 0 e)
               <> (if hasTrailingComment e then hardline else line')
               <> ", "
               <> prettyRecord False es
-    RecordField _ (Ident r) _ (Ident f) ->
+    RecordField _ (Ident r) (Ident f) ->
       pretty r <> "." <> pretty f
     Array _ [] _ -> "[]"
     Array _ xs _ -> group $ (flatAlt "[ " "[") <> prettyArray True xs

@@ -146,7 +146,7 @@ pinExpr m expr =
               -- First check if `a` is a local var (record)
               case lookupName exprPos LocalScope (FunNamespace $ Ident a) m of
                 Right _ ->
-                  pure $ RecordField p (Ident a) p (Ident x)
+                  pure $ RecordField p (Ident a) (Ident x)
                 Left _ ->
                   -- Else assume `a.b` is Mod.foo
                   pinScopedVar
@@ -168,8 +168,8 @@ pinExpr m expr =
         Record p1 es p2 -> do
           es' <- mapM (\(f, e, p3) -> (f,,p3) <$> pinExpr m e) es
           pure $ Record p1 es' p2
-        RecordField p1 r p2 f ->
-          pure $ RecordField p1 r p2 f
+        RecordField p1 r f ->
+          pure $ RecordField p1 r f
         Array p1 es p2 -> do
           es' <- mapM (\(e, p3) -> (,p3) <$> pinExpr m e) es
           pure $ Array p1 es' p2

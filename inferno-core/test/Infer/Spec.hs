@@ -1,13 +1,17 @@
-{-# LANGUAGE TypeApplications #-}
-
 module Infer.Spec where
 
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Identity (Identity (runIdentity))
+import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.State (evalStateT)
 import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (unpack)
+import Debug.Trace (trace)
 import Inferno.Core (InfernoError (..), Interpreter (parseAndInfer), mkInferno)
+import Inferno.Infer (unifyRecords)
 import Inferno.Infer.Exhaustiveness
   ( Pattern (W),
     cEmpty,
@@ -21,9 +25,10 @@ import Inferno.Infer.Exhaustiveness
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (ExtIdent (..), Ident (..), RestOfRecord (RowAbsent), typeText)
+import Inferno.Types.Syntax (ExtIdent (..), Ident (..), RestOfRecord (..), typeText)
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe, shouldNotBe)
 
 inferTests :: Spec
@@ -205,6 +210,67 @@ inferTests = describe "infer" $
               ]
         shouldBeInexhaustive complexPattern
         shouldBeUseful complexPattern
+
+    describe "unifyRecords" $ do
+      unificationShouldBeOK
+        ([], RowAbsent)
+        ([], RowAbsent)
+        0
+
+      unificationShouldBeOK
+        ([("f1", typeDouble)], RowVar $ TV 1)
+        ([("f1", typeDouble)], RowVar $ TV 2)
+        3
+
+      unificationShouldBeOK
+        ([("f1", typeBool), ("f2", typeDouble)], RowAbsent)
+        ([("f2", typeDouble), ("f1", typeBool)], RowAbsent)
+        0
+
+      unificationShouldBeOK
+        ([("f1", typeInt), ("f2", TVar $ TV 0)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
+        2
+
+      unificationShouldFail
+        ([("f2", TVar $ TV 0)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", TVar $ TV 2)], RowAbsent)
+        3
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
+        2
+
+      unificationShouldFail
+        ([("f1", typeInt)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowVar $ TV 0)
+        2
+
+      unificationShouldBeOK
+        ([], RowVar $ TV 0)
+        ([("f1", typeInt), ("f2", typeDouble)], RowAbsent)
+        1
+
+      unificationShouldFail
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowAbsent)
+        1
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText)], RowVar $ TV 1)
+        2
+
+      unificationShouldFail
+        ([("f1", typeInt), ("f2", typeDouble)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
+        2
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
+        2
   where
     t_hash = vcHash ("true" :: Ident, enumBoolHash)
     f_hash = vcHash ("false" :: Ident, enumBoolHash)
@@ -232,3 +298,27 @@ inferTests = describe "infer" $
     shouldBeRedundant patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should contain redundant clauses") $
         checkUsefullness enum_sigs (map (: []) patts) `shouldNotBe` []
+
+    unificationShouldBeOK (ts1, trv1) (ts2, trv2) varCount = do
+      let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
+        let sortFields = Map.toAscList . Map.fromList
+        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
+        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
+        case y of
+          Left errs ->
+            trace ("unification returned errors " <> show errs) $ expectationFailure $ show errs
+          Right s' ->
+            trace ("unification returned " <> show s') $ pure ()
+
+    unificationShouldFail (ts1, trv1) (ts2, trv2) varCount = do
+      let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
+        let sortFields = Map.toAscList . Map.fromList
+        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
+        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
+        case y of
+          Left errs ->
+            trace ("unification returned errors " <> show errs) $ pure ()
+          Right s' ->
+            trace ("unification returned " <> show s') $ expectationFailure "This unification should fail"
