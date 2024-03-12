@@ -165,6 +165,9 @@ instance Arbitrary InfernoType where
 
       arbitraryBase = TBase <$> arbitrary
 
+      arbitraryRecord = do
+        TRecord <$> scale (`div` 3) arbitrary <*> arbitrary
+
       arbitraryRest = do
         -- NOTE: we omit TRep because it is an internal type that the parser does not support
         constr <- elements [TArray, TSeries, TOptional]
@@ -180,6 +183,7 @@ instance Arbitrary InfernoType where
                 arbitraryBase,
                 arbitraryArr,
                 arbitraryTTuple,
+                arbitraryRecord,
                 arbitraryRest
               ]
 
@@ -519,6 +523,11 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> oneof [(\p e -> Just (p, e)) <$> arbitrary <*> (arbitrarySized $ n `div` 3), pure Nothing]
           <*> arbitrary
 
+      arbitraryRecord n = do
+        k <- choose (0, n)
+        let args = sequence [(,,Nothing) <$> arbitrary <*> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
+        Record <$> arbitrary <*> args <*> arbitrary
+
       arbitrarySized :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Expr hash pos)
       arbitrarySized 0 =
         oneof
@@ -548,6 +557,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                   )
               <*> arbitrary,
             arbitraryArrayComp n,
+            arbitraryRecord n,
+            RecordField <$> arbitrary <*> arbitrary <*> arbitrary,
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             Empty <$> arbitrary,
             arbitraryAssert n,
