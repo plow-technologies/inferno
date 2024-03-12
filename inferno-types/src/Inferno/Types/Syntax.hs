@@ -343,7 +343,8 @@ instance Pretty InfernoType where
       where
         prettyFields = sep $ Pretty.punctuate ";" $ map prettyField $ Map.toAscList tys
         prettyField (Ident f, ty) = pretty f <> ":" <+> pretty ty
-        prettyRest (RowVar tv) = ";" <+> pretty tv
+        semicolon = if Map.null tys then "" else ";"
+        prettyRest (RowVar tv) = semicolon <> pretty tv
         prettyRest RowAbsent = mempty
     TSeries ty@(TVar _) -> "series of" <+> align (pretty ty)
     TSeries ty@(TBase _) -> "series of" <+> align (pretty ty)
@@ -948,7 +949,7 @@ data Expr hash pos
       pos -- position of `{`
       [ ( Ident, -- field name
           Expr hash pos, -- field value
-          Maybe pos -- position of `,`
+          Maybe pos -- position of `;`
         )
       ]
       pos -- position of `}`
@@ -1608,7 +1609,7 @@ prettyPrec isBracketed prec expr =
               <+> "="
               <+> align (prettyPrec False 0 e)
                 <> (if hasTrailingComment e then hardline else line')
-                <> ", "
+                <> "; "
                 <> prettyRecord False es
     RecordField _ (Ident r) (Ident f) ->
       pretty r <> "." <> pretty f

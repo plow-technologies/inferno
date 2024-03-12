@@ -48,7 +48,7 @@ normalizePat = ana $ \case
   PTuple p1 xs p2 -> project $ PTuple p1 (fmap (\(e, _) -> (normalizePat e, Nothing)) xs) p2
   x -> project x
 
-normalizeExpr :: Expr h a -> Expr h a
+normalizeExpr :: Expr () a -> Expr () a
 normalizeExpr = ana $ \case
   PreOp pos hsh prec LocalScope (Ident "-") e -> case normalizeExpr e of
     Lit l' (LInt x) -> project $ Lit l' $ LInt $ -x
@@ -56,6 +56,9 @@ normalizeExpr = ana $ \case
     PreOp _ _ _ LocalScope (Ident "-") e' -> project $ e'
     e' -> project $ PreOp pos hsh prec LocalScope (Ident "-") e'
   Tuple p1 xs p2 -> project $ Tuple p1 (fmap (\(e, _) -> (normalizeExpr e, Nothing)) xs) p2
+  Record p1 xs p2 -> project $ Record p1 (fmap (\(f, e, _) -> (f, normalizeExpr e, Nothing)) xs) p2
+  -- Convert RecordField back to scoped Var because that's how parser parses it:
+  RecordField p (Ident r) (Ident f) -> project $ Var p () (Scope $ ModuleName r) $ Expl $ ExtIdent $ Right f
   Array p1 xs p2 -> project $ Array p1 (fmap (\(e, _) -> (normalizeExpr e, Nothing)) xs) p2
   ArrayComp p1 e_body p2 args e_cond p3 ->
     project $
