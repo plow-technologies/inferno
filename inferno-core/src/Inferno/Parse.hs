@@ -863,7 +863,6 @@ recordType = label "record type\nfor example: {name: text; age: int}" $
             then fail $ "Keyword " <> show x <> " cannot be a record field name"
             else return x
 
-
 typeParserBase :: TyParser InfernoType
 typeParserBase =
   try ((\(_, tys, _) -> TTuple $ fmap fst tys) <$> tuple typeParser)
