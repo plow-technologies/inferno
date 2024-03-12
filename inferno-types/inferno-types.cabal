@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-types
-version:             0.3.0.0
+version:             0.4.0.0
 synopsis:            Core types for Inferno
 description:         Core types for the Inferno language
 category:            DSL,Scripting

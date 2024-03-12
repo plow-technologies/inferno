@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.0.0 -- 2024-03-12
+* Add records to the Inferno language
+
 ## 0.10.1.0 -- 2024-01-30
 * Fix `ToValue` instances for functions and `ImplicitCast`
 
