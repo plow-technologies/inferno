@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Infer.Spec where
 
 import Control.Monad.Except (runExceptT)
@@ -10,8 +12,8 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (unpack)
 import Debug.Trace (trace)
-import Inferno.Core (InfernoError (..), Interpreter (parseAndInfer), mkInferno)
-import Inferno.Infer (unifyRecords)
+import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
+import Inferno.Infer (inferTypeReps, unifyRecords)
 import Inferno.Infer.Exhaustiveness
   ( Pattern (W),
     cEmpty,
@@ -24,6 +26,7 @@ import Inferno.Infer.Exhaustiveness
   )
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
+import Inferno.Parse (parseTCScheme, parseType)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax (ExtIdent (..), Ident (..), RestOfRecord (..), typeText)
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
@@ -218,6 +221,50 @@ inferTests = describe "infer" $
               ]
         shouldBeInexhaustive complexPattern
         shouldBeUseful complexPattern
+
+    describe "inferTypeReps" $ do
+      Interpreter {typeClasses} <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
+
+      let typeRepsShouldBe fnTy inTys outTy reps = do
+            let tcs = either error id $ parseTCScheme fnTy
+            let parseTy = either (error . show) id . parseType
+            it (unwords ["type reps of", unpack fnTy, show inTys, unpack outTy]) $
+              case inferTypeReps typeClasses tcs (map parseTy inTys) (parseTy outTy) of
+                Left e -> expectationFailure $ show e
+                Right reps' -> reps' `shouldBe` reps
+
+      let typeRepsShouldErr fnTy inTys outTy = do
+            let tcs = either error id $ parseTCScheme fnTy
+            let parseTy = either (error . show) id . parseType
+            it (unwords ["type reps of", unpack fnTy, show inTys, unpack outTy]) $
+              case inferTypeReps typeClasses tcs (map parseTy inTys) (parseTy outTy) of
+                Left _ -> pure ()
+                Right reps' -> expectationFailure $ "expected inferTypeReps to fail but got: " <> show reps'
+
+      -- Some basic tests:
+      typeRepsShouldBe
+        "forall 'a 'b 'c . {requires addition on 'a 'b 'c} ⇒ 'a → 'b → 'c"
+        ["int", "double"]
+        "double"
+        []
+
+      -- Some tests with records:
+
+      typeRepsShouldBe
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{x: int; y: int}"]
+        "double"
+        []
+
+      typeRepsShouldErr
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{z: int; y: int}"]
+        "double"
+
+      typeRepsShouldErr
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{x: int; y: int}"]
+        "text"
 
     describe "unifyRecords" $ do
       unificationShouldBeOK
