@@ -24,7 +24,6 @@ import Inferno.Types.Syntax
     InfernoType (TBase),
     Lit (LDouble, LHex, LInt, LText),
     Pat (..),
-    Scoped (LocalScope),
     tListToList,
     toEitherList,
   )
