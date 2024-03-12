@@ -44,7 +44,7 @@ import Data.Bifunctor (bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, unzip4) -- intercalate
+import Data.List (find, unzip4)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
@@ -379,14 +379,23 @@ inferExpr allModules expr =
             tyCls `Set.union` Set.unions [tc | Module {moduleTypeClasses = tc} <- Map.elems modules]
           )
 
+maxTVarInConstraints :: [Either (InfernoType, InfernoType, [a]) ((SourcePos, SourcePos), TypeClass)] -> Int
+maxTVarInConstraints cs = case Set.lookupMax $ Set.unions $ map freeTypeVars cs of
+  Just (TV i) -> i + 1
+  Nothing -> 0
+  where
+    freeTypeVars (Right (_, c)) = ftv c
+    freeTypeVars (Left (t1, t2, _)) = ftv t1 `Set.union` ftv t2
+
 -- | Given a type signature and some concrete assignment of types (assumes inputTys and outputTy have no free variables)
--- | this function computes the runtime reps
+--   this function computes the runtime reps
 inferTypeReps :: Set.Set TypeClass -> TCScheme -> [InfernoType] -> InfernoType -> Either [TypeError SourcePos] [InfernoType]
 inferTypeReps allTypeClasses (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputTy =
   let cs =
         [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
           ++ mkConstraints ty inputTys
-   in case runSolve 0 allTypeClasses cs of -- TODO what if 't0 is in the type passed as argument to this function?
+      varCount = maxTVarInConstraints cs
+   in case runSolve varCount allTypeClasses cs of
         Left errs -> Left errs
         Right subst ->
           let tyClsSubst = Set.map (apply subst) tyCls
@@ -406,7 +415,6 @@ inferTypeReps allTypeClasses (ForallTC tvs tyCls (ImplType _impl ty)) inputTys o
     mkConstraints (TArr t1 t2) (x : xs) = Left (t1, x, []) : mkConstraints t2 xs
     mkConstraints t [] = [Left (t, outputTy, [])]
     mkConstraints _ _ = error "mkConstraints: invalid input params length"
-
     dummyPos = let pos = initialPos "" in (pos, pos)
 
 inferPossibleTypes :: Set.Set TypeClass -> TCScheme -> [Maybe InfernoType] -> Maybe InfernoType -> Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
@@ -414,7 +422,8 @@ inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTy
   let cs =
         [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
           ++ mkMaybeConstraints ty inputTys
-   in case runSolve 0 allTypeClasses cs of -- TODO what if 't0 is in the type passed as argument to this function?
+      varCount = maxTVarInConstraints cs
+   in case runSolve varCount allTypeClasses cs of
         Left errs -> Left errs
         Right subst -> do
           let tyClsSubst = Set.map (apply subst) $ Set.filter (\case TypeClass "rep" _ -> False; _ -> True) tyCls
@@ -440,7 +449,6 @@ inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTy
       Just t' -> [Left (t, t', [])]
       Nothing -> []
     mkMaybeConstraints _ _ = error "mkConstraints: invalid input params length"
-
     dummyPos = let pos = initialPos "" in (pos, pos)
 
 -- | Extend type environment
@@ -1561,11 +1569,13 @@ findTypeClassWitnesses allClasses iters tyCls tvs =
             ((Subst $ Map.fromList $ map snd found) :) <$> getSolutions ((\x -> x - 1) <$> i)
           _ -> pure []
 
--- NOTE: this function resets the fresh variable counter each time it is called
--- TODO confirm this doesn't matter
 tryMatchPartial :: [InfernoType] -> TypeClass -> Solve (Maybe Subst)
 tryMatchPartial tys (TypeClass _ tys2) =
-  (Just <$> evalSolveState (unifyMany [] tys tys2) 0) `catchError` (\_ -> return Nothing)
+  (Just <$> evalSolveState (unifyMany [] tys tys2) varCount) `catchError` (\_ -> return Nothing)
+  where
+    varCount = case Set.lookupMax $ Set.unions $ map ftv $ tys ++ tys2 of
+      Just (TV i) -> i + 1
+      Nothing -> 0
 
 -- | This is a minor optimisation for the `encodeTypeClasses` function. The `filteredTypeClassSubstitutions` function takes the set of all type class instances,
 -- along with the list of all the current classes we want to unify and computes all the matching substitutions.
