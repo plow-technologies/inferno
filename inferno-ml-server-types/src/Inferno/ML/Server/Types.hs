@@ -206,19 +206,13 @@ instance
 
 -- | Row of the model table, parameterized by the user and group type as well
 -- as the contents of the model (normally this will be an 'Oid')
-data Model uid gid c = Model
-  { id :: Maybe (Id (Model uid gid c)),
+data Model uid gid = Model
+  { id :: Maybe (Id (Model uid gid)),
     name :: Text,
-    -- | The actual contents of the model
-    contents :: c,
-    version :: Version,
-    -- | Stored as JSON in the DB
-    card :: ModelCard,
     -- | Permissions for reading or updating the model, keyed by the group ID
     -- type
     --
-    -- NOTE
-    -- This is stored as a @jsonb@ rather than as @hstore@. It could
+    -- NOTE: This is stored as a @jsonb@ rather than as @hstore@. It could
     -- currently be stored as an @hstore@, but later we might want to
     -- use a more complex type that we could not easily convert to\/from
     -- text (which is required to use @hstore@). So using @jsonb@ allows
@@ -230,7 +224,7 @@ data Model uid gid c = Model
   }
   deriving stock (Show, Eq, Generic)
 
-instance NFData (Model uid gid c) where
+instance NFData (Model uid gid) where
   rnf = rwhnf
 
 instance
@@ -241,16 +235,12 @@ instance
     FromJSONKey gid,
     Ord gid
   ) =>
-  FromRow (Model uid gid Oid)
+  FromRow (Model uid gid)
   where
-  -- NOTE
-  -- Order of fields must align exactly with DB schema
+  -- NOTE: Order of fields must align exactly with DB schema
   fromRow =
     Model
       <$> field
-      <*> field
-      <*> field
-      <*> field
       <*> field
       <*> fmap getAeson field
       <*> field
@@ -262,16 +252,12 @@ instance
     ToField gid,
     ToJSONKey gid
   ) =>
-  ToRow (Model uid gid Oid)
+  ToRow (Model uid gid)
   where
-  -- NOTE
-  -- Order of fields must align exactly with DB schema
+  -- NOTE: Order of fields must align exactly with DB schema
   toRow m =
     [ toField Default,
       m ^. the @"name" & toField,
-      m ^. the @"contents" & toField,
-      m ^. the @"version" & toField,
-      m ^. the @"card" & toField,
       m ^. the @"permissions" & Aeson & toField,
       m ^. the @"user" & toField
     ]
@@ -283,7 +269,7 @@ instance
     FromJSONKey gid,
     Ord gid
   ) =>
-  FromJSON (Model uid gid Oid)
+  FromJSON (Model uid gid)
   where
   parseJSON = withObject "Model" $ \o ->
     Model
@@ -292,9 +278,6 @@ instance
       -- in the DB already)
       <$> fmap Just (o .: "id")
       <*> (ensureNotNull =<< o .: "name")
-      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
-      <*> o .: "version"
-      <*> o .: "card"
       <*> o .: "permissions"
       <*> o .:? "user"
     where
@@ -310,17 +293,100 @@ instance
     ToJSON gid,
     ToJSONKey gid
   ) =>
-  ToJSON (Model uid gid Oid)
+  ToJSON (Model uid gid)
   where
   toJSON m =
     object
       [ "id" .= view (the @"id") m,
         "name" .= view (the @"name") m,
-        "contents" .= view (the @"contents" . to unOid) m,
-        "version" .= view (the @"version") m,
-        "card" .= view (the @"card") m,
         "permissions" .= view (the @"permissions") m,
         "user" .= view (the @"user") m
+      ]
+
+-- | TODO
+data ModelVersion uid gid c = ModelVersion
+  { id :: Maybe (Id (ModelVersion uid gid c)),
+    -- | Foreign key of the @model@ table, which contains invariant metadata
+    -- related to the model, i.e. name, permissions, user
+    model :: Id (Model uid gid),
+    card :: ModelCard,
+    -- | The actual contents of the model version
+    contents :: c,
+    version :: Version
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
+
+instance
+  ( Typeable uid,
+    Typeable gid,
+    FromField uid,
+    FromField gid
+  ) =>
+  FromRow (ModelVersion uid gid Oid)
+  where
+  -- NOTE: Order of fields must align exactly with DB schema
+  fromRow =
+    ModelVersion
+      <$> field
+      <*> field
+      <*> field
+      <*> field
+      <*> field
+
+instance
+  ( Typeable uid,
+    Typeable gid,
+    ToField uid,
+    ToField gid,
+    ToJSONKey gid
+  ) =>
+  ToRow (ModelVersion uid gid Oid)
+  where
+  -- NOTE: Order of fields must align exactly with DB schema
+  toRow mv =
+    [ toField Default,
+      mv ^. the @"model" & toField,
+      mv ^. the @"version" & toField,
+      mv ^. the @"contents" & toField,
+      mv ^. the @"card" & Aeson & toField
+    ]
+
+{- ORMOLU_DISABLE -}
+instance
+  ( FromJSON uid,
+    FromJSON gid,
+    FromJSONKey gid,
+    Ord gid
+  ) =>
+  FromJSON (ModelVersion uid gid Oid)
+  where
+  parseJSON = withObject "ModelVersion" $ \o ->
+    ModelVersion
+      -- Note that for a model serialized as JSON, the `id` must be present
+      -- (this assumes that a model serialized as JSON always refers to one
+      -- that exists in the DB already)
+      <$> fmap Just (o .: "id")
+      <*> o .: "model"
+      <*> o .: "version"
+      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "card"
+{- ORMOLU_ENABLE -}
+
+instance
+  ( ToJSON uid,
+    ToJSON gid,
+    ToJSONKey gid
+  ) =>
+  ToJSON (ModelVersion uid gid Oid)
+  where
+  toJSON mv =
+    object
+      [ "id" .= view (the @"id") mv,
+        "model" .= view (the @"model") mv,
+        "contents" .= view (the @"contents" . to unOid) mv,
+        "version" .= view (the @"version") mv,
+        "card" .= view (the @"card") mv
       ]
     where
       unOid :: Oid -> Word32
@@ -333,6 +399,7 @@ data ModelPermissions
   | -- | The model can be updated e.g. during training
     WriteModel
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
 
 instance FromJSON ModelPermissions where
   parseJSON = withText "ModelPermissions" $ \case
@@ -498,7 +565,9 @@ data InferenceParam uid gid p s = InferenceParam
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table
     script :: s,
-    model :: Id (Model uid gid Oid),
+    -- | This needs to be linked to a specific version of a model rather
+    -- than the @model@ table itself
+    model :: Id (ModelVersion uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
     user :: uid
