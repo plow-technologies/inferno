@@ -25,7 +25,9 @@ import Prettyprinter
     comma,
     encloseSep,
     lbracket,
+    punctuate,
     rbracket,
+    sep,
     tupled,
     (<+>),
   )
@@ -42,6 +44,7 @@ data Value custom m
   | VEnum VCObjectHash Ident
   | VArray [Value custom m]
   | VTuple [Value custom m]
+  | VRecord (Map.Map Ident (Value custom m))
   | VOne (Value custom m)
   | VEmpty
   | VFun (Value custom m -> m (Value custom m))
@@ -59,6 +62,7 @@ instance NFData custom => NFData (Value custom m) where
   rnf (VEnum hash i) = rnf hash `seq` rnf i `seq` ()
   rnf (VArray xs) = rnf xs
   rnf (VTuple xs) = rnf xs
+  rnf (VRecord xs) = rnf xs
   rnf (VOne x) = rnf x
   rnf VEmpty = ()
   rnf (VFun f) = rnf f
@@ -78,6 +82,8 @@ instance Eq c => Eq (Value c m) where
   VEmpty == VEmpty = True
   (VArray a1) == (VArray a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
   (VTuple a1) == (VTuple a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
+  (VRecord fs1) == (VRecord fs2) =
+    Map.size fs1 == Map.size fs2 && Map.toAscList fs1 == Map.toAscList fs2
   (VTypeRep t1) == (VTypeRep t2) = t1 == t2
   (VCustom c1) == (VCustom c2) = c1 == c2
   _ == _ = False
@@ -93,6 +99,10 @@ instance Pretty c => Pretty (Value c m) where
     VEnum _ (Ident s) -> "#" <> pretty s
     VArray vs -> encloseSep lbracket rbracket comma $ map pretty vs
     VTuple vs -> tupled $ map pretty vs
+    VRecord fs -> "{" <> prettyFields <> "}"
+      where
+        prettyFields = sep $ punctuate ";" $ map prettyField $ Map.toAscList fs
+        prettyField (Ident f, v) = pretty f <> "=" <+> pretty v
     VOne v -> "Some" <+> align (pretty v)
     VEmpty -> "None"
     VFun {} -> "<<function>>"

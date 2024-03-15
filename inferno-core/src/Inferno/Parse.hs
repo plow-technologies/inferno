@@ -13,6 +13,7 @@ module Inferno.Parse
     expr,
     parseExpr,
     parseType,
+    parseTCScheme,
     modulesParser,
     prettyError,
     rws,
@@ -55,6 +56,7 @@ import Inferno.Types.Syntax
     Lit (..),
     ModuleName (..),
     Pat (..),
+    RestOfRecord (..),
     Scoped (..),
     SigVar (..),
     TList (..),
@@ -336,7 +338,7 @@ arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, i
       ifPos <- getSourcePos
       (ifPos,) <$> (rword "if" *> expr)
 
-array :: SomeParser r a -> SomeParser r (SourcePos, [(a, Maybe SourcePos)], SourcePos)
+array :: Parser a -> Parser (SourcePos, [(a, Maybe SourcePos)], SourcePos)
 array p = label "array\nfor example: [1,2,3,4,5]" $
   lexeme $ do
     startPos <- getSourcePos
@@ -359,6 +361,36 @@ array p = label "array\nfor example: [1,2,3,4,5]" $
           ( do
               e1 <- p
               return [(e1, Nothing)]
+          )
+        <|> pure []
+
+record :: Parser a -> Parser (SourcePos, [(Ident, a, Maybe SourcePos)], SourcePos)
+record p = label "record\nfor example: {name = \"Zaphod\"; age = 391}" $
+  lexeme $ do
+    startPos <- getSourcePos
+    symbol "{"
+    args <- argsE
+    endPos <- getSourcePos
+    char '}'
+    return (startPos, args, endPos)
+  where
+    argsE =
+      try
+        ( do
+            f <- lexeme $ Ident <$> variable
+            symbol "="
+            e <- p
+            commaPos <- getSourcePos
+            symbol ";"
+            es <- argsE
+            return ((f, e, Just commaPos) : es)
+        )
+        <|> try
+          ( do
+              f <- lexeme $ Ident <$> variable
+              symbol "="
+              e1 <- p
+              return [(f, e1, Nothing)]
           )
         <|> pure []
 
@@ -656,6 +688,8 @@ term =
     <|> enumE Enum
     <|> do
       -- Variable: foo or Mod.foo or Mod.(+)
+      -- Record field access rec.field is also parsed as Var and converted to RecordField
+      -- in pinExpr
       startPos <- getSourcePos
       lexeme $
         try
@@ -687,6 +721,7 @@ term =
     <|> stringE Lit
     <|> interpolatedStringE
     <|> (try (uncurry3 Array <$> array expr))
+    <|> try (uncurry3 Record <$> record expr)
     <|> arrayComprE
 
 app :: Parser (Expr () SourcePos)
@@ -785,11 +820,55 @@ type_variable = do
     Just i -> return i
     Nothing -> customFailure $ UnboundTyVar nm
 
+recordType :: TyParser (Map.Map Ident InfernoType, RestOfRecord)
+recordType = label "record type\nfor example: {name: text; age: int}" $
+  lexeme $ do
+    symbol "{"
+    (fields, rest) <- argsE
+    return (Map.fromList fields, rest)
+  where
+    argsE =
+      try
+        ( do
+            f <- lexeme $ Ident <$> fieldName
+            symbol ":"
+            e <- typeParser
+            symbol ";"
+            (fields, rest) <- argsE
+            return ((f, e) : fields, rest)
+        )
+        <|> ( do
+                f <- lexeme $ Ident <$> fieldName
+                symbol ":"
+                e1 <- typeParser
+                char '}'
+                return ([(f, e1)], RowAbsent)
+            )
+        <|> ( do
+                t <- type_variable
+                char '}'
+                return ([], RowVar $ TV t)
+            )
+        <|> ( do
+                char '}'
+                pure ([], RowAbsent)
+            )
+    keywords = Set.fromList $ rws ++ rws_type
+    fieldName :: TyParser Text
+    fieldName = f >>= check
+      where
+        f = pack <$> (((:) <$> letterChar <*> hidden (many alphaNumCharOrSeparator)) <?> "a record field name")
+        check x =
+          if x `Set.member` keywords
+            then fail $ "Keyword " <> show x <> " cannot be a record field name"
+            else return x
+
 typeParserBase :: TyParser InfernoType
 typeParserBase =
   try ((\(_, tys, _) -> TTuple $ fmap fst tys) <$> tuple typeParser)
     <|> parens typeParser
     <|> try (lexeme baseType)
+    <|> uncurry TRecord <$> recordType
     <|> lexeme (TBase <$> (TEnum <$> typeIdent <*> (Set.fromList <$> (symbol "{" *> enumList <* symbol "}"))))
     <|> lexeme (TVar . TV <$> type_variable)
   where
@@ -819,6 +898,12 @@ parseType ::
 parseType s = case runParser (runWriterT $ flip runReaderT (mempty, mempty, mempty, []) $ topLevel typeParser) "<stdin>" s of
   Left (ParseErrorBundle errs pos) -> Left $ fst $ attachSourcePos errorOffset errs pos
   Right (e, _) -> Right e
+
+parseTCScheme :: Text -> Either String TCScheme
+parseTCScheme s =
+  case runParser (runWriterT $ flip runReaderT (mempty, mempty, mempty, []) $ topLevel schemeParser) "<stdin>" s of
+    Left (ParseErrorBundle errs pos) -> Left $ show $ fst $ attachSourcePos errorOffset errs pos
+    Right (e, _) -> Right e
 
 listParser :: TyParser a -> TyParser [a]
 listParser p =

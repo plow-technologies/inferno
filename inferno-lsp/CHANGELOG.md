@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.3.0 -- 2024-03-12
+* Update inferno-types and inferno-core version; fix `parseAndInferTypeReps`
+
 ## 0.2.2.0 -- 2024-01-29
 * Update inferno-core version
 

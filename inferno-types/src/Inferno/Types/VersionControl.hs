@@ -64,6 +64,7 @@ import Inferno.Types.Type
     ImplType (..),
     InfernoType (..),
     Namespace,
+    RestOfRecord (..),
     TCScheme (..),
     TV (..),
     TypeClass (..),
@@ -178,7 +179,7 @@ class GenericVCHashUpdate f where
 instance GenericVCHashUpdate U1 where
   genHashUpdate ctxt _ = ctxt
 
-instance (VCHashUpdate a) => GenericVCHashUpdate (K1 i a) where
+instance VCHashUpdate a => GenericVCHashUpdate (K1 i a) where
   genHashUpdate ctxt (K1 x) = ctxt &< x
 
 instance GenericVCHashUpdate f => GenericVCHashUpdate (D1 c f) where
@@ -262,6 +263,8 @@ deriving instance (VCHashUpdate hash, VCHashUpdate a) => VCHashUpdate (Expr hash
 deriving instance VCHashUpdate BaseType
 
 deriving newtype instance VCHashUpdate TV
+
+deriving instance VCHashUpdate RestOfRecord
 
 deriving instance VCHashUpdate InfernoType
 

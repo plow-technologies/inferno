@@ -139,9 +139,22 @@ pinExpr m expr =
         Lit p l -> pure $ Lit p l
         Var p _hash modNm (Impl x) -> pure $ Var p Local modNm (Impl x)
         Var p _hash modNm i@(Expl (ExtIdent (Left _))) -> pure $ Var p Local modNm i
-        Var p _hash modNm i@(Expl (ExtIdent (Right x))) -> do
-          hash <- lookupName exprPos modNm (FunNamespace $ Ident x) m
-          pure $ Var p hash modNm i
+        Var p _hash modNm i@(Expl (ExtIdent (Right x))) ->
+          case modNm of
+            Scope (ModuleName a) ->
+              -- `a.b` can be either Mod.foo or record.field
+              -- First check if `a` is a local var (record)
+              case lookupName exprPos LocalScope (FunNamespace $ Ident a) m of
+                Right _ ->
+                  pure $ RecordField p (Ident a) (Ident x)
+                Left _ ->
+                  -- Else assume `a.b` is Mod.foo
+                  pinScopedVar
+            LocalScope -> pinScopedVar
+          where
+            pinScopedVar = do
+              hash <- lookupName exprPos modNm (FunNamespace $ Ident x) m
+              pure $ Var p hash modNm i
         OpVar p _hash modNm x -> do
           hash <- lookupName exprPos modNm (OpNamespace x) m
           pure $ OpVar p hash modNm x
@@ -152,6 +165,11 @@ pinExpr m expr =
         InterpolatedString p1 xs p2 -> do
           xs' <- mapM (\(p3, e, p4) -> (\e' -> (p3, e', p4)) <$> pinExpr m e) xs
           pure $ InterpolatedString p1 xs' p2
+        Record p1 es p2 -> do
+          es' <- mapM (\(f, e, p3) -> (f,,p3) <$> pinExpr m e) es
+          pure $ Record p1 es' p2
+        RecordField p1 r f ->
+          pure $ RecordField p1 r f
         Array p1 es p2 -> do
           es' <- mapM (\(e, p3) -> (,p3) <$> pinExpr m e) es
           pure $ Array p1 es' p2

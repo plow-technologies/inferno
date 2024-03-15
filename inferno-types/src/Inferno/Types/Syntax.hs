@@ -42,6 +42,7 @@ module Inferno.Types.Syntax
     TV (..),
     CustomType,
     BaseType (..),
+    RestOfRecord (..),
     InfernoType (..),
     Expr
       ( ..,
@@ -65,6 +66,8 @@ module Inferno.Types.Syntax
         Case_,
         Array_,
         ArrayComp_,
+        Record_,
+        RecordField_,
         Bracketed_,
         RenameModule_,
         OpenModule_
@@ -136,7 +139,7 @@ import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.Serialize (Serialize)
+import Data.Serialize (Serialize (..))
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
@@ -254,11 +257,36 @@ instance Hashable BaseType where
   hashWithSalt s (TEnum nm cs) = hashWithSalt s (10 :: Int, nm, Set.toList cs)
   hashWithSalt s (TCustom t) = hashWithSalt s (11 :: Int, t)
 
+-- | A row variable: a special kind of type variable that represents zero or more fields
+-- of a record type. Technically, it is a map from the set of all remaining field names to
+-- @Present(type variable) | RowAbsent@
+-- indicating whether the field is present (and if so, what type) or absent.
+-- In practice, since all records that we consider have finitely many fields, it is
+-- sufficient to encode the remaining fields (rest of the record) as either a row
+-- variable @RowVar TV@ (indicating an unknown rest of record)
+-- or the special value @RowAbsent@ that indicates that no remaining field is
+-- present in the record. For example:
+--
+-- @
+-- {x = 2.2; y = "z"} : {x: double; y: text; RowAbsent}
+-- fun r -> r.x + 1 : {x: double; RowVar 'a} -> double
+-- @
+--
+-- The type of the function above indicates that it accepts any record as argument as
+-- long as it has at least a field called @x@.
+--
+-- Reference: https://www.cl.cam.ac.uk/teaching/1415/L28/rows.pdf (Sections 8.2 and 8.4.1)
+data RestOfRecord = RowVar TV | RowAbsent
+  deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
+  deriving anyclass (Serialize)
+
 data InfernoType
   = TVar TV
   | TBase BaseType
   | TArr InfernoType InfernoType
   | TArray InfernoType
+  | -- | A record type containing *at least* the given fields (with types) and a row variable representing any potential other fields
+    TRecord (Map.Map Ident InfernoType) RestOfRecord
   | TSeries InfernoType
   | TOptional InfernoType
   | TTuple (TList InfernoType)
@@ -311,6 +339,13 @@ instance Pretty InfernoType where
     TArray ty@(TBase _) -> "array of" <+> align (pretty ty)
     TArray ty@(TTuple _) -> "array of" <+> align (pretty ty)
     TArray ty -> "array of" <+> align (enclose lparen rparen $ pretty ty)
+    TRecord tys rowVar -> "{" <> prettyFields <> prettyRest rowVar <> "}"
+      where
+        prettyFields = sep $ Pretty.punctuate ";" $ map prettyField $ Map.toAscList tys
+        prettyField (Ident f, ty) = pretty f <> ":" <+> pretty ty
+        semicolon = if Map.null tys then "" else ";"
+        prettyRest (RowVar tv) = semicolon <> pretty tv
+        prettyRest RowAbsent = mempty
     TSeries ty@(TVar _) -> "series of" <+> align (pretty ty)
     TSeries ty@(TBase _) -> "series of" <+> align (pretty ty)
     TSeries ty@(TTuple _) -> "series of" <+> align (pretty ty)
@@ -426,7 +461,9 @@ newtype Subst = Subst (Map.Map TV InfernoType)
   deriving newtype (Semigroup, Monoid)
 
 instance Show Subst where
-  show (Subst m) = intercalate "\n" $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
+  show (Subst m) = "[" <> xs <> "]"
+    where
+      xs = intercalate ", " $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
 
 class Substitutable a where
   apply :: Subst -> a -> a
@@ -437,6 +474,24 @@ instance Substitutable InfernoType where
   apply (Subst s) t@(TVar a) = Map.findWithDefault t a s
   apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
   apply s (TArray t) = TArray $ apply s t
+  apply (Subst s) (TRecord ts trv) = case trv of
+    RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
+      TVar tv' -> TRecord ts' $ RowVar tv'
+      -- When performing unification, we will create substitutions that map some row vars
+      -- to a bunch of fields and a new row var, e.g. tv ~> f1: t1; f2: t2; tv'
+      -- We need to add any new fields to the fields of this record, and use the new row
+      -- var. E.g. {f0: t0; tv} ~> {f0: t0; f1: t1; f2: t2; tv'} under the above subst
+      TRecord ts'' trv' -> TRecord newFields trv'
+        where
+          newFields =
+            Map.unionWithKey
+              (\f _ _ -> error $ "TRecord susbstitution with duplicate field " <> show f)
+              ts'
+              ts''
+      t -> error $ "TRecord substitution with unsupported RHS " <> show t
+    RowAbsent -> TRecord ts' RowAbsent
+    where
+      ts' = fmap (apply $ Subst s) ts
   apply s (TSeries t) = TSeries $ apply s t
   apply s (TOptional t) = TOptional $ apply s t
   apply s (TTuple ts) = TTuple $ fmap (apply s) ts
@@ -446,6 +501,9 @@ instance Substitutable InfernoType where
   ftv (TVar a) = Set.singleton a
   ftv (t1 `TArr` t2) = ftv t1 `Set.union` ftv t2
   ftv (TArray t) = ftv t
+  ftv (TRecord ts trv) = foldr (Set.union . ftv) tvs ts
+    where
+      tvs = case trv of RowVar tv -> Set.singleton tv; RowAbsent -> Set.empty
   ftv (TSeries t) = ftv t
   ftv (TOptional t) = ftv t
   ftv (TTuple ts) = foldr (Set.union . ftv) Set.empty ts
@@ -504,6 +562,10 @@ rws = ["if", "then", "else", "let", "module", "in", "match", "with", "Some", "No
 newtype Ident = Ident {unIdent :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
   deriving newtype (ToJSON, FromJSON, ToJSONKey, FromJSONKey, IsString, NFData, Hashable)
+
+instance Serialize Ident where
+  put = put . Text.encodeUtf8 . unIdent
+  get = Ident . Text.decodeUtf8 <$> get
 
 newtype ModuleName = ModuleName {unModuleName :: Text}
   deriving stock (Eq, Ord, Show, Data, Generic)
@@ -684,7 +746,7 @@ instance Traversable (IStr f) where
     ISStr s xs -> liftA (ISStr s) (traverse f xs)
     ISExpr e xs -> liftA2 ISExpr (f e) (traverse f xs)
 
-data SomeIStr e = forall f. Typeable f => SomeIStr (IStr f e)
+data SomeIStr e = forall f. (Typeable f) => SomeIStr (IStr f e)
 
 instance Data e => Data (SomeIStr e) where
   gfoldl k z (SomeIStr xs) = z SomeIStr `k` xs
@@ -883,6 +945,18 @@ data Expr hash pos
           )
       )
       pos -- position of `}`
+  | Record
+      pos -- position of `{`
+      [ ( Ident, -- field name
+          Expr hash pos, -- field value
+          Maybe pos -- position of `;`
+        )
+      ]
+      pos -- position of `}`
+  | RecordField -- r.f
+      pos
+      Ident -- the record var name
+      Ident -- field name
   | Array
       pos -- position of `[`
       [ ( Expr hash pos,
@@ -1016,6 +1090,12 @@ pattern Assert_ c e <- Assert _ c _ e
 
 pattern Case_ :: forall hash pos. Expr hash pos -> NonEmpty (pos, Pat hash pos, pos, Expr hash pos) -> Expr hash pos
 pattern Case_ e xs <- Case _ e _ xs _
+
+pattern Record_ :: forall hash pos. [(Ident, Expr hash pos, Maybe pos)] -> Expr hash pos
+pattern Record_ xs <- Record _ xs _
+
+pattern RecordField_ :: forall hash pos. Ident -> Ident -> Expr hash pos
+pattern RecordField_ r f <- RecordField _ r f
 
 pattern Array_ :: forall hash pos. [(Expr hash pos, Maybe pos)] -> Expr hash pos
 pattern Array_ xs <- Array _ xs _
@@ -1197,6 +1277,9 @@ instance BlockUtils (Expr hash) where
         EmptyF pos -> (pos, incSourceCol pos 5)
         AssertF pos1 _ _ (_, pos2) -> (pos1, pos2)
         CaseF pos1 _ _ _ pos2 -> (pos1, incSourceCol pos2 1)
+        RecordF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
+        RecordFieldF pos1 (Ident r) (Ident f) ->
+          (pos1, incSourceCol pos1 $ Text.length r + Text.length f + 1)
         ArrayF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         ArrayCompF pos1 _ _ _ _ pos2 -> (pos1, incSourceCol pos2 1)
         CommentAboveF c (_, pos2) -> let (pos1, _) = blockPosition c in (pos1, pos2)
@@ -1365,6 +1448,9 @@ prettyPrec isBracketed prec expr =
           InterpolatedString _ _ _ -> p
           Tuple _ _ _ -> p
           Empty _ -> p
+          -- TODO test that these do the right thing!
+          Record _ _ _ -> p
+          RecordField _ _ _ -> p
           Array _ _ _ -> p
           ArrayComp _ _ _ _ _ _ -> p
           Bracketed _ _ _ -> p
@@ -1435,23 +1521,30 @@ prettyPrec isBracketed prec expr =
               <> elsePretty
     Op e1 _ _ (n, NoFix) ns (Ident op) e2 ->
       bracketWhen e2 (prec > n) $
-        prettyOpAux (n + 1) e1 <> (if hasTrailingComment e1 then hardline else mempty)
+        prettyOpAux (n + 1) e1
+          <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
-          <+> (if hasLeadingComment e2 then line else mempty) <> prettyOpAux (n + 1) e2
+          <+> (if hasLeadingComment e2 then line else mempty)
+            <> prettyOpAux (n + 1) e2
     Op e1 _ _ (n, LeftFix) ns (Ident op) e2 ->
       bracketWhen e2 (prec > n) $
-        prettyOpAux n e1 <> (if hasTrailingComment e1 then hardline else mempty)
+        prettyOpAux n e1
+          <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
-          <+> (if hasLeadingComment e2 then line else mempty) <> prettyOpAux (n + 1) e2
+          <+> (if hasLeadingComment e2 then line else mempty)
+            <> prettyOpAux (n + 1) e2
     Op e1 _ _ (n, RightFix) ns (Ident op) e2 ->
       bracketWhen e2 (prec > n) $
-        prettyOpAux (n + 1) e1 <> (if hasTrailingComment e1 then hardline else mempty)
+        prettyOpAux (n + 1) e1
+          <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
-          <+> (if hasLeadingComment e2 then line else mempty) <> prettyOpAux n e2
+          <+> (if hasLeadingComment e2 then line else mempty)
+            <> prettyOpAux n e2
     PreOp _ _ n ns (Ident op) e ->
       bracketWhen e (prec > n) $
         prettyOp ns op
-          <+> (if hasLeadingComment e then line else mempty) <> prettyOpAux (n + 1) e
+          <+> (if hasLeadingComment e then line else mempty)
+            <> prettyOpAux (n + 1) e
     Tuple _ TNil _ -> "()"
     Tuple _ xs _ -> group $ (flatAlt "( " "(") <> prettyTuple True (tListToList xs)
       where
@@ -1487,7 +1580,8 @@ prettyPrec isBracketed prec expr =
             group
               ( "|"
                   <+> align
-                    ( pretty pat <> (if hasTrailingComment pat then hardline else mempty)
+                    ( pretty pat
+                        <> (if hasTrailingComment pat then hardline else mempty)
                         <+> "->"
                           <> line
                           <> (prettyPrec False 0 e)
@@ -1499,6 +1593,26 @@ prettyPrec isBracketed prec expr =
               <> group ("|" <+> align (pretty pat <> (if hasTrailingComment pat then hardline else mempty) <+> "->" <> line <> (prettyPrec False 0 e)))
               <> (if hasTrailingComment e then hardline else line)
               <> prettyCase False es
+    Record _ [] _ -> "{}"
+    Record _ xs _ -> group $ flatAlt "{ " "{" <> prettyRecord True xs
+      where
+        prettyRecord firstElement = \case
+          [] -> mempty
+          [(Ident f, e, _)] ->
+            pretty f
+              <+> "="
+              <+> align (prettyPrec False 0 e)
+                <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
+          (Ident f, e, _) : es ->
+            (if not firstElement && hasLeadingComment e then line else mempty)
+              <> pretty f
+              <+> "="
+              <+> align (prettyPrec False 0 e)
+                <> (if hasTrailingComment e then hardline else line')
+                <> "; "
+                <> prettyRecord False es
+    RecordField _ (Ident r) (Ident f) ->
+      pretty r <> "." <> pretty f
     Array _ [] _ -> "[]"
     Array _ xs _ -> group $ (flatAlt "[ " "[") <> prettyArray True xs
       where

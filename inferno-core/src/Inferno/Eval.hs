@@ -29,19 +29,7 @@ import Inferno.Types.Syntax
   )
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value
-      ( VArray,
-        VDouble,
-        VEmpty,
-        VEnum,
-        VFun,
-        VInt,
-        VOne,
-        VText,
-        VTuple,
-        VTypeRep,
-        VWord64
-      ),
+    Value (..),
     runImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
@@ -204,6 +192,17 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Tuple_ es ->
     foldrM (\(e, _) vs -> eval env e >>= return . (: vs)) [] (tListToList es) >>= return . VTuple
+  Record_ fs -> do
+    valMap <- foldrM (\(f, e, _) vs -> eval env e >>= \v -> return ((f, v) : vs)) [] fs
+    return $ VRecord $ Map.fromList valMap
+  RecordField_ (Ident r) f -> do
+    case Map.lookup (ExtIdent $ Right r) localEnv of
+      Just (VRecord fs) -> do
+        case Map.lookup f fs of
+          Just v -> return v
+          Nothing -> throwM $ RuntimeError "record field not found"
+      Just _ -> throwM $ RuntimeError "failed to match with a record"
+      Nothing -> throwM $ RuntimeError $ show (ExtIdent $ Right r) <> " not found in the unpinned env"
   One_ e -> eval env e >>= return . VOne
   Empty_ -> return $ VEmpty
   Assert_ cond e ->

@@ -30,7 +30,7 @@ import Data.Foldable (Foldable (foldl'))
 import Data.List (nub)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Inferno.Types.Syntax (ExtIdent)
+import Inferno.Types.Syntax (ExtIdent, RestOfRecord (RowAbsent, RowVar))
 import Inferno.Types.Type
   ( ImplType (..),
     InfernoType (..),
@@ -131,6 +131,8 @@ fv (TArray t) = fv t
 fv (TSeries t) = fv t
 fv (TOptional t) = fv t
 fv (TTuple ts) = foldr ((++) . fv) [] ts
+fv (TRecord ts RowAbsent) = concatMap fv ts
+fv (TRecord ts (RowVar a)) = foldr ((++) . fv) [a] ts
 fv (TRep t) = fv t
 
 normtype :: Map.Map TV TV -> InfernoType -> InfernoType
@@ -140,6 +142,11 @@ normtype ord (TArray a) = TArray $ normtype ord a
 normtype ord (TSeries a) = TSeries $ normtype ord a
 normtype ord (TOptional a) = TOptional $ normtype ord a
 normtype ord (TTuple as) = TTuple $ fmap (normtype ord) as
+normtype ord (TRecord as RowAbsent) = TRecord (fmap (normtype ord) as) RowAbsent
+normtype ord (TRecord as (RowVar a)) =
+  case Map.lookup a ord of
+    Just x -> TRecord (fmap (normtype ord) as) (RowVar x)
+    Nothing -> TRecord (fmap (normtype ord) as) (RowVar a)
 normtype ord (TRep a) = TRep $ normtype ord a
 normtype ord (TVar a) =
   case Map.lookup a ord of

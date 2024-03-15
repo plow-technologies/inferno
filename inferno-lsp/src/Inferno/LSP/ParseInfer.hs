@@ -603,10 +603,11 @@ parseAndInferTypeReps prelude expr inTys outTy = do
                 putStrLn ("type reps:" :: String)
                 print res
 
-parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
-parseAndInferPossibleTypes prelude expr inTys outTy = do
+parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> [Maybe Text] -> Maybe Text -> IO ()
+parseAndInferPossibleTypes prelude expr args inTys outTy = do
+  let argIdents = map (Just . Ident) args
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
-  (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
+  (parseAndInferDiagnostics @IO @c interpreter) argIdents expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
