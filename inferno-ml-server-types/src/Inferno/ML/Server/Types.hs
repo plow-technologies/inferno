@@ -231,8 +231,7 @@ instance NFData (Model uid gid) where
   rnf = rwhnf
 
 instance
-  ( Typeable uid,
-    Typeable gid,
+  ( Typeable gid,
     FromField uid,
     FromField gid,
     FromJSONKey gid,
@@ -249,9 +248,7 @@ instance
       <*> field
 
 instance
-  ( Typeable uid,
-    Typeable gid,
-    ToField uid,
+  ( ToField uid,
     ToField gid,
     ToJSONKey gid
   ) =>
@@ -268,7 +265,6 @@ instance
 {- ORMOLU_DISABLE -}
 instance
   ( FromJSON uid,
-    FromJSON gid,
     FromJSONKey gid,
     Ord gid
   ) =>
@@ -293,7 +289,6 @@ instance
 
 instance
   ( ToJSON uid,
-    ToJSON gid,
     ToJSONKey gid
   ) =>
   ToJSON (Model uid gid)
@@ -328,9 +323,7 @@ data ModelVersion uid gid c = ModelVersion
   deriving anyclass (NFData)
 
 instance
-  ( Typeable uid,
-    Typeable gid,
-    FromField uid,
+  ( FromField uid,
     FromField gid
   ) =>
   FromRow (ModelVersion uid gid Oid)
@@ -347,11 +340,8 @@ instance
       <*> field
 
 instance
-  ( Typeable uid,
-    Typeable gid,
-    ToField uid,
-    ToField gid,
-    ToJSONKey gid
+  ( ToField uid,
+    ToField gid
   ) =>
   ToRow (ModelVersion uid gid Oid)
   where
@@ -367,9 +357,7 @@ instance
 {- ORMOLU_DISABLE -}
 instance
   ( FromJSON uid,
-    FromJSON gid,
-    FromJSONKey gid,
-    Ord gid
+    FromJSON gid
   ) =>
   FromJSON (ModelVersion uid gid Oid)
   where
@@ -387,8 +375,7 @@ instance
 
 instance
   ( ToJSON uid,
-    ToJSON gid,
-    ToJSONKey gid
+    ToJSON gid
   ) =>
   ToJSON (ModelVersion uid gid Oid)
   where
