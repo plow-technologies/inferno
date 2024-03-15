@@ -204,8 +204,11 @@ instance
       <$> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
 
--- | Row of the model table, parameterized by the user and group type as well
--- as the contents of the model (normally this will be an 'Oid')
+-- | Row of the model table, parameterized by the user and group type. This
+-- table contains metadata for models that should not change between different
+-- versions, e.g. model name and permissions. A second table, 'ModelVersion',
+-- contains the specific versions of each model (and the actual model contents),
+-- along with other metadata that may change between versions
 data Model uid gid = Model
   { id :: Maybe (Id (Model uid gid)),
     name :: Text,
@@ -303,14 +306,21 @@ instance
         "user" .= view (the @"user") m
       ]
 
--- | TODO
+-- | Represents rows of the model version tables; each row is linked to its
+-- 'Model' parent and also contains the actual contents of the model. This
+-- is parameterized by the user and group types as well as the type of the
+-- content, which will normally be an 'Oid' (Postgres large object). Other
+-- model metadata is contained here as well, e.g. the model card, as this
+-- might change between versions
 data ModelVersion uid gid c = ModelVersion
   { id :: Maybe (Id (ModelVersion uid gid c)),
     -- | Foreign key of the @model@ table, which contains invariant metadata
     -- related to the model, i.e. name, permissions, user
     model :: Id (Model uid gid),
     card :: ModelCard,
-    -- | The actual contents of the model version
+    -- | The actual contents of version of the model. Normally this will be
+    -- an 'Oid' pointing to the serialized bytes of the model imported into
+    -- the PSQL large object table
     contents :: c,
     version :: Version
   }
@@ -325,7 +335,9 @@ instance
   ) =>
   FromRow (ModelVersion uid gid Oid)
   where
-  -- NOTE: Order of fields must align exactly with DB schema
+  -- NOTE: Order of fields must align exactly with DB schema. This instance
+  -- could just be `anyclass` derived but it's probably better to be as
+  -- explicit as possible
   fromRow =
     ModelVersion
       <$> field
