@@ -19,4 +19,4 @@ renderPretty :: Pretty a => a -> Text.Text
 renderPretty = renderDoc . pretty
 
 showPretty :: MonadIO m => Pretty a => a -> m ()
-showPretty = liftIO . Text.putStrLn . (renderPretty)
+showPretty = liftIO . Text.putStrLn . renderPretty

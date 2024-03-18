@@ -616,7 +616,7 @@ instance Arbitrary Type.TCScheme where
       arbitraryImplType =
         ImplType <$> arbitraryImpls <*> arbitrary
       arbitraryImpls =
-        Map.fromList <$> listOf ((,) <$> (ExtIdent . Right <$> arbitraryName) <*> arbitrary)
+        Map.fromList <$> listOf (((,) . ExtIdent . Right <$> arbitraryName) <*> arbitrary)
 
 deriving instance ToADTArbitrary Type.Namespace
 

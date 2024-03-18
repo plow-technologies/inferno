@@ -997,7 +997,7 @@ exprOrBuiltin =
 sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
 sigParser =
   ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser)) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
-      <|> try (EnumDef <$> (Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
+      <|> try ((EnumDef . Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
       <|> EnumDef Nothing <$> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors
       <|> TypeClassInstance <$> (symbol "define" *> withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) typeClass)
       <|> Export <$> (symbol "export" *> (ModuleName <$> lexeme variable))
