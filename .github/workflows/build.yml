@@ -20,6 +20,18 @@ jobs:
       MNIST_COMMIT: 94b288a631362aa44edc219eb8f54a7c39891169
     steps:
       - uses: actions/checkout@v3
+
+      # Lint code with HLint
+      - name: Set up HLint
+        uses: haskell-actions/hlint-setup@v2
+        with:
+          version: "3.8"
+      - name: Run HLint
+        uses: haskell-actions/hlint-run@v2
+        with:
+          path: src/
+          fail-on: warning
+
       - uses: cachix/install-nix-action@v18
         with:
           install_url: https://releases.nixos.org/nix/nix-2.13.3/install
@@ -32,6 +44,8 @@ jobs:
           name: inferno
           authToken: "${{ secrets.CACHIX_TOKEN }}"
       - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      # Build inferno and run all tests
       - run: |
           nix build -L .#
 
