@@ -1,7 +1,4 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Inferno.Types.Type
   ( BaseType (..),

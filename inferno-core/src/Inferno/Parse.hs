@@ -1,6 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE ExplicitForAll #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Inferno.Parse
@@ -28,10 +27,11 @@ import Control.Monad.Combinators.Expr
   )
 import Control.Monad.Reader (ReaderT (..), ask, withReaderT)
 import Control.Monad.Writer (WriterT (..), tell)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (Bifunctor (first))
 import Data.Char (isAlphaNum, isSpace)
 import Data.Data (Data)
 import Data.Either (partitionEithers)
+import Data.Functor (($>))
 import qualified Data.IntMap as IntMap
 import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty)
@@ -189,7 +189,7 @@ variable = do
   where
     p = pack <$> (((:) <$> letterChar <*> hidden (many alphaNumCharOrSeparator)) <?> "a variable")
     check oT x =
-      if x `elem` rws ++ (map (\(_, _, i) -> i) $ concat oT)
+      if x `elem` rws ++ map (\(_, _, i) -> i) (concat oT)
         then fail $ "Keyword " <> show x <> " cannot be a variable/function name"
         else return x
 
@@ -197,14 +197,14 @@ mIdent :: Parser (SourcePos, Maybe Ident)
 mIdent = lexeme $ do
   startPos <- getSourcePos
   (startPos,) . Just . Ident <$> variable
-    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing))
+    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (startPos, Nothing))
     <?> "a wildcard parameter '_'"
 
 mExtIdent :: Parser (SourcePos, Maybe ExtIdent)
 mExtIdent = lexeme $ do
   startPos <- getSourcePos
   (startPos,) . Just . ExtIdent . Right <$> variable
-    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator *> pure (startPos, Nothing))
+    <|> (char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (startPos, Nothing))
     <?> "a wildcard parameter '_'"
 
 implicitVariable :: Parser Text
@@ -218,11 +218,11 @@ enumConstructor =
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
 signedInteger :: Num a => Parser a
-signedInteger = Lexer.signed (takeWhileP Nothing isHSpace *> pure ()) Lexer.decimal
+signedInteger = Lexer.signed (takeWhileP Nothing isHSpace $> ()) Lexer.decimal
 
 -- | 'signedInteger' parses a float/double with an optional sign (with no space)
 signedFloat :: Parser Double
-signedFloat = Lexer.signed (takeWhileP Nothing isHSpace *> pure ()) Lexer.float
+signedFloat = Lexer.signed (takeWhileP Nothing isHSpace $> ()) Lexer.float
 
 enumE :: (SourcePos -> () -> Scoped ModuleName -> Ident -> f) -> Parser f
 enumE f = do
@@ -261,12 +261,12 @@ signedDoubleE f = label "a number\nfor example: 42, 3.1415, (-6)" $ do
 noneE :: (SourcePos -> a) -> Parser a
 noneE e = label "an optional\nfor example: Some x, None" $ do
   startPos <- getSourcePos
-  lexeme $ (const $ e startPos) <$> (hidden $ string "None")
+  lexeme (e startPos <$ hidden (string "None"))
 
 someE :: (SourcePos -> t -> a) -> Parser t -> Parser a
 someE f p = label "an optional\nfor example: Some x, None" $ do
   startPos <- getSourcePos
-  lexeme $ (hidden $ string "Some")
+  lexeme (hidden $ string "Some")
   f startPos <$> p
 
 stringE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
@@ -281,27 +281,26 @@ interpolatedStringE = label "an interpolated string\nfor example: `hello ${1 + 2
   lexeme $ do
     startPos@(SourcePos _ _ col) <- getSourcePos
     es <- mkInterpolatedString <$> (char '`' *> go)
-    endPos <- getSourcePos
-    return $ InterpolatedString startPos (fromEitherList $ fixSpacing (unPos col) es) endPos
+    InterpolatedString startPos (fromEitherList $ fixSpacing (unPos col) es) <$> getSourcePos
   where
     go =
-      ([] <$ char '`')
-        <|> try (((:) . Left . singleton) <$> (hidden $ char '\\' *> char '\\') <*> go)
-        <|> try (((:) . Left . singleton) <$> (hidden $ char '\\' *> char '`') <*> go)
-        <|> try (((:) . Left . singleton) <$> (hidden $ char '\\' *> char '$') <*> go)
-        <|> ( ((:) . Right)
-                <$> ( hidden $ do
-                        startPos <- getSourcePos
-                        e <- char '$' *> char '{' *> sc *> expr <* char '}'
-                        endPos <- getSourcePos
-                        pure $ (startPos, e, endPos)
-                    )
-                <*> go
+      [] <$ char '`'
+        <|> try ((:) . Left . singleton <$> hidden (char '\\' *> char '\\') <*> go)
+        <|> try ((:) . Left . singleton <$> hidden (char '\\' *> char '`') <*> go)
+        <|> try ((:) . Left . singleton <$> hidden (char '\\' *> char '$') <*> go)
+        <|> (:) . Right
+          <$> hidden
+            ( do
+                startPos <- getSourcePos
+                e <- char '$' *> char '{' *> sc *> expr <* char '}'
+                endPos <- getSourcePos
+                pure (startPos, e, endPos)
             )
-        <|> (((:) . Left . singleton) <$> Lexer.charLiteral <*> go)
+          <*> go
+        <|> (:) . Left . singleton <$> Lexer.charLiteral <*> go
 
     fixSpacing newlineSpaceLength =
-      map (bimap (Text.replace (pack $ '\n' : List.replicate (newlineSpaceLength - 1) ' ') "\n") id)
+      map (first (Text.replace (pack $ '\n' : List.replicate (newlineSpaceLength - 1) ' ') "\n"))
 arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, if n % 2 == 0]" $
   lexeme $ do
     startPos <- getSourcePos
@@ -331,7 +330,7 @@ arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, i
             (xs, mcond) <- try rhsE <|> (\c -> ([], Just c)) <$> condE
             pure ((startPos, var, arrPos, e, Just pos) : xs, mcond)
         )
-        <|> ((\(startPos, var, arrPos, e) -> ([(startPos, var, arrPos, e, Nothing)], Nothing)) <$> selectE)
+        <|> (\(startPos, var, arrPos, e) -> ([(startPos, var, arrPos, e, Nothing)], Nothing)) <$> selectE
 
     condE :: Parser (SourcePos, Expr () SourcePos)
     condE = do
@@ -406,8 +405,7 @@ funE = label "a function\nfor example: fun x y -> x + y" $ do
   args <- some mExtIdent
   arrPos <- getSourcePos
   symbol "->" <?> "'->'"
-  body <- expr
-  return $ Lam startPos (NEList.fromList args) arrPos body
+  Lam startPos (NEList.fromList args) arrPos <$> expr
 
 renameModE :: Parser (Expr () SourcePos)
 renameModE = label "a 'let module' expression\nfor example: let module A = Base in A.#true" $
@@ -415,10 +413,10 @@ renameModE = label "a 'let module' expression\nfor example: let module A = Base 
     hidden $ rword "let"
     hidden $ rword "module"
     newNmPos <- getSourcePos
-    newNm <- lexeme $ (ModuleName <$> variable <?> "module name")
+    newNm <- lexeme (ModuleName <$> variable <?> "module name")
     symbol "=" <?> "'='"
     oldNmPos <- getSourcePos
-    oldNm <- lexeme $ (ModuleName <$> variable <?> "name of an existing module")
+    oldNm <- lexeme (ModuleName <$> variable <?> "name of an existing module")
     inPos <- getSourcePos
     (opsTable, modOpsTables, customTypes) <- ask
     case Map.lookup oldNm modOpsTables of
@@ -479,21 +477,21 @@ openModArgs modNm = do
         Nothing -> customFailure $ ModuleNotFound modNm
     go =
       try
-        ((:) <$> ((,) <$> parseImport <*> lexeme ((Just <$> getSourcePos) <* symbol ",")) <*> go)
-        <|> ((\i -> [(i, Nothing)]) <$> parseImport)
+        ((:) <$> ((,) <$> parseImport <*> lexeme (Just <$> getSourcePos <* symbol ",")) <*> go)
+        <|> (\i -> [(i, Nothing)]) <$> parseImport
 
     parseImport =
       try (IOpVar <$> getSourcePos <*> lexeme (char '(' *> (Ident <$> takeWhile1P Nothing isAlphaNum) <* char ')'))
         <|> try (IEnum <$> lexeme (getSourcePos <* string "enum") <*> getSourcePos <*> lexeme (Ident <$> variable))
-        <|> (IVar <$> getSourcePos <*> lexeme (Ident <$> variable))
+        <|> IVar <$> getSourcePos <*> lexeme (Ident <$> variable)
 
 openModE :: Parser (Expr () SourcePos)
 openModE = label "an 'open' module expression\nfor example: open A in ..." $
   do
     hidden $ rword "open"
     nmPos <- getSourcePos
-    nm <- lexeme $ (ModuleName <$> variable <?> "module name")
-    (uncurry3 (OpenModule nmPos () nm) <$> (try (openModArgs nm) <|> ((\inPos e -> ([], inPos, e)) <$> getSourcePos <*> openAll nm)))
+    nm <- lexeme (ModuleName <$> variable <?> "module name")
+    uncurry3 (OpenModule nmPos () nm) <$> (try (openModArgs nm) <|> (\inPos e -> ([], inPos, e)) <$> getSourcePos <*> openAll nm)
   where
     openAll modNm = do
       (opsTable, modOpsTables, customTypes) <- ask
@@ -509,7 +507,7 @@ letE = label ("a 'let' expression" ++ example "x") $
     startPos <- getSourcePos
     hidden $ rword "let"
     varPos <- getSourcePos
-    x <- lexeme $ (((Expl . ExtIdent . Right <$> variable) <|> (Impl . ExtIdent . Right <$> implicitVariable)) <?> "a variable")
+    x <- lexeme ((Expl . ExtIdent . Right <$> variable <|> Impl . ExtIdent . Right <$> implicitVariable) <?> "a variable")
     let xStr = unpack $ renderPretty x
     tPos <- getSourcePos
     maybeTy <-
@@ -530,14 +528,14 @@ letE = label ("a 'let' expression" ++ example "x") $
 
 pat :: Parser (Pat () SourcePos)
 pat =
-  (uncurry3 PArray <$> array pat)
+  uncurry3 PArray <$> array pat
     <|> try (uncurry3 PTuple <$> tuple pat)
     <|> parens pat
     <|> try (hexadecimal PLit)
     <|> try (signedDoubleE PLit)
     <|> signedIntE PLit
     <|> enumE PEnum
-    <|> (uncurry PVar <$> mIdent)
+    <|> uncurry PVar <$> mIdent
     <|> noneE PEmpty
     <|> someE POne pat
     <|> stringE PLit
@@ -594,7 +592,7 @@ tuple p = label "a tuple\nfor example: (2, #true, 4.4)" $
   lexeme $ do
     startPos <- getSourcePos
     symbol "("
-    r <- tListFromList <$> tupleArgs p <|> ((takeWhileP Nothing isHSpace) *> pure TNil)
+    r <- tListFromList <$> tupleArgs p <|> takeWhileP Nothing isHSpace $> TNil
     endPos <- getSourcePos
     char ')'
     return (startPos, r, endPos)
@@ -612,7 +610,7 @@ ifE :: Parser (Expr () SourcePos)
 ifE = do
   ifPos <- getSourcePos
   hidden $ rword "if"
-  cond <- (hidden $ expr) <?> "_a conditional expression\nfor example: x > 2"
+  cond <- hidden expr <?> "_a conditional expression\nfor example: x > 2"
   thenPos <- getSourcePos
   tr <- (rword "then" *> expr) <?> "_the 'then' branch\nfor example: if x > 2 then 1 else 0"
   elsePos <- getSourcePos
@@ -622,7 +620,7 @@ ifE = do
 -- | Parses an op in prefix syntax WITHOUT opening paren @(@ but with closing paren @)@
 -- E.g. @+)@
 prefixOpsWithoutModule :: SourcePos -> Parser (Expr () SourcePos)
-prefixOpsWithoutModule startPos = do
+prefixOpsWithoutModule startPos =
   hidden (ask >>= choiceOf (prefixOp startPos) . opsInLocalScope)
   where
     opsInLocalScope (ops, _, _) = [s | (_, modNm, s) <- concat ops, modNm == LocalScope]
@@ -633,7 +631,7 @@ prefixOpsWithoutModule startPos = do
 
 -- | Parses a op in prefix syntax of the form @Mod.(+)@
 prefixOpsWithModule :: SourcePos -> Parser (Expr () SourcePos)
-prefixOpsWithModule startPos = do
+prefixOpsWithModule startPos =
   hidden (ask >>= tryMany prefixOp . opsNotInLocal)
   where
     opsNotInLocal (ops, _, _) = [(modNm, s) | (_, modNm, s) <- concat ops, modNm /= LocalScope]
@@ -720,7 +718,7 @@ term =
     <|> try implVarE
     <|> stringE Lit
     <|> interpolatedStringE
-    <|> (try (uncurry3 Array <$> array expr))
+    <|> try (uncurry3 Array <$> array expr)
     <|> try (uncurry3 Record <$> record expr)
     <|> arrayComprE
 
@@ -750,19 +748,19 @@ mkOperators opsTable =
     mkOperatorP prec (InfixOp NoFix) ns o =
       InfixN $
         infixLabel $
-          (\pos e1 e2 -> Op e1 pos () (prec, NoFix) ns (Ident o) e2) <$> (lexeme $ getSourcePos <* string (opString ns o))
+          (\pos e1 e2 -> Op e1 pos () (prec, NoFix) ns (Ident o) e2) <$> lexeme (getSourcePos <* string (opString ns o))
     mkOperatorP prec (InfixOp LeftFix) ns o =
       InfixL $
         infixLabel $
-          (\pos e1 e2 -> Op e1 pos () (prec, LeftFix) ns (Ident o) e2) <$> (lexeme $ getSourcePos <* string (opString ns o))
+          (\pos e1 e2 -> Op e1 pos () (prec, LeftFix) ns (Ident o) e2) <$> lexeme (getSourcePos <* string (opString ns o))
     mkOperatorP prec (InfixOp RightFix) ns o =
       InfixR $
         infixLabel $
-          (\pos e1 e2 -> Op e1 pos () (prec, RightFix) ns (Ident o) e2) <$> (lexeme $ getSourcePos <* string (opString ns o))
+          (\pos e1 e2 -> Op e1 pos () (prec, RightFix) ns (Ident o) e2) <$> lexeme (getSourcePos <* string (opString ns o))
     mkOperatorP prec PrefixOp ns o =
       Prefix $
         prefixLabel $
-          (\pos e -> PreOp pos () prec ns (Ident o) e) <$> (lexeme $ getSourcePos <* string (opString ns o))
+          (\pos e -> PreOp pos () prec ns (Ident o) e) <$> lexeme (getSourcePos <* string (opString ns o))
 
 parseExpr ::
   OpsTable ->
@@ -797,20 +795,20 @@ baseType :: TyParser InfernoType
 baseType = do
   (_, _, _, customTypes) <- ask
   TBase
-    <$> ( (symbol "int" *> pure TInt)
-            <|> (symbol "double" *> pure TDouble)
-            <|> (symbol "word16" *> pure TWord16)
-            <|> (symbol "word32" *> pure TWord32)
-            <|> (symbol "word64" *> pure TWord64)
-            <|> (symbol "text" *> pure TText)
-            <|> try (symbol "timeDiff" *> pure TTimeDiff)
-            <|> (symbol "time" *> pure TTime)
-            <|> (symbol "resolution" *> pure TResolution)
-            <|> choice (map (\t -> symbol (pack t) *> pure (TCustom t)) customTypes)
+    <$> ( symbol "int" $> TInt
+            <|> symbol "double" $> TDouble
+            <|> symbol "word16" $> TWord16
+            <|> symbol "word32" $> TWord32
+            <|> symbol "word64" $> TWord64
+            <|> symbol "text" $> TText
+            <|> try (symbol "timeDiff" $> TTimeDiff)
+            <|> symbol "time" $> TTime
+            <|> symbol "resolution" $> TResolution
+            <|> choice (map (\t -> symbol (pack t) $> TCustom t) customTypes)
         )
 
 type_variable_raw :: TyParser Text
-type_variable_raw = (char '\'' *> takeWhile1P Nothing isAlphaNum)
+type_variable_raw = char '\'' *> takeWhile1P Nothing isAlphaNum
 
 type_variable :: TyParser Int
 type_variable = do
@@ -875,7 +873,7 @@ typeParserBase =
     enumList =
       try
         ((:) <$> enumConstructor <* symbol "," <*> enumList)
-        <|> ((: []) <$> enumConstructor)
+        <|> (: []) <$> enumConstructor
 
 typeParser :: TyParser InfernoType
 typeParser =
@@ -923,25 +921,25 @@ tyContext = lexeme $ do
   _ <- symbol "{"
   res <- listParser tyContextSingle
   _ <- symbol "}"
-  _ <- (symbol "=>" <|> symbol "⇒")
+  _ <- symbol "=>" <|> symbol "⇒"
   return res
 
 typeClass :: TyParser TypeClass
-typeClass = TypeClass <$> (lexeme typeIdent <* symbol "on") <*> (many typeParser)
+typeClass = TypeClass <$> (lexeme typeIdent <* symbol "on") <*> many typeParser
 
 tyContextSingle :: TyParser (Either TypeClass (Text, InfernoType))
-tyContextSingle = (Left <$> (symbol "requires" *> typeClass)) <|> (Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m, customTypes) -> (ops, m, customTypes)) variable)) <*> (symbol ":" *> typeParser)))
+tyContextSingle = Left <$> (symbol "requires" *> typeClass) <|> Right <$> ((,) <$> (symbol "implicit" *> lexeme (withReaderT (\(_, ops, m, customTypes) -> (ops, m, customTypes)) variable)) <*> (symbol ":" *> typeParser))
 
 schemeParser :: TyParser TCScheme
 schemeParser = do
-  vars <- try (rword "forall" *> (many $ lexeme $ type_variable_raw) <* rword ".") <|> pure mempty
+  vars <- try (rword "forall" *> many (lexeme type_variable_raw) <* rword ".") <|> pure mempty
   withReaderT (\(_, ops, m, ts) -> (Map.fromList $ zip vars [0 ..], ops, m, ts)) $
     constructScheme <$> (try tyContext <|> pure []) <*> typeParser
   where
     constructScheme :: [Either TypeClass (Text, InfernoType)] -> InfernoType -> TCScheme
     constructScheme cs t =
       let (tcs, impls) = partitionEithers cs
-       in closeOver (Set.fromList tcs) $ ImplType (Map.fromList $ map (bimap (ExtIdent . Right) id) impls) t
+       in closeOver (Set.fromList tcs) $ ImplType (Map.fromList $ map (first (ExtIdent . Right)) impls) t
 
 doc :: Parser Text
 doc = do
@@ -984,24 +982,24 @@ sigVariable =
             $ concat
             $ IntMap.elems opsTable
      in lexeme $
-          (tryMany (\op -> char '(' *> (SigOpVar <$> string op) <* char ')') opList)
-            <|> (tryMany (\op -> (SigVar <$> string op)) preOpList)
-            <|> (SigVar <$> variable)
+          tryMany (\op -> char '(' *> (SigOpVar <$> string op) <* char ')') opList
+            <|> tryMany (fmap SigVar . string) preOpList
+            <|> SigVar <$> variable
 
 data QQDefinition = QQRawDef String | QQToValueDef String | InlineDef (Expr () SourcePos) deriving (Data)
 
 exprOrBuiltin :: Parser QQDefinition
 exprOrBuiltin =
-  try ((QQToValueDef . unpack) <$> lexeme (string "###" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
-    <|> try ((QQRawDef . unpack) <$> lexeme (string "###!" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
-    <|> (InlineDef <$> expr)
+  try (QQToValueDef . unpack <$> lexeme (string "###" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
+    <|> try (QQRawDef . unpack <$> lexeme (string "###!" *> withReaderT (const (mempty, mempty, [])) variable <* string "###"))
+    <|> InlineDef <$> expr
 
 sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
 sigParser =
-  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser))) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
-      <|> try (EnumDef <$> (Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
-      <|> (EnumDef Nothing <$> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
-      <|> TypeClassInstance <$> (symbol "define" *> (withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) typeClass))
+  ( try (Signature <$> (try (Just <$> doc) <|> pure Nothing) <*> sigVariable <*> ((,) <$> (try (Just <$> (symbol ":" *> withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) schemeParser)) <|> pure Nothing) <*> (symbol ":=" *> exprOrBuiltin)))
+      <|> try ((EnumDef . Just <$> doc) <*> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors)
+      <|> EnumDef Nothing <$> (symbol "enum" *> lexeme variable <* symbol ":=") <*> enumConstructors
+      <|> TypeClassInstance <$> (symbol "define" *> withReaderT (\(ops, m, customTypes) -> (mempty, ops, m, customTypes)) typeClass)
       <|> Export <$> (symbol "export" *> (ModuleName <$> lexeme variable))
   )
     <* symbol ";"
@@ -1009,10 +1007,10 @@ sigParser =
 fixityP :: Parser Fixity
 fixityP =
   lexeme $
-    try (rword "infixr" *> pure (InfixOp RightFix))
-      <|> try (rword "infixl" *> pure (InfixOp LeftFix))
-      <|> try (rword "infix" *> pure (InfixOp NoFix))
-      <|> try (rword "prefix" *> pure PrefixOp)
+    try (rword "infixr" $> InfixOp RightFix)
+      <|> try (rword "infixl" $> InfixOp LeftFix)
+      <|> try (rword "infix" $> InfixOp NoFix)
+      <|> try (rword "prefix" $> PrefixOp)
 
 type OpsTable = IntMap.IntMap [(Fixity, Scoped ModuleName, Text)]
 
@@ -1022,7 +1020,7 @@ fixityLvl = try (lexeme Lexer.decimal >>= check)
     check x =
       if x >= 0 && x < 20
         then return x
-        else fail $ "Fixity level annotation must be between 0 and 19 (inclusive)"
+        else fail "Fixity level annotation must be between 0 and 19 (inclusive)"
 
 sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
 sigsParser =

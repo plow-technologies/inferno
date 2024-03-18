@@ -1,9 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Inferno.Parse.Commented where
@@ -72,7 +66,7 @@ insertCommentIntoPat comment e =
       x : xs -> x : insertTuple xs
 
 insertCommentIntoExpr :: Comment SourcePos -> Expr hash SourcePos -> Expr hash SourcePos
-insertCommentIntoExpr comment expr = go' expr
+insertCommentIntoExpr comment = go'
   where
     (startC, endC) = blockPosition comment
     commentIsWithin s e = s <= startC && endC <= e
@@ -203,7 +197,7 @@ insertCommentIntoExpr comment expr = go' expr
                               then ArrayComp p1 (go' e1) posOfBar args mcond p2
                               else
                                 let (args', mcond') = arrayCompGo' mcond $ toList args
-                                 in ArrayComp p1 e1 posOfBar (fromList $ args') mcond' p2
+                                 in ArrayComp p1 e1 posOfBar (fromList args') mcond' p2
                           CommentAfter e1 c -> CommentAfter (go' e1) c
                           CommentBelow e1 c -> CommentBelow (go' e1) c
                           Bracketed p1 e1 p2 -> Bracketed p1 (go' e1) p2

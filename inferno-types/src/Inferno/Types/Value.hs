@@ -59,7 +59,7 @@ instance NFData custom => NFData (Value custom m) where
   rnf (VWord64 x) = x `seq` ()
   rnf (VEpochTime x) = x `seq` ()
   rnf (VText x) = rnf x
-  rnf (VEnum hash i) = rnf hash `seq` rnf i `seq` ()
+  rnf (VEnum hash i) = rnf hash `seq` rnf i
   rnf (VArray xs) = rnf xs
   rnf (VTuple xs) = rnf xs
   rnf (VRecord xs) = rnf xs
@@ -80,8 +80,8 @@ instance Eq c => Eq (Value c m) where
   (VEnum h1 e1) == (VEnum h2 e2) = h1 == h2 && e1 == e2
   (VOne v1) == (VOne v2) = v1 == v2
   VEmpty == VEmpty = True
-  (VArray a1) == (VArray a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
-  (VTuple a1) == (VTuple a2) = length a1 == length a2 && (foldr ((&&) . (uncurry (==))) True $ zip a1 a2)
+  (VArray a1) == (VArray a2) = length a1 == length a2 && foldr ((&&) . uncurry (==)) True (zip a1 a2)
+  (VTuple a1) == (VTuple a2) = length a1 == length a2 && foldr ((&&) . uncurry (==)) True (zip a1 a2)
   (VRecord fs1) == (VRecord fs2) =
     Map.size fs1 == Map.size fs2 && Map.toAscList fs1 == Map.toAscList fs2
   (VTypeRep t1) == (VTypeRep t2) = t1 == t2
@@ -92,9 +92,9 @@ instance Pretty c => Pretty (Value c m) where
   pretty = \case
     VInt n -> pretty n
     VDouble n -> pretty n
-    VWord16 w -> "0x" <> (pretty $ showHex w "")
-    VWord32 w -> "0x" <> (pretty $ showHex w "")
-    VWord64 w -> "0x" <> (pretty $ showHex w "")
+    VWord16 w -> "0x" <> pretty (showHex w "")
+    VWord32 w -> "0x" <> pretty (showHex w "")
+    VWord64 w -> "0x" <> pretty (showHex w "")
     VText t -> pretty $ Text.pack $ show t
     VEnum _ (Ident s) -> "#" <> pretty s
     VArray vs -> encloseSep lbracket rbracket comma $ map pretty vs

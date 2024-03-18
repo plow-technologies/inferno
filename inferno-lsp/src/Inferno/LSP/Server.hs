@@ -14,7 +14,7 @@ module Inferno.LSP.Server where
 import Colog.Core.Action (LogAction (..))
 import Control.Concurrent (forkIO)
 import Control.Concurrent.STM.TChan (TChan, newTChan, readTChan, writeTChan)
-import Control.Concurrent.STM.TVar (TVar, modifyTVar, newTVar, readTVar)
+import Control.Concurrent.STM.TVar (TVar, modifyTVar, newTVarIO, readTVarIO)
 import qualified Control.Exception as E
 import Control.Monad (forever)
 import Control.Monad.IO.Class (MonadIO (..))
@@ -91,7 +91,7 @@ runInfernoLspServerWith ::
   IO Int
 runInfernoLspServerWith tracer clientIn clientOut prelude customTypes getIdents validateInput before after = flip E.catches handlers $ do
   rin <- atomically newTChan :: IO (TChan ReactorInput)
-  docMap <- atomically $ newTVar mempty
+  docMap <- newTVarIO mempty
   interpreter <- mkInferno prelude customTypes
   let infernoEnv = InfernoEnv docMap tracer getIdents before after validateInput
 
@@ -195,7 +195,7 @@ reactor tracer inp = do
     act
 
 getInfernoEnv :: InfernoLspM InfernoEnv
-getInfernoEnv = LspT $ ReaderT $ \_ -> ask
+getInfernoEnv = LspT $ ReaderT $ const ask
 
 trace :: String -> InfernoLspM ()
 trace s = LspT $
@@ -227,7 +227,7 @@ parseAndInferWithTimeout beforeParse afterParse interpreter idents doc_txt valid
     let timeLimit = 10
     mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInferDiagnostics @_ @c interpreter idents doc_txt validateInput
     case mResult of
-      Nothing -> pure $ Left $ [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
+      Nothing -> pure $ Left [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
       Just res -> pure res
   liftIO $ afterParse (uuid, ts) result
 
@@ -237,13 +237,12 @@ lspHandlers :: forall c. (Pretty c, Eq c) => Interpreter IO c -> TChan ReactorIn
 lspHandlers interpreter rin = mapHandlers goReq goNot (handle @c interpreter)
   where
     goReq :: forall (a :: J.Method 'J.FromClient 'J.Request). Handler InfernoLspM a -> Handler InfernoLspM a
-    goReq f = \msg k -> do
+    goReq f msg k = do
       env <- getLspEnv
       infernoEnv <- getInfernoEnv
       liftIO $ atomically $ writeTChan rin $ ReactorAction (flip runReaderT infernoEnv $ runLspT env $ f msg k)
-
     goNot :: forall (a :: J.Method 'J.FromClient 'J.Notification). Handler InfernoLspM a -> Handler InfernoLspM a
-    goNot f = \msg -> do
+    goNot f msg = do
       env <- getLspEnv
       infernoEnv <- getInfernoEnv
       liftIO $ atomically $ writeTChan rin $ ReactorAction (flip runReaderT infernoEnv $ runLspT env $ f msg)
@@ -314,18 +313,18 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
               pure $ Just completionPrefix
             Nothing -> pure Nothing
         trace $ "Completion prefix: " <> show completionPrefix
-        mIdents <- liftIO $ getIdents
-        let completions = maybe [] id $ findInPrelude @c nameToTypeMap <$> completionPrefix
+        mIdents <- liftIO getIdents
+        let completions = maybe [] (findInPrelude @c nameToTypeMap) completionPrefix
             idents = unIdent <$> catMaybes mIdents
-            identCompletions = maybe [] id $ identifierCompletionItems idents <$> completionPrefix
-            rwsCompletions = maybe [] id $ rwsCompletionItems <$> completionPrefix
-            moduleCompletions = maybe [] id $ filterModuleNameCompletionItems @c nameToTypeMap <$> completionPrefix
+            identCompletions = maybe [] (identifierCompletionItems idents) completionPrefix
+            rwsCompletions = maybe [] rwsCompletionItems completionPrefix
+            moduleCompletions = maybe [] (filterModuleNameCompletionItems @c nameToTypeMap) completionPrefix
             allCompletions = rwsCompletions ++ moduleCompletions ++ identCompletions ++ map (uncurry $ mkCompletionItem typeClasses $ fromMaybe "" completionPrefix) completions
 
         trace $ "Ident completions: " <> show identCompletions
         trace $ "Found completions: " <> show (map fst completions)
 
-        responder $ Right $ J.InL $ J.List $ allCompletions,
+        responder $ Right $ J.InL $ J.List allCompletions,
       requestHandler J.STextDocumentHover $ \req responder -> do
         InfernoEnv {hovers = hoversTV} <- getInfernoEnv
         trace "Processing a textDocument/hover request"
@@ -342,25 +341,17 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
             Just (VirtualFile doc_version _ _) -> pure $ Just doc_version
             Nothing -> pure Nothing
 
-        hoversMap <- liftIO $ atomically $ readTVar hoversTV
+        hoversMap <- liftIO $ readTVarIO hoversTV
         responder $
           Right $ case mDoc_version of
             Just doc_version -> case Map.lookup (doc_uri, doc_version) hoversMap of
               Just hovers ->
                 (\(r, t) -> J.Hover (J.HoverContents t) (Just r))
-                  <$> ( findSmallestRange $
-                          flip filter hovers $
-                            \(J.Range (J.Position lStart cStart) (J.Position lEnd cEnd), _) ->
-                              if l < lStart || l > lEnd
-                                then False
-                                else
-                                  if l == lStart && c < cStart
-                                    then False
-                                    else
-                                      if l == lEnd && c > cEnd
-                                        then False
-                                        else True
-                      )
+                  <$> findSmallestRange
+                    ( flip filter hovers $
+                        \(J.Range (J.Position lStart cStart) (J.Position lEnd cEnd), _) ->
+                          not (((l < lStart || l > lEnd) || (l == lStart && c < cStart)) || (l == lEnd && c > cEnd))
+                    )
               Nothing -> Nothing
             Nothing -> Nothing
     ]
@@ -370,18 +361,9 @@ findSmallestRange = \case
   [] -> Nothing
   (r : rs) -> Just $ foldr (\x@(a, _) y@(b, _) -> if a `containsRange` b then y else x) r rs
   where
-    containsRange
-      (J.Range (J.Position aStartLine aStartColumn) (J.Position aEndLine aEndColumn))
-      (J.Range (J.Position bStartLine bStartColumn) (J.Position bEndLine bEndColumn)) =
-        if bStartLine < aStartLine || bEndLine < aStartLine
-          then False
-          else
-            if bStartLine > aEndLine || bEndLine > aEndLine
-              then False
-              else
-                if bStartLine == aStartLine && bStartColumn < aStartColumn
-                  then False
-                  else
-                    if bEndLine == aEndLine && bEndColumn > aEndColumn
-                      then False
-                      else True
+    containsRange (J.Range (J.Position aStartLine aStartColumn) (J.Position aEndLine aEndColumn)) (J.Range (J.Position bStartLine bStartColumn) (J.Position bEndLine bEndColumn))
+      | bStartLine < aStartLine || bEndLine < aStartLine = False
+      | bStartLine > aEndLine || bEndLine > aEndLine = False
+      | bStartLine == aStartLine && bStartColumn < aStartColumn = False
+      | bEndLine == aEndLine && bEndColumn > aEndColumn = False
+      | otherwise = True

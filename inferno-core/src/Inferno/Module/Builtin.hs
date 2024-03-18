@@ -53,7 +53,7 @@ builtinModule =
         [ ( enumBoolHash,
             TypeMetadata
               { identExpr = Var () () LocalScope (Expl $ ExtIdent $ Right "_"),
-                ty = ForallTC [] Set.empty $ ImplType Map.empty $ typeBool,
+                ty = ForallTC [] Set.empty $ ImplType Map.empty typeBool,
                 docs = Just "Boolean type"
               }
           ),
@@ -84,12 +84,12 @@ builtinModule =
 emptyTy, oneTy, boolTy :: TCScheme
 emptyTy = ForallTC [TV 0] Set.empty $ ImplType Map.empty $ TOptional (TVar $ TV 0)
 oneTy = ForallTC [TV 0] Set.empty $ ImplType Map.empty $ TVar (TV 0) .-> TOptional (TVar $ TV 0)
-boolTy = ForallTC [] Set.empty $ ImplType Map.empty $ typeBool
+boolTy = ForallTC [] Set.empty $ ImplType Map.empty typeBool
 
 emptyHash, oneHash, enumBoolHash :: VCObjectHash
 emptyHash = builtinFunHash "empty" emptyTy
 oneHash = builtinFunHash "one" oneTy
-enumBoolHash = vcHash $ BuiltinEnumHash $ boolTy
+enumBoolHash = vcHash $ BuiltinEnumHash boolTy
 
 builtinFunHash :: Text -> TCScheme -> VCObjectHash
 builtinFunHash n ty = vcHash $ BuiltinFunHash (Var () () LocalScope $ Expl $ ExtIdent $ Right n, ty)

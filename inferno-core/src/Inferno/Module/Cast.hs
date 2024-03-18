@@ -1,6 +1,4 @@
-{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- TODO export only needed?
 -- module Inferno.Module.Cast (FromValue, ToValue) where
@@ -41,7 +39,7 @@ class ToValue c m a where
 
 -- | Class of types that can be converted from script values, allowing IO in the process.
 class FromValue c m a where
-  fromValue :: MonadThrow m => (Value c m) -> m a
+  fromValue :: MonadThrow m => Value c m -> m a
 
 -- | Haskell types that can be casted to mask script types.
 class Kind0 a where
@@ -54,9 +52,9 @@ couldNotCast v =
   throwM $
     CastError $
       "Could not cast value "
-        <> (unpack $ renderPretty v)
+        <> unpack (renderPretty v)
         <> " to "
-        <> (show $ typeRep (Proxy :: Proxy a))
+        <> show (typeRep (Proxy :: Proxy a))
 
 instance ToValue c m (Value c m) where
   toValue = id
@@ -82,7 +80,7 @@ instance Pretty c => FromValue c m Bool where
         if ident == "true"
           then pure True
           else pure False
-      else couldNotCast $ (VEnum hash ident :: Value c m)
+      else couldNotCast (VEnum hash ident :: Value c m)
   fromValue v = couldNotCast v
 
 instance ToValue c m Double where
@@ -163,37 +161,37 @@ instance Kind0 Bool where
   toType _ = TBase $ TEnum "bool" $ Set.fromList ["true", "false"]
 
 instance Kind0 Float where
-  toType _ = TBase $ TDouble
+  toType _ = TBase TDouble
 
 instance Kind0 Double where
-  toType _ = TBase $ TDouble
+  toType _ = TBase TDouble
 
 instance Kind0 Int where
-  toType _ = TBase $ TInt
+  toType _ = TBase TInt
 
 instance Kind0 Int64 where
-  toType _ = TBase $ TInt
+  toType _ = TBase TInt
 
 instance Kind0 Integer where
-  toType _ = TBase $ TInt
+  toType _ = TBase TInt
 
 instance Kind0 Word16 where
-  toType _ = TBase $ TWord16
+  toType _ = TBase TWord16
 
 instance Kind0 Word32 where
-  toType _ = TBase $ TWord32
+  toType _ = TBase TWord32
 
 instance Kind0 Word64 where
-  toType _ = TBase $ TWord64
+  toType _ = TBase TWord64
 
 instance Kind0 () where
   toType _ = TTuple TNil
 
 instance Kind0 CTime where
-  toType _ = TBase $ TTime
+  toType _ = TBase TTime
 
 instance Kind0 Text where
-  toType _ = TBase $ TText
+  toType _ = TBase TText
 
 instance (Kind0 a, Kind0 b) => Kind0 (a -> b) where
   toType _ = TArr (toType (Proxy :: Proxy a)) (toType (Proxy :: Proxy b))

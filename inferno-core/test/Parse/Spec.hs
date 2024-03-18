@@ -1,11 +1,12 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Parse.Spec where
 
+import Control.Monad (void)
+import Data.Bifunctor (second)
 import Data.Functor.Foldable (ana, project)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text, pack, unpack)
@@ -53,7 +54,7 @@ normalizeExpr = ana $ \case
   PreOp pos hsh prec LocalScope (Ident "-") e -> case normalizeExpr e of
     Lit l' (LInt x) -> project $ Lit l' $ LInt $ -x
     Lit l' (LDouble x) -> project $ Lit l' $ LDouble $ -x
-    PreOp _ _ _ LocalScope (Ident "-") e' -> project $ e'
+    PreOp _ _ _ LocalScope (Ident "-") e' -> project e'
     e' -> project $ PreOp pos hsh prec LocalScope (Ident "-") e'
   Tuple p1 xs p2 -> project $ Tuple p1 (fmap (\(e, _) -> (normalizeExpr e, Nothing)) xs) p2
   Record p1 xs p2 -> project $ Record p1 (fmap (\(f, e, _) -> (f, normalizeExpr e, Nothing)) xs) p2
@@ -67,7 +68,7 @@ normalizeExpr = ana $ \case
         (normalizeExpr e_body)
         p2
         (fmap (\(p4, x, p5, e, _) -> (p4, x, p5, normalizeExpr e, Nothing)) args)
-        (fmap (\(p4, e) -> (p4, normalizeExpr e)) e_cond)
+        (fmap (second normalizeExpr) e_cond)
         p3
   Bracketed _ e _ -> project $ normalizeExpr e
   Op e1 p1 h (_, fix) modNm i e2 -> project $ Op (normalizeExpr e1) p1 h (0, fix) modNm i (normalizeExpr e2)
@@ -88,18 +89,18 @@ parsingTests = describe "pretty printing/parsing" $ do
           Left err ->
             property False
               <?> ( "Pretty: \n"
-                      <> (renderPretty x)
+                      <> renderPretty x
                       <> "\nParse error:\n"
-                      <> (pack $ prettyError $ fst $ NonEmpty.head err)
+                      <> pack (prettyError $ fst $ NonEmpty.head err)
                   )
           Right (res, _comments) ->
-            (normalizeExpr (removeComments x) === normalizeExpr (fmap (const ()) res))
+            (normalizeExpr (removeComments x) === normalizeExpr (void res))
               <?> ( "Pretty: \n"
-                      <> (renderPretty x)
+                      <> renderPretty x
                       <> "\nParsed: \n"
-                      <> (toStrict $ pShow res)
+                      <> toStrict (pShow res)
                       <> "\nParsed pretty: \n"
-                      <> (renderPretty res)
+                      <> renderPretty res
                   )
 
   describe "parsing literals" $ do
@@ -119,7 +120,7 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldFailFor "\"0X\nFF\""
 
   describe "parsing interpolated strings" $ do
-    shouldSucceedFor "``" $ InterpolatedString () (SomeIStr $ ISEmpty) ()
+    shouldSucceedFor "``" $ InterpolatedString () (SomeIStr ISEmpty) ()
     shouldSucceedFor "`hello\nworld`" $ InterpolatedString () (SomeIStr (ISStr "hello\nworld" ISEmpty)) ()
     shouldSucceedFor "`${1}`" $ InterpolatedString () (SomeIStr (ISExpr ((), Lit () (LInt 1), ()) ISEmpty)) ()
     shouldSucceedFor "`hello\nworld${1}`" $ InterpolatedString () (SomeIStr (ISStr "hello\nworld" (ISExpr ((), Lit () (LInt 1), ()) ISEmpty))) ()
@@ -171,7 +172,7 @@ parsingTests = describe "pretty printing/parsing" $ do
   describe "parsing records" $ do
     let r = Record () [(Ident "name", Lit () (LText "Zaphod"), Just ()), (Ident "age", Lit () (LInt 391), Nothing)] ()
     shouldSucceedFor "{}" $ Record () [] ()
-    shouldSucceedFor "{name = \"Zaphod\"; age = 391}" $ r
+    shouldSucceedFor "{name = \"Zaphod\"; age = 391}" r
     -- Records are parsed as Var, converted to RecordField later in pinExpr:
     let varRecordAccess = Var () () (Scope (ModuleName "r")) (Expl (ExtIdent (Right "age")))
     shouldSucceedFor "let r = {name = \"Zaphod\"; age = 391} in r.age" $
@@ -267,10 +268,10 @@ parsingTests = describe "pretty printing/parsing" $ do
     shouldSucceedFor str ast =
       it ("should succeed for \"" <> unpack str <> "\"") $
         case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
-          Left err -> expectationFailure $ "Failed with: " <> (prettyError $ fst $ NonEmpty.head err)
-          Right (res, _) -> fmap (const ()) res `shouldBe` ast
+          Left err -> expectationFailure $ "Failed with: " <> prettyError (fst $ NonEmpty.head err)
+          Right (res, _) -> void res `shouldBe` ast
     shouldFailFor str =
       it ("should fail for \"" <> unpack str <> "\"") $
         case parseExpr (baseOpsTable prelude) (builtinModulesOpsTable prelude) [] str of
           Left _err -> pure ()
-          Right _res -> expectationFailure $ "This should not parse"
+          Right _res -> expectationFailure "This should not parse"

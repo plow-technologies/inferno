@@ -41,15 +41,15 @@ inferTests = describe "infer" $
 
     let tv i = TVar (TV {unTV = i})
     let makeTCs name params = TypeClass {className = name, params = params}
-    let addTC ts = makeTCs "addition" ts
-    let mulTC ts = makeTCs "multiplication" ts
-    let negTC ts = makeTCs "negate" ts
-    let numTC ts = makeTCs "numeric" ts
-    let ordTC ts = makeTCs "order" ts
-    let repTC ts = makeTCs "rep" ts
+    let addTC = makeTCs "addition"
+    let mulTC = makeTCs "multiplication"
+    let negTC = makeTCs "negate"
+    let numTC = makeTCs "numeric"
+    let ordTC = makeTCs "order"
+    let repTC = makeTCs "rep"
     let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
 
-    inferno <- runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
+    inferno <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
     let shouldInferTypeFor str t =
           it ("should infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer inferno str of
@@ -62,7 +62,7 @@ inferTests = describe "infer" $
               Left (ParseError err) -> expectationFailure $ prettyError $ fst $ NEList.head err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
-              Right _ -> expectationFailure $ "Should fail to infer a type"
+              Right _ -> expectationFailure "Should fail to infer a type"
 
     shouldInferTypeFor "3" $
       makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
@@ -340,13 +340,13 @@ inferTests = describe "infer" $
     shouldBeExhaustive patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be exhaustive") $
         case exhaustive enum_sigs $ map (: []) patts of
-          Just _ps -> expectationFailure $ "These patterns should be exhaustive"
+          Just _ps -> expectationFailure "These patterns should be exhaustive"
           Nothing -> pure ()
     shouldBeInexhaustive patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be inexhaustive") $
         case exhaustive enum_sigs $ map (: []) patts of
           Just _ps -> pure ()
-          Nothing -> expectationFailure $ "These patterns should be inexhaustive"
+          Nothing -> expectationFailure "These patterns should be inexhaustive"
     shouldBeUseful patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be useful") $
         checkUsefullness enum_sigs (map (: []) patts) `shouldBe` []

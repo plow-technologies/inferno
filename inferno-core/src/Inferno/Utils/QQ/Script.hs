@@ -1,6 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Inferno.Utils.QQ.Script where
@@ -48,7 +48,7 @@ inferno =
     { quoteExp = \str -> do
         l <- location'
         let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel $ expr) $
+              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel expr) $
                 State
                   (pack str)
                   0
@@ -66,7 +66,7 @@ inferno =
                   Left err -> fail $ "Inference failed:\n" <> show err
                   Right (pinnedAST', t, _tyMap) -> do
                     let final = insertCommentsIntoExpr (appEndo comments []) pinnedAST'
-                    dataToExpQ ((\a -> liftText <$> cast a) `extQ` vcObjectHashToValue) (final, t),
+                    dataToExpQ ((fmap liftText . cast) `extQ` vcObjectHashToValue) (final, t),
       quotePat = error "inferno: Invalid use of this quasi-quoter in pattern context.",
       quoteType = error "inferno: Invalid use of this quasi-quoter in type context.",
       quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
@@ -75,8 +75,8 @@ inferno =
     builtins = builtinModules @m @c
     vcObjectHashToValue :: Crypto.Digest Crypto.SHA256 -> Maybe TH.ExpQ
     vcObjectHashToValue h =
-      let str = (convert h) :: ByteString
-       in Just $
+      let str = convert h :: ByteString
+       in Just
             ( AppE (VarE 'Maybe.fromJust)
                 <$> (AppE (VarE 'Crypto.digestFromByteString) <$> lift (unpack str))
             )

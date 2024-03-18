@@ -1,4 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -38,9 +37,10 @@ import Control.Monad.State
     StateT (StateT, runStateT),
     evalStateT,
     execState,
+    gets,
     modify,
   )
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (Bifunctor (first, second), bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
@@ -48,7 +48,7 @@ import Data.List (find, unzip4)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
-import Data.Maybe (catMaybes, fromJust)
+import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Debug.Trace (trace)
@@ -174,7 +174,7 @@ filterInstantiatedTypeClasses = Set.filter $ not . Set.null . ftv
 mkPattern :: Pat (Pinned VCObjectHash) SourcePos -> Pattern
 mkPattern = \case
   PVar _ _ -> W
-  PEnum _ Local _ns _ident -> error $ "internal error. cannot convert unpinned enum into a pattern"
+  PEnum _ Local _ns _ident -> error "internal error. cannot convert unpinned enum into a pattern"
   PEnum _ hash _ns ident@(Ident i) -> cEnum (vcHash (ident, fromJust $ pinnedToMaybe hash)) i
   PLit _ l -> case l of
     LInt v -> cInf v
@@ -265,7 +265,7 @@ closeOverTypeReps implTys expr =
                 -- if we have any type holes, we need to wrap the expression in a lambda and add a `requires rep on ...` typeclass
                 -- capturing all the runtime reps that the expression needs
                 _ : _ ->
-                  let lamList = fmap (\merged -> let (v, _) = NEList.head merged in (pos, Just v)) $ NEList.fromList $ withTypeHoleGrouped
+                  let lamList = ((\merged -> let (v, _) = NEList.head merged in (pos, Just v)) <$> NEList.fromList withTypeHoleGrouped)
                    in ( Just $
                           TypeClass "rep" $
                             map
@@ -316,14 +316,14 @@ inferExpr allModules expr =
                   let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) $ Set.fromList $ rights $ Set.toList cs
                   let substitutedTy@(ImplType implTys tyBody) = apply subst ty
                   -- get current type variables
-                  let tvs = ftv substitutedTy `Set.union` (Set.unions $ Set.elems $ Set.map ftv cls)
+                  let tvs = ftv substitutedTy `Set.union` Set.unions (Set.elems $ Set.map ftv cls)
                   let res substNew (mRepTyCls, implTys', expr'') =
                         let finalTy =
                               closeOver
-                                ((filterInstantiatedTypeClasses $ Set.map (apply substNew) cls) `Set.union` (maybe mempty Set.singleton mRepTyCls))
+                                (filterInstantiatedTypeClasses (Set.map (apply substNew) cls) `Set.union` maybe mempty Set.singleton mRepTyCls)
                                 $ apply substNew
                                 $ ImplType implTys' tyBody
-                         in Right $
+                         in Right
                               ( expr'',
                                 finalTy,
                                 Map.map
@@ -351,7 +351,7 @@ inferExpr allModules expr =
                                 )
                                 -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
                                 -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
-                                (ftv tyBody `Set.union` (Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys))
+                                (ftv tyBody `Set.union` Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty implTys)
                                 cls
                             subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
                          in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
@@ -369,7 +369,7 @@ inferExpr allModules expr =
         mempty
         $ Map.map ty
         $ Map.unions
-        $ pinnedModuleHashToTy builtinModule : (map pinnedModuleHashToTy $ Map.elems allModules)
+        $ pinnedModuleHashToTy builtinModule : map pinnedModuleHashToTy (Map.elems allModules)
     openBuiltinModuleAndAddPinnedTypes :: Map.Map ModuleName (PinnedModule m) -> (Env, Set.Set TypeClass)
     openBuiltinModuleAndAddPinnedTypes modules =
       let Module {moduleTypeClasses = tyCls, moduleObjects = (_, tys, _)} = builtinModule
@@ -441,7 +441,7 @@ inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTy
           possibleInTysFromSig <- forM (zip inputTys inTysFromSig) findAllPossibleTypes
           (possibleInTysFromSig,) <$> findAllPossibleTypes (outputTy, outTyFromSig)
   where
-    gatherArgs (TArr t1 t2) = bimap (t1 :) id $ gatherArgs t2
+    gatherArgs (TArr t1 t2) = first (t1 :) $ gatherArgs t2
     gatherArgs x = ([], x)
     mkMaybeConstraints (TArr t1 t2) (Just x : xs) = Left (t1, x, []) : mkMaybeConstraints t2 xs
     mkMaybeConstraints (TArr _ t2) (Nothing : xs) = mkMaybeConstraints t2 xs
@@ -454,14 +454,14 @@ inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTy
 -- | Extend type environment
 inEnv :: (ExtIdent, TypeMetadata TCScheme) -> Infer a -> Infer a
 inEnv (x, meta) m = do
-  let scope e = (Env.remove e x) `Env.extend` (x, meta)
+  let scope e = Env.remove e x `Env.extend` (x, meta)
   local scope m
 
 -- | Lookup type in the environment
 lookupEnv :: Location SourcePos -> Either VCObjectHash ExtIdent -> Infer (TypeMetadata (Set.Set TypeClass, ImplType))
 lookupEnv loc x = do
   env <- ask
-  case either (flip Env.lookupPinned env) (flip Env.lookup env) x of
+  case either (`Env.lookupPinned` env) (`Env.lookup` env) x of
     Nothing ->
       throwError
         [ either
@@ -511,7 +511,7 @@ instantiate :: TCScheme -> Infer (Set.Set TypeClass, ImplType)
 instantiate (ForallTC as tcs t) = do
   as' <- mapM (const fresh) as
   let s = Subst $ Map.fromList $ zip as as'
-  return $ (Set.map (apply s) tcs, apply s t)
+  return (Set.map (apply s) tcs, apply s t)
 
 opGetTyComponents :: ImplType -> (InfernoType, InfernoType, InfernoType)
 opGetTyComponents (ImplType _ (t1 `TArr` (t2 `TArr` t3))) = (t1, t2, t3)
@@ -594,7 +594,7 @@ infer expr =
         Enum _ mHash _ _ -> do
           meta <- lookupEnv exprLoc (maybe (error "internal error, enums must always be pinned!!") Left $ pinnedToMaybe mHash)
           let (_, t) = ty meta
-          attachTypeToPosition exprLoc meta {identExpr = bimap (const ()) (const ()) $ expr}
+          attachTypeToPosition exprLoc meta {identExpr = bimap (const ()) (const ()) expr}
           return (expr, t, Set.empty)
         InterpolatedString p1 xs p2 -> do
           attachTypeToPosition
@@ -606,10 +606,12 @@ infer expr =
               }
           (xs', is, css) <-
             unzip3
-              <$> ( forM (toEitherList xs) $ \case
-                      Left str -> return (Left str, Map.empty, Set.empty)
-                      Right (p3, e, p4) -> (\(e', ImplType is _t, cs) -> (Right (p3, e', p4), is, cs)) <$> infer e
-                  )
+              <$> forM
+                (toEitherList xs)
+                ( \case
+                    Left str -> return (Left str, Map.empty, Set.empty)
+                    Right (p3, e, p4) -> (\(e', ImplType is _t, cs) -> (Right (p3, e', p4), is, cs)) <$> infer e
+                )
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) is
           return (InterpolatedString p1 (fromEitherList xs') p2, ImplType isMerged typeText, Set.unions css `Set.union` Set.fromList ics)
         Record p1 fes p2 -> do
@@ -644,7 +646,7 @@ infer expr =
             fresh >>= \case
               (TVar x) -> pure x
               _ -> error "fresh returned something other than a TVar"
-          let tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_r
+          let tyCls = Set.fromList $ map snd $ rights $ Set.toList cs_r
           let tyRec = TRecord (Map.singleton (Ident f) tv) (RowVar trv)
           return
             ( expr,
@@ -843,14 +845,14 @@ infer expr =
                 )
         LetAnnot p1 loc x pT t p2 e1 p3 e2 -> do
           (e1', ImplType i1 t1, c1) <- infer e1
-          (tcs, (ImplType iT tT)) <- instantiate t
+          (tcs, ImplType iT tT) <- instantiate t
           let tyCls = Set.fromList $ map snd $ rights $ Set.toList c1
           attachTypeToPosition
             (elementPosition loc $ Expl x)
             TypeMetadata
               { identExpr = Var () () LocalScope $ Expl x,
                 -- ty = (tyCls, ImplType i1 t1),
-                ty = (tcs, (ImplType iT tT)),
+                ty = (tcs, ImplType iT tT),
                 docs = Nothing
               }
           let newEnv =
@@ -906,9 +908,7 @@ infer expr =
           (e1', ImplType i1 t1, c1) <- infer e1
           (e2', ImplType i2 t2, c2) <- infer e2
 
-          v1 <- case Map.lookup x i2 of
-            Just t -> return t
-            Nothing -> fresh
+          v1 <- maybe fresh return (Map.lookup x i2)
 
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [i1, Map.withoutKeys i2 (Set.singleton x)]
               tyCls = Set.fromList $ map snd $ rights $ Set.toList $ c1 `Set.union` c2
@@ -948,7 +948,7 @@ infer expr =
                     tyConstr u2 t2 [UnificationFail tyCls u2 t2 $ blockPosition e2],
                     tyConstr u3 tv [UnificationFail tyCls u3 tv $ blockPosition expr]
                   ]
-                `Set.union` (Set.map (Right . (opLoc,)) tcs)
+                `Set.union` Set.map (Right . (opLoc,)) tcs
             )
         PreOp loc mHash opMeta modNm op e -> do
           let (sPos, ePos) = elementPosition loc op
@@ -958,7 +958,7 @@ infer expr =
 
           meta <- lookupEnv opLoc (maybe (error "internal error, prefix ops must always be pinned!!") Left $ pinnedToMaybe mHash)
           let (tcs, (u1, u2)) = preOpGetTyComponents <$> ty meta
-              tyCls = Set.fromList $ map snd $ rights $ Set.toList $ c
+              tyCls = Set.fromList $ map snd $ rights $ Set.toList c
 
           tv <- fresh
           attachTypeToPosition opLoc meta {ty = (tcs, ImplType Map.empty $ t `TArr` tv)}
@@ -971,7 +971,7 @@ infer expr =
                   [ tyConstr u1 t [UnificationFail tyCls u1 t $ blockPosition e],
                     tyConstr u2 tv [UnificationFail tyCls u2 tv $ blockPosition expr]
                   ]
-                `Set.union` (Set.map (Right . (opLoc,)) tcs)
+                `Set.union` Set.map (Right . (opLoc,)) tcs
             )
         If p1 cond p2 tr p3 fl -> do
           (cond', ImplType i1 t1, c1) <- infer cond
@@ -1044,18 +1044,16 @@ infer expr =
           (e', ImplType i_e t_e, cs_e) <- infer e
           (patTys, patVars, patConstraints) <-
             unzip3
-              <$> mapM
-                (\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p)
-                (map (\(_, p, _, _) -> p) patExprs)
+              <$> mapM ((\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p) . (\(_, p, _, _) -> p)) patExprs
 
           addCasePatterns exprLoc $ map (\(_, p, _, _) -> p) patExprs
 
           res <- forM (zip patVars $ map (\(_, _p, _, e'') -> e'') patExprs) $
-            \(vars, e''') -> foldr inEnv (infer e''') $ map (\(Ident x, meta) -> (ExtIdent $ Right x, meta)) vars
+            \(vars, e''') -> foldr (inEnv . (\(Ident x, meta) -> (ExtIdent $ Right x, meta))) (infer e''') vars
 
           let (es'', is_res, ts_res, cs_res) = unzip4 $ map (\(e'', ImplType i_r t_r, cs_r) -> (e'', i_r, t_r, cs_r)) res
               (isMerged, ics) = mergeImplicitMaps (blockPosition expr) (i_e : is_res)
-              tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_e `Set.union` (Set.unions cs_res)
+              tyCls = Set.fromList $ map snd $ rights $ Set.toList $ cs_e `Set.union` Set.unions cs_res
               patTysEqConstraints =
                 Set.fromList
                   [ tyConstr tPat4 tPat5 [PatternsMustBeEqType tyCls tPat4 tPat5 p4 p5 (blockPosition p4) (blockPosition p5)]
@@ -1076,16 +1074,16 @@ infer expr =
                       e1 /= e2
                   ]
 
-          return $
-            ( Case p1 e' p2 (NEList.fromList $ map (\(e'', (p6, pat, p7, _)) -> (p6, pat, p7, e'')) $ zip es'' patExprs) p3,
+          return
+            ( Case p1 e' p2 (NEList.fromList $ zipWith (curry (\(e'', (p6, pat, p7, _)) -> (p6, pat, p7, e''))) es'' patExprs) p3,
               ImplType isMerged $ head ts_res,
-              (Set.fromList ics)
+              Set.fromList ics
                 `Set.union` cs_e
-                `Set.union` (Set.unions patConstraints)
+                `Set.union` Set.unions patConstraints
                 `Set.union` patTysEqConstraints
                 `Set.union` patTysMustEqCaseExprTy t_e
                 `Set.union` patExpTysEqConstraints (zip (map (\(_, ty, _) -> ty) res) (map (\(_, _p, _, e'') -> e'') patExprs))
-                `Set.union` (Set.unions cs_res)
+                `Set.union` Set.unions cs_res
             )
           where
             mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)], Set.Set Constraint)
@@ -1141,7 +1139,7 @@ infer expr =
                         patLoc
                         TypeMetadata
                           { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
-                            ty = (Set.empty, ImplType Map.empty $ t),
+                            ty = (Set.empty, ImplType Map.empty t),
                             docs = Nothing
                           }
                       return (t, [], Set.empty)
@@ -1153,7 +1151,7 @@ infer expr =
                         patLoc
                         TypeMetadata
                           { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
-                            ty = (Set.empty, ImplType Map.empty $ inferredTy),
+                            ty = (Set.empty, ImplType Map.empty inferredTy),
                             docs = Nothing
                           }
                       return (inferredTy, vars1 ++ vars2, csP `Set.union` csPs)
@@ -1174,7 +1172,7 @@ infer expr =
                         patLoc
                         TypeMetadata
                           { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
-                            ty = (Set.empty, ImplType Map.empty $ inferredTy),
+                            ty = (Set.empty, ImplType Map.empty inferredTy),
                             docs = Nothing
                           }
                       return (inferredTy, vars, cs)
@@ -1394,8 +1392,8 @@ unifies err (TSeries t1) (TSeries t2) = unifies err t1 t2
 unifies err (TOptional t1) (TOptional t2) = unifies err t1 t2
 unifies err (TTuple ts1) (TTuple ts2)
   | length (tListToList ts1) == length (tListToList ts2) = unifyMany err (tListToList ts1) (tListToList ts2)
-  | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- (getLocFromErrs err)]
-unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) = do
+  | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- getLocFromErrs err]
+unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) =
   unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2) [] [] []
 unifies err _ _ =
   -- trace "throwing in unifies " $
@@ -1410,7 +1408,7 @@ solver varCount (su, cs) =
       let (tyConstrs, typeCls) = partitionEithers cs
       su1 <- flip evalSolveState varCount $ solverTyCs su tyConstrs
       -- trace ("After solverTyCs, final su1\n" <> show su1) $ pure ()
-      let partResolvedTyCls = map (\(loc, tc) -> (loc, apply su1 tc)) typeCls
+      let partResolvedTyCls = map (second (apply su1)) typeCls
       -- trace ("partResolvedTyCls: " <> (intercalate "\n" $ map (unpack . renderPretty . pretty . snd) partResolvedTyCls)) $
       evalSolveState (solverTypeClasses $ su1 `compose` su) (Set.fromList partResolvedTyCls, mempty)
 
@@ -1451,7 +1449,7 @@ applySubsts su = state $ \(current, marked) ->
                 then (current', Set.insert (loc, a') marked')
                 else (Set.insert (loc, a') current', marked')
       )
-      (Set.map (\(loc, a) -> (loc, apply su a)) current, mempty)
+      (Set.map (Data.Bifunctor.second (apply su)) current, mempty)
       marked
   where
     filterFullyInstantiated =
@@ -1477,7 +1475,7 @@ solverTypeClasses su =
             (Subst s : xs) -> do
               -- even if we have multiple matching substitutions, we can still make progress if they all agree
               -- on some parameter
-              let su' = (Subst $ foldr intersection s [x | Subst x <- xs]) `compose` su
+              let su' = Subst (foldr intersection s [x | Subst x <- xs]) `compose` su
               -- trace ("applying su': "<> show su' <> "\nprevious was su: " <> show su) $
               applySubsts su'
               solverTypeClasses su'
@@ -1555,8 +1553,8 @@ findTypeClassWitnesses allClasses iters tyCls tvs =
     filteredSubs = filteredTypeClassSubstitutions allClasses $ Set.toList tyCls
     (_, litMap, clauses) = flip execState (Counter 1, Bimap.empty, []) $ do
       encodeTypeClasses allClasses filteredSubs $ Set.toList tyCls
-      lm :: Bimap.Bimap Int (TV, InfernoType) <- getTyped <$> get
-      let ls_grouped = foldr (\(l, (tv, _)) m' -> Map.alter (Just . maybe [l] (l :)) tv m') mempty $ Bimap.toList $ lm
+      lm :: Bimap.Bimap Int (TV, InfernoType) <- gets getTyped
+      let ls_grouped = foldr (\(l, (tv, _)) m' -> Map.alter (Just . maybe [l] (l :)) tv m') mempty $ Bimap.toList lm
       forM_ (Map.elems ls_grouped) $ \ls -> xor ls
 
     getSolutions = \case
@@ -1564,7 +1562,7 @@ findTypeClassWitnesses allClasses iters tyCls tvs =
       i -> do
         Picosat.scopedSolutionWithAssumptions [] >>= \case
           Picosat.Solution ls -> do
-            let found = catMaybes $ map (\l -> (l,) <$> Bimap.lookup l litMap) ls
+            let found = mapMaybe (\l -> (l,) <$> Bimap.lookup l litMap) ls
             Picosat.addBaseClauses [[-l | (l, (tv, _)) <- found, tv `Set.member` tvs]]
             ((Subst $ Map.fromList $ map snd found) :) <$> getSolutions ((\x -> x - 1) <$> i)
           _ -> pure []
@@ -1594,7 +1592,7 @@ filteredTypeClassSubstitutions allClasses = \case
   [] -> mempty
   TypeClass nm tys : tcs -> do
     let possibleMatchingInstances = Set.toList $ Set.filter (\(TypeClass nm' _) -> nm == nm') allClasses
-    case runIdentity $ runExceptT $ flip runReaderT allClasses $ (catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys)) of
+    case runIdentity $ runExceptT $ flip runReaderT allClasses $ catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys) of
       Left _ -> filteredTypeClassSubstitutions allClasses tcs
       Right subs' ->
         let subs = [su | Subst su <- subs']
@@ -1612,22 +1610,23 @@ encodeTypeClasses allClasses filteredSubs = \case
   [] -> pure ()
   TypeClass nm tys : tcs -> do
     let possibleMatchingInstances = Set.toList $ Set.filter (\(TypeClass nm' _) -> nm == nm') allClasses
-    case runIdentity $ runExceptT $ flip runReaderT allClasses $ (catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys)) of
+    case runIdentity $ runExceptT $ flip runReaderT allClasses $ catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys) of
       Left _err -> encodeTypeClasses allClasses filteredSubs tcs
       Right subs -> do
         insts <- forM (filterSubs subs) $ \(Subst su) -> do
           ls <-
             concat
-              <$> ( forM tys $ \t ->
-                      case t of
-                        TVar tv -> do
-                          let t' = su Map.! tv
-                          tvLit <- getLit (tv, t')
-                          freshLit <- newLit
-                          [tvLit] `iff` freshLit
-                          pure [freshLit]
-                        _ -> pure []
-                  )
+              <$> forM
+                tys
+                ( \case
+                    TVar tv -> do
+                      let t' = su Map.! tv
+                      tvLit <- getLit (tv, t')
+                      freshLit <- newLit
+                      [tvLit] `iff` freshLit
+                      pure [freshLit]
+                    _ -> pure []
+                )
           freshLit <- newLit
           ls `iff` freshLit
           pure freshLit
@@ -1666,7 +1665,7 @@ xor ls =
 bind :: [TypeError SourcePos] -> TV -> InfernoType -> SolveState Int Subst
 bind err a t
   | t == TVar a = return emptySubst
-  | occursCheck a t = throwError [InfiniteType a t loc | loc <- (getLocFromErrs err)]
+  | occursCheck a t = throwError [InfiniteType a t loc | loc <- getLocFromErrs err]
   | otherwise = return (Subst $ Map.singleton a t)
 
 occursCheck :: Substitutable a => TV -> a -> Bool

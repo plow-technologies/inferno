@@ -111,19 +111,19 @@ asArray4Fun :: Tensor -> [[[[Double]]]]
 asArray4Fun t = asValue $ toType TD.Double t
 
 argmaxFun :: Int -> Bool -> Tensor -> Tensor
-argmaxFun i keepDim t = argmax (Dim i) (if keepDim then KeepDim else RemoveDim) t
+argmaxFun i keepDim = argmax (Dim i) (if keepDim then KeepDim else RemoveDim)
 
 softmaxFun :: Int -> Tensor -> Tensor
-softmaxFun i t = softmax (Dim i) t
+softmaxFun i = softmax (Dim i)
 
 stackFun :: Int -> [Tensor] -> Tensor
-stackFun i t = Torch.stack (Dim i) t
+stackFun i = Torch.stack (Dim i)
 
 tanHTFun :: Tensor -> Tensor
 tanHTFun = Torch.Functional.tanh
 
 powTFun :: Int -> Tensor -> Tensor
-powTFun i t = pow i t
+powTFun = pow
 
 loadModelFun :: Text -> ScriptModule
 loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
