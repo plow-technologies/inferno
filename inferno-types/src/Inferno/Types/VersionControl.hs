@@ -1,6 +1,6 @@
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
+
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -95,7 +95,7 @@ instance Hashable VCObjectHash where
 
 instance Serialize VCObjectHash where
   get =
-    (getByteString 44)
+    getByteString 44
       >>= ( \b -> do
               b64 <- either fail pure $ Base64.decode b
               digest <- maybe (fail "VCObjectHash: Unable to digest from Base64 ByteString") pure $ digestFromByteString b64
@@ -110,7 +110,7 @@ class VCHashUpdate obj where
   ctxt &< o = genHashUpdate ctxt $ from o
 
 hashUpdateVia :: ByteArrayAccess ba => (obj -> ba) -> Context SHA256 -> obj -> Context SHA256
-hashUpdateVia toBAA ctxt obj = ctxt `hashUpdate` (toBAA obj)
+hashUpdateVia toBAA ctxt obj = ctxt `hashUpdate` toBAA obj
 {-# INLINE hashUpdateVia #-}
 
 newtype VCHashUpdateViaShow a = VCHashUpdateViaShow {unVCHashUpdateViaShow :: a}
@@ -162,16 +162,16 @@ instance VCHashUpdate ExtIdent where
   ctxt &< (ExtIdent (Right b)) = ctxt &< ("reg$" :: ByteString) &< b
 
 instance VCHashUpdate a => VCHashUpdate (NonEmpty.NonEmpty a) where
-  ctxt &< xs = ctxt &< (NonEmpty.toList xs)
+  ctxt &< xs = ctxt &< NonEmpty.toList xs
 
 instance VCHashUpdate a => VCHashUpdate (Set.Set a) where
-  ctxt &< xs = ctxt &< (Set.toList xs)
+  ctxt &< xs = ctxt &< Set.toList xs
 
 instance (VCHashUpdate k, VCHashUpdate a) => VCHashUpdate (Map.Map k a) where
-  ctxt &< m = ctxt &< (Map.toList m)
+  ctxt &< m = ctxt &< Map.toList m
 
 instance VCHashUpdate a => VCHashUpdate (IntMap.IntMap a) where
-  ctxt &< m = ctxt &< (IntMap.toList m)
+  ctxt &< m = ctxt &< IntMap.toList m
 
 class GenericVCHashUpdate f where
   genHashUpdate :: Context SHA256 -> f p -> Context SHA256
@@ -186,7 +186,7 @@ instance GenericVCHashUpdate f => GenericVCHashUpdate (D1 c f) where
   genHashUpdate ctxt (M1 x) = genHashUpdate ctxt x
 
 instance (Constructor c, GenericVCHashUpdate f) => GenericVCHashUpdate (C1 c f) where
-  genHashUpdate ctxt x@(M1 y) = ctxt &< (Char8.pack $ conName x) `genHashUpdate` y
+  genHashUpdate ctxt x@(M1 y) = ctxt &< Char8.pack (conName x) `genHashUpdate` y
 
 instance GenericVCHashUpdate f => GenericVCHashUpdate (S1 c f) where
   genHashUpdate ctxt (M1 x) = genHashUpdate ctxt x
@@ -213,28 +213,23 @@ deriving instance VCHashUpdate ImplExpl
 
 instance VCHashUpdate Int64 where
   (&<) =
-    hashUpdateVia $
-      (\i64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i64) $ putStorable i64)
+    hashUpdateVia (\i64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i64) $ putStorable i64)
 
 instance VCHashUpdate Int32 where
   (&<) =
-    hashUpdateVia $
-      (\i32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i32) $ putStorable i32)
+    hashUpdateVia (\i32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i32) $ putStorable i32)
 
 instance VCHashUpdate Double where
   (&<) =
-    hashUpdateVia $
-      (\d -> either error (id :: ByteString -> ByteString) $ fill (sizeOf d) $ putStorable d)
+    hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ fill (sizeOf d) $ putStorable d)
 
 instance VCHashUpdate Word32 where
   (&<) =
-    hashUpdateVia $
-      (\w32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w32) $ putStorable w32)
+    hashUpdateVia (\w32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w32) $ putStorable w32)
 
 instance VCHashUpdate Word64 where
   (&<) =
-    hashUpdateVia $
-      (\w64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w64) $ putStorable w64)
+    hashUpdateVia (\w64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w64) $ putStorable w64)
 
 deriving instance VCHashUpdate Lit
 
@@ -250,7 +245,7 @@ instance VCHashUpdate e => VCHashUpdate (IStr f e) where
 deriving instance VCHashUpdate a => VCHashUpdate (Comment a)
 
 instance VCHashUpdate a => VCHashUpdate (TList a) where
-  ctxt &< ts = ctxt &< (tListToList ts)
+  ctxt &< ts = ctxt &< tListToList ts
 
 deriving instance VCHashUpdate a => VCHashUpdate (Import a)
 

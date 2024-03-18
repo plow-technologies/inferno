@@ -1,14 +1,13 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 
 module Inferno.Core where
 
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadCatch, MonadThrow)
 import Control.Monad.Except (MonadFix)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -130,7 +129,7 @@ mkInferno prelude customTypes = do
           foldM
             ( \env (hash, obj) -> case obj of
                 VCFunction expr _ -> do
-                  let expr' = bimap pinnedToMaybe id expr
+                  let expr' = first pinnedToMaybe expr
                   pure $ Map.insert hash (Left expr') env
                 _ -> pure env
             )

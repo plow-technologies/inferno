@@ -38,7 +38,7 @@ instance Eq Con where
   CEmpty == CEmpty = True
   (CTuple i) == (CTuple j) = i == j
   (CEnum e _) == (CEnum f _) = e == f
-  (CInf a) == (CInf b) = (show a) == (show b)
+  (CInf a) == (CInf b) = show a == show b
   _ == _ = False
 
 -- we don't really care about the ord instance here
@@ -208,10 +208,10 @@ exhaustive sigs pm = i sigs pm 1
                 Nothing -> go rest
                 Just pat ->
                   Just $
-                    [C ck $ take (cSize ck) pat] ++ drop (cSize ck) pat
+                    C ck (take (cSize ck) pat) : drop (cSize ck) pat
 
 checkUsefullness :: Map VCObjectHash (Set (VCObjectHash, Text)) -> PMatrix -> [(Int, Int)]
-checkUsefullness enum_sigs p = go 0 [] p
+checkUsefullness enum_sigs = go 0 []
   where
     go _ _ [] = []
     go n preceding (p_i : rest) =
@@ -262,7 +262,7 @@ mkEnumArrayPat = EnumArrayPat . length
 instance Pretty EnumArrayPat where
   pretty (EnumArrayPat n) =
     -- Since SourcePos is ignored when pretty printing, we use an undefined SourcePos
-    pretty $ PArray undefined (replicate n $ (PVar (initialPos "") Nothing, Nothing)) undefined
+    pretty $ PArray undefined (replicate n (PVar (initialPos "") Nothing, Nothing)) undefined
 
 instance Enum EnumArrayPat where
   toEnum = EnumArrayPat

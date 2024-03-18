@@ -8,6 +8,7 @@ module Eval.Spec where
 import Control.Monad.Catch (MonadThrow (..))
 import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT))
 import Data.Bifunctor (bimap)
+import Data.Foldable (for_)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (unpack)
@@ -47,21 +48,21 @@ runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describ
     shouldEvaluateTo expr (v :: Value TestCustomValue IO) = do
       evalExpr defaultEnv Map.empty expr >>= \case
         Left err -> expectationFailure $ "Failed eval with: " <> show err
-        Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+        Right v' -> renderPretty v' `shouldBe` renderPretty v
 
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
-      runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
+      runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
-          it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+          it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do
             case parseAndInferTypeReps str of
               Left err -> expectationFailure $ show err
               Right ast ->
                 evalExpr defaultEnv implEnv ast >>= \case
                   Left err -> expectationFailure $ "Failed eval with: " <> show err
-                  Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+                  Right v' -> renderPretty v' `shouldBe` renderPretty v
     let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
     let shouldThrowRuntimeError str merr =
           it ("\"" <> unpack str <> "\" should throw a runtime error") $ do
@@ -69,10 +70,8 @@ evalTests = describe "evaluate" $
               Left err -> expectationFailure $ show err
               Right ast ->
                 evalExpr defaultEnv Map.empty ast >>= \case
-                  Left err' -> case merr of
-                    Nothing -> pure ()
-                    Just err -> err' `shouldBe` err
-                  Right _ -> expectationFailure $ "Should not evaluate."
+                  Left err' -> (for_ merr (shouldBe err'))
+                  Right _ -> expectationFailure "Should not evaluate."
 
     shouldEvaluateTo "3" $ VDouble 3
     shouldEvaluateTo "-3" $ VDouble (-3)
@@ -152,9 +151,9 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "tanh 1.87" $ VDouble (sinh 1.87 / cosh 1.87)
     shouldEvaluateTo "truncateTo 4 ((sin 1.87 / (cos 1.87)) - tan 1.87)" $ VDouble 0.0
     shouldEvaluateTo "truncateTo 4 (sin (2 * pi))" $ VDouble 0.0
-    shouldEvaluateTo "arcSin (sin 1.02) - 1.02 < 1e-9" $ vTrue
-    shouldEvaluateTo "arcCos (cos 1.02) - 1.02 < 1e-9" $ vTrue
-    shouldEvaluateTo "arcTan (tan 1.02) - 1.02 < 1e-9" $ vTrue
+    shouldEvaluateTo "arcSin (sin 1.02) - 1.02 < 1e-9" vTrue
+    shouldEvaluateTo "arcCos (cos 1.02) - 1.02 < 1e-9" vTrue
+    shouldEvaluateTo "arcTan (tan 1.02) - 1.02 < 1e-9" vTrue
     -- Booleans
     shouldEvaluateTo "#true" vTrue
     shouldEvaluateTo "!#true" vFalse
@@ -254,7 +253,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.argmin [3.0, 4.0] ? 1" $ VInt 0
     shouldEvaluateTo "Array.argmax [3.0, 4.0] ? 0" $ VInt 1
     shouldEvaluateTo "Array.argsort [3.0, 1.0, 2.0]" $ VArray [VInt 1, VInt 2, VInt 0]
-    shouldEvaluateTo "Array.magnitude []" $ VEmpty
+    shouldEvaluateTo "Array.magnitude []" VEmpty
     shouldEvaluateTo "Array.magnitude [1.0, 2.0, 3.0]" $ VOne $ VDouble (sqrt (1.0 + 4.0 + 9.0))
     shouldEvaluateTo "Array.norm [1.0, -2.0, 3.0]" $ VOne $ VDouble (sqrt (1.0 + 4.0 + 9.0))
 
@@ -294,8 +293,8 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0.0 (Some 4.0)" $ VDouble 6
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0 (Some 4.0)" $ VDouble 6
     shouldEvaluateTo "Option.reduce (fun d -> d + 2) 0.0 None" $ VDouble 0
-    shouldEvaluateTo "Option.join None" $ VEmpty
-    shouldEvaluateTo "Option.join (Some None)" $ VEmpty
+    shouldEvaluateTo "Option.join None" VEmpty
+    shouldEvaluateTo "Option.join (Some None)" VEmpty
     shouldEvaluateTo "Option.join (Some (Some 2.3))" $ VOne $ VDouble 2.3
     -- Time
     shouldEvaluateTo "Time.seconds 5" $ VEpochTime 5
@@ -382,13 +381,13 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "match [1.2, 3, 3] with { | [x, y, z] -> 2*x+3*y+z | _ -> 3 }" $ VDouble 14.4
     shouldEvaluateTo "(fun a -> match a with { | [x, y, z] -> truncateTo x 1.1 | _ -> 3 }) [1, 2, 3]" $ VDouble 1.1
     -- Tuple
-    shouldEvaluateTo "fst (1, 0) == snd (0, 1)" $ vTrue
-    shouldEvaluateTo "zip [1, 2, 3] [4, 5] == [(1, 4), (2, 5)]" $ vTrue
-    shouldEvaluateTo "zip [1, 2] [\"a\", \"b\"] == [(1,\"a\"),(2,\"b\")]" $ vTrue
-    shouldEvaluateTo "zip [1] [\"a\", \"b\"] == [(1,\"a\")]" $ vTrue
-    shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" $ vTrue
-    shouldEvaluateTo "zip [] [1, 2] == []" $ vTrue
-    shouldEvaluateTo "zip [1, 2] [] == []" $ vTrue
+    shouldEvaluateTo "fst (1, 0) == snd (0, 1)" vTrue
+    shouldEvaluateTo "zip [1, 2, 3] [4, 5] == [(1, 4), (2, 5)]" vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\", \"b\"] == [(1,\"a\"),(2,\"b\")]" vTrue
+    shouldEvaluateTo "zip [1] [\"a\", \"b\"] == [(1,\"a\")]" vTrue
+    shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" vTrue
+    shouldEvaluateTo "zip [] [1, 2] == []" vTrue
+    shouldEvaluateTo "zip [1, 2] [] == []" vTrue
     -- Records
     shouldEvaluateTo "let r = {x = 2; y = 3} in r.x" $ VDouble 2
     shouldEvaluateTo "let r = {x = 2; y = 3} in r.y" $ VDouble 3
@@ -398,8 +397,8 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "let x : int = 2 in x" $ VInt 2
     shouldEvaluateTo "let x : double = 2 in x" $ VDouble 2
     -- Miscellaneous
-    shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" $ vTrue
-    shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" $ vTrue
+    shouldEvaluateTo "Array.map ((Text.append \"a\") << (Text.append \"b\")) [\"0\", \"1\"] == [\"ab0\", \"ab1\"]" vTrue
+    shouldEvaluateTo "\"0\" |> Text.append \"a\" |> Text.append \"b\" == \"ba0\"" vTrue
     shouldEvaluateTo "\"hello world\"" $ VText "hello world"
     shouldEvaluateInEnvTo
       (Map.fromList [(ExtIdent $ Right "x", VInt 5)])
@@ -435,12 +434,12 @@ evalTests = describe "evaluate" $
 -- Test running interpreter in a custom (reader) monad:
 -------------------------------------------------------------------------------
 
-data TestEnv = TestEnv {cache :: Int64}
+newtype TestEnv = TestEnv {cache :: Int64}
 
 cachedGet :: (MonadReader TestEnv m, MonadThrow m) => Value TestCustomValue (ImplEnvM m TestCustomValue)
 cachedGet =
   VFun $ \_ -> do
-    TestEnv {cache} <- liftImplEnvM $ ask
+    TestEnv {cache} <- liftImplEnvM ask
     pure $ VInt cache
 
 evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
@@ -461,18 +460,18 @@ evalInMonadTest = do
           (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
           evalInMonadPrelude
   Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    runIO $ flip runReaderT testEnv $ (mkInferno modules [] :: ReaderT TestEnv IO (Interpreter (ReaderT TestEnv IO) TestCustomValue))
+    runIO $ runReaderT (mkInferno modules []) testEnv
 
   let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
-        it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+        it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do
           case parseAndInferTypeReps str of
             Left err -> expectationFailure $ show err
             Right ast -> do
               res <- flip runReaderT testEnv $ evalExpr defaultEnv implEnv ast
               case res of
                 Left err -> expectationFailure $ "Failed eval with: " <> show err
-                Right v' -> (renderPretty v') `shouldBe` (renderPretty v)
+                Right v' -> renderPretty v' `shouldBe` renderPretty v
   let shouldEvaluateTo = shouldEvaluateInEnvTo Map.empty
 
-  describe "TODO" $ do
+  describe "evalInMonad" $ do
     shouldEvaluateTo "EvalInMonad.cachedGet ()" $ VInt 4

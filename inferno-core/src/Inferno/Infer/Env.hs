@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 module Inferno.Infer.Env
   ( Env (..),
     Namespace (..),
@@ -130,7 +128,7 @@ fv (TBase _) = []
 fv (TArray t) = fv t
 fv (TSeries t) = fv t
 fv (TOptional t) = fv t
-fv (TTuple ts) = foldr ((++) . fv) [] ts
+fv (TTuple ts) = concatMap fv ts
 fv (TRecord ts RowAbsent) = concatMap fv ts
 fv (TRecord ts (RowVar a)) = foldr ((++) . fv) [a] ts
 fv (TRep t) = fv t
@@ -169,7 +167,7 @@ normalize (ForallTC _ tcs (ImplType impl body)) =
 generalize :: Set.Set TypeClass -> ImplType -> TCScheme
 generalize tcs t = ForallTC as tcs t
   where
-    as = Set.toList $ ((ftv t) `Set.union` (Set.unions $ Set.elems $ Set.map ftv tcs))
+    as = Set.toList (ftv t `Set.union` Set.unions (Set.elems $ Set.map ftv tcs))
 
 -- | Canonicalize and return the polymorphic toplevel type.
 closeOver :: Set.Set TypeClass -> ImplType -> TCScheme

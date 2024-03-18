@@ -41,13 +41,13 @@ mkProxy _ = Proxy
 
 metaToValue :: (Maybe Type.TCScheme, QQDefinition) -> Maybe TH.ExpQ
 metaToValue = \case
-  (Just sch, QQToValueDef x) -> Just [|Left ($(dataToExpQ (\a -> liftText <$> cast a) sch), toValue $(TH.varE (mkName x)))|]
+  (Just sch, QQToValueDef x) -> Just [|Left ($(dataToExpQ (fmap liftText . cast) sch), toValue $(TH.varE (mkName x)))|]
   (Nothing, QQToValueDef x) ->
     Just [|Left (closeOverType (toType (mkProxy $(TH.varE (mkName x)))), toValue $(TH.varE (mkName x)))|]
-  (Just sch, QQRawDef x) -> Just [|Left ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(TH.varE (mkName x)))|]
+  (Just sch, QQRawDef x) -> Just [|Left ($(dataToExpQ (fmap liftText . cast) sch), $(TH.varE (mkName x)))|]
   (Nothing, QQRawDef _) -> error "QQRawDef must have an explicit type"
   (sch, InlineDef e) ->
-    Just [|Right ($(dataToExpQ (\a -> liftText <$> cast a) sch), $(dataToExpQ (\a -> liftText <$> cast a) e))|]
+    Just [|Right ($(dataToExpQ (fmap liftText . cast) sch), $(dataToExpQ (fmap liftText . cast) e))|]
 
 -- | QuasiQuoter for builtin Inferno modules. TH dictates that QQs have to be imported,
 -- not defined locally, so this instantiation is done in this module.
@@ -71,7 +71,7 @@ moduleQuoter customTypes =
             let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
              in fail $ intercalate "\n\n" errs'
           Right (modules, _comments) ->
-            [|buildPinnedQQModules $(dataToExpQ ((\a -> liftText <$> cast a) `extQ` metaToValue) modules)|],
+            [|buildPinnedQQModules $(dataToExpQ ((fmap liftText . cast) `extQ` metaToValue) modules)|],
       quotePat = error "moduleQuoter: Invalid use of this quasi-quoter in pattern context.",
       quoteType = error "moduleQuoter: Invalid use of this quasi-quoter in type context.",
       quoteDec = error "moduleQuoter: Invalid use of this quasi-quoter in top-level declaration context."

@@ -1,15 +1,11 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
@@ -120,12 +116,12 @@ module Inferno.Types.Syntax
   )
 where
 
-import Control.Applicative (liftA, liftA2, liftA3)
+import Control.Applicative (liftA2, liftA3)
 import Control.DeepSeq (NFData (..))
 import Control.Monad (replicateM)
 import Data.Aeson (FromJSON (..), FromJSONKey (..), FromJSONKeyFunction (FromJSONKeyTextParser), ToJSON (..), ToJSONKey (..))
 import Data.Aeson.Types (toJSONKeyText)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.Bifunctor.TH (deriveBifunctor)
 import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
@@ -138,7 +134,7 @@ import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Serialize (Serialize (..))
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
@@ -218,11 +214,9 @@ instance Serialize BaseType where
       8 -> pure TResolution
       9 -> do
         nm <- Serialize.get
-        ids <- Serialize.get
-        pure $ TEnum (Text.decodeUtf8 nm) $ Set.fromList $ map (Ident . Text.decodeUtf8) ids
+        TEnum (Text.decodeUtf8 nm) . Set.fromList . map (Ident . Text.decodeUtf8) <$> Serialize.get
       10 -> do
-        t <- Serialize.get
-        pure $ TCustom t
+        TCustom <$> Serialize.get
       _ -> error "Unknown serialization of BaseType"
 
   put = \case
@@ -323,7 +317,7 @@ instance Pretty BaseType where
     TTime -> "time"
     TTimeDiff -> "timeDiff"
     TResolution -> "resolution"
-    TEnum t cs -> pretty t <> encloseSep lbrace rbrace comma (map (((<>) "#") . pretty . unIdent) $ Set.toList cs)
+    TEnum t cs -> pretty t <> encloseSep lbrace rbrace comma (map (("#" <>) . pretty . unIdent) $ Set.toList cs)
     TCustom t -> pretty t
 
 instance Pretty InfernoType where
@@ -423,7 +417,7 @@ instance Pretty Scheme where
 
 instance Pretty TypeClass where
   pretty = \case
-    TypeClass nm tys -> pretty nm <+> "on" <+> (hsep $ map bracketPretty tys)
+    TypeClass nm tys -> pretty nm <+> "on" <+> hsep (map bracketPretty tys)
     where
       bracketPretty ty = case ty of
         TVar _ -> pretty ty
@@ -434,7 +428,7 @@ newtype TypeClassShape = TypeClassShape TypeClass
 
 instance Pretty TypeClassShape where
   pretty = \case
-    TypeClassShape (TypeClass nm tys) -> pretty nm <+> "on" <+> (hsep $ map bracketPretty tys)
+    TypeClassShape (TypeClass nm tys) -> pretty nm <+> "on" <+> hsep (map bracketPretty tys)
     where
       bracketPretty ty = case ty of
         TVar _ -> "_"
@@ -512,7 +506,7 @@ instance Substitutable InfernoType where
 instance Substitutable ImplType where
   apply s (ImplType impl t) =
     ImplType (Map.map (apply s) impl) $ apply s t
-  ftv (ImplType impl t) = (foldr Set.union Set.empty $ map (ftv . snd) $ Map.toList impl) `Set.union` ftv t
+  ftv (ImplType impl t) = foldr (Set.union . ftv . snd) Set.empty (Map.toList impl) `Set.union` ftv t
 
 instance Substitutable TypeClass where
   apply s (TypeClass n tys) = TypeClass n $ map (apply s) tys
@@ -522,7 +516,7 @@ instance Substitutable TCScheme where
   apply (Subst s) (ForallTC as tcs t) = ForallTC as (Set.map (apply s') tcs) (apply s' t)
     where
       s' = Subst $ foldr Map.delete s as
-  ftv (ForallTC as tcs t) = ((ftv t) `Set.union` (Set.unions $ Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
+  ftv (ForallTC as tcs t) = (ftv t `Set.union` Set.unions (Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
 
 instance Substitutable a => Substitutable [a] where
   apply = map . apply
@@ -592,7 +586,7 @@ newtype ExtIdent = ExtIdent (Either Int Text)
 
 instance ToJSONKey ExtIdent where
   toJSONKey = toJSONKeyText $ \case
-    ExtIdent (Left i) -> "var$" <> (Text.pack $ show i)
+    ExtIdent (Left i) -> "var$" <> Text.pack (show i)
     ExtIdent (Right k) -> "reg$" <> k
 
 instance FromJSONKey ExtIdent where
@@ -670,7 +664,7 @@ instance Pretty Lit where
     LInt i -> if i < 0 then "(" <> pretty i <> ")" else pretty i
     LDouble d -> if d < 0 then "(" <> pretty d <> ")" else pretty d
     LText t -> pretty $ show t
-    LHex w -> "0x" <> (pretty $ showHex w "")
+    LHex w -> "0x" <> pretty (showHex w "")
 
 instance ElementPosition Lit where
   elementPosition pos l = (pos, incSourceCol pos $ length $ show $ pretty l)
@@ -723,7 +717,7 @@ instance (Typeable f, Data e) => Data (IStr f e) where
   toConstr (ISExpr _ _) = con_ISExpr
 
   dataTypeOf _ = ty_IStr
-  dataCast1 f = gcast1 f
+  dataCast1 = gcast1
 
 con_ISEmpty, con_ISStr, con_ISExpr :: Constr
 con_ISEmpty = mkConstr ty_IStr "ISEmpty" [] Data.Prefix
@@ -743,7 +737,7 @@ instance Traversable (IStr f) where
   {-# INLINE traverse #-} -- so that traverse can fuse
   traverse f = \case
     ISEmpty -> pure ISEmpty
-    ISStr s xs -> liftA (ISStr s) (traverse f xs)
+    ISStr s xs -> fmap (ISStr s) (traverse f xs)
     ISExpr e xs -> liftA2 ISExpr (f e) (traverse f xs)
 
 data SomeIStr e = forall f. (Typeable f) => SomeIStr (IStr f e)
@@ -762,7 +756,7 @@ instance Data e => Data (SomeIStr e) where
 
   toConstr _ = con_SomeIStr
   dataTypeOf _ = ty_SomeIStr
-  dataCast1 f = gcast1 f
+  dataCast1 = gcast1
 
 con_SomeIStr :: Constr
 con_SomeIStr = mkConstr ty_SomeIStr "SomeIStr" [] Data.Prefix
@@ -775,9 +769,9 @@ deriving instance Show e => Show (SomeIStr e)
 instance Eq e => Eq (SomeIStr e) where
   (SomeIStr ISEmpty) == (SomeIStr ISEmpty) = True
   (SomeIStr (ISStr s1 xs)) == (SomeIStr (ISStr s2 ys)) =
-    (s1 == s2) && (SomeIStr xs) == (SomeIStr ys)
+    s1 == s2 && SomeIStr xs == SomeIStr ys
   (SomeIStr (ISExpr e1 xs)) == (SomeIStr (ISExpr e2 ys)) =
-    (e1 == e2) && (SomeIStr xs) == (SomeIStr ys)
+    e1 == e2 && SomeIStr xs == SomeIStr ys
   _ == _ = False
 
 instance Ord e => Ord (SomeIStr e) where
@@ -1152,8 +1146,8 @@ patternToExpr = \case
   PLit _ l -> Lit () l
   POne _ p -> One () $ patternToExpr p
   PEmpty _ -> Empty ()
-  PArray _ ps _ -> Array () (fmap (\(pat, pos) -> (patternToExpr pat, pos)) ps) ()
-  PTuple _ ps _ -> Tuple () (fmap (\(pat, pos) -> (patternToExpr pat, pos)) ps) ()
+  PArray _ ps _ -> Array () (fmap (first patternToExpr) ps) ()
+  PTuple _ ps _ -> Tuple () (fmap (first patternToExpr) ps) ()
   PCommentAbove c p -> CommentAbove c $ patternToExpr p
   PCommentAfter p c -> CommentAfter (patternToExpr p) c
   PCommentBelow p c -> CommentBelow (patternToExpr p) c
@@ -1164,7 +1158,7 @@ getIdentifierPositions (Ident i) = cata go
     go :: ExprF a SourcePos [(SourcePos, SourcePos)] -> [(SourcePos, SourcePos)]
     go = \case
       VarF pos _ _ v@(Expl (ExtIdent (Right a))) -> if i == a then let (sPos, ePos) = elementPosition pos v in [(sPos, ePos)] else []
-      rest -> foldr (++) [] rest
+      rest -> concat rest
 
 class BlockUtils f where
   blockPosition :: f SourcePos -> (SourcePos, SourcePos)
@@ -1184,7 +1178,7 @@ instance BlockUtils Comment where
   renameModule _ = id
 
 instance BlockUtils Import where
-  blockPosition p = cata go p
+  blockPosition = cata go
     where
       go = \case
         IVarF pos v -> elementPosition pos v
@@ -1215,12 +1209,12 @@ instance BlockUtils Import where
         rest -> foldl (++) [False] rest
 
 instance BlockUtils (Pat hash) where
-  blockPosition p = cata go p
+  blockPosition = cata go
     where
       go :: PatF hash SourcePos (SourcePos, SourcePos) -> (SourcePos, SourcePos)
       go = \case
         PVarF pos v -> elementPosition pos v
-        PEnumF pos _ ns (Ident i) -> (pos, incSourceCol pos $ Text.length i + 1 + (fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> ns))
+        PEnumF pos _ ns (Ident i) -> (pos, incSourceCol pos $ Text.length i + 1 + fromScoped 0 ((+ 1) . Text.length . unModuleName <$> ns))
         PLitF pos l -> elementPosition pos l
         PEmptyF pos -> (pos, incSourceCol pos 5)
         POneF pos1 (_, pos2) -> (pos1, pos2)
@@ -1256,13 +1250,13 @@ instance BlockUtils (Pat hash) where
         rest -> foldl (++) [False] rest
 
 instance BlockUtils (Expr hash) where
-  blockPosition e = cata go e
+  blockPosition = cata go
     where
       go :: ExprF hash SourcePos (SourcePos, SourcePos) -> (SourcePos, SourcePos)
       go = \case
         VarF pos _ ns v -> let (sPos, ePos) = elementPosition pos v in (sPos, incSourceCol ePos $ fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> ns)
         OpVarF pos _ ns v -> let (sPos, ePos) = elementPosition pos v in (sPos, incSourceCol ePos $ fromScoped 2 $ (+ 3) . Text.length . unModuleName <$> ns)
-        EnumF pos _ ns (Ident i) -> (pos, incSourceCol pos $ Text.length i + 1 + (fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> ns))
+        EnumF pos _ ns (Ident i) -> (pos, incSourceCol pos $ Text.length i + 1 + fromScoped 0 ((+ 1) . Text.length . unModuleName <$> ns))
         AppF (pos1, _) (_, pos2) -> (pos1, pos2)
         LamF pos1 _ _ (_, pos2) -> (pos1, pos2)
         LetF pos1 _ _ _ _ _ (_, pos2) -> (pos1, pos2)
@@ -1401,12 +1395,12 @@ instance Pretty (Pat hash a) where
   pretty = \case
     PVar _ (Just (Ident x)) -> pretty x
     PVar _ Nothing -> "_"
-    PEnum _ _ ns (Ident n) -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
+    PEnum _ _ ns (Ident n) -> fromScoped mempty ((<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
     PLit _ l -> pretty l
     PArray _ [] _ -> "[]"
-    PArray _ ps _ -> group $ (flatAlt "[ " "[") <> prettyElems True "]" ps
+    PArray _ ps _ -> group $ flatAlt "[ " "[" <> prettyElems True "]" ps
     PTuple _ TNil _ -> "()"
-    PTuple _ ps _ -> group $ (flatAlt "( " "(") <> prettyElems True ")" (tListToList ps)
+    PTuple _ ps _ -> group $ flatAlt "( " "(" <> prettyElems True ")" (tListToList ps)
     POne _ e -> "Some" <+> align (pretty e)
     PEmpty _ -> "None"
     PCommentAbove c e -> pretty c <> hardline <> pretty e
@@ -1434,34 +1428,34 @@ instance Pretty (Expr hash pos) where
 prettyPrec :: Bool -> Int -> Expr hash pos -> Doc ann
 prettyPrec isBracketed prec expr =
   case expr of
-    Var _ _ ns x -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> pretty x
+    Var _ _ ns x -> fromScoped mempty ((<> ".") . pretty . unModuleName <$> ns) <> pretty x
     TypeRep _ ty -> "@" <> pretty ty
-    OpVar _ _ ns (Ident x) -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> "(" <> pretty x <> ")"
-    Enum _ _ ns (Ident n) -> (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
+    OpVar _ _ ns (Ident x) -> fromScoped mempty ((<> ".") . pretty . unModuleName <$> ns) <> "(" <> pretty x <> ")"
+    Enum _ _ ns (Ident n) -> fromScoped mempty ((<> ".") . pretty . unModuleName <$> ns) <> "#" <> pretty n
     App _ _ -> group $ nest 2 $ prettyApp $ collectApps expr
       where
         prettyAppAux m p = case m of
-          Var _ _ _ _ -> p
-          OpVar _ _ _ _ -> p
-          Enum _ _ _ _ -> p
+          Var {} -> p
+          OpVar {} -> p
+          Enum {} -> p
           Lit _ _ -> p
-          InterpolatedString _ _ _ -> p
-          Tuple _ _ _ -> p
+          InterpolatedString {} -> p
+          Tuple {} -> p
           Empty _ -> p
           -- TODO test that these do the right thing!
-          Record _ _ _ -> p
-          RecordField _ _ _ -> p
-          Array _ _ _ -> p
-          ArrayComp _ _ _ _ _ _ -> p
-          Bracketed _ _ _ -> p
+          Record {} -> p
+          RecordField {} -> p
+          Array {} -> p
+          ArrayComp {} -> p
+          Bracketed {} -> p
           _ -> enclose lparen rparen $ if hasTrailingComment m then p <> hardline else p
 
         prettyApp = \case
           [] -> mempty
           [x] -> prettyAppAux x $ prettyPrec True 0 x
-          (x : xs) -> (prettyAppAux x $ prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
+          (x : xs) -> prettyAppAux x (prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
     Lam _ xs _ e ->
-      let fun = "fun" <+> align (sep $ map (fromMaybe "_" . fmap pretty . snd) $ toList xs) <+> "->"
+      let fun = "fun" <+> align (sep $ map (maybe "_" pretty . snd) $ toList xs) <+> "->"
           body = align $ prettyPrec False 0 e
        in group $ nest 2 $ vsep [fun, body]
     Let _ _ x _ e1 _ e2 ->
@@ -1484,15 +1478,15 @@ prettyPrec isBracketed prec expr =
         prettyISExpr :: IStr 'True (a, Expr hash a, a) -> [Doc ann]
         prettyISExpr = \case
           ISEmpty -> []
-          ISExpr (_, e, _) ISEmpty -> (indentE $ prettyPrec False 0 e) : if hasTrailingComment e then [hardline, "}"] else ["}"]
+          ISExpr (_, e, _) ISEmpty -> indentE (prettyPrec False 0 e) : if hasTrailingComment e then [hardline, "}"] else ["}"]
           ISExpr (_, e, _) xs@(ISExpr _ _) ->
-            ((indentE $ prettyPrec False 0 e) : if hasTrailingComment e then [hardline, "}${"] else ["}${"]) ++ prettyISExpr xs
+            (indentE (prettyPrec False 0 e) : if hasTrailingComment e then [hardline, "}${"] else ["}${"]) ++ prettyISExpr xs
           ISExpr (_, e, _) (ISStr str xs@(ISExpr _ _)) ->
             let str' = vsepHard $ addToLast $ addToFirst $ map pretty $ Text.splitOn "\n" str
-             in ((indentE $ prettyPrec False 0 e) : if hasTrailingComment e then [hardline, str'] else [str']) ++ prettyISExpr xs
+             in (indentE (prettyPrec False 0 e) : if hasTrailingComment e then [hardline, str'] else [str']) ++ prettyISExpr xs
           ISExpr (_, e, _) (ISStr str xs) ->
             let str' = vsepHard $ addToFirst $ map pretty $ Text.splitOn "\n" str
-             in ((indentE $ prettyPrec False 0 e) : if hasTrailingComment e then [hardline, str'] else [str']) ++ prettyISExpr xs
+             in (indentE (prettyPrec False 0 e) : if hasTrailingComment e then [hardline, str'] else [str']) ++ prettyISExpr xs
 
         prettyISStr :: IStr 'False (a, Expr hash a, a) -> [Doc ann]
         prettyISStr = \case
@@ -1546,7 +1540,7 @@ prettyPrec isBracketed prec expr =
           <+> (if hasLeadingComment e then line else mempty)
             <> prettyOpAux (n + 1) e
     Tuple _ TNil _ -> "()"
-    Tuple _ xs _ -> group $ (flatAlt "( " "(") <> prettyTuple True (tListToList xs)
+    Tuple _ xs _ -> group $ flatAlt "( " "(" <> prettyTuple True (tListToList xs)
       where
         prettyTuple firstElement = \case
           [] -> mempty
@@ -1563,14 +1557,14 @@ prettyPrec isBracketed prec expr =
     Empty _ -> "None"
     Assert _ c _ e ->
       let assertPretty = "assert" <+> align (prettyPrec False 0 c)
-          body = (flatAlt "    in" "in") <+> align (prettyPrec False 0 e)
+          body = flatAlt "    in" "in" <+> align (prettyPrec False 0 e)
        in assertPretty <> (if hasTrailingComment c then hardline else line) <> body
     Case _ e_case _ patExprs _ ->
       group $
         nest 2 $
           vsep
             [ "match" <+> align (prettyPrec False 0 e_case <> if hasTrailingComment e_case then hardline else mempty) <+> "with" <+> "{",
-              (align $ prettyCase True $ toList patExprs) <> flatAlt " }" "}"
+              align (prettyCase True $ toList patExprs) <> flatAlt " }" "}"
             ]
       where
         prettyCase :: Bool -> [(a, Pat hash a, a, Expr hash a)] -> Doc ann
@@ -1584,13 +1578,13 @@ prettyPrec isBracketed prec expr =
                         <> (if hasTrailingComment pat then hardline else mempty)
                         <+> "->"
                           <> line
-                          <> (prettyPrec False 0 e)
+                          <> prettyPrec False 0 e
                     )
               )
               <> (if hasTrailingComment e then hardline else mempty)
           (_, pat, _, e) : es ->
             (if not firstElement && hasLeadingComment pat then hardline else mempty)
-              <> group ("|" <+> align (pretty pat <> (if hasTrailingComment pat then hardline else mempty) <+> "->" <> line <> (prettyPrec False 0 e)))
+              <> group ("|" <+> align (pretty pat <> (if hasTrailingComment pat then hardline else mempty) <+> "->" <> line <> prettyPrec False 0 e))
               <> (if hasTrailingComment e then hardline else line)
               <> prettyCase False es
     Record _ [] _ -> "{}"
@@ -1614,7 +1608,7 @@ prettyPrec isBracketed prec expr =
     RecordField _ (Ident r) (Ident f) ->
       pretty r <> "." <> pretty f
     Array _ [] _ -> "[]"
-    Array _ xs _ -> group $ (flatAlt "[ " "[") <> prettyArray True xs
+    Array _ xs _ -> group $ flatAlt "[ " "[" <> prettyArray True xs
       where
         prettyArray firstElement = \case
           [] -> mempty
@@ -1630,7 +1624,7 @@ prettyPrec isBracketed prec expr =
     ArrayComp _ e_body _ args e_cond _ ->
       enclose lbracket rbracket $
         align $
-          (align $ prettyPrec False 0 e_body <> if hasTrailingComment e_body then hardline else mempty) <+> align ("|" <+> (argsPretty $ toList args))
+          align (prettyPrec False 0 e_body <> if hasTrailingComment e_body then hardline else mempty) <+> align ("|" <+> argsPretty (toList args))
       where
         argsPretty = \case
           [] -> mempty
@@ -1654,16 +1648,16 @@ prettyPrec isBracketed prec expr =
     Bracketed _ e _ -> enclose lparen rparen $ if hasTrailingComment e then prettyPrec True prec e <> hardline else prettyPrec True prec e
     RenameModule _ (ModuleName nNew) _ (ModuleName nOld) _ e ->
       let letPretty = "let" <+> align ("module" <+> pretty nNew <+> "=" <+> pretty nOld)
-          body = (flatAlt " in" "in") <+> align (prettyPrec False 0 e)
+          body = flatAlt " in" "in" <+> align (prettyPrec False 0 e)
        in letPretty <> line <> body
     OpenModule _ _ (ModuleName n) ns _ e ->
       "open"
         <+> pretty n
           <> ( case ns of
                  [] -> line
-                 _ -> (align $ group $ (flatAlt "( " "(") <> prettyImports True (map fst ns)) <> (if hasTrailingComment $ fst (last ns) then hardline else line)
+                 _ -> align (group $ flatAlt "( " "(" <> prettyImports True (map fst ns)) <> (if hasTrailingComment $ fst (last ns) then hardline else line)
              )
-          <> (flatAlt "  in" "in")
+          <> flatAlt "  in" "in"
         <+> align (prettyPrec False 0 e)
       where
         prettyImports firstElement = \case
@@ -1689,29 +1683,26 @@ prettyPrec isBracketed prec expr =
     cat' (x : Pretty.Line : xs) = x <> hardline <> cat' xs
     cat' (x : xs) = x <> line' <> cat' xs
 
-    bracketWhen e b =
-      if isBracketed
-        then id
-        else
-          if b
-            then (\x -> enclose lparen rparen $ x <> if hasTrailingComment e then hardline else mempty)
-            else id
+    bracketWhen e b
+      | isBracketed = id
+      | b = \x -> enclose lparen rparen $ x <> if hasTrailingComment e then hardline else mempty
+      | otherwise = id
 
-    prettyOp ns op = (fromScoped mempty $ (<> ".") . pretty . unModuleName <$> ns) <> pretty op
+    prettyOp ns op = fromScoped mempty ((<> ".") . pretty . unModuleName <$> ns) <> pretty op
 
     prettyOpAux n e = case e of
-      Var _ _ _ _ -> prettyPrec False n e
-      OpVar _ _ _ _ -> prettyPrec False n e
-      Enum _ _ _ _ -> prettyPrec False n e
+      Var {} -> prettyPrec False n e
+      OpVar {} -> prettyPrec False n e
+      Enum {} -> prettyPrec False n e
       Lit _ _ -> prettyPrec False n e
-      InterpolatedString _ _ _ -> prettyPrec False n e
-      Tuple _ _ _ -> prettyPrec False n e
+      InterpolatedString {} -> prettyPrec False n e
+      Tuple {} -> prettyPrec False n e
       Empty _ -> prettyPrec False n e
-      Array _ _ _ -> prettyPrec False n e
-      ArrayComp _ _ _ _ _ _ -> prettyPrec False n e
-      Bracketed _ _ _ -> prettyPrec False n e
-      Op _ _ _ _ _ _ _ -> prettyPrec False n e
-      PreOp _ _ _ _ _ _ -> prettyPrec False n e
+      Array {} -> prettyPrec False n e
+      ArrayComp {} -> prettyPrec False n e
+      Bracketed {} -> prettyPrec False n e
+      Op {} -> prettyPrec False n e
+      PreOp {} -> prettyPrec False n e
       _ -> enclose lparen rparen $ if hasTrailingComment e then prettyPrec False n e <> hardline else prettyPrec False n e
 
 data TypeMetadata ty = TypeMetadata

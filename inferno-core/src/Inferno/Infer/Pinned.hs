@@ -8,7 +8,7 @@ module Inferno.Infer.Pinned
   )
 where
 
-import Control.Monad (foldM, forM, when)
+import Control.Monad (foldM, forM, unless, when)
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.State (get, put, runStateT)
 import Data.Functor.Foldable (cata)
@@ -27,8 +27,7 @@ insertIntoLocalScope ::
   Map Namespace (Pinned a) ->
   Map (Scoped ModuleName) (Map Namespace (Pinned a)) ->
   Map (Scoped ModuleName) (Map Namespace (Pinned a))
-insertIntoLocalScope m moduleMap =
-  Map.alter (Just . addModuleToLocalScope) LocalScope moduleMap
+insertIntoLocalScope m = Map.alter (Just . addModuleToLocalScope) LocalScope
   where
     addModuleToLocalScope maybeMap = case maybeMap of
       Nothing -> m
@@ -99,8 +98,8 @@ pinPat m pat =
           es' <- mapM (\(e, p3) -> (,p3) <$> pinPat m e) es
           pure $ PTuple p1 es' p2
         PCommentAbove c e -> PCommentAbove c <$> pinPat m e
-        PCommentAfter e c -> (\e' -> PCommentAfter e' c) <$> pinPat m e
-        PCommentBelow e c -> (\e' -> PCommentBelow e' c) <$> pinPat m e
+        PCommentAfter e c -> (`PCommentAfter` c) <$> pinPat m e
+        PCommentBelow e c -> (`PCommentBelow` c) <$> pinPat m e
 
 -- pinExpr ::
 --   (MonadError [TypeError SourcePos] m, Eq a) =>
@@ -121,7 +120,7 @@ patVars p =
   flip cata p $
     \case
       PVarF _ (Just v) -> [v]
-      rest -> foldr (++) [] rest
+      rest -> concat rest
 
 isModNs :: Namespace -> p -> Bool
 isModNs k _v = case k of
@@ -131,10 +130,10 @@ isModNs k _v = case k of
 pinExpr :: (MonadError [TypeError SourcePos] m, Eq a) => Map (Scoped ModuleName) (Map Namespace (Pinned a)) -> Expr h SourcePos -> m (Expr (Pinned a) SourcePos)
 pinExpr m expr =
   let exprPos = blockPosition expr
-      insertLocal k m' = Map.alter (alterFun (FunNamespace k) Local) LocalScope m'
       alterFun k v = \case
         Just m' -> Just $ Map.insert k v m'
         Nothing -> Just $ Map.singleton k v
+      insertLocal k = Map.alter (alterFun (FunNamespace k) Local) LocalScope
    in case expr of
         Lit p l -> pure $ Lit p l
         Var p _hash modNm (Impl x) -> pure $ Var p Local modNm (Impl x)
@@ -163,7 +162,7 @@ pinExpr m expr =
           hash <- lookupName exprPos modNm (EnumNamespace x) m
           pure $ Enum p hash modNm x
         InterpolatedString p1 xs p2 -> do
-          xs' <- mapM (\(p3, e, p4) -> (\e' -> (p3, e', p4)) <$> pinExpr m e) xs
+          xs' <- mapM (\(p3, e, p4) -> (p3,,p4) <$> pinExpr m e) xs
           pure $ InterpolatedString p1 xs' p2
         Record p1 es p2 -> do
           es' <- mapM (\(f, e, p3) -> (f,,p3) <$> pinExpr m e) es
@@ -179,7 +178,7 @@ pinExpr m expr =
               currentM <- get
               e1' <- pinExpr currentM e1
               put $ insertLocal i currentM
-              pure $ (p4, i, p5, e1', p6)
+              pure (p4, i, p5, e1', p6)
 
           cond' <- mapM (\(p4, e1) -> (p4,) <$> pinExpr m' e1) cond
           e' <- pinExpr m' e
@@ -242,13 +241,13 @@ pinExpr m expr =
                   pat' <- pinPat m pat
                   let m' = foldr insertLocal m $ patVars pat
                   e1' <- pinExpr m' e1
-                  pure $ (p4, pat', p5, e1')
+                  pure (p4, pat', p5, e1')
               )
               patExprs
           pure $ Case p1 e' p2 patExprs' p3
         CommentAbove c e -> CommentAbove c <$> pinExpr m e
-        CommentAfter e c -> (\e' -> CommentAfter e' c) <$> pinExpr m e
-        CommentBelow e c -> (\e' -> CommentBelow e' c) <$> pinExpr m e
+        CommentAfter e c -> (`CommentAfter` c) <$> pinExpr m e
+        CommentBelow e c -> (`CommentBelow` c) <$> pinExpr m e
         Bracketed p1 e p2 -> (\e' -> Bracketed p1 e' p2) <$> pinExpr m e
         RenameModule l1 newNm l2 oldNm l3 e -> do
           hash <- lookupName exprPos LocalScope (ModuleNamespace oldNm) m
@@ -268,29 +267,29 @@ pinExpr m expr =
               let localM = fromMaybe mempty $ Map.lookup LocalScope m
 
               checkedImports <- case imports of
-                [] -> pure $ openMod
-                _ -> Map.fromList <$> (foldM (collectImports openMod modPos) [] $ map fst imports)
+                [] -> pure openMod
+                _ -> Map.fromList <$> foldM (collectImports openMod modPos) [] (map fst imports)
 
               let intersectionWithLocal = localM `Map.intersection` checkedImports
-              when (not $ Map.null intersectionWithLocal) $ throwError [AmbiguousName modNm i modPos | i <- Map.keys checkedImports]
+              unless (Map.null intersectionWithLocal) $ throwError [AmbiguousName modNm i modPos | i <- Map.keys checkedImports]
 
               OpenModule p1 hash modNm imports p2 <$> pinExpr (Map.insertWith Map.union LocalScope checkedImports m) e
           where
             collectImports openMod pos xs = \case
               IVar _ i -> do
                 let k = FunNamespace i
-                when (not $ k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
+                unless (k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
                 return $ (k, openMod Map.! k) : xs
               IOpVar _ i -> do
                 let k = FunNamespace i
-                when (not $ k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
+                unless (k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
                 return $ (k, openMod Map.! k) : xs
               IEnum _ _ i -> do
                 let k = TypeNamespace i
-                when (not $ k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
+                unless (k `Map.member` openMod) $ throwError [NameInModuleDoesNotExist modNm i pos]
                 let enumHash = openMod Map.! k
                 return $
-                  (Map.toList $ Map.filter (\h -> h == enumHash) openMod) ++ xs
+                  Map.toList (Map.filter (== enumHash) openMod) ++ xs
               ICommentAbove _ x' -> collectImports openMod pos xs x'
               ICommentAfter x' _ -> collectImports openMod pos xs x'
               ICommentBelow x' _ -> collectImports openMod pos xs x'

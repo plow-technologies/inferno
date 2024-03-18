@@ -51,7 +51,7 @@ evalTests = describe "evaluate" $
     Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
       runIO $ mkInferno @_ @(MlValue ()) mlPrelude customTypes
     let shouldEvaluateInEnvTo implEnv str (v :: Value (MlValue ()) IO) =
-          it ("\"" <> unpack str <> "\" should evaluate to " <> (unpack $ renderPretty v)) $ do
+          it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do
             case parseAndInferTypeReps str of
               Left err -> expectationFailure $ show err
               Right ast ->

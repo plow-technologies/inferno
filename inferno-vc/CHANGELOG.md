@@ -1,6 +1,9 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.6.0 -- 2024-03-18
+* HLint everything
+
 ## 0.3.5.0 -- 2024-03-12
 * Update inferno-types version
 

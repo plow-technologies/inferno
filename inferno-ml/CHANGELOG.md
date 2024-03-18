@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.3.0 -- 2024-03-18
+* HLint everything
+
 ## 0.3.0.0 -- 2024-02-26
 * Breaking change: add `VExtended` constructor to `MlValue`
 * Add `toType` primitive

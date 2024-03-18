@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
@@ -19,7 +18,7 @@ where
 
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow (..))
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, second)
 import Data.Foldable (foldl')
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
@@ -109,7 +108,7 @@ buildPinnedQQModules modules =
             Left (sig', val) ->
               let ns' = sigVarToNamespace name
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
-               in (sig', ns', hsh', (\(local, pinned) -> (local, Map.insert hsh (Right val) pinned)) mTrmEnv)
+               in (sig', ns', hsh', second (Map.insert hsh (Right val)) mTrmEnv)
             Right (mSig, expr) ->
               let pinMap =
                     Pinned.openModule moduleName $
@@ -118,20 +117,19 @@ buildPinnedQQModules modules =
                         (Map.map Builtin nsMap)
                         alreadyPinnedModulesMap
                   pinnedExpr = either (error . show) id $ pinExpr pinMap expr
-                  inferEnv = Map.insert moduleName m $ alreadyBuiltModules
+                  inferEnv = Map.insert moduleName m alreadyBuiltModules
                   (pinnedExpr', sig') =
                     either (\err -> error $ "Could not infer the type of this expression: " <> show err) (\(e, typ, _) -> (e, typ)) $
-                      inferExpr inferEnv $
-                        pinnedExpr
+                      inferExpr inferEnv pinnedExpr
                   ns' = sigVarToNamespace name
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
-                  finalExpr = (bimap pinnedToMaybe (const ()) pinnedExpr')
+                  finalExpr = bimap pinnedToMaybe (const ()) pinnedExpr'
                in case mSig of
                     Just sig''
                       | sig' /= sig'' ->
                           error $ "Type of " <> show name <> " does not matched inferred type " <> show sig'
                     _ ->
-                      (sig', ns', hsh', (\(local, pinned) -> (local, Map.insert hsh (Left finalExpr) pinned)) mTrmEnv)
+                      (sig', ns', hsh', second (Map.insert hsh (Left finalExpr)) mTrmEnv)
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m
               { moduleObjects =

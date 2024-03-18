@@ -5,10 +5,11 @@
 
 module Inferno.LSP.Completion where
 
+import Data.Bifunctor (bimap)
 import Data.List (delete, nub)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
-import qualified Data.Maybe as Maybe
+import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -36,7 +37,7 @@ completionQueryAt text pos = (completionLeadup, completionPrefix)
     text' = Text.take off text
     breakEnd :: (Char -> Bool) -> Text -> (Text, Text)
     breakEnd p =
-      (\(l, r) -> (Text.reverse l, Text.reverse r)) . Text.break p . Text.reverse
+      bimap Text.reverse Text.reverse . Text.break p . Text.reverse
     (completionPrefix, completionLeadup) =
       breakEnd (`elem` (" \t\n[(,=+*&|}?>" :: String)) text'
 
@@ -142,7 +143,7 @@ mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata {ty} =
 identifierCompletionItems :: [Text] -> Text -> [CompletionItem]
 identifierCompletionItems idents prefix
   | "." `Text.isSuffixOf` prefix = [] -- For case like "Module.", returned empty because identifier has no namespace/module prefix
-  | otherwise = fmap makeIdentifierCompletion $ filter (\identifier -> prefix `Text.isPrefixOf` identifier) idents
+  | otherwise = makeIdentifierCompletion <$> filter (\identifier -> prefix `Text.isPrefixOf` identifier) idents
   where
     makeIdentifierCompletion identifier =
       CompletionItem
@@ -200,7 +201,7 @@ rwsCompletionItems prefix
 moduleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> [CompletionItem]
 moduleNameCompletionItems preludeNameToTypeMap = fmap mkModuleCompletionItem modules
   where
-    modules = nub . fmap unModuleName . Maybe.catMaybes . fmap fst $ Map.keys preludeNameToTypeMap
+    modules = nub . fmap unModuleName . mapMaybe fst $ Map.keys preludeNameToTypeMap
     mkModuleCompletionItem m =
       CompletionItem
         { _label = m,
