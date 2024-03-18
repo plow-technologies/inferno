@@ -19,7 +19,7 @@ jobs:
       MNIST_FNAME: /tmp/mnist/mnist.ts.pt
       MNIST_COMMIT: 94b288a631362aa44edc219eb8f54a7c39891169
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # Lint code with HLint
       - name: Set up HLint
@@ -30,7 +30,7 @@ jobs:
         uses: haskell-actions/hlint-run@v2
         with:
           path: '["inferno-core/", "inferno-lsp/", "inferno-ml/", "inferno-ml-server-types/", "inferno-types/", "inferno-vc/"]'
-          fail-on: warning
+          fail-on: error
 
       - uses: cachix/install-nix-action@v18
         with:
