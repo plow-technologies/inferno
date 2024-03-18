@@ -1,7 +1,4 @@
-
-
 {-# LANGUAGE DerivingVia #-}
-
 
 module Inferno.Types.Type
   ( BaseType (..),

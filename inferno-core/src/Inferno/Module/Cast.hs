@@ -1,6 +1,4 @@
-
 {-# LANGUAGE ScopedTypeVariables #-}
-
 
 -- TODO export only needed?
 -- module Inferno.Module.Cast (FromValue, ToValue) where
