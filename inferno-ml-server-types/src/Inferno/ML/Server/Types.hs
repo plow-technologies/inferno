@@ -89,7 +89,10 @@ import System.Posix (EpochTime)
 import Text.Read (readMaybe)
 import URI.ByteString (Absolute, URIRef)
 import URI.ByteString.Aeson ()
-import Web.HttpApiData (FromHttpApiData (parseUrlPiece), ToHttpApiData (toUrlPiece))
+import Web.HttpApiData
+  ( FromHttpApiData (parseUrlPiece),
+    ToHttpApiData (toUrlPiece),
+  )
 
 -- API type for `inferno-ml-server`
 type InfernoMlServerAPI uid gid p s =
@@ -364,8 +367,8 @@ instance
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       -- Note that for a model serialized as JSON, the `id` must be present
-      -- (this assumes that a model serialized as JSON always refers to one
-      -- that exists in the DB already)
+      -- (this assumes that a model version serialized as JSON always refers
+      -- to one that exists in the DB already)
       <$> fmap Just (o .: "id")
       <*> o .: "model"
       <*> o .: "version"
