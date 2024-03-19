@@ -279,12 +279,12 @@ data InfernoType
   | TBase BaseType
   | TArr InfernoType InfernoType
   | TArray InfernoType
-  | -- | A record type containing *at least* the given fields (with types) and a row variable representing any potential other fields
-    TRecord (Map.Map Ident InfernoType) RestOfRecord
   | TSeries InfernoType
   | TOptional InfernoType
   | TTuple (TList InfernoType)
   | TRep InfernoType
+  | -- | A record type containing *at least* the given fields (with types) and a row variable representing any potential other fields
+    TRecord (Map.Map Ident InfernoType) RestOfRecord
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON, NFData, Hashable)
   deriving anyclass (Serialize)
 
