@@ -31,7 +31,7 @@ import Control.Concurrent.FairRWLock (RWLock)
 import qualified Control.Concurrent.FairRWLock as RWL
 import Control.Exception (throwIO)
 import Control.Lens ((^.))
-import Control.Monad (foldM, forM, forM_)
+import Control.Monad (foldM, forM, forM_, when)
 import Control.Monad.Catch (MonadCatch, MonadMask, MonadThrow, bracket_)
 import Control.Monad.Error.Lens (catching, throwing)
 import Control.Monad.Except (ExceptT, MonadError)
@@ -219,16 +219,15 @@ instance
 
     withWrite lock $ do
       metas <- fetchVCObjectHistory obj_hash
-      forM_ (takeUpUntilClone metas) $ \VCMeta {obj = hash} -> do
-        forM_
-          [ show hash,
-            "heads" </> show hash,
-            "to_head" </> show hash,
-            "deps" </> show hash
-          ]
-          $ \source_fp -> safeRenameFile (storePath </> source_fp) (storePath </> "removed" </> source_fp)
+      forM_ (takeUpUntilClone metas) $ \VCMeta {obj = hash} -> forM_
+        [ show hash,
+          "heads" </> show hash,
+          "to_head" </> show hash,
+          "deps" </> show hash
+        ]
+        $ \source_fp -> safeRenameFile (storePath </> source_fp) (storePath </> "removed" </> source_fp)
     where
-      safeRenameFile source target = do
+      safeRenameFile source target =
         liftIO (doesFileExist source) >>= \case
           False -> pure ()
           True -> liftIO $ renameFile source target
@@ -289,7 +288,7 @@ instance
     getHistory history
     where
       -- Recurse through history, newest to oldest, and stop when we find a clone
-      getHistory (hsh : history) = do
+      getHistory (hsh : history) =
         getObj hsh >>= \case
           Nothing -> getHistory history
           Just eObj -> do
@@ -352,27 +351,27 @@ instance
       ( \h -> do
           -- fetch object, check name and timestamp
           (VCMeta {name, timestamp} :: VCMeta a g VCObject) <- fetchVCObject h
-          if name == "<AUTOSAVE>" && timestamp < CTime (truncate t)
-            then -- delete the stale ones (> t old)
-              deleteAutosavedVCObject h
-            else pure ()
+          when (name == "<AUTOSAVE>" && timestamp < CTime (truncate t)) $ -- delete the stale ones (> t old)
+            deleteAutosavedVCObject h
       )
 
 getAllHeads :: VCStoreEnvM err m => m [VCObjectHash]
 getAllHeads = do
-  VCStorePath storePath <- getTyped <$> ask
+  VCStorePath storePath <- asks getTyped
   -- We don't need a lock here because this only lists the heads/ directory, it doesn't
   -- read any file contents (and I assume the `ls` is atomic)
   headsRaw <- liftIO $ getDirectoryContents $ storePath </> "heads"
   pure $
     foldr
-      ( \hd xs ->
-          case (either (const Nothing) Just $ Base64.decode $ Char8.pack hd) >>= digestFromByteString of
-            Just hsh -> (VCObjectHash hsh) : xs
-            Nothing -> xs
+      ( ( \hd xs ->
+            case either (const Nothing) Just (Base64.decode $ Char8.pack hd) >>= digestFromByteString of
+              Just hsh -> VCObjectHash hsh : xs
+              Nothing -> xs
+        )
+          . takeFileName
       )
       []
-      (map takeFileName headsRaw)
+      headsRaw
 
 fetchCurrentHead ::
   ( MonadError err m,
@@ -417,7 +416,7 @@ withRead lock = bracket_ (liftIO $ RWL.acquireRead lock) (liftIO $ RWL.releaseRe
 
 trace :: VCStoreLogM env m => VCServerTrace -> m ()
 trace t = do
-  tracer <- getTyped <$> ask
+  tracer <- asks getTyped
   traceWith @IOTracer tracer t
 
 throwError :: (VCStoreLogM env m, VCStoreErrM err m) => VCStoreError -> m a
@@ -462,7 +461,7 @@ readVCObjectHashTxt :: (VCStoreLogM env m, VCStoreErrM err m) => FilePath -> m [
 readVCObjectHashTxt fp = do
   checkPathExists fp
   trace $ ReadTxt fp
-  deps <- filter (not . B.null) . Char8.lines <$> (liftIO $ B.readFile fp)
+  deps <- filter (not . B.null) . Char8.lines <$> liftIO (B.readFile fp)
   forM deps $ \dep -> do
     decoded <- either (const $ throwError $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
     maybe (throwError $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded

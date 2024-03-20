@@ -1,7 +1,4 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Inferno.Types.Type
   ( BaseType (..),
@@ -9,6 +6,7 @@ module Inferno.Types.Type
     Namespace (..),
     TCScheme (..),
     TV (..),
+    RestOfRecord (..),
     InfernoType (..),
     TypeClass (..),
     TypeClassShape (..),
@@ -40,6 +38,7 @@ import Inferno.Types.Syntax
     ImplType (..),
     InfernoType (..),
     Namespace (..),
+    RestOfRecord (..),
     Scheme (..),
     Subst (..),
     Substitutable (..),

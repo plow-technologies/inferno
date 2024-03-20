@@ -1,13 +1,19 @@
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module Infer.Spec where
 
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Identity (Identity (runIdentity))
+import Control.Monad.Reader (ReaderT (runReaderT))
+import Control.Monad.State (evalStateT)
 import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (unpack)
-import Inferno.Core (InfernoError (..), Interpreter (parseAndInfer), mkInferno)
+import Debug.Trace (trace)
+import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
+import Inferno.Infer (inferTypeReps, unifyRecords)
 import Inferno.Infer.Exhaustiveness
   ( Pattern (W),
     cEmpty,
@@ -20,10 +26,12 @@ import Inferno.Infer.Exhaustiveness
   )
 import Inferno.Module.Builtin (enumBoolHash)
 import qualified Inferno.Module.Prelude as Prelude
+import Inferno.Parse (parseTCScheme, parseType)
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (ExtIdent (..), Ident (..))
+import Inferno.Types.Syntax (ExtIdent (..), Ident (..), RestOfRecord (..), typeText)
 import Inferno.Types.Type (ImplType (..), InfernoType (..), TCScheme (..), TV (..), TypeClass (..), typeBool, typeDouble, typeInt, typeWord64)
 import Inferno.Types.VersionControl (vcHash)
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe, shouldNotBe)
 
 inferTests :: Spec
@@ -33,15 +41,15 @@ inferTests = describe "infer" $
 
     let tv i = TVar (TV {unTV = i})
     let makeTCs name params = TypeClass {className = name, params = params}
-    let addTC ts = makeTCs "addition" ts
-    let mulTC ts = makeTCs "multiplication" ts
-    let negTC ts = makeTCs "negate" ts
-    let numTC ts = makeTCs "numeric" ts
-    let ordTC ts = makeTCs "order" ts
-    let repTC ts = makeTCs "rep" ts
+    let addTC = makeTCs "addition"
+    let mulTC = makeTCs "multiplication"
+    let negTC = makeTCs "negate"
+    let numTC = makeTCs "numeric"
+    let ordTC = makeTCs "order"
+    let repTC = makeTCs "rep"
     let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
 
-    inferno <- runIO $ (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
+    inferno <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
     let shouldInferTypeFor str t =
           it ("should infer type of \"" <> unpack str <> "\"") $
             case parseAndInfer inferno str of
@@ -54,7 +62,7 @@ inferTests = describe "infer" $
               Left (ParseError err) -> expectationFailure $ prettyError $ fst $ NEList.head err
               Left (PinError _err) -> pure ()
               Left (InferenceError _err) -> pure ()
-              Right _ -> expectationFailure $ "Should fail to infer a type"
+              Right _ -> expectationFailure "Should fail to infer a type"
 
     shouldInferTypeFor "3" $
       makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
@@ -124,6 +132,31 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "round -1425"
     shouldInferTypeFor "round (-1425)" $ simpleType typeInt
 
+    -- Records:
+    shouldInferTypeFor "{}" $ simpleType $ TRecord Map.empty RowAbsent
+    shouldInferTypeFor "{name = \"Zaphod\"; age = 391.4}" $
+      simpleType $
+        TRecord (Map.fromList [(Ident "name", typeText), (Ident "age", typeDouble)]) RowAbsent
+    shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age" $ simpleType typeDouble
+    shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in let f = fun r -> r.age in f r + 1" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age + \" is too old\""
+    shouldFailToInferTypeFor "rec.foo"
+    shouldInferTypeFor "Array.length []" $ simpleType typeInt
+    shouldFailToInferTypeFor "let r = {} in r.x"
+    shouldFailToInferTypeFor "let r = {y = 3} in r.x"
+    shouldInferTypeFor "let r = {y = 3.2; x = 4.3} in r.x" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let Array = {} in Array.length"
+    shouldInferTypeFor "let Array = {x = 2.2} in Array.x" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let module r = Array in r.x"
+    shouldInferTypeFor "let module r = Array in r.length []" $ simpleType typeInt
+    shouldInferTypeFor "let f = fun r -> r.age in f {age = 21.1; x = 5.4}" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in f {age = 2; ht = 3}"
+    shouldInferTypeFor "let f = fun r -> truncateTo 2 r.ht + truncateTo 2 r.wt in f" $
+      makeType 0 [] (TArr (TRecord (Map.fromList [(Ident {unIdent = "ht"}, typeDouble), (Ident {unIdent = "wt"}, typeDouble)]) (RowVar (TV {unTV = 0}))) typeDouble)
+    shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in fun r -> let x = r.ht + r.age + 1.1 in f r"
+    shouldFailToInferTypeFor "let f = fun r -> r.age in let x = f {age = 21.1} in let y = f {age = \"t\"} in 1"
+    shouldFailToInferTypeFor "let f = fun r -> truncateTo 2 r.age in f {age = \"t\"}"
+
     -- Type annotations:
     shouldInferTypeFor "let xBoo : double = 1 in truncateTo 2 xBoo" $ simpleType typeDouble
     shouldFailToInferTypeFor "let xBoo : double = 1 in truncateTo xBoo 3.14"
@@ -188,6 +221,111 @@ inferTests = describe "infer" $
               ]
         shouldBeInexhaustive complexPattern
         shouldBeUseful complexPattern
+
+    describe "inferTypeReps" $ do
+      Interpreter {typeClasses} <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
+
+      let typeRepsShouldBe fnTy inTys outTy reps = do
+            let tcs = either error id $ parseTCScheme fnTy
+            let parseTy = either (error . show) id . parseType
+            it (unwords ["type reps of", unpack fnTy, show inTys, unpack outTy]) $
+              case inferTypeReps typeClasses tcs (map parseTy inTys) (parseTy outTy) of
+                Left e -> expectationFailure $ show e
+                Right reps' -> reps' `shouldBe` reps
+
+      let typeRepsShouldErr fnTy inTys outTy = do
+            let tcs = either error id $ parseTCScheme fnTy
+            let parseTy = either (error . show) id . parseType
+            it (unwords ["type reps of", unpack fnTy, show inTys, unpack outTy]) $
+              case inferTypeReps typeClasses tcs (map parseTy inTys) (parseTy outTy) of
+                Left _ -> pure ()
+                Right reps' -> expectationFailure $ "expected inferTypeReps to fail but got: " <> show reps'
+
+      -- Some basic tests:
+      typeRepsShouldBe
+        "forall 'a 'b 'c . {requires addition on 'a 'b 'c} ⇒ 'a → 'b → 'c"
+        ["int", "double"]
+        "double"
+        []
+
+      -- Some tests with records:
+
+      typeRepsShouldBe
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{x: int; y: int}"]
+        "double"
+        []
+
+      typeRepsShouldErr
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{z: int; y: int}"]
+        "double"
+
+      typeRepsShouldErr
+        "forall 'a 'b 'c 'd . {requires addition on 'a 'b 'c} ⇒ {x: 'a; 'd} → 'c"
+        ["{x: int; y: int}"]
+        "text"
+
+    describe "unifyRecords" $ do
+      unificationShouldBeOK
+        ([], RowAbsent)
+        ([], RowAbsent)
+        0
+
+      unificationShouldBeOK
+        ([("f1", typeDouble)], RowVar $ TV 1)
+        ([("f1", typeDouble)], RowVar $ TV 2)
+        3
+
+      unificationShouldBeOK
+        ([("f1", typeBool), ("f2", typeDouble)], RowAbsent)
+        ([("f2", typeDouble), ("f1", typeBool)], RowAbsent)
+        0
+
+      unificationShouldBeOK
+        ([("f1", typeInt), ("f2", TVar $ TV 0)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
+        2
+
+      unificationShouldFail
+        ([("f2", TVar $ TV 0)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", TVar $ TV 2)], RowAbsent)
+        3
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
+        2
+
+      unificationShouldFail
+        ([("f1", typeInt)], RowAbsent)
+        ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowVar $ TV 0)
+        2
+
+      unificationShouldBeOK
+        ([], RowVar $ TV 0)
+        ([("f1", typeInt), ("f2", typeDouble)], RowAbsent)
+        1
+
+      unificationShouldFail
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowAbsent)
+        1
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText)], RowVar $ TV 1)
+        2
+
+      unificationShouldFail
+        ([("f1", typeInt), ("f2", typeDouble)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
+        2
+
+      unificationShouldBeOK
+        ([("f1", typeInt)], RowVar $ TV 0)
+        ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
+        2
   where
     t_hash = vcHash ("true" :: Ident, enumBoolHash)
     f_hash = vcHash ("false" :: Ident, enumBoolHash)
@@ -202,16 +340,40 @@ inferTests = describe "infer" $
     shouldBeExhaustive patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be exhaustive") $
         case exhaustive enum_sigs $ map (: []) patts of
-          Just _ps -> expectationFailure $ "These patterns should be exhaustive"
+          Just _ps -> expectationFailure "These patterns should be exhaustive"
           Nothing -> pure ()
     shouldBeInexhaustive patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be inexhaustive") $
         case exhaustive enum_sigs $ map (: []) patts of
           Just _ps -> pure ()
-          Nothing -> expectationFailure $ "These patterns should be inexhaustive"
+          Nothing -> expectationFailure "These patterns should be inexhaustive"
     shouldBeUseful patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should be useful") $
         checkUsefullness enum_sigs (map (: []) patts) `shouldBe` []
     shouldBeRedundant patts =
       it ("patterns\n      " <> printPatts patts <> "\n    should contain redundant clauses") $
         checkUsefullness enum_sigs (map (: []) patts) `shouldNotBe` []
+
+    unificationShouldBeOK (ts1, trv1) (ts2, trv2) varCount = do
+      let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
+        let sortFields = Map.toAscList . Map.fromList
+        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
+        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
+        case y of
+          Left errs ->
+            trace ("unification returned errors " <> show errs) $ expectationFailure $ show errs
+          Right s' ->
+            trace ("unification returned " <> show s') $ pure ()
+
+    unificationShouldFail (ts1, trv1) (ts2, trv2) varCount = do
+      let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
+        let sortFields = Map.toAscList . Map.fromList
+        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
+        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
+        case y of
+          Left errs ->
+            trace ("unification returned errors " <> show errs) $ pure ()
+          Right s' ->
+            trace ("unification returned " <> show s') $ expectationFailure "This unification should fail"

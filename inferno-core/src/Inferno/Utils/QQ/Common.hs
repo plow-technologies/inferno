@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
 
 module Inferno.Utils.QQ.Common where
 
@@ -18,7 +18,7 @@ location' :: Q SourcePos
 location' = aux <$> location
   where
     aux :: Loc -> SourcePos
-    aux loc = let (l, c) = (loc_start loc) in SourcePos (loc_filename loc) (mkPos l) (mkPos c)
+    aux loc = let (l, c) = loc_start loc in SourcePos (loc_filename loc) (mkPos l) (mkPos c)
 
 -- fix for https://stackoverflow.com/questions/38143464/cant-find-inerface-file-declaration-for-variable
 liftText :: Text -> Q Exp
@@ -27,8 +27,8 @@ liftText txt = AppE (VarE 'Text.pack) <$> lift (Text.unpack txt)
 mkParseErrorStr :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> String
 mkParseErrorStr (err, SourcePos {..}) =
   "Error at line "
-    <> (show $ unPos sourceLine)
+    <> show (unPos sourceLine)
     <> " column "
-    <> (show $ unPos sourceColumn)
+    <> show (unPos sourceColumn)
     <> "\n        "
-    <> (Text.unpack $ Text.replace "\n" "\n        " $ Text.pack $ prettyError err)
+    <> Text.unpack (Text.replace "\n" "\n        " $ Text.pack $ prettyError err)

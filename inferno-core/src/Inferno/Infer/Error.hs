@@ -1,6 +1,4 @@
-{-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -92,4 +90,4 @@ getTypeClassFromErr = \case
   _ -> mempty
 
 getTypeClassFromErrs :: [TypeError a] -> Set.Set TypeClass
-getTypeClassFromErrs = foldr Set.union mempty . map getTypeClassFromErr
+getTypeClassFromErrs = foldr (Set.union . getTypeClassFromErr) mempty

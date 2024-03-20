@@ -91,11 +91,11 @@ truncateYear day =
    in fromGregorian y 1 1
 
 secondsBeforeFun, minutesBeforeFun, hoursBeforeFun, daysBeforeFun, weeksBeforeFun :: CTime -> Int64 -> CTime
-secondsBeforeFun t i = t - (secondsFun i)
-minutesBeforeFun t i = t - (minutesFun i)
-hoursBeforeFun t i = t - (hoursFun i)
-daysBeforeFun t i = t - (daysFun i)
-weeksBeforeFun t i = t - (weeksFun i)
+secondsBeforeFun t i = t - secondsFun i
+minutesBeforeFun t i = t - minutesFun i
+hoursBeforeFun t i = t - hoursFun i
+daysBeforeFun t i = t - daysFun i
+weeksBeforeFun t i = t - weeksFun i
 
 monthsBeforeFun, yearsBeforeFun :: CTime -> Integer -> CTime
 monthsBeforeFun t m = advanceMonths (negate m) t
@@ -202,8 +202,8 @@ sumFun ::
     (Word32 -> Word32)
     (Word64 -> Word64)
 sumFun =
-  bimap (\x -> either ((+) x) ((+) x . fromIntegral)) $
-    bimap (\i -> bimap ((+) $ fromIntegral i) ((+) i)) $
+  bimap (\x -> either (x +) ((+) x . fromIntegral)) $
+    bimap (\i -> bimap ((+) $ fromIntegral i) (i +)) $
       bimap (+) $
         bimap (+) $
           bimap (+) (+)
@@ -214,8 +214,7 @@ divFun ::
     (Either Double Int64 -> Double)
     (Either Double Int64 -> Either Double Int64)
 divFun =
-  bimap (\x -> either ((/) x) ((/) x . fromIntegral)) $
-    (\i -> bimap ((/) $ fromIntegral i) ((div) i))
+  bimap (\x -> either (x /) ((/) x . fromIntegral)) (\i -> bimap ((/) $ fromIntegral i) (div i))
 
 modFun :: Int64 -> Int64 -> Int64
 modFun = mod
@@ -227,10 +226,10 @@ mulFun ::
     (Either3 Double Int64 EpochTime -> Either3 Double Int64 EpochTime)
     (Int64 -> EpochTime)
 mulFun =
-  bimap (\x -> either ((*) x) ((*) x . fromIntegral)) $
+  bimap (\x -> either (x *) ((*) x . fromIntegral)) $
     bimap
-      (\i -> bimap ((*) $ fromIntegral i) (bimap ((*) i) ((*) $ secondsFun i)))
-      (\x -> ((*) x . secondsFun))
+      (\i -> bimap ((*) $ fromIntegral i) (bimap (i *) ((*) $ secondsFun i)))
+      (\x -> (*) x . secondsFun)
 
 subFun ::
   Either6 Double Int64 EpochTime Word16 Word32 Word64 ->
@@ -242,8 +241,8 @@ subFun ::
     (Word32 -> Word32)
     (Word64 -> Word64)
 subFun =
-  bimap (\x -> either ((-) x) ((-) x . fromIntegral)) $
-    bimap (\i -> bimap ((-) $ fromIntegral i) ((-) i)) $
+  bimap (\x -> either (x -) ((-) x . fromIntegral)) $
+    bimap (\i -> bimap ((-) $ fromIntegral i) (i -)) $
       bimap (-) $
         bimap (-) $
           bimap (-) (-)
@@ -298,7 +297,7 @@ truncateToFun n x =
    in fromIntegral (truncate (x * q) :: Int64) / q
 
 limitFun :: Double -> Double -> Double -> Double
-limitFun = (\l u -> min u . max l)
+limitFun l u = min u . max l
 
 piFun :: Double
 piFun = pi
@@ -352,10 +351,10 @@ leqFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Bool) (Double -> B
 leqFun = bimap (<=) (bimap (<=) (<=))
 
 minFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
-minFun = bimap (min) (bimap (min) (min))
+minFun = bimap min (bimap min min)
 
 maxFun :: Either3 Int64 Double EpochTime -> Either3 (Int64 -> Int64) (Double -> Double) (EpochTime -> EpochTime)
-maxFun = bimap (max) (bimap (max) (max))
+maxFun = bimap max (bimap max max)
 
 arrayIndexOptFun :: (MonadIO m, MonadThrow m, Pretty c) => Value c m
 arrayIndexOptFun =
@@ -407,7 +406,7 @@ orFun :: Either4 Bool Word16 Word32 Word64 -> Either4 (Bool -> Bool) (Word16 -> 
 orFun = bimap (||) (bimap (.|.) (bimap (.|.) (.|.)))
 
 xorFun :: Either4 Bool Word16 Word32 Word64 -> Either4 (Bool -> Bool) (Word16 -> Word16) (Word32 -> Word32) (Word64 -> Word64)
-xorFun = bimap (xor) (bimap (xor) (bimap (xor) (xor)))
+xorFun = bimap xor (bimap xor (bimap xor xor))
 
 shiftFun :: Either3 Word16 Word32 Word64 -> Either3 (Int -> Word16) (Int -> Word32) (Int -> Word64)
 shiftFun = bimap shift (bimap shift shift)
@@ -440,7 +439,7 @@ zipFun = VFun $ \case
   VArray xs ->
     return $ VFun $ \case
       VArray ys ->
-        return $ VArray $ map (\(v1, v2) -> VTuple [v1, v2]) $ zip xs ys
+        return $ VArray $ zipWith (\v1 v2 -> VTuple [v1, v2]) xs ys
       _ -> throwM $ RuntimeError "zip: expecting an array"
   _ -> throwM $ RuntimeError "zip: expecting an array"
 
@@ -562,7 +561,7 @@ magnitudeFun =
     VArray _ -> throwM $ RuntimeError "magnitude: unsupported array type"
     _ -> throwM $ RuntimeError "magnitude: expecting a number"
   where
-    magnitude = sqrt . sum . map (\x -> x ** 2)
+    magnitude = sqrt . sum . map (** 2)
 
 normFun :: (MonadThrow m) => Value c m
 normFun = magnitudeFun

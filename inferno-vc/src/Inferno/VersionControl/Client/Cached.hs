@@ -68,9 +68,9 @@ fetchVCObjectClosure ::
   VCObjectHash ->
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
-  VCCachePath storePath <- getTyped <$> ask
+  VCCachePath storePath <- asks getTyped
   deps <-
-    (liftIO $ doesFileExist $ storePath </> "deps" </> show objHash) >>= \case
+    liftIO (doesFileExist $ storePath </> "deps" </> show objHash) >>= \case
       False -> do
         deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
         liftIO
@@ -81,16 +81,20 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
       True -> fetchVCObjectClosureHashes objHash
   (nonLocalHashes, localHashes) <-
     partitionEithers
-      <$> ( forM (objHash : deps) $ \depHash -> do
-              (liftIO $ doesFileExist $ storePath </> show depHash) >>= \case
-                True -> pure $ Right depHash
-                False -> pure $ Left depHash
-          )
+      <$> forM
+        (objHash : deps)
+        ( \depHash -> do
+            liftIO (doesFileExist $ storePath </> show depHash) >>= \case
+              True -> pure $ Right depHash
+              False -> pure $ Left depHash
+        )
   localObjs <-
     Map.fromList
-      <$> ( forM localHashes $ \h ->
-              (h,) <$> fetchVCObjectUnsafe h
-          )
+      <$> forM
+        localHashes
+        ( \h ->
+            (h,) <$> fetchVCObjectUnsafe h
+        )
 
   nonLocalObjs <- liftServantClient $ fetchVCObjects nonLocalHashes
   forM_ (Map.toList nonLocalObjs) $ \(h, o) ->
@@ -119,7 +123,7 @@ readVCObjectHashTxt ::
   FilePath ->
   m [VCObjectHash]
 readVCObjectHashTxt fp = do
-  deps <- filter (not . B.null) . Char8.lines <$> (liftIO $ B.readFile fp)
+  deps <- filter (not . B.null) . Char8.lines <$> liftIO (B.readFile fp)
   forM deps $ \dep -> do
     decoded <- either (const $ throwing _Typed $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
     maybe (throwing _Typed $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
@@ -150,8 +154,8 @@ liftServantClient ::
   TypedClientM a b ->
   m b
 liftServantClient m = do
-  client <- getTyped <$> ask
-  (liftIO $ runTypedClientM m client) >>= \case
+  client <- asks getTyped
+  liftIO (runTypedClientM m client) >>= \case
     Left (Left clientErr) -> throwing _Typed clientErr
     Left (Right serverErr) -> throwing _Typed serverErr
     Right res -> pure res
