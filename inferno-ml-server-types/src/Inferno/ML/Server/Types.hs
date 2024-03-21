@@ -369,9 +369,9 @@ instance
       -- to one that exists in the DB already)
       <$> fmap Just (o .: "id")
       <*> o .: "model"
-      <*> o .: "version"
-      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "card"
+      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "version"
 {- ORMOLU_ENABLE -}
 
 instance
