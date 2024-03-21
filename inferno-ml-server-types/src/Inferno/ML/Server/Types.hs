@@ -350,9 +350,9 @@ instance
   toRow mv =
     [ toField Default,
       mv ^. the @"model" & toField,
-      mv ^. the @"version" & toField,
+      mv ^. the @"card" & Aeson & toField,
       mv ^. the @"contents" & toField,
-      mv ^. the @"card" & Aeson & toField
+      mv ^. the @"version" & toField
     ]
 
 {- ORMOLU_DISABLE -}
