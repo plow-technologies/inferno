@@ -275,10 +275,8 @@ instance
   where
   parseJSON = withObject "Model" $ \o ->
     Model
-      -- Note that for a model serialized as JSON, the `id` must be present
-      -- (this assumes that a serialized model always refers to one that exists
-      -- in the DB already)
-      <$> fmap Just (o .: "id")
+      -- If a new model is being created, its ID will not be present
+      <$> o .:? "id"
       <*> (ensureNotNull =<< o .: "name")
       <*> o .: "permissions"
       <*> o .:? "user"
