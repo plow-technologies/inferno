@@ -47,6 +47,7 @@ prelude = builtinModules
 normalizePat :: Pat h a -> Pat h a
 normalizePat = ana $ \case
   PTuple p1 xs p2 -> project $ PTuple p1 (fmap (\(e, _) -> (normalizePat e, Nothing)) xs) p2
+  PRecord p1 xs p2 -> project $ PRecord p1 (fmap (\(f, e, _) -> (f, normalizePat e, Nothing)) xs) p2
   x -> project x
 
 normalizeExpr :: Expr () a -> Expr () a
