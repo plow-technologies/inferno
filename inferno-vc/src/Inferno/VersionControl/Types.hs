@@ -1,12 +1,7 @@
-{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators #-}
 
 module Inferno.VersionControl.Types
   ( VCObjectHash (..),
@@ -27,7 +22,7 @@ where
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes)
+import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -35,7 +30,7 @@ import Foreign.C.Types (CTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Module (Module (..))
 import Inferno.Types.Syntax (Dependencies (..), Expr (..), Ident (..))
-import Inferno.Types.Type (Namespace, TCScheme (..)) -- TypeMetadata(..),
+import Inferno.Types.Type (Namespace, TCScheme (..))
 import Inferno.Types.VersionControl (Pinned (..), VCHashUpdate (..), VCObjectHash (..), pinnedUnderVCToMaybe, vcHash, vcObjectHashToByteString)
 
 data VCObject
@@ -55,8 +50,8 @@ showVCObjectType = \case
 instance Dependencies VCObject VCObjectHash where
   getDependencies = \case
     VCModule Module {moduleObjects = os} -> Set.fromList $ Map.elems os
-    VCFunction expr _ -> Set.fromList $ catMaybes $ map pinnedUnderVCToMaybe $ Set.toList $ getDependencies expr
-    VCTestFunction expr -> Set.fromList $ catMaybes $ map pinnedUnderVCToMaybe $ Set.toList $ getDependencies expr
+    VCFunction expr _ -> Set.fromList $ mapMaybe pinnedUnderVCToMaybe (Set.toList $ getDependencies expr)
+    VCTestFunction expr -> Set.fromList $ mapMaybe pinnedUnderVCToMaybe (Set.toList $ getDependencies expr)
     VCEnum _ _ -> mempty
 
 data VCObjectVisibility = VCObjectPublic | VCObjectPrivate deriving (Show, Eq, Generic, ToJSON, FromJSON, VCHashUpdate)

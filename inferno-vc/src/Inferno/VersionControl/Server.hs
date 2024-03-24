@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -20,6 +19,7 @@ where
 
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
+import Control.Exception (Exception)
 import Control.Lens (to, (^.))
 import Control.Monad (forM, forever)
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
@@ -36,7 +36,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCStoreError), vcServerTraceToText)
+import Inferno.VersionControl.Log (VCServerTrace (ThrownVCOtherError, ThrownVCStoreError), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (readServerConfig)
@@ -49,6 +49,7 @@ import Inferno.VersionControl.Types
     VCObjectHash,
     showVCObjectType,
   )
+import Network.Wai (Middleware)
 import Network.Wai.Handler.Warp
   ( defaultSettings,
     runSettings,
@@ -68,9 +69,11 @@ import Servant.Typed.Error
     liftTypedError,
   )
 
-newtype VCServerError = VCServerError {serverError :: Ops.VCStoreError}
+data VCServerError
+  = VCServerError {serverError :: Ops.VCStoreError}
+  | VCOtherError {otherError :: T.Text}
   deriving (Generic, Show)
-  deriving newtype (ToJSON, FromJSON)
+  deriving anyclass (ToJSON, FromJSON, Exception)
 
 type GetThrowingVCStoreError resp ty = GetTypedError resp ty VCServerError
 
@@ -117,7 +120,7 @@ vcServer toHandler =
     pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
 
     fetchVCObjects hs =
-      Map.fromList <$> (forM hs $ \h -> (h,) <$> Ops.fetchVCObject h)
+      Map.fromList <$> forM hs (\h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
   forall m env config.
@@ -138,7 +141,7 @@ runServer ::
 runServer withEnv runOp = do
   readServerConfig "config.yml" >>= \case
     Left err -> putStrLn err
-    Right serverConfig -> runServerConfig withEnv runOp serverConfig
+    Right serverConfig -> runServerConfig (const id) withEnv runOp serverConfig
 
 runServerConfig ::
   forall m env config.
@@ -152,11 +155,12 @@ runServerConfig ::
     ToJSON (Ops.Group m),
     Ops.InfernoVCOperations VCServerError m
   ) =>
+  (env -> Middleware) ->
   (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
   config ->
   IO ()
-runServerConfig withEnv runOp serverConfig = do
+runServerConfig middleware withEnv runOp serverConfig = do
   let host = serverConfig ^. the @"serverHost" . to T.unpack . to fromString
       port = serverConfig ^. the @"serverPort"
       settingsWithTimeout = setTimeout 300 defaultSettings
@@ -170,6 +174,8 @@ runServerConfig withEnv runOp serverConfig = do
           runExceptT (runOp (Ops.deleteAutosavedVCObjectsOlderThan cutoff) env) >>= \case
             Left (VCServerError {serverError}) ->
               traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
+            Left (VCOtherError {otherError}) ->
+              traceWith @IOTracer serverTracer (ThrownVCOtherError otherError)
             Right _ -> pure ()
     print ("running..." :: String)
     -- Cleanup stale autosave scripts in a separate thread every hour:
@@ -178,8 +184,9 @@ runServerConfig withEnv runOp serverConfig = do
       runSettings (setPort port $ setHost host settingsWithTimeout) $
         ungzipRequest $
           gzip def $
-            serve (Proxy :: Proxy (VersionControlAPI a g)) $
-              vcServer (liftIO . liftTypedError . flip runOp env)
+            middleware env $
+              serve (Proxy :: Proxy (VersionControlAPI a g)) $
+                vcServer (liftIO . liftTypedError . flip runOp env)
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g

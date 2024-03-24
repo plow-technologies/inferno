@@ -5,24 +5,20 @@
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
-import Control.Monad.Catch (MonadThrow (throwM))
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Functor ((<&>))
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import Data.Text (Text, unpack)
 import GHC.IO.Unsafe (unsafePerformIO)
-import Inferno.Eval as Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (..))
 import Inferno.ML.Types.Value
 import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
-import Inferno.Types.Module (PinnedModule)
-import Inferno.Types.Syntax
-  ( Ident,
-    ModuleName (..),
-  )
-import Inferno.Types.Value (ImplEnvM, Value (..))
-import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Types.Syntax (Ident)
+import Inferno.Types.Value (Value (..))
+import Prettyprinter (Pretty)
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -33,51 +29,70 @@ getDtype funName = \case
   "int" -> return TD.Int64
   "float" -> return TD.Float
   "double" -> return TD.Double
-  s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ (show s)
+  s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ show s
 
-zerosFun :: (MonadThrow m) => Value MlValue m
+zerosFun :: (MonadThrow m, Pretty a) => Value (MlValue a) m
 zerosFun =
   VFun $ \case
     VEnum _ e -> do
       dType <- getDtype "zeros" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ zeros shp $ withDType dType defaultOpts
+        pure $ toValue $ zeros shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "zerosFun: expecting a dtype enum"
 
-onesFun :: (MonadThrow m) => Value MlValue m
+onesFun :: (MonadThrow m, Pretty x) => Value (MlValue x) m
 onesFun =
   VFun $ \case
     VEnum _ e -> do
       dType <- getDtype "ones" e
       return $ VFun $ \vShape -> do
         shp <- fromValue vShape
-        toValue $ ones shp $ withDType dType defaultOpts
+        pure $ toValue $ ones shp $ withDType dType defaultOpts
     _ -> throwM $ RuntimeError "onesFun: expecting a dtype enum"
 
-asTensorFun :: forall a m. (TensorLike a, FromValue MlValue m a, MonadThrow m) => String -> Proxy a -> Value MlValue m
+asTensorFun ::
+  forall a x m.
+  ( TensorLike a,
+    FromValue
+      (MlValue x)
+      m
+      a,
+    MonadThrow m
+  ) =>
+  String ->
+  Proxy a ->
+  Value (MlValue x) m
 asTensorFun funName _proxy =
   VFun $ \case
     VEnum _ e -> do
       dType <- getDtype funName e
       pure $ VFun $ \v -> do
         xs :: a <- fromValue v
-        pure $ VCustom $ VTensor $ toType dType $ asTensor $ xs
+        pure $ VCustom $ VTensor $ toType dType $ asTensor xs
     _ -> throwM $ RuntimeError $ funName ++ ": expecting a dtype enum"
 
-asTensor0Fun :: (MonadThrow m) => Value MlValue m
+toTypeFun :: forall m x. (Pretty x, MonadThrow m) => Value (MlValue x) m
+toTypeFun =
+  VFun $ \case
+    VEnum _ e ->
+      getDtype "toType" e <&> \dt ->
+        VFun $ fmap (VCustom . VTensor . toType dt) . fromValue
+    _ -> throwM . RuntimeError $ "toType : expecting a dtype enum"
+
+asTensor0Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor0Fun = asTensorFun "asTensor0" (Proxy :: Proxy Double)
 
-asTensor1Fun :: (MonadThrow m) => Value MlValue m
+asTensor1Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor1Fun = asTensorFun "asTensor1" (Proxy :: Proxy [Double])
 
-asTensor2Fun :: (MonadThrow m) => Value MlValue m
+asTensor2Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor2Fun = asTensorFun "asTensor2" (Proxy :: Proxy [[Double]])
 
-asTensor3Fun :: (MonadThrow m) => Value MlValue m
+asTensor3Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor3Fun = asTensorFun "asTensor3" (Proxy :: Proxy [[[Double]]])
 
-asTensor4Fun :: (MonadThrow m) => Value MlValue m
+asTensor4Fun :: forall m x. (MonadThrow m, Pretty x) => Value (MlValue x) m
 asTensor4Fun = asTensorFun "asTensor4" (Proxy :: Proxy [[[[Double]]]])
 
 asDouble :: Tensor -> Double
@@ -96,19 +111,19 @@ asArray4Fun :: Tensor -> [[[[Double]]]]
 asArray4Fun t = asValue $ toType TD.Double t
 
 argmaxFun :: Int -> Bool -> Tensor -> Tensor
-argmaxFun i keepDim t = argmax (Dim i) (if keepDim then KeepDim else RemoveDim) t
+argmaxFun i keepDim = argmax (Dim i) (if keepDim then KeepDim else RemoveDim)
 
 softmaxFun :: Int -> Tensor -> Tensor
-softmaxFun i t = softmax (Dim i) t
+softmaxFun i = softmax (Dim i)
 
 stackFun :: Int -> [Tensor] -> Tensor
-stackFun i t = Torch.stack (Dim i) t
+stackFun i = Torch.stack (Dim i)
 
 tanHTFun :: Tensor -> Tensor
 tanHTFun = Torch.Functional.tanh
 
 powTFun :: Int -> Tensor -> Tensor
-powTFun i t = pow i t
+powTFun = pow
 
 loadModelFun :: Text -> ScriptModule
 loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
@@ -120,11 +135,16 @@ forwardFun m ts =
     unIV = \case
       IVTensor t' -> [t']
       IVTensorList ts' -> ts'
-      IVTuple ivs ->
-        concat $ map unIV ivs
-      res -> error $ "expected tensor result, got " ++ (show res)
+      IVTuple ivs -> concatMap unIV ivs
+      res -> error $ "expected tensor result, got " ++ show res
 
-randnIOFun :: (MonadThrow m, MonadIO m) => Value MlValue m
+randnIOFun ::
+  forall m x.
+  ( MonadThrow m,
+    MonadIO m,
+    Pretty x
+  ) =>
+  Value (MlValue x) m
 randnIOFun =
   VFun $ \case
     VEnum _ e -> do
@@ -143,7 +163,13 @@ toDeviceFun d t =
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
 
-mlModules :: (MonadThrow m, MonadIO m) => Prelude.ModuleMap m MlValue
+mlModules ::
+  forall m x.
+  ( MonadThrow m,
+    MonadIO m,
+    Pretty x
+  ) =>
+  Prelude.ModuleMap m (MlValue x)
 mlModules =
   [mlQuoter|
 
@@ -156,6 +182,8 @@ module ML
   ones : dtype{#int, #float, #double} -> array of int -> tensor := ###!onesFun###;
 
   add : tensor -> tensor -> tensor := ###add###;
+
+  toType : dtype{#int, #float, #double} -> tensor -> tensor := ###!toTypeFun###;
 
   asTensor0 : dtype{#int, #float, #double} -> double -> tensor := ###!asTensor0Fun###;
 
@@ -209,9 +237,16 @@ module ML
 
 |]
 
-mlPrelude :: Map.Map ModuleName (PinnedModule (ImplEnvM IO MlValue (Eval.TermEnv VCObjectHash MlValue (ImplEnvM IO MlValue))))
+mlPrelude ::
+  forall m x.
+  ( MonadIO m,
+    MonadCatch m,
+    Pretty x,
+    Eq x
+  ) =>
+  Prelude.ModuleMap m (MlValue x)
 mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")
-    (Prelude.builtinModules @IO @MlValue)
-    (mlModules @IO)
+    (Prelude.builtinModules @m @(MlValue x))
+    (mlModules @m)

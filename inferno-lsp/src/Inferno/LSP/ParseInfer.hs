@@ -5,7 +5,7 @@
 
 module Inferno.LSP.ParseInfer where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
 import Data.List (find, findIndices, foldl', nub, sort)
@@ -135,7 +135,7 @@ inferErrorDiagnostic = \case
         (unPos $ sourceLine e)
         (unPos $ sourceColumn e)
         $ renderDoc
-        $ "Could not unify" <+> pretty tv <+> "~" <+> (pretty $ closeOverType t)
+        $ "Could not unify" <+> pretty tv <+> "~" <+> pretty (closeOverType t)
     ]
   UnboundExtIdent modNm v (s, e) ->
     [ errorDiagnosticInfer
@@ -223,9 +223,9 @@ inferErrorDiagnostic = \case
         $ renderDoc
         $ vsep
           [ "The implicit variable '" <> case ident of { Left i -> "var$" <> pretty i; Right i -> pretty i } <> "' has multiple types:",
-            indent 2 (pretty $ closeOverType $ t1),
+            indent 2 (pretty $ closeOverType t1),
             "and",
-            indent 2 (pretty $ closeOverType $ t2)
+            indent 2 (pretty $ closeOverType t2)
           ]
     ]
   VarMultipleOccurrence (Ident x) (s2, e2) (s1, e1) ->
@@ -241,13 +241,13 @@ inferErrorDiagnostic = \case
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            $ message,
+            message,
           errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
             (unPos $ sourceColumn e2)
-            $ message
+            message
         ]
   IfConditionMustBeBool _ t (s, e) ->
     [ errorDiagnosticInfer
@@ -287,13 +287,13 @@ inferErrorDiagnostic = \case
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            $ message,
+            message,
           errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
             (unPos $ sourceColumn e2)
-            $ message
+            message
         ]
   CaseBranchesMustBeEqType _ t1 t2 (s1, e1) (s2, e2) ->
     let message =
@@ -309,13 +309,13 @@ inferErrorDiagnostic = \case
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            $ message,
+            message,
           errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
             (unPos $ sourceColumn e2)
-            $ message
+            message
         ]
   PatternUnificationFail tPat tE p (s, e) ->
     [ errorDiagnosticInfer
@@ -346,13 +346,13 @@ inferErrorDiagnostic = \case
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            $ message,
+            message,
           errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
             (unPos $ sourceColumn e2)
-            $ message
+            message
         ]
   NonExhaustivePatternMatch pat (s, e) ->
     [ errorDiagnosticInfer
@@ -364,7 +364,7 @@ inferErrorDiagnostic = \case
         $ vsep
           [ "The patterns in this case expression are non-exhaustive.",
             "For example, the following pattern is missing:",
-            indent 2 (pretty $ pat)
+            indent 2 (pretty pat)
           ]
     ]
   UselessPattern (Just pat) (s, e) ->
@@ -376,7 +376,7 @@ inferErrorDiagnostic = \case
         $ renderDoc
         $ vsep
           [ "This case is unreachable, since it is subsumed by the previous pattern",
-            indent 2 (pretty $ pat)
+            indent 2 (pretty pat)
           ]
     ]
   UselessPattern Nothing (s, e) ->
@@ -385,8 +385,7 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn s)
         (unPos $ sourceLine e)
         (unPos $ sourceColumn e)
-        $ renderDoc
-        $ "This case is unreachable, since it is subsumed by the previous patterns"
+        $ renderDoc "This case is unreachable, since it is subsumed by the previous patterns"
     ]
   -- TypeClassUnificationError t1 t2 tcs (s, e) ->
   --   [ errorDiagnosticInfer
@@ -480,7 +479,7 @@ inferErrorDiagnostic = \case
             "you are trying to import from",
             indent 2 (pretty m),
             "already exists in local scope and would be overshadowed. Consider using:",
-            indent 2 $ (pretty m) <> "." <> (pretty i)
+            indent 2 $ pretty m <> "." <> pretty i
           ]
     ]
   CouldNotFindTypeclassWitness tyCls (s, e) ->
@@ -507,16 +506,13 @@ parseAndInferDiagnostics ::
 parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt validateInput = do
   let input = case idents of
         [] -> "\n" <> txt
-        ids -> "fun " <> (Text.intercalate " " $ map (maybe "_" (\(Ident i) -> i)) ids) <> " -> \n" <> txt
+        ids -> "fun " <> Text.intercalate " " (map (maybe "_" (\(Ident i) -> i)) ids) <> " -> \n" <> txt
   -- AppConfig _ _ tracer <- ask
   -- let trace = const $ pure () --traceWith tracer
   case parseAndInfer input of
-    Left (ParseError err) -> do
-      return $ Left $ fmap parseErrorDiagnostic $ NEList.toList err
-    Left (PinError err) -> do
-      return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
-    Left (InferenceError err) -> do
-      return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
+    Left (ParseError err) -> return $ Left (parseErrorDiagnostic <$> NEList.toList err)
+    Left (PinError err) -> return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
+    Left (InferenceError err) -> return $ Left $ concatMap inferErrorDiagnostic $ Set.toList $ Set.fromList err
     Right (pinnedAST', tcSch@(ForallTC _ currentClasses (ImplType _ typSig)), tyMap, comments) -> do
       let signature = collectArrs typSig
       -- Validate input types
@@ -529,12 +525,12 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
             Left errors -> return $ Left errors
             Right () -> do
               -- Insert comments into Lam body
-              let final = putBackLams lams $ fmap (const ()) $ insertCommentsIntoExpr comments lamBody
+              let final = putBackLams lams (void (insertCommentsIntoExpr comments lamBody))
               return $
                 Right
                   ( final,
                     tcSch,
-                    Map.foldrWithKey (\k v xs -> (mkHover typeClasses currentClasses k v) : xs) mempty tyMap
+                    Map.foldrWithKey (\k v xs -> mkHover typeClasses currentClasses k v : xs) mempty tyMap
                   )
   where
     -- Extract and replace outermost Lams so that comments can be inserted into script body.
@@ -542,11 +538,11 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
     extractLams lams = \case
       Lam _ xs _ e -> extractLams (fmap snd xs : lams) e
       e -> (lams, e)
-    putBackLams = flip $ foldl' (\e xs -> Lam () (fmap (\x -> ((), x)) xs) () e)
+    putBackLams = flip $ foldl' (\e xs -> Lam () (fmap ((),) xs) () e)
 
     checkScriptIsNotAFunction signature parameters =
       -- A function with N parameters should have a signature a_1 -> a_2 -> ... -> a_{N+1}
-      if length signature > (length parameters + 1)
+      if length signature > length parameters + 1
         then Left [errorDiagnosticInfer 0 0 0 2 $ renderDoc $ vsep ["This script evaluates to a function. Did you mean to add input parameters instead?"]]
         else Right ()
 
@@ -570,7 +566,7 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
 parseAndInferPretty :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> IO ()
 parseAndInferPretty prelude txt = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
-  (parseAndInferDiagnostics @IO @c interpreter) [] txt (const $ Right ()) >>= \case
+  parseAndInferDiagnostics @IO @c interpreter [] txt (const $ Right ()) >>= \case
     Left err -> print err
     Right (expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "internal: " <> renderPretty expr
@@ -579,16 +575,16 @@ parseAndInferPretty prelude txt = do
 
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
 
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
+      putStrLn $ "\ntype (pretty)" <> Text.unpack (renderDoc $ mkPrettyTy typeClasses mempty typ)
 
 parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> Text -> IO ()
 parseAndInferTypeReps prelude expr inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
-  (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
+  parseAndInferDiagnostics @IO @c interpreter [] expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
+      putStrLn $ "\ntype (pretty)" <> Text.unpack (renderDoc $ mkPrettyTy typeClasses mempty typ)
 
       case traverse parseType inTys of
         Left errs -> print errs
@@ -603,18 +599,19 @@ parseAndInferTypeReps prelude expr inTys outTy = do
                 putStrLn ("type reps:" :: String)
                 print res
 
-parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Maybe Text] -> Maybe Text -> IO ()
-parseAndInferPossibleTypes prelude expr inTys outTy = do
+parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> [Maybe Text] -> Maybe Text -> IO ()
+parseAndInferPossibleTypes prelude expr args inTys outTy = do
+  let argIdents = map (Just . Ident) args
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
-  (parseAndInferDiagnostics @IO @c interpreter) [] expr (const $ Right ()) >>= \case
+  parseAndInferDiagnostics @IO @c interpreter argIdents expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
-      putStrLn $ "\ntype (pretty)" <> (Text.unpack $ renderDoc $ mkPrettyTy typeClasses mempty typ)
+      putStrLn $ "\ntype (pretty)" <> Text.unpack (renderDoc $ mkPrettyTy typeClasses mempty typ)
 
       case traverse (maybe (pure Nothing) ((Just <$>) . parseType)) inTys of
         Left errs -> print errs
-        Right inTysParsed -> case (maybe (pure Nothing) ((Just <$>) . parseType)) outTy of
+        Right inTysParsed -> case maybe (pure Nothing) ((Just <$>) . parseType) outTy of
           Left errTy -> print errTy
           Right outTyParsed ->
             case inferPossibleTypes typeClasses typ inTysParsed outTyParsed of
@@ -630,13 +627,13 @@ parseAndInferPossibleTypes prelude expr inTys outTy = do
 mkHover :: Set.Set TypeClass -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
 mkHover allClasses currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = tcSchTy} =
   let prettyTy = mkPrettyTy allClasses currentClasses tcSchTy
-   in ( mkRange ((fromIntegral $ unPos $ sourceLine s) - 2) ((fromIntegral $ unPos $ sourceColumn s) - 1) ((fromIntegral $ unPos $ sourceLine e) - 2) ((fromIntegral $ unPos $ sourceColumn e) - 1),
+   in ( mkRange (fromIntegral (unPos $ sourceLine s) - 2) (fromIntegral (unPos $ sourceColumn s) - 1) (fromIntegral (unPos $ sourceLine e) - 2) (fromIntegral (unPos $ sourceColumn e) - 1),
         MarkupContent MkMarkdown $
           "**Type**\n"
             <> "~~~inferno\n"
-            <> (renderDoc $ pretty expr <+> align prettyTy)
+            <> renderDoc (pretty expr <+> align prettyTy)
             <> "\n~~~"
-            <> (maybe "" ("\n" <>) (getTypeMetadataText meta))
+            <> maybe "" ("\n" <>) (getTypeMetadataText meta)
       )
 
 mkPrettyTy :: forall ann. Set.Set TypeClass -> Set.Set TypeClass -> TCScheme -> Doc ann
@@ -655,8 +652,8 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
             let prettyList = map pretty $ nub $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
                 prettyListMax10 = take 10 prettyList
              in if length prettyListMax10 == length prettyList
-                  then (sep $ unionTySig prettyList)
-                  else (sep $ unionTySig $ prettyList <> ["..."])
+                  then sep $ unionTySig prettyList
+                  else sep $ unionTySig $ prettyList <> ["..."]
   where
     unionTySig [] = []
     unionTySig (t : ts) = (":" <+> t) : go ts
@@ -679,7 +676,7 @@ getTypeMetadataText TypeMetadata {docs = tcsDocs, ty = ForallTC _ _ (ImplType _ 
             <> hardline
             <> "enum"
             <+> pretty nm
-            <+> align (sep $ "=" : (punctuate' "|" $ map (("#" <>) . pretty . unIdent) $ Set.toList cs))
+            <+> align (sep $ "=" : punctuate' "|" (map (("#" <>) . pretty . unIdent) $ Set.toList cs))
               <> hardline
               <> "~~~"
       _ -> Just $ pretty (fromMaybe "" tcsDocs)

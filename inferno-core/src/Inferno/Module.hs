@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
 
@@ -19,12 +18,12 @@ where
 
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow (..))
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, second)
 import Data.Foldable (foldl')
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Inferno.Eval (TermEnv, eval)
+import Inferno.Eval (TermEnv)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
@@ -64,14 +63,14 @@ import Text.Megaparsec (SourcePos)
 
 combineTermEnvs ::
   MonadThrow m =>
-  Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
-  ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))
+  Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) a)) ->
+  TermEnv VCObjectHash c (ImplEnvM m c) a
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
 
 buildPinnedQQModules ::
   (MonadThrow m, Pretty c) =>
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))])] ->
-  Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))))
+  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, Value c (ImplEnvM m c)) (Maybe TCScheme, Expr () SourcePos))])] ->
+  Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ()))
 buildPinnedQQModules modules =
   snd $
     foldl'
@@ -96,21 +95,21 @@ buildPinnedQQModules modules =
     buildModule ::
       (MonadThrow m, Pretty c) =>
       Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash)) ->
-      Map.Map ModuleName (PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))) ->
-      [TopLevelDefn (Either (TCScheme, ImplEnvM m c (Value c (ImplEnvM m c))) (Maybe TCScheme, Expr () SourcePos))] ->
-      PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c))) ->
-      PinnedModule (ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c)))
+      Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ())) ->
+      [TopLevelDefn (Either (TCScheme, Value c (ImplEnvM m c)) (Maybe TCScheme, Expr () SourcePos))] ->
+      PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ()) ->
+      PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ())
     buildModule _ _ [] m = m
     buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature {..} : xs) m@Module {moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       let sigVarToNamespace = \case
             SigVar n -> FunNamespace $ Ident n
             SigOpVar n -> OpNamespace $ Ident n
           (sig, ns, hsh, mTrmEnv') = case def of
-            Left (sig', mVal) ->
+            Left (sig', val) ->
               let ns' = sigVarToNamespace name
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
-               in (sig', ns', hsh', (\val (local, pinned) -> (local, Map.insert hsh val pinned)) <$> mVal <*> mTrmEnv)
-            Right (_mSig, expr) ->
+               in (sig', ns', hsh', second (Map.insert hsh (Right val)) mTrmEnv)
+            Right (mSig, expr) ->
               let pinMap =
                     Pinned.openModule moduleName $
                       Pinned.insertHardcodedModule
@@ -118,17 +117,19 @@ buildPinnedQQModules modules =
                         (Map.map Builtin nsMap)
                         alreadyPinnedModulesMap
                   pinnedExpr = either (error . show) id $ pinExpr pinMap expr
-                  inferEnv = Map.insert moduleName m $ alreadyBuiltModules
+                  inferEnv = Map.insert moduleName m alreadyBuiltModules
                   (pinnedExpr', sig') =
                     either (\err -> error $ "Could not infer the type of this expression: " <> show err) (\(e, typ, _) -> (e, typ)) $
-                      inferExpr inferEnv $
-                        pinnedExpr
+                      inferExpr inferEnv pinnedExpr
                   ns' = sigVarToNamespace name
                   hsh' = vcHash $ BuiltinFunHash (sigVarToExpr LocalScope name, sig)
-                  mVal =
-                    combineTermEnvs alreadyBuiltModules >>= \env ->
-                      mTrmEnv >>= \env' -> eval (env <> env') $ bimap pinnedToMaybe id pinnedExpr'
-               in (sig', ns', hsh', (\val (local, pinned) -> (local, Map.insert hsh val pinned)) <$> mVal <*> mTrmEnv)
+                  finalExpr = bimap pinnedToMaybe (const ()) pinnedExpr'
+               in case mSig of
+                    Just sig''
+                      | sig' /= sig'' ->
+                          error $ "Type of " <> show name <> " does not matched inferred type " <> show sig'
+                    _ ->
+                      (sig', ns', hsh', second (Map.insert hsh (Left finalExpr)) mTrmEnv)
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m
               { moduleObjects =

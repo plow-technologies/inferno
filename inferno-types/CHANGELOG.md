@@ -1,6 +1,15 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.2.0 -- 2024-03-18
+* Re-order `TRecord` in `InfernoType` so that existing serialization doesn't break
+
+## 0.4.1.0 -- 2024-03-18
+* HLint everything
+
+## 0.4.0.0 -- 2024-03-12
+* Add record types to InfernoType, Value, and Expr
+
 ## 0.3.0.0 -- 2023-11-01
 * Fix pretty printing of types to be parser-copmatible. Now prints as `bool{#true, #false}`
 

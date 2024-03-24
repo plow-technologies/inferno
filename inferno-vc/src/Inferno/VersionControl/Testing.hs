@@ -36,7 +36,7 @@ import Test.QuickCheck (Arbitrary, arbitrary, generate)
 
 runOperation :: ClientEnv -> ClientMWithVCStoreError a -> IO a
 runOperation vcClientEnv op =
-  (flip runTypedClientM vcClientEnv op) >>= \case
+  runTypedClientM op vcClientEnv >>= \case
     Left err -> do
       expectationFailure $ show err
       pure $ error "i shouldn't be evaluated"
@@ -45,7 +45,7 @@ runOperation vcClientEnv op =
 
 runOperationFail :: (Show a) => ClientEnv -> ClientMWithVCStoreError a -> IO VCServerError
 runOperationFail vcClientEnv op =
-  (flip runTypedClientM vcClientEnv op) >>= \case
+  runTypedClientM op vcClientEnv >>= \case
     Left (Right err) ->
       pure err
     Left (Left err) -> do
@@ -127,7 +127,7 @@ vcServerSpec url = do
         case obj o' of
           VCFunction e t -> do
             timestamp o' `shouldBe` timestamp o
-            (e, t) `shouldBe` (obj o)
+            (e, t) `shouldBe` obj o
           _ -> expectationFailure "Expected to get a VCFunction"
 
       -- Test fetchVCObjects:
@@ -214,7 +214,7 @@ vcServerSpec url = do
       o4 <- createObj $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
-      (map obj metas) `shouldBe` [h4, h3, h2, h1]
+      map obj metas `shouldBe` [h4, h3, h2, h1]
 
     it "history of clone" $ do
       o1 <- createObj Init
@@ -226,7 +226,7 @@ vcServerSpec url = do
       o4 <- createObj $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
-      (map obj metas) `shouldBe` [h4, h3, h2]
+      map obj metas `shouldBe` [h4, h3, h2]
 
     it "history of clone of clone" $ do
       o1 <- createObj Init
@@ -238,7 +238,7 @@ vcServerSpec url = do
       o4 <- createObj $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
-      (map obj metas) `shouldBe` [h4, h3, h2]
+      map obj metas `shouldBe` [h4, h3, h2]
 
     it "history of clone of deleted" $ do
       o1 <- createObj Init
@@ -258,7 +258,7 @@ vcServerSpec url = do
       o4 <- createObj $ MarkedBreakingWithPred h3
       h4 <- runOperation vcClientEnv (pushFunction o4)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h4)
-      (map obj metas) `shouldBe` [h4, h3, h2]
+      map obj metas `shouldBe` [h4, h3, h2]
       let o3' = metas !! 1
       Inferno.VersionControl.Types.pred o3' `shouldBe` CloneOfRemoved h2
 
@@ -273,8 +273,8 @@ vcServerSpec url = do
       h3 <- runOperation vcClientEnv (pushFunction o3)
       runOperation vcClientEnv (deleteVCObject h2)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h3)
-      (map obj metas) `shouldBe` [h3, h2]
-      Inferno.VersionControl.Types.pred (metas !! 0) `shouldBe` CloneOfRemoved h2
+      map obj metas `shouldBe` [h3, h2]
+      Inferno.VersionControl.Types.pred (head metas) `shouldBe` CloneOfRemoved h2
 
     it "cannot branch" $ do
       o1 <- createObj Init

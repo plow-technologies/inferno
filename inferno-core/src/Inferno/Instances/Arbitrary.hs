@@ -1,6 +1,5 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE GADTs #-}
@@ -49,6 +48,7 @@ import Inferno.Types.Syntax
     ModuleName (..),
     OpsTable,
     Pat (..),
+    RestOfRecord,
     Scoped (..),
     SomeIStr (..),
     TList (..),
@@ -123,19 +123,22 @@ instance Arbitrary BaseType where
       (TEnum <$> arbitraryTypeName <*> (Set.fromList <$> suchThat (listOf (Ident <$> arbitraryName)) (not . null)))
         -- NOTE: we don't generate custom types because these need to be known when constructing the parser
         -- : (TCustom . Text.unpack <$> arbitraryName)
-        : ( map
-              pure
-              [ TInt,
-                TDouble,
-                TWord16,
-                TWord32,
-                TWord64,
-                TText,
-                TTime,
-                TTimeDiff,
-                TResolution
-              ]
-          )
+        : map
+          pure
+          [ TInt,
+            TDouble,
+            TWord16,
+            TWord32,
+            TWord64,
+            TText,
+            TTime,
+            TTimeDiff,
+            TResolution
+          ]
+
+deriving instance ToADTArbitrary RestOfRecord
+
+deriving via (GenericArbitrary RestOfRecord) instance Arbitrary RestOfRecord
 
 deriving instance ToADTArbitrary InfernoType
 
@@ -148,8 +151,8 @@ instance Arbitrary InfernoType where
 
       arbitraryArr =
         TArr
-          <$> (scale (`div` 3) arbitraryType)
-          <*> (scale (`div` 3) arbitraryType)
+          <$> scale (`div` 3) arbitraryType
+          <*> scale (`div` 3) arbitraryType
 
       arbitraryTTuple = do
         let arbitrarySmaller = scale (`div` 3) arbitraryType
@@ -160,12 +163,14 @@ instance Arbitrary InfernoType where
 
       arbitraryBase = TBase <$> arbitrary
 
+      arbitraryRecord = TRecord <$> scale (`div` 3) arbitrary <*> arbitrary
+
       arbitraryRest = do
         -- NOTE: we omit TRep because it is an internal type that the parser does not support
         constr <- elements [TArray, TSeries, TOptional]
         constr <$> scale (`div` 3) arbitraryType
 
-      arbitraryType = do
+      arbitraryType =
         getSize >>= \case
           0 ->
             oneof [arbitraryVar, arbitraryBase]
@@ -175,6 +180,7 @@ instance Arbitrary InfernoType where
                 arbitraryBase,
                 arbitraryArr,
                 arbitraryTTuple,
+                arbitraryRecord,
                 arbitraryRest
               ]
 
@@ -182,19 +188,19 @@ instance Arbitrary InfernoType where
 arbitraryName :: Gen Text.Text
 arbitraryName =
   ( (\a as -> Text.pack $ a : as)
-      <$> (elements ['a' .. 'z'])
-      <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['_'])
+      <$> elements ['a' .. 'z']
+      <*> listOf (elements $ ['0' .. '9'] ++ ['a' .. 'z'] ++ ['_'])
   )
-    `suchThat` (\i -> not $ i `elem` rws)
+    `suchThat` (`notElem` rws)
 
 -- | An arbitrary valid type variable name
 arbitraryTypeName :: Gen Text.Text
 arbitraryTypeName =
   ( (\a as -> Text.pack $ a : as)
-      <$> (elements ['a' .. 'z'])
-      <*> (listOf $ elements $ ['0' .. '9'] ++ ['a' .. 'z'])
+      <$> elements ['a' .. 'z']
+      <*> listOf (elements $ ['0' .. '9'] ++ ['a' .. 'z'])
   )
-    `suchThat` (not . (flip elem rws))
+    `suchThat` (not . (`elem` rws))
 
 deriving instance ToADTArbitrary Ident
 
@@ -213,7 +219,7 @@ deriving instance ToADTArbitrary ExtIdent
 instance Arbitrary ExtIdent where
   shrink = shrinkNothing
   arbitrary =
-    ExtIdent <$> oneof [Left <$> (arbitrary `suchThat` ((<) 0)), Right <$> arbitraryName]
+    ExtIdent <$> oneof [Left <$> (arbitrary `suchThat` (0 <)), Right <$> arbitraryName]
 
 deriving instance ToADTArbitrary ImplExpl
 
@@ -233,11 +239,11 @@ instance Arbitrary pos => Arbitrary (Comment pos) where
     oneof
       [ LineComment
           <$> arbitrary
-          <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '\n' && c /= '\r')
+          <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` Text.all (\c -> c /= '\n' && c /= '\r')
           <*> arbitrary,
         BlockComment
           <$> arbitrary
-          <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` (Text.all $ \c -> c /= '*') -- prevent having a '*/'
+          <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` Text.all (/= '*') -- prevent having a '*/'
           <*> arbitrary
       ]
 
@@ -248,7 +254,7 @@ instance Arbitrary Lit where
     oneof
       [ LInt <$> arbitrary,
         LDouble <$> arbitrary,
-        (LText . Text.pack . getPrintableString) <$> arbitrary,
+        LText . Text.pack . getPrintableString <$> arbitrary,
         LHex <$> arbitrary
       ]
 
@@ -279,8 +285,8 @@ instance Arbitrary a => Arbitrary (SomeIStr a) where
   shrink (SomeIStr ISEmpty) = []
   shrink (SomeIStr (ISStr s xs)) =
     -- shrink to subterms
-    [SomeIStr xs]
-      ++
+    SomeIStr xs
+      :
       -- recursively shrink subterms
       [ case xs' of
           SomeIStr (ISStr _ _) -> xs'
@@ -322,7 +328,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
   arbitrary = sized arbitrarySized
     where
       -- Don't generate implicit variables, because parser does not support them
-      arbitraryExtIdent = ExtIdent <$> Right <$> arbitraryName
+      arbitraryExtIdent = ExtIdent . Right <$> arbitraryName
       arbitraryImplExpl = oneof [Impl <$> arbitraryExtIdent, Expl <$> arbitraryExtIdent]
       arbitraryVar :: (Arbitrary hash, Arbitrary pos) => Gen (Expr hash pos)
       arbitraryVar =
@@ -333,15 +339,15 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
               <*> arbitrary
               <*> pure LocalScope
               <*> ( Ident
-                      <$> ( oneof
-                              $ concatMap
-                                ( \case
-                                    (InfixOp _, _, op) -> [pure op]
-                                    _ -> []
-                                )
-                              $ concat
-                              $ IntMap.elems baseOpsTable
-                          )
+                      <$> oneof
+                        ( concatMap
+                            ( \case
+                                (InfixOp _, _, op) -> [pure op]
+                                _ -> []
+                            )
+                            $ concat
+                            $ IntMap.elems baseOpsTable
+                        )
                   )
           ]
       arbitraryEnum :: (Arbitrary hash, Arbitrary pos) => Gen (Expr hash pos)
@@ -351,19 +357,19 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
 
       arbitraryApp n =
         App
-          <$> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
+          <$> arbitrarySized (n `div` 3)
+          <*> arbitrarySized (n `div` 3)
 
       arbitraryLam n =
         Lam
           <$> arbitrary
           <*> arbitraryLamVars
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
         where
           -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
           arbitraryLamVars :: Arbitrary pos => Gen (NonEmpty (pos, Maybe ExtIdent))
-          arbitraryLamVars = arbitrary `suchThat` (all isSomeRight . snd . NonEmpty.unzip)
+          arbitraryLamVars = arbitrary `suchThat` all (isSomeRight . snd)
           isSomeRight (Just (ExtIdent (Right _))) = True
           isSomeRight _ = False
 
@@ -373,9 +379,9 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> arbitraryImplExpl
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
 
       arbitraryLetAnnot n =
         LetAnnot
@@ -385,9 +391,9 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrary
           <*> resize (n `div` 3) arbitrary
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
 
       arbitraryIString n =
         InterpolatedString
@@ -402,8 +408,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             0 -> pure ISEmpty
             m ->
               oneof
-                [ ISExpr <$> ((,,) <$> arbitrary <*> (arbitrarySized $ n `div` 3) <*> arbitrary) <*> goT (m - 1),
-                  ISExpr <$> ((,,) <$> arbitrary <*> (arbitrarySized $ n `div` 3) <*> arbitrary) <*> goF (m - 1)
+                [ ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goT (m - 1),
+                  ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goF (m - 1)
                 ]
 
           goF :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (IStr 'False (pos, Expr hash pos, pos))
@@ -424,55 +430,55 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryIf n =
         If
           <$> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
 
       arbitraryAssert n =
         Assert
           <$> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
 
       arbitraryOp n =
         (\(prec, fix, op) e1 e2 p h -> Op e1 p h (prec, fix) LocalScope (Ident op) e2)
-          <$> ( oneof
-                  $ map pure
-                  $ concatMap
-                    ( \(prec, xs) ->
-                        concatMap
-                          ( \case
-                              (InfixOp fix, _, op) -> [(prec, fix, op)]
-                              _ -> []
-                          )
-                          xs
-                    )
-                  $ IntMap.toList baseOpsTable
-              )
-          <*> (arbitrarySized $ n `div` 3)
-          <*> (arbitrarySized $ n `div` 3)
+          <$> oneof
+            ( map pure
+                $ concatMap
+                  ( \(prec, xs) ->
+                      concatMap
+                        ( \case
+                            (InfixOp fix, _, op) -> [(prec, fix, op)]
+                            _ -> []
+                        )
+                        xs
+                  )
+                $ IntMap.toList baseOpsTable
+            )
+          <*> arbitrarySized (n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
           <*> arbitrary
 
       arbitraryPreOp n =
         (\(prec, op) e p h -> PreOp p h prec LocalScope (Ident op) e)
-          <$> ( oneof
-                  $ map pure
-                  $ concatMap
-                    ( \(prec, xs) ->
-                        concatMap
-                          ( \case
-                              (PrefixOp, _, op) -> [(prec, op)]
-                              _ -> []
-                          )
-                          xs
-                    )
-                  $ IntMap.toList baseOpsTable
-              )
-          <*> (arbitrarySized $ n `div` 3)
+          <$> oneof
+            ( map pure
+                $ concatMap
+                  ( \(prec, xs) ->
+                      concatMap
+                        ( \case
+                            (PrefixOp, _, op) -> [(prec, op)]
+                            _ -> []
+                        )
+                        xs
+                  )
+                $ IntMap.toList baseOpsTable
+            )
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
           <*> arbitrary
 
@@ -480,7 +486,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryCase 0 = undefined
       arbitraryCase n =
         (\e cs p1 p2 p3 -> Case p1 e p2 (NonEmpty.fromList cs) p3)
-          <$> (arbitrarySized $ n `div` 3)
+          <$> arbitrarySized (n `div` 3)
           <*> ( do
                   k <- choose (1, n)
                   sequence
@@ -504,15 +510,20 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryArrayComp n =
         ArrayComp
           <$> arbitrary
-          <*> (arbitrarySized $ n `div` 3)
+          <*> arbitrarySized (n `div` 3)
           <*> arbitrary
           <*> ( NonEmpty.fromList
                   <$> do
                     k <- choose (1, n)
                     sequence [(,,,,) <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrarySized (n `div` (3 * k)) <*> pure Nothing | _ <- [1 .. k]]
               )
-          <*> oneof [(\p e -> Just (p, e)) <$> arbitrary <*> (arbitrarySized $ n `div` 3), pure Nothing]
+          <*> oneof [curry Just <$> arbitrary <*> arbitrarySized (n `div` 3), pure Nothing]
           <*> arbitrary
+
+      arbitraryRecord n = do
+        k <- choose (0, n)
+        let args = sequence [(,,Nothing) <$> arbitrary <*> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
+        Record <$> arbitrary <*> args <*> arbitrary
 
       arbitrarySized :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Expr hash pos)
       arbitrarySized 0 =
@@ -543,6 +554,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                   )
               <*> arbitrary,
             arbitraryArrayComp n,
+            arbitraryRecord n,
+            RecordField <$> arbitrary <*> arbitrary <*> arbitrary,
             One <$> arbitrary <*> arbitrarySized (n `div` 3),
             Empty <$> arbitrary,
             arbitraryAssert n,
@@ -603,7 +616,7 @@ instance Arbitrary Type.TCScheme where
       arbitraryImplType =
         ImplType <$> arbitraryImpls <*> arbitrary
       arbitraryImpls =
-        Map.fromList <$> listOf ((,) <$> (ExtIdent <$> Right <$> arbitraryName) <*> arbitrary)
+        Map.fromList <$> listOf (((,) . ExtIdent . Right <$> arbitraryName) <*> arbitrary)
 
 deriving instance ToADTArbitrary Type.Namespace
 
