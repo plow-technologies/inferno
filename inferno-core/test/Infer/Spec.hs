@@ -140,6 +140,7 @@ inferTests = describe "infer" $
     shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age" $ simpleType typeDouble
     shouldInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in let f = fun r -> r.age in f r + 1" $ simpleType typeDouble
     shouldFailToInferTypeFor "let r = {name = \"Zaphod\"; age = 391.4} in r.age + \" is too old\""
+    -- Record field access vs Module.variable
     shouldFailToInferTypeFor "rec.foo"
     shouldInferTypeFor "Array.length []" $ simpleType typeInt
     shouldFailToInferTypeFor "let r = {} in r.x"
@@ -150,12 +151,22 @@ inferTests = describe "infer" $
     shouldFailToInferTypeFor "let module r = Array in r.x"
     shouldInferTypeFor "let module r = Array in r.length []" $ simpleType typeInt
     shouldInferTypeFor "let f = fun r -> r.age in f {age = 21.1; x = 5.4}" $ simpleType typeDouble
+    -- Record polymorphism
     shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in f {age = 2; ht = 3}"
     shouldInferTypeFor "let f = fun r -> truncateTo 2 r.ht + truncateTo 2 r.wt in f" $
       makeType 0 [] (TArr (TRecord (Map.fromList [(Ident {unIdent = "ht"}, typeDouble), (Ident {unIdent = "wt"}, typeDouble)]) (RowVar (TV {unTV = 0}))) typeDouble)
     shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in fun r -> let x = r.ht + r.age + 1.1 in f r"
     shouldFailToInferTypeFor "let f = fun r -> r.age in let x = f {age = 21.1} in let y = f {age = \"t\"} in 1"
     shouldFailToInferTypeFor "let f = fun r -> truncateTo 2 r.age in f {age = \"t\"}"
+    -- Record patterns
+    shouldInferTypeFor "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3.3; y = 5.1}" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = 5.1}"
+    shouldInferTypeFor "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = [1.2]}" $ simpleType typeDouble
+    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = (y, z)} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = 5.1}" 
+    -- Duplicate fields
+    shouldFailToInferTypeFor "{x = 3.3; y = 5.1; x = 4}"
+    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3.3; y = 5.1; x = 4}"
+    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = y; x = z} -> x + y } in f {x = 3.3; y = 5.1}"
 
     -- Type annotations:
     shouldInferTypeFor "let xBoo : double = 1 in truncateTo 2 xBoo" $ simpleType typeDouble

@@ -49,6 +49,7 @@ instance Eq Con where
   COne == COne = True
   CEmpty == CEmpty = True
   (CTuple i) == (CTuple j) = i == j
+  (CRecord i) == (CRecord j) = i == j
   (CEnum e _) == (CEnum f _) = e == f
   (CInf a) == (CInf b) = show a == show b
   _ == _ = False
@@ -78,7 +79,9 @@ instance Show Pattern where
     C (CTuple _) xs -> "(" <> intercalate "," (map show xs) <> ")"
     C (CInf x) _ -> show x
     C (CEnum _ x) _ -> "#" <> show x
-    C (CRecord fs) _ -> "{" <> intercalate "," (map show $ Set.toAscList fs) <> "}"
+    C (CRecord fs) _ -> "{" <> intercalate "," fields <> "}"
+      where
+        fields = map (\(Ident f) -> show f <> " = _") $ Set.toAscList fs
     C _ _ -> "undefined"
 
 instance Pretty Pattern where
@@ -89,7 +92,10 @@ instance Pretty Pattern where
     C (CTuple _) xs -> tupled (map pretty xs)
     C (CInf x) _ -> pretty x
     C (CEnum _ x) _ -> "#" <> pretty x
-    C (CRecord fs) _ -> encloseSep "{" "}" "," (map (pretty . unIdent) $ Set.toAscList fs)
+    C (CRecord fs) xs -> encloseSep "{" "}" "," fields
+      where
+        fields = map (\(Ident f, p) -> pretty f <+> "=" <+> pretty p) fps
+        fps = zip (Set.toAscList fs) xs
     C _ _ -> "undefined"
 
 type PMatrix = [[Pattern]]

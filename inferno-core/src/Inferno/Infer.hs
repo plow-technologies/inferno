@@ -618,7 +618,7 @@ infer expr =
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) is
           return (InterpolatedString p1 (fromEitherList xs') p2, ImplType isMerged typeText, Set.unions css `Set.union` Set.fromList ics)
         Record p1 fes p2 -> do
-          -- TODO checkDuplicateFields
+          checkDuplicateFields fes
           let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
           (es', impls, tys, cs) <- go es
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
@@ -1187,8 +1187,8 @@ infer expr =
                           (ts, vars2, cs2) <- aux ps'
                           return (t : ts, vars1 ++ vars2, cs1 `Set.union` cs2)
                     PRecord _ fs _ -> do
-                      fs' <- checkDuplicateFields fs
-                      (ts, vars, cs) <- aux fs'
+                      checkDuplicateFields fs
+                      (ts, vars, cs) <- aux fs
                       let inferredTy = TRecord ts RowAbsent
                       attachTypeToPosition
                         patLoc
@@ -1263,7 +1263,7 @@ infer expr =
     -- Check if a record expr/pat has a duplicate field name
     checkDuplicateFields fs = aux mempty fs
       where
-        aux _seen [] = pure fs
+        aux _seen [] = pure ()
         aux seen ((f, p, _) : fs')
           | Set.member f seen = throwError [DuplicateRecordField f (blockPosition p)]
           | otherwise = aux (Set.insert f seen) fs'
