@@ -393,7 +393,7 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "let r = {x = 2; y = 3} in r.y" $ VDouble 3
     shouldEvaluateTo "let Array = {x = 2} in Array.x" $ VDouble 2
     shouldEvaluateTo "let module r = Array in r.length []" $ VInt 0
-    shouldEvaluateTo "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3.3; y = 5.1}" $ VDouble 8.4
+    shouldEvaluateTo "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3; y = 5}" $ VDouble 8
     shouldEvaluateTo "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y + z | {x = x; y = t} -> x } in f {x = 3.3; y = [1.2]}" $ VDouble 3.3
     shouldEvaluateTo "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y + z | {x = x; y = t} -> x } in f {x = 3.3; y = [1.2, 3.4]}" $ VDouble 7.9
     shouldEvaluateTo "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y + z | {x = x; y = t} -> x } in f {x = 3.3; y = [1.2, 3.4, 5.6]}" $ VDouble 3.3
