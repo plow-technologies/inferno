@@ -258,6 +258,11 @@ inferTests = describe "infer" $
         ["int", "double"]
         "double"
         []
+      typeRepsShouldBe
+        "forall 'a. {requires numeric on 'a, requires rep on 'a} ⇒ series of 'a → 'a"
+        ["series of double"]
+        "double"
+        [typeDouble]
 
       -- Some tests with records:
 
