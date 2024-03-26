@@ -8,10 +8,12 @@ import Control.Monad.Except (forM)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.Functor ((<&>))
+import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty (..), toList)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
 import qualified Data.Text as Text
+import Data.Tuple.Extra (fst3)
 import Inferno.Eval.Error
   ( EvalError (AssertionFailed, RuntimeError),
   )
@@ -42,8 +44,6 @@ import Prettyprinter
     layoutPretty,
   )
 import Prettyprinter.Render.Text (renderStrict)
-import Data.List (sortOn)
-import Data.Tuple.Extra (fst3)
 
 -- | Evaluation environment: (localEnv, pinnedEnv).
 -- The pinnedEnv contains functions in the prelude, and their definitions are either
@@ -265,8 +265,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
         (VTuple vs, PTuple _ ps _) -> matchElems vs $ tListToList ps
         (VRecord vs, PRecord _ ps _) ->
           if fs == fs'
-          then matchElems vs' ps'
-          else Nothing
+            then matchElems vs' ps'
+            else Nothing
           where
             (fs, vs') = unzip $ Map.toAscList vs
             (fs', ps') = unzip $ map (\(f, p', l) -> (f, (p', l))) $ sortOn fst3 ps

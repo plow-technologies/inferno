@@ -502,7 +502,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-        $ ["Duplicate record field name:", indent 2 (pretty f)]]
+        $ ["Duplicate record field name:", indent 2 (pretty f)]
+    ]
 
 parseAndInferDiagnostics ::
   forall m c.

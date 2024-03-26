@@ -162,7 +162,7 @@ inferTests = describe "infer" $
     shouldInferTypeFor "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3.3; y = 5.1}" $ simpleType typeDouble
     shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = 5.1}"
     shouldInferTypeFor "let f = fun r -> match r with { | {x = x; y = [y, z]} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = [1.2]}" $ simpleType typeDouble
-    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = (y, z)} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = 5.1}" 
+    shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = (y, z)} -> x + y | {x = x; y = t} -> x } in f {x = 3.3; y = 5.1}"
     -- Duplicate fields
     shouldFailToInferTypeFor "{x = 3.3; y = 5.1; x = 4}"
     shouldFailToInferTypeFor "let f = fun r -> match r with { | {x = x; y = y} -> x + y } in f {x = 3.3; y = 5.1; x = 4}"
