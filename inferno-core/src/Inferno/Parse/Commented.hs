@@ -48,6 +48,11 @@ insertCommentIntoPat comment e =
             else -- if the comment is neither before nor after the block, it must be within the expression
             case e of
               PTuple p1 es1 p2 -> PTuple p1 (tListFromList $ insertTuple $ tListToList es1) p2
+              PRecord p1 fps p2 -> PRecord p1 fps' p2
+                where
+                  (fs, ps) = unzip $ map (\(f, p, mp) -> (f, (p, mp))) fps
+                  ps' = insertTuple ps
+                  fps' = zipWith (\f (p, mp) -> (f, p, mp)) fs ps'
               POne p e1 -> POne p $ insertCommentIntoPat comment e1
               PCommentAfter e1 c -> PCommentAfter (insertCommentIntoPat comment e1) c
               PCommentBelow e1 c -> PCommentBelow (insertCommentIntoPat comment e1) c
