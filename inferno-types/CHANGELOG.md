@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.3.0 -- 2024-03-26
+* Add record pattern matching
+
 ## 0.4.2.0 -- 2024-03-18
 * Re-order `TRecord` in `InfernoType` so that existing serialization doesn't break
 

@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.5.0 -- 2024-03-26
+* Add duplicate record field error
+
 ## 0.2.4.0 -- 2024-03-18
 * HLint everything
 
