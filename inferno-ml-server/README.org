@@ -1,0 +1,57 @@
+* Table of Contents :toc:
+- [[#about][About]]
+- [[#running-the-server][Running the server]]
+  - [[#config-file][Config file]]
+  - [[#postgres-instance][Postgres instance]]
+  - [[#bridge-information][Bridge information]]
+- [[#routes][Routes]]
+
+* About
+~inferno-ml-server~ is a core part of the Inferno ML inference system. It is capable of evaluating Inferno scripts with ML features and is intended to be run on an EC2 instance. It implements the ~InfernoMlServerAPI~ defined in ~inferno/inferno-ml-server-types~.
+
+This repository also contains the NixOS configurations and image outputs for the Inferno ML system, containing an ~inferno-ml-server~ instances.
+* Running the server
+For production systems, ~inferno-ml-server~ will be run via the image outputs defined in this repo. Each image contains a systemd service that automatically starts the server. The server can also be run ad-hoc using Cabal or Nix:
+
+#+begin_src
+% nix run -L .#inferno-ml-server:exe:inferno-ml-server -- --config path/to/config.yaml
+#+end_src
+** Config file
+For EC2 images, the configuration is embedded directly into the image. For running the server locally, a YAML/JSON configuration must be provided:
+
+#+begin_src yaml
+port: 8080
+# Timeout for script evaluation *in seconds*
+timeout: 600
+cache:
+  path: path/to/model/cache
+  # Maximum size of model cache in bytes
+  max-size: 10737418240
+# PostgreSQL configuration. See below for more
+store:
+  host: 127.0.0.1
+  port: 5432
+  database: inferno
+  user: inferno
+  password: ""
+#+end_src
+** Postgres instance
+To run the server, a PostgreSQL database must be running and accessible (using the connection info declared in the configuration file). The initial migration script must also be run (under ~nix/inferno-ml/migrations/v1-create-tables.sql~).
+
+** Bridge information
+In order to evaluate Inferno scripts that either read from or write data (e.g. using ~valueAt~), bridge information must be registed with the server. The server can still run without bridge info, but will be unable to evaluate Inferno scripts using any of these primitives.
+
+* Routes
+~inferno-ml-server~ implements all of the ~InfernoMlServerAPI~ routes defined in ~inferno/inferno-ml-server-types~:
+*** POST ~/inference/:id?res=:res~
+Run the inference param with ID ~id~, using resolution ~res~. This evaluates the Inferno script associated with the parameter. Note that the ID is technically redundant -- exactly one ~inferno-ml-server~ will exist for a given parameter. The server itself is not aware of this, however, so the ID is included in the request.
+
+The server will only run a single inference job at a given time. This can be canceled using ~/inference/cancel~.
+*** PUT ~/inference/cancel~
+Cancel the running inference job, if any.
+*** GET ~/status~
+Get the status of the server (i.e. if it is currently evaluating an inference param or not).
+*** POST ~/bridge~
+Post the ~BridgeInfo~ to the server. This updates the Inferno interpreter to use the bridge when evaluating primitives that read from or write to the data source. Once the bridge info has been registered, it will be persisted locally.
+*** GET ~/bridge~
+Get the bridge info that has been previously registered, if any.

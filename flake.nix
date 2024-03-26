@@ -29,6 +29,19 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+    # For building `inferno-ml-server` images
+    nixos-generators = {
+      url = "github:nix-community/nixos-generators";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    # To build the images for `inferno-ml-server` (see `nix/inferno-ml-server/images/`),
+    # this input can be overridden ad hoc or using `follows` to provide extra NixOS
+    # configurations to the images
+    #
+    # The input must define `nixosModules.default`. Optionally, it can also
+    # define a `nixosModules.postgresql`, which will be applied to the Postgres
+    # images
+    image-config.url = "path:./nix/inferno-ml/dummy";
 
     # Needed for the `hasktorch` integration
     hasktorch = {
@@ -113,11 +126,10 @@
                     # only GHC 8.10.7 or newer is supported on M1 Macs
                     ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884"
                 )
-                (compiler:
-                  lib.attrsets.nameValuePair
+                (
+                  compiler: lib.attrsets.nameValuePair
                     compiler
-                    # TODO
-                    # Do we want to enable any `crossPlatforms` here?
+                    # TODO Do we want to enable any `crossPlatforms` here?
                     ((infernoFor { inherit compiler; }).flake { })
                 )
             );
@@ -164,8 +176,10 @@
         rec {
           # Set the `pkgs` that are passed to `perSystem`
           _module.args.pkgs = import nixpkgs {
-            inherit (haskell-nix) config;
             inherit system;
+            # Some of the ML/Python dependencies have unfree licenses. They
+            # would be unbuildable without this setting
+            config.allowUnfree = true;
             overlays = [ self.overlays.combined ];
           };
 
@@ -173,6 +187,29 @@
             stable = inputs.stable.legacyPackages.${system};
           } // infernoFor {
             compiler = defaultCompiler;
+          } // {
+            # Putting these in `legacyPackages` rather than `packages` for
+            # better namespacing (i.e. everything can be under an `inferno-ml-server`
+            # attribute rather than all of them at the top level)
+            inferno-ml-server =
+              let
+                imls = "inferno-ml-server";
+                cpu = (infernoFor { }).hsPkgs.${imls};
+                cuda = (infernoFor { torchConfig.device = "cuda-11"; }).hsPkgs.${imls};
+              in
+              {
+                cpu = cpu.components.exes.inferno-ml-server;
+                cuda = cuda.components.exes.inferno-ml-server;
+                tests = cpu.components.exes.tests;
+                test-client = cpu.components.exes.test-client;
+                parse-and-save = cpu.components.exes.parse-and-save;
+                dummy-bridge = cpu.components.exes.dummy-bridge;
+              };
+
+            # Also putting this here for better namespacing
+            images = import ./nix/inferno-ml/images {
+              inherit pkgs inputs system;
+            };
           };
 
           # To enter a development environment for a particular GHC version, use
@@ -236,6 +273,7 @@
                 };
               inferno = "inferno-core:exe:inferno";
               inferno-ml = "inferno-ml:exe:inferno-ml-exe";
+              inferno-ml-server = "inferno-ml-server:exe:inferno-ml-server";
               vscode-inferno = pkgs.runCommand "vscode-inferno"
                 { }
                 ''
@@ -250,6 +288,7 @@
               inferno = packages.${inferno};
               inferno-ml = packages.${inferno-ml};
               inferno-ml-cpu = packages.${inferno-ml};
+              inferno-ml-server-cpu = packages.${inferno-ml-server};
               inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
               # Build all `packages`, `checks`, and `devShells`
               default = pkgs.runCommand "almost-everything"
@@ -285,7 +324,12 @@
           #
           # `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc925`
           checks = flakes.${defaultCompiler}.checks
-            // collectOutputs "checks" flakes;
+            // collectOutputs "checks" flakes
+            // {
+            inferno-ml-server = import ./nix/inferno-ml/tests/server.nix {
+              inherit pkgs;
+            };
+          };
 
           formatter = treefmt-nix.lib.mkWrapper pkgs treefmt.config;
 
@@ -305,9 +349,8 @@
           treefmt.config = {
             projectRootFile = "flake.nix";
             programs = { nixpkgs-fmt.enable = true; }
-              # FIXME
-              # Ormolu segfaults on `aarch64-darwin` so it should be disabled
-              # everywhere (i.e. just omit it from `treefmt.config`).
+              # FIXME Ormolu segfaults on `aarch64-darwin` so it should be
+              # disabled everywhere (i.e. just omit it from `treefmt.config`).
               #
               # See https://github.com/plow-technologies/inferno/issues/10
               // lib.optionalAttrs (system != "aarch64-darwin")
@@ -356,17 +399,14 @@
               _: prev: {
                 inherit (self.legacyPackages.${prev.system}.hsPkgs)
                   inferno-core;
+                inherit (self.legacyPackages.${prev.system})
+                  inferno-ml-server;
               }
             )
+            (import ./nix/overlays/deepspeed.nix)
+            (import ./nix/overlays/environments.nix)
           ];
 
-          inferno-ml = _: prev: {
-            inherit (self.packages.${prev.system})
-              inferno-ml-remote
-              inferno-ml-remote-cpu
-              inferno-ml-remote-cuda
-              ;
-          };
         };
       };
 
