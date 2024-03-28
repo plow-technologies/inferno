@@ -1,0 +1,102 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE PackageImports #-}
+
+-- Dummy data server for "reading" and "writing" using the bridge. This permits
+-- testing Inferno primitive evaluation in `inferno-ml-server` without needing
+-- to have a real data source
+
+module Dummy where
+
+import Conduit (runConduit, sinkList, (.|))
+import Control.Monad.Except (ExceptT (ExceptT))
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader (ReaderT (runReaderT))
+import Data.Aeson (encodeFile)
+import Data.Int (Int64)
+import Data.Map (Map)
+import qualified Data.Map as Map
+import GHC.Generics (Generic)
+import Inferno.ML.Server.Client.Bridge (api)
+import Inferno.ML.Server.Module.Types (PID (PID))
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( BridgeAPI,
+    IValue (IDouble, IEmpty),
+    PairStream,
+  )
+import Lens.Micro.Platform
+import Network.HTTP.Types (Status)
+import Network.Wai (Request)
+import Network.Wai.Handler.Warp
+  ( Settings,
+    defaultSettings,
+    runSettings,
+    setLogger,
+    setPort,
+  )
+import Network.Wai.Logger (withStdoutLogger)
+import Servant
+import System.FilePath ((<.>), (</>))
+import UnliftIO.Exception (throwIO, try)
+
+main :: IO ()
+main = do
+  putStrLn "Starting dummy bridge data server..."
+  runServer
+  where
+    runServer :: IO ()
+    runServer = withEnv $ run . dummyDataServer
+      where
+        run :: Application -> IO ()
+        run app = withStdoutLogger $ (`runSettings` app) . mkSettings
+
+    mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
+    mkSettings logger =
+      defaultSettings
+        & setPort 9999
+        & setLogger logger
+
+    dummyDataServer :: DummyEnv -> Application
+    dummyDataServer env = serve api $ hoistServer api (`toHandler` env) server
+      where
+        toHandler :: DummyM a -> DummyEnv -> Handler a
+        toHandler m = Handler . ExceptT . try . runReaderT m
+
+    withEnv :: (DummyEnv -> IO ()) -> IO ()
+    withEnv f = f . DummyEnv $ Map.fromList vals
+
+    vals :: [(PID, Map Int Double)]
+    vals =
+      [ ( PID 1,
+          Map.fromList [(150, 1.5), (250, 2.5)]
+        ),
+        ( PID 2,
+          Map.fromList [(100, 10.0), (200, 20.0)]
+        )
+      ]
+
+type DummyM = ReaderT DummyEnv IO
+
+-- Dummy values to be looked up when the `valueAt` bridge is called
+newtype DummyEnv = DummyEnv
+  { values :: Map PID (Map Int Double)
+  }
+  deriving stock (Generic)
+
+server :: ServerT (BridgeAPI PID Int) DummyM
+server = writePairs :<|> valueAt :<|> latestValueAndTimeBefore
+
+-- Write the pairs to a JSON file for later inspection
+writePairs :: PID -> PairStream Int IO -> DummyM ()
+writePairs (PID p) c = liftIO $ encodeFile path =<< runConduit (c .| sinkList)
+  where
+    path :: FilePath
+    path = "./" </> show p <.> "json"
+
+-- Dummy implementation of `valueAt`, ignoring resolution for now
+valueAt :: Int64 -> PID -> Int -> DummyM IValue
+valueAt _ p t =
+  view #values
+    <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
+
+latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
+latestValueAndTimeBefore = const . const . throwIO $ userError "Unsupported"

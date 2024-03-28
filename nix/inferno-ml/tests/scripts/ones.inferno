@@ -1,0 +1,7 @@
+fun input0 ->
+let mkV = fun t -> valueAt input0 (Time.toTime (Time.seconds t)) ? 0.0
+in let v1 = mkV 150
+in let v2 = mkV 250
+in let xs = ML.ones ML.#double [1, 2]
+in let vs = ML.asTensor2 ML.#double [[150.0, v1], [250.0, v2]]
+in writePairs input0 (ML.add xs vs)

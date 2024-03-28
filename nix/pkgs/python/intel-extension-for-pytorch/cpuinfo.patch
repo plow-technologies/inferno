@@ -1,0 +1,17 @@
+diff --git a/intel_extension_for_pytorch/cpu/runtime/runtime_utils.py b/intel_extension_for_pytorch/cpu/runtime/runtime_utils.py
+index 1806d7da..dc4ddf2b 100644
+--- a/intel_extension_for_pytorch/cpu/runtime/runtime_utils.py
++++ b/intel_extension_for_pytorch/cpu/runtime/runtime_utils.py
+@@ -1,10 +1,10 @@
+ import subprocess
+ 
+ def get_num_nodes():
+-    return int(subprocess.check_output('lscpu | grep Socket | awk \'{print $2}\'', shell=True))
++    return int(subprocess.check_output("cat /proc/cpuinfo | grep 'physical id' | sort -u | wc -l", shell=True))
+ 
+ def get_num_cores_per_node():
+-    return int(subprocess.check_output('lscpu | grep Core\'.* per socket\' | awk \'{print $4}\'', shell=True))
++    return int(subprocess.check_output("cat /proc/cpuinfo | grep 'cpu cores' | wc -l", shell=True))
+ 
+ def get_core_list_of_node_id(node_id):
+     r"""
