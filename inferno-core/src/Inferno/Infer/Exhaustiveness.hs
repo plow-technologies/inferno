@@ -16,6 +16,7 @@ module Inferno.Infer.Exhaustiveness
     cOne,
     cEmpty,
     cTuple,
+    cRecord,
   )
 where
 
@@ -26,17 +27,29 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Inferno.Types.Syntax (Pat (PArray, PVar))
+import Inferno.Types.Syntax (Ident (..), Pat (PArray, PVar))
 import Inferno.Types.VersionControl (VCObjectHash)
-import Prettyprinter (Pretty (pretty), align, tupled, (<+>))
+import Prettyprinter (Pretty (pretty), align, encloseSep, tupled, (<+>))
 import Text.Megaparsec (SourcePos, initialPos)
 
-data Con = COne | CEmpty | CTuple Int | forall a. (Show a, Pretty a, Enum a) => CInf a | CEnum VCObjectHash Text
+-- | Constructors, for the purposes of pattern matching.
+-- This is an abstraction of the actual type constructors. For instance, all n-tuples
+-- have the same constructor, all n-length arrays are represented by
+-- @CInf (EnumArrayPat n)@, and all integer constants @n@ are considered as separate
+-- constructors @CInf n@. Records are represented by the set of field names.
+data Con
+  = COne
+  | CEmpty
+  | CTuple Int
+  | forall a. (Show a, Pretty a, Enum a) => CInf a
+  | CEnum VCObjectHash Text
+  | CRecord (Set.Set Ident)
 
 instance Eq Con where
   COne == COne = True
   CEmpty == CEmpty = True
   (CTuple i) == (CTuple j) = i == j
+  (CRecord i) == (CRecord j) = i == j
   (CEnum e _) == (CEnum f _) = e == f
   (CInf a) == (CInf b) = show a == show b
   _ == _ = False
@@ -51,6 +64,7 @@ instance Ord Con where
         CTuple n -> show n
         CInf v -> show v
         CEnum _ e -> show e
+        CRecord fs -> Text.unpack $ Text.intercalate "," $ map unIdent $ Set.toAscList fs
 
 -- | We define a more abstract type of a pattern here, which only deals with (C)onstructors and
 -- holes/(W)ildcards, as we do not need to make a distinction between a variable and a wildcard
@@ -65,6 +79,9 @@ instance Show Pattern where
     C (CTuple _) xs -> "(" <> intercalate "," (map show xs) <> ")"
     C (CInf x) _ -> show x
     C (CEnum _ x) _ -> "#" <> show x
+    C (CRecord fs) _ -> "{" <> intercalate "," fields <> "}"
+      where
+        fields = map (\(Ident f) -> show f <> " = _") $ Set.toAscList fs
     C _ _ -> "undefined"
 
 instance Pretty Pattern where
@@ -75,6 +92,10 @@ instance Pretty Pattern where
     C (CTuple _) xs -> tupled (map pretty xs)
     C (CInf x) _ -> pretty x
     C (CEnum _ x) _ -> "#" <> pretty x
+    C (CRecord fs) xs -> encloseSep "{" "}" "," fields
+      where
+        fields = map (\(Ident f, p) -> pretty f <+> "=" <+> pretty p) fps
+        fps = zip (Set.toAscList fs) xs
     C _ _ -> "undefined"
 
 type PMatrix = [[Pattern]]
@@ -86,6 +107,7 @@ cSize = \case
   CTuple s -> s
   CInf _ -> 0
   CEnum _ _ -> 0
+  CRecord fs -> Set.size fs
 
 specialize :: Con -> PMatrix -> PMatrix
 specialize _ [] = []
@@ -133,6 +155,7 @@ isCompleteSignature enum_sigs s =
       CEmpty -> if s == Set.fromList [COne, CEmpty] then Complete else Incomplete $ C COne [W]
       COne -> if s == Set.fromList [COne, CEmpty] then Complete else Incomplete $ C CEmpty []
       CTuple _ -> Complete
+      CRecord _ -> Complete
       CEnum e _ ->
         let e_sig = Set.map (uncurry CEnum) $ enum_sigs Map.! e
          in if s == e_sig
@@ -175,6 +198,9 @@ defaultMatrix _ = error "malformed PMatrix"
 
 cTuple :: [Pattern] -> Pattern
 cTuple xs = C (CTuple (length xs)) xs
+
+cRecord :: Set.Set Ident -> [Pattern] -> Pattern
+cRecord fs = C (CRecord fs)
 
 cOne :: Pattern -> Pattern
 cOne x = C COne [x]

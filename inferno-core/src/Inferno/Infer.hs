@@ -51,6 +51,7 @@ import qualified Data.Map.Merge.Lazy as Map
 import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
+import Data.Tuple.Extra (snd3)
 import Debug.Trace (trace)
 import Inferno.Infer.Env (Env (..), TypeMetadata (..), closeOver, closeOverType)
 import qualified Inferno.Infer.Env as Env
@@ -61,6 +62,7 @@ import Inferno.Infer.Exhaustiveness
     cEnum,
     cInf,
     cOne,
+    cRecord,
     cTuple,
     checkUsefullness,
     exhaustive,
@@ -185,6 +187,7 @@ mkPattern = \case
   PEmpty _ -> cEmpty
   PArray _ ps _ -> cInf $ mkEnumArrayPat ps
   PTuple _ ps _ -> cTuple $ map (mkPattern . fst) $ tListToList ps
+  PRecord _ ps _ -> let (fs, ps', _) = unzip3 ps in cRecord (Set.fromList fs) $ map mkPattern ps'
   PCommentAbove _ p -> mkPattern p
   PCommentAfter p _ -> mkPattern p
   PCommentBelow p _ -> mkPattern p
@@ -615,6 +618,7 @@ infer expr =
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) is
           return (InterpolatedString p1 (fromEitherList xs') p2, ImplType isMerged typeText, Set.unions css `Set.union` Set.fromList ics)
         Record p1 fes p2 -> do
+          checkDuplicateFields exprLoc fes
           let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
           (es', impls, tys, cs) <- go es
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
@@ -1182,6 +1186,24 @@ infer expr =
                           (t, vars1, cs1) <- mkPatConstraint p'
                           (ts, vars2, cs2) <- aux ps'
                           return (t : ts, vars1 ++ vars2, cs1 `Set.union` cs2)
+                    PRecord _ fs _ -> do
+                      checkDuplicateFields patLoc fs
+                      (ts, vars, cs) <- aux fs
+                      let inferredTy = TRecord ts RowAbsent
+                      attachTypeToPosition
+                        patLoc
+                        TypeMetadata
+                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat,
+                            ty = (Set.empty, ImplType Map.empty inferredTy),
+                            docs = Nothing
+                          }
+                      return (inferredTy, vars, cs)
+                      where
+                        aux [] = return (mempty, [], Set.empty)
+                        aux ((f, p', _l) : ps') = do
+                          (t, vars1, cs1) <- mkPatConstraint p'
+                          (ts, vars2, cs2) <- aux ps'
+                          return (Map.insert f t ts, vars1 ++ vars2, cs1 `Set.union` cs2)
                     PVar _ Nothing -> do
                       tv <- fresh
                       let meta =
@@ -1206,6 +1228,7 @@ infer expr =
                     POne _ p -> checkVariableOverlap vars p
                     PArray _ ps _ -> foldM checkVariableOverlap vars $ map fst ps
                     PTuple _ ps _ -> foldM checkVariableOverlap vars $ map fst $ tListToList ps
+                    PRecord _ ps _ -> foldM checkVariableOverlap vars $ map snd3 ps
                     _ -> return vars
         CommentAbove p e -> do
           (e', ty, cs) <- infer e
@@ -1236,6 +1259,14 @@ infer expr =
             Just _openMod -> do
               (e', ty, cs) <- infer e
               return (OpenModule l1 mHash modNm imports p e', ty, cs)
+  where
+    -- Check if a record expr/pat has a duplicate field name
+    checkDuplicateFields l fs = aux mempty fs
+      where
+        aux _seen [] = pure ()
+        aux seen ((f, _, _) : fs')
+          | Set.member f seen = throwError [DuplicateRecordField f l]
+          | otherwise = aux (Set.insert f seen) fs'
 
 inferPatLit :: Location SourcePos -> Lit -> InfernoType -> Infer (InfernoType, [b], Set.Set c)
 inferPatLit loc n t =

@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.2.0 -- 2024-03-26
+* Add record pattern matching
+
 ## 0.11.1.0 -- 2024-03-18
 * HLint everything
 

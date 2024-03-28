@@ -494,6 +494,16 @@ inferErrorDiagnostic = \case
           : [ indent 2 (pretty c) | c <- Set.toList tyCls
             ]
     ]
+  DuplicateRecordField (Ident f) (s, e) ->
+    [ errorDiagnosticInfer
+        (unPos $ sourceLine s)
+        (unPos $ sourceColumn s)
+        (unPos $ sourceLine e)
+        (unPos $ sourceColumn e)
+        $ renderDoc
+        $ vsep
+        $ ["Duplicate record field name:", indent 2 (pretty f)]
+    ]
 
 parseAndInferDiagnostics ::
   forall m c.
