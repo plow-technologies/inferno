@@ -33,6 +33,11 @@ import Lens.Micro.Platform
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
 --
+-- NOTE: These functions are required for our use of @inferno-ml-server@ elsewhere;
+-- open-source users will presumably not find these useful. Unfortunately, the
+-- Inferno interpreter used by the server needs to be initialized with these
+-- primitives
+--
 -- FIXME `writePairs` will be removed soon
 bridgeModules ::
   forall m.
