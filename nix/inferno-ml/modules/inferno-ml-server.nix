@@ -133,7 +133,7 @@ in
         configFile = {
           "path" = cfg.configuration;
           "set" = (
-            pkgs.writeText "inferno-ml-deploy-config.json"
+            pkgs.writeText "inferno-ml-server-config.json"
               (builtins.toJSON cfg.configuration)
           ).outPath;
         }.${builtins.typeOf cfg.configuration};
