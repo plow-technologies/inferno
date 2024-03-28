@@ -228,8 +228,12 @@
 
       flake = {
         nixosModules = {
-          # haskell.nix module configuration for projects with `inferno-ml` as a dependency
+          # haskell.nix module configuration for projects with `inferno-ml` as
+          # a dependency
           ml-project = import ./nix/modules/ml.nix;
+          # For using `inferno-ml-server` modules in a different project
+          inferno-ml-server = import ./nix/inferno-ml/modules/inferno-ml-server.nix;
+          cuda = import ./nix/inferno-ml/modules/cuda.nix;
         };
 
         overlays = {

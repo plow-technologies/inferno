@@ -1,3 +1,6 @@
+# This adds the `deepspeed` package to `python310Packages`. There are a number
+# of required dependencies that are also in our overlayed Python package set,
+# see `../pkgs/python/` for those
 final: prev: {
   python310PackageOverrides = (prev.python310PackageOverrides or [ ]) ++ [
     (
