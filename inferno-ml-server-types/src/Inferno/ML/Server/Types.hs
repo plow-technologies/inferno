@@ -24,6 +24,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import Data.Char (toLower)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
@@ -160,6 +161,45 @@ newtype Id a = Id Int64
     )
   deriving anyclass (NFData)
 
+-- | The status of some DB entity. Tagging each row with the status allows
+-- for "soft" deletion. Various types can be tagged in this way
+data StatusTag
+  = -- | The entity exists and can be used
+    Active
+  | -- | The entity is marked for eventual deletion, but has not been
+    -- truly deleted yet
+    Terminated
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
+
+instance ToField StatusTag where
+  toField =
+    toField @Text . \case
+      Active -> "active"
+      Terminated -> "terminated"
+
+instance FromJSON StatusTag where
+  parseJSON = withText "StatusTag" $ \case
+    "active" -> pure Active
+    "terminated" -> pure Terminated
+    s ->
+      fail $
+        unwords
+          [ "Invalid instance status:",
+            Text.unpack s
+          ]
+
+instance ToJSON StatusTag where
+  toJSON = String . Text.pack . fmap toLower . show
+
+instance FromField StatusTag where
+  fromField f =
+    maybe (returnError UnexpectedNull f mempty) $
+      maybe (returnError ConversionFailed f mempty) pure . \case
+        "active" -> pure Active
+        "terminated" -> pure Terminated
+        _ -> Nothing
+
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
   { -- NOTE: This is the ID for each row, stored as a `bytea` (bytes of the hash)
@@ -226,7 +266,8 @@ data Model uid gid = Model
     permissions :: Map gid ModelPermissions,
     -- | The user who owns the model, if any. Note that owning a model
     -- will implicitly set permissions
-    user :: Maybe uid
+    user :: Maybe uid,
+    status :: StatusTag
   }
   deriving stock (Show, Eq, Generic)
 
@@ -249,6 +290,7 @@ instance
       <*> field
       <*> fmap getAeson field
       <*> field
+      <*> field
 
 instance
   ( ToField uid,
@@ -262,7 +304,8 @@ instance
     [ toField Default,
       m ^. the @"name" & toField,
       m ^. the @"permissions" & Aeson & toField,
-      m ^. the @"user" & toField
+      m ^. the @"user" & toField,
+      m ^. the @"status" & toField
     ]
 
 {- ORMOLU_DISABLE -}
@@ -280,6 +323,9 @@ instance
       <*> (ensureNotNull =<< o .: "name")
       <*> o .: "permissions"
       <*> o .:? "user"
+      -- If a new model is being serialized, it does not really make
+      -- sense to require a status tag
+      <*> o .:? "status" .!= Active
     where
       ensureNotNull :: Text -> Parser Text
       ensureNotNull
@@ -299,7 +345,8 @@ instance
       [ "id" .= view (the @"id") m,
         "name" .= view (the @"name") m,
         "permissions" .= view (the @"permissions") m,
-        "user" .= view (the @"user") m
+        "user" .= view (the @"user") m,
+        "status" .= view (the @"status") m
       ]
 
 -- | Represents rows of the model version tables; each row is linked to its
@@ -318,7 +365,8 @@ data ModelVersion uid gid c = ModelVersion
     -- an 'Oid' pointing to the serialized bytes of the model imported into
     -- the PSQL large object table
     contents :: c,
-    version :: Version
+    version :: Version,
+    status :: StatusTag
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -339,6 +387,7 @@ instance
       <*> field
       <*> field
       <*> field
+      <*> field
 
 instance
   ( ToField uid,
@@ -352,7 +401,8 @@ instance
       mv ^. the @"model" & toField,
       mv ^. the @"card" & Aeson & toField,
       mv ^. the @"contents" & toField,
-      mv ^. the @"version" & toField
+      mv ^. the @"version" & toField,
+      mv ^. the @"status" & toField
     ]
 
 {- ORMOLU_DISABLE -}
@@ -372,6 +422,7 @@ instance
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
+      <*> o .:? "status" .!= Active
 {- ORMOLU_ENABLE -}
 
 instance
@@ -386,7 +437,8 @@ instance
         "model" .= view (the @"model") mv,
         "contents" .= view (the @"contents" . to unOid) mv,
         "version" .= view (the @"version") mv,
-        "card" .= view (the @"card") mv
+        "card" .= view (the @"card") mv,
+        "status" .= view (the @"status") mv
       ]
     where
       unOid :: Oid -> Word32
@@ -570,7 +622,8 @@ data InferenceParam uid gid p s = InferenceParam
     model :: Id (ModelVersion uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
-    user :: uid
+    user :: uid,
+    status :: StatusTag
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -595,6 +648,7 @@ instance
       <*> fmap getAeson field
       <*> fmap getAeson field
       <*> field
+      <*> field
 
 instance
   ( ToJSON p,
@@ -610,7 +664,8 @@ instance
       -- HACK / FIXME See above
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"outputs" & Aeson & toField,
-      ip ^. the @"user" & toField
+      ip ^. the @"user" & toField,
+      ip ^. the @"status" & toField
     ]
 
 -- | A user, parameterized by the user and group types
