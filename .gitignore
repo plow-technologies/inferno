@@ -27,6 +27,3 @@ result*
 .envrc
 .direnv/
 data/
-mnist.*
-!inferno-ml-remote/test/*.ts.pt
-!inferno-ml-remote/test/*.ts.pt.zst

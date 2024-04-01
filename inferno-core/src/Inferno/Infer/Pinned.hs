@@ -97,6 +97,9 @@ pinPat m pat =
         PTuple p1 es p2 -> do
           es' <- mapM (\(e, p3) -> (,p3) <$> pinPat m e) es
           pure $ PTuple p1 es' p2
+        PRecord p1 es p2 -> do
+          es' <- mapM (\(f, e, p3) -> (f,,p3) <$> pinPat m e) es
+          pure $ PRecord p1 es' p2
         PCommentAbove c e -> PCommentAbove c <$> pinPat m e
         PCommentAfter e c -> (`PCommentAfter` c) <$> pinPat m e
         PCommentBelow e c -> (`PCommentBelow` c) <$> pinPat m e

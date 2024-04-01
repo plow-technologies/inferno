@@ -53,6 +53,7 @@ data TypeError a
   | ModuleDoesNotExist ModuleName (Location a)
   | NameInModuleDoesNotExist ModuleName Ident (Location a)
   | AmbiguousName ModuleName Namespace (Location a)
+  | DuplicateRecordField Ident (Location a)
   deriving (Show, Eq, Ord, Foldable)
 
 makeBaseFunctor ''TypeError

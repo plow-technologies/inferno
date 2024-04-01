@@ -590,6 +590,13 @@ arbitrarySizedPat n =
                 sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
             )
           `suchThat` (\xs -> length xs /= 1)
+        <*> arbitrary,
+      PRecord
+        <$> arbitrary
+        <*> ( do
+                k <- choose (0, n)
+                sequence [(,,Nothing) <$> arbitrary <*> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
+            )
         <*> arbitrary
     ]
 

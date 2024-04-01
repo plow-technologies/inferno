@@ -531,6 +531,7 @@ letE = label ("a 'let' expression" ++ example "x") $
 pat :: Parser (Pat () SourcePos)
 pat =
   uncurry3 PArray <$> array pat
+    <|> uncurry3 PRecord <$> record pat
     <|> try (uncurry3 PTuple <$> tuple pat)
     <|> parens pat
     <|> try (hexadecimal PLit)

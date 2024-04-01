@@ -1,0 +1,42 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d0ad97f..19b63d0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -55,27 +55,7 @@ if(NOT BUILD_VERBOSE)
+     )
+ endif()
+ 
+-#-----------------------------------------------------------------------------
+-# Download source
+-#-----------------------------------------------------------------------------
+-if(NOT DEFINED Ninja_SOURCE_DIR)
+-  set(Ninja_SOURCE_DIR "${CMAKE_SOURCE_DIR}/Ninja-src")
+-
+-  # Download selected source archive
+-  ExternalProject_add(download_ninja_source
+-    SOURCE_DIR ${Ninja_SOURCE_DIR}
+-    URL ${${src_archive}_url}
+-    URL_HASH SHA256=${${src_archive}_sha256}
+-    DOWNLOAD_DIR ${ARCHIVE_DOWNLOAD_DIR}
+-    USES_TERMINAL_DOWNLOAD 1
+-    CONFIGURE_COMMAND ""
+-    BUILD_COMMAND ""
+-    BUILD_IN_SOURCE 1
+-    INSTALL_COMMAND ""
+-    ${ep_download_no_progress_args}
+-    )
+-  message(STATUS "download_ninja_source - URL: ${${src_archive}_url}")
+-elseif(NOT EXISTS ${Ninja_SOURCE_DIR})
++if(NOT EXISTS ${Ninja_SOURCE_DIR})
+   message(FATAL_ERROR "Ninja_SOURCE_DIR is set to a nonexistent directory")
+ endif()
+ 
+@@ -114,8 +94,6 @@ ExternalProject_add(build_ninja
+   USES_TERMINAL_BUILD 1
+   INSTALL_COMMAND ""
+   CMAKE_CACHE_ARGS ${_cache_args}
+-  DEPENDS
+-    download_ninja_source
+   )
+ set(ninja_executable ${Ninja_BINARY_DIR}/ninja${CMAKE_EXECUTABLE_SUFFIX})
+ set(NINJA_BUILD_LAST_STEP "build")

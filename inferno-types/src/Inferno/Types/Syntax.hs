@@ -1112,6 +1112,7 @@ data Pat hash pos
   | PEmpty pos
   | PArray pos [(Pat hash pos, Maybe pos)] pos
   | PTuple pos (TList (Pat hash pos, Maybe pos)) pos
+  | PRecord pos [(Ident, Pat hash pos, Maybe pos)] pos
   | PCommentAbove
       (Comment pos)
       (Pat hash pos)
@@ -1141,6 +1142,7 @@ patternToExpr = \case
   PEmpty _ -> Empty ()
   PArray _ ps _ -> Array () (fmap (first patternToExpr) ps) ()
   PTuple _ ps _ -> Tuple () (fmap (first patternToExpr) ps) ()
+  PRecord _ fs _ -> Record () (fmap (\(f, p, mp) -> (f, patternToExpr p, mp)) fs) ()
   PCommentAbove c p -> CommentAbove c $ patternToExpr p
   PCommentAfter p c -> CommentAfter (patternToExpr p) c
   PCommentBelow p c -> CommentBelow (patternToExpr p) c
@@ -1213,6 +1215,7 @@ instance BlockUtils (Pat hash) where
         POneF pos1 (_, pos2) -> (pos1, pos2)
         PArrayF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         PTupleF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
+        PRecordF pos1 _ pos2 -> (pos1, incSourceCol pos2 1)
         PCommentAboveF c (_, pos2) -> let (pos1, _) = blockPosition c in (pos1, pos2)
         PCommentAfterF (pos1, _) c -> let (_, pos2) = blockPosition c in (pos1, pos2)
         PCommentBelowF (pos1, _) c -> let (_, pos2) = blockPosition c in (pos1, pos2)
@@ -1417,6 +1420,24 @@ instance Pretty (Pat hash a) where
     PArray _ ps _ -> group $ flatAlt "[ " "[" <> prettyElems True "]" ps
     PTuple _ TNil _ -> "()"
     PTuple _ ps _ -> group $ flatAlt "( " "(" <> prettyElems True ")" (tListToList ps)
+    PRecord _ [] _ -> "{}"
+    PRecord _ fs _ -> group $ flatAlt "{ " "{" <> prettyRecord True fs
+      where
+        prettyRecord firstElement = \case
+          [] -> mempty
+          [(Ident f, e, _)] ->
+            pretty f
+              <+> "="
+              <+> align (pretty e)
+                <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
+          (Ident f, e, _) : es ->
+            (if not firstElement && hasLeadingComment e then line else mempty)
+              <> pretty f
+              <+> "="
+              <+> align (pretty e)
+                <> (if hasTrailingComment e then hardline else line')
+                <> "; "
+                <> prettyRecord False es
     POne _ e -> "Some" <+> align (pretty e)
     PEmpty _ -> "None"
     PCommentAbove c e -> pretty c <> hardline <> pretty e

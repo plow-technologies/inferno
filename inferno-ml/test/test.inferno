@@ -1,4 +1,0 @@
-open ML in
-let n = 64 in 
-let t = ones #int [n, n] in
-sumAll (matmul t t) // Expected: n**3

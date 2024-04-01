@@ -1,0 +1,32 @@
+diff --git a/op_builder/builder.py b/op_builder/builder.py
+index e2902918..c1dc8fd6 100644
+--- a/op_builder/builder.py
++++ b/op_builder/builder.py
+@@ -383,27 +383,6 @@ class OpBuilder(ABC):
+         return cpu_info
+ 
+     def simd_width(self):
+-        try:
+-            from cpuinfo import get_cpu_info
+-        except ImportError as e:
+-            cpu_info = self._backup_cpuinfo()
+-            if cpu_info is None:
+-                return '-D__SCALAR__'
+-
+-        try:
+-            cpu_info = get_cpu_info()
+-        except Exception as e:
+-            self.warning(f"{self.name} attempted to use `py-cpuinfo` but failed (exception type: {type(e)}, {e}), "
+-                         "falling back to `lscpu` to get this information.")
+-            cpu_info = self._backup_cpuinfo()
+-            if cpu_info is None:
+-                return '-D__SCALAR__'
+-
+-        if cpu_info['arch'] == 'X86_64':
+-            if 'avx512' in cpu_info['flags'] or 'avx512f' in cpu_info['flags']:
+-                return '-D__AVX512__'
+-            elif 'avx2' in cpu_info['flags']:
+-                return '-D__AVX256__'
+         return '-D__SCALAR__'
+ 
+     def command_exists(self, cmd):
