@@ -374,11 +374,11 @@ pattern InferenceParam ::
   Id ModelVersion ->
   Vector (SingleOrMany PID) ->
   Vector (SingleOrMany PID) ->
-  EntityId UId ->
   StatusTag ->
+  EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m is os uid st =
-  Types.InferenceParam iid s m is os uid st
+pattern InferenceParam iid s m is os st uid =
+  Types.InferenceParam iid s m is os st uid
 
 pattern VCMeta ::
   CTime ->

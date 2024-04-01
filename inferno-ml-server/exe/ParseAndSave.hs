@@ -99,10 +99,11 @@ saveScriptAndParam x now pid conn = insertScript *> insertParam
           (Id 1)
           inputs
           mempty
+          Active
         $ entityIdFromInteger 0
       where
         q :: Query
-        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?) |]
+        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?, ?) |]
 
         inputs :: Vector (SingleOrMany PID)
         inputs = Vector.singleton $ Single pid

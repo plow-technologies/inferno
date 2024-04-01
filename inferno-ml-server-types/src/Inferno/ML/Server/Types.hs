@@ -622,8 +622,8 @@ data InferenceParam uid gid p s = InferenceParam
     model :: Id (ModelVersion uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
-    user :: uid,
-    status :: StatusTag
+    status :: StatusTag,
+    user :: uid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -664,8 +664,8 @@ instance
       -- HACK / FIXME See above
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"outputs" & Aeson & toField,
-      ip ^. the @"user" & toField,
-      toField Default
+      toField Default,
+      ip ^. the @"user" & toField
     ]
 
 -- | A user, parameterized by the user and group types
