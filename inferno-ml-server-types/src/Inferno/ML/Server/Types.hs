@@ -24,7 +24,6 @@ import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
-import Data.Char (toLower)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
@@ -39,6 +38,7 @@ import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
+import Data.Time (UTCTime)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
@@ -161,45 +161,6 @@ newtype Id a = Id Int64
     )
   deriving anyclass (NFData)
 
--- | The status of some DB entity. Tagging each row with the status allows
--- for "soft" deletion. Various types can be tagged in this way
-data StatusTag
-  = -- | The entity exists and can be used
-    Active
-  | -- | The entity is marked for eventual deletion, but has not been
-    -- truly deleted yet
-    Terminated
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
-
-instance ToField StatusTag where
-  toField =
-    toField @Text . \case
-      Active -> "active"
-      Terminated -> "terminated"
-
-instance FromJSON StatusTag where
-  parseJSON = withText "StatusTag" $ \case
-    "active" -> pure Active
-    "terminated" -> pure Terminated
-    s ->
-      fail $
-        unwords
-          [ "Invalid instance status:",
-            Text.unpack s
-          ]
-
-instance ToJSON StatusTag where
-  toJSON = String . Text.pack . fmap toLower . show
-
-instance FromField StatusTag where
-  fromField f =
-    maybe (returnError UnexpectedNull f mempty) $
-      maybe (returnError ConversionFailed f mempty) pure . \case
-        "active" -> pure Active
-        "terminated" -> pure Terminated
-        _ -> Nothing
-
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
   { -- NOTE: This is the ID for each row, stored as a `bytea` (bytes of the hash)
@@ -267,7 +228,7 @@ data Model uid gid = Model
     -- | The user who owns the model, if any. Note that owning a model
     -- will implicitly set permissions
     user :: Maybe uid,
-    status :: StatusTag
+    terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
 
@@ -305,6 +266,11 @@ instance
       m ^. the @"name" & toField,
       m ^. the @"permissions" & Aeson & toField,
       m ^. the @"user" & toField,
+      -- The `ToRow` instance is only for new rows, so we don't want
+      -- to set the `terminated` field to anything by default
+      --
+      -- The same applies to the other `toField Default`s for different
+      -- types below
       toField Default
     ]
 
@@ -324,8 +290,8 @@ instance
       <*> o .: "permissions"
       <*> o .:? "user"
       -- If a new model is being serialized, it does not really make
-      -- sense to require a status tag
-      <*> o .:? "status" .!= Active
+      -- sense to require a `"terminated": null` field
+      <*> o .:? "terminated"
     where
       ensureNotNull :: Text -> Parser Text
       ensureNotNull
@@ -346,7 +312,7 @@ instance
         "name" .= view (the @"name") m,
         "permissions" .= view (the @"permissions") m,
         "user" .= view (the @"user") m,
-        "status" .= view (the @"status") m
+        "terminated" .= view (the @"terminated") m
       ]
 
 -- | Represents rows of the model version tables; each row is linked to its
@@ -366,7 +332,7 @@ data ModelVersion uid gid c = ModelVersion
     -- the PSQL large object table
     contents :: c,
     version :: Version,
-    status :: StatusTag
+    terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -422,7 +388,9 @@ instance
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
-      <*> o .:? "status" .!= Active
+      -- If a new model version is being serialized, it does not really make
+      -- sense to require a `"terminated": null` field
+      <*> o .:? "terminated"
 {- ORMOLU_ENABLE -}
 
 instance
@@ -438,7 +406,7 @@ instance
         "contents" .= view (the @"contents" . to unOid) mv,
         "version" .= view (the @"version") mv,
         "card" .= view (the @"card") mv,
-        "status" .= view (the @"status") mv
+        "terminated" .= view (the @"terminated") mv
       ]
     where
       unOid :: Oid -> Word32
@@ -622,7 +590,7 @@ data InferenceParam uid gid p s = InferenceParam
     model :: Id (ModelVersion uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
-    status :: StatusTag,
+    terminated :: Maybe UTCTime,
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
