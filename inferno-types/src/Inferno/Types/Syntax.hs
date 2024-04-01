@@ -1460,7 +1460,7 @@ instance Pretty (Pat hash a) where
             <> prettyElems False closingParen es
 
 instance Pretty (Expr hash pos) where
-  pretty = prettyPrec False 0
+  pretty = group . prettyPrec False 0
 
 prettyPrec :: Bool -> Int -> Expr hash pos -> Doc ann
 prettyPrec isBracketed prec expr =
@@ -1491,21 +1491,23 @@ prettyPrec isBracketed prec expr =
           [x] -> prettyAppAux x $ prettyPrec True 0 x
           (x : xs) -> prettyAppAux x (prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
     Lam _ xs _ e ->
-      let xsPretty = sep $ map (maybe "_" pretty . snd) $ toList xs
-          fun = group $ "fun" <> group (nest 2 $ line <> xsPretty) <> line <> "->"
-          body = group $ nest 2 $ line <> prettyPrec False 0 e
-       in group $ fun <> body
+      group $ fun <> body
+      where
+        xsPretty = sep $ map (maybe "_" pretty . snd) $ toList xs
+        fun = group $ "fun" <> group (nest 2 $ line <> xsPretty) <> line <> "->"
+        body = group $ nest 2 $ line <> prettyPrec False 0 e
     Let _ _ x _ e1 _ e2 ->
-      group $ letPretty <> line <> prettyPrec False 0 e2
+      letPretty <> line <> prettyPrec False 0 e2
       where
         letPretty = group $ "let" <+> pretty x <+> "=" <> e1Pretty <> "in"
         e1Pretty = group $ nest 2 (line <> prettyPrec False 0 e1) <> e1End
         e1End = if hasTrailingComment e1 then hardline else line
     LetAnnot _ _ x _ t _ e1 _ e2 ->
-      let e1Pretty = group $ nest 2 (line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
-          tPretty = group $ nest 2 (line <> pretty t) <> line
-          letPretty = group $ "let" <+> pretty x <+> ":" <> tPretty <> "=" <> e1Pretty <> "in"
-       in group $ letPretty <> line <> prettyPrec False 0 e2
+      letPretty <> line <> prettyPrec False 0 e2
+      where
+        e1Pretty = group $ nest 2 (line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
+        tPretty = group $ nest 2 (line <> pretty t) <> line
+        letPretty = group $ "let" <+> pretty x <+> ":" <> tPretty <> "=" <> e1Pretty <> "in"
     Lit _ l -> pretty l
     InterpolatedString _ istr _ -> enclose "`" "`" $
       group $
@@ -1589,7 +1591,7 @@ prettyPrec isBracketed prec expr =
       group $ nest 2 $ "Some" <> line <> prettyPrec False 0 e
     Empty _ -> "None"
     Assert _ c _ e ->
-      group $ assertPretty <> line <> prettyPrec False 0 e
+      assertPretty <> line <> prettyPrec False 0 e
       where
         assertPretty = group $ "assert" <> cPretty <> "in"
         cPretty = group $ nest 2 (line <> prettyPrec False 0 c) <> cEnd
@@ -1649,12 +1651,12 @@ prettyPrec isBracketed prec expr =
       where
         end = if hasTrailingComment e then hardline else mempty
     RenameModule _ (ModuleName nNew) _ (ModuleName nOld) _ e ->
-      group $ letPretty <> line <> prettyPrec False 0 e
+      letPretty <> line <> prettyPrec False 0 e
       where
         letPretty = group $ "let" <+> "module" <> mPretty <> line <> "in"
         mPretty = group $ nest 2 $ line <> pretty nNew <+> "=" <+> pretty nOld
     OpenModule _ _ (ModuleName n) ns _ e ->
-      group $ openPretty <> line <> prettyPrec False 0 e
+      openPretty <> line <> prettyPrec False 0 e
       where
         openPretty = group $ "open" <+> pretty n <> prettyImports <> iEnd
         prettyImports = case ns of
