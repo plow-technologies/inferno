@@ -1574,25 +1574,21 @@ prettyPrec isBracketed prec expr =
         cPretty = group $ nest 2 (line <> prettyPrec False 0 c) <> cEnd
         cEnd = if hasTrailingComment c then hardline else line
     Case _ e_case _ patExprs _ ->
-      group $ prettyMatch <> group (nest 2 (flatAlt line mempty <> prettyCases)) <> lastLine <> "}"
+      group $ prettyMatch <> group (nest 2 (flatAlt (line <> "| ") mempty <> prettyCases)) <> lastLine <> "}"
       where
         prettyMatch = group $ "match" <> prettyE <> "with {"
         prettyE = group $ nest 2 (line <> prettyPrec False 0 e_case) <> eEnd
         eEnd = if hasTrailingComment e_case then hardline else line
 
         (prettyCases, lastLine) =
-          prettyContainer prettyPat (\(_, _, _, e) -> e) mempty (toList patExprs)
+          prettyContainer prettyPat (\(_, _, _, e) -> e) (flatAlt "|" " |") (toList patExprs)
 
         prettyPat (_, pat, _, e) =
           group $
-            "|" -- TODO not on first elem
-              <+> align
-                ( pretty pat
-                    <> (if hasTrailingComment pat then hardline else mempty)
-                    <+> "->"
-                      <> line
-                      <> prettyPrec False 0 e
-                )
+            nest 2 (pretty pat)
+              <> (if hasTrailingComment pat then hardline else flatAlt line " ")
+              <> "->"
+              <> nest 2 (line <> prettyPrec False 0 e)
     Record _ [] _ -> "{}"
     Record _ xs _ ->
       group $ flatAlt "{ " "{" <> xsPretty <> lastLine <> "}"
@@ -1640,15 +1636,15 @@ prettyPrec isBracketed prec expr =
     OpenModule _ _ (ModuleName n) ns _ e ->
       group $ openPretty <> line <> prettyPrec False 0 e
       where
-        openPretty = group $ "open" <+> pretty n <+> prettyImports <> iEnd
+        openPretty = group $ "open" <+> pretty n <> prettyImports <> iEnd
         prettyImports = case ns of
           [] -> mempty
-          _ -> "(" <> nest 2 (flatAlt line mempty <> nsPretty) <> lastLine
+          _ -> nest 2 $ flatAlt line " " <> "(" <> flatAlt " " mempty <> nsPretty <> lastLine <> ")"
         (nsPretty, lastLine) =
           prettyContainer pretty id "," $ map fst ns
         iEnd = case ns of
-          [] -> "in"
-          _ -> ") in"
+          [] -> " in"
+          _ -> line <> "in"
   where
     indentE e = flatAlt (indent 2 e) e
 
