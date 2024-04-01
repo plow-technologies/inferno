@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.4.0 -- 2024-04-01
+* Improve pretty printer: use consistent indentation levels
+
 ## 0.4.3.0 -- 2024-03-26
 * Add record pattern matching
 
