@@ -66,14 +66,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -93,6 +85,14 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( InferenceParam,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
@@ -375,8 +375,10 @@ pattern InferenceParam ::
   Vector (SingleOrMany PID) ->
   Vector (SingleOrMany PID) ->
   EntityId UId ->
+  StatusTag ->
   InferenceParam
-pattern InferenceParam iid s m is os uid = Types.InferenceParam iid s m is os uid
+pattern InferenceParam iid s m is os uid st =
+  Types.InferenceParam iid s m is os uid st
 
 pattern VCMeta ::
   CTime ->

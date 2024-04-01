@@ -2,6 +2,7 @@
 
 create extension lo;
 
+-- Status tag for various DB entities, for soft deletion
 create type status as enum ('active', 'terminated');
 
 create table if not exists users
@@ -19,7 +20,8 @@ create table if not exists models
     -- might allow us to include a more complex structure in the future more
     -- easily
   , permissions jsonb not null
-  , "user" integer references users (id) on delete cascade
+  , "user" integer references users (id)
+  , status status not null
   , unique (name, "user")
   );
 
@@ -30,6 +32,7 @@ create table if not exists mversions
   , card jsonb not null
   , contents oid not null
   , version text not null
+  , status status not null
   , unique (version)
   );
 
@@ -48,6 +51,7 @@ create table if not exists params
   , model integer references models (id)
   , inputs jsonb
   , outputs jsonb
+  , status status not null
   , "user" integer references users (id)
   );
 
