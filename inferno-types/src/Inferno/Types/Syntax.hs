@@ -1606,8 +1606,7 @@ prettyPrec isBracketed prec expr =
 
         prettyPat (_, pat, _, e) =
           group $
-            nest 2 (pretty pat)
-              <> (if hasTrailingComment pat then hardline else flatAlt line " ")
+            group (nest 2 (pretty pat) <> (if hasTrailingComment pat then hardline else flatAlt line " "))
               <> "->"
               <> nest 2 (line <> prettyPrec False 0 e)
     Record _ [] _ -> "{}"
