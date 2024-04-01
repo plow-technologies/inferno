@@ -310,6 +310,7 @@ arrayComprE = label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, i
     symbol "|"
     (sels, cond) <- rhsE
     endPos <- getSourcePos
+    _ <- optional $ symbol ","
     char ']'
     return $ ArrayComp startPos e midPos (NEList.fromList sels) cond endPos
   where
@@ -448,6 +449,7 @@ openModArgs :: ModuleName -> Parser ([(Import SourcePos, Maybe SourcePos)], Sour
 openModArgs modNm = do
   symbol "("
   is <- go
+  _ <- optional $ symbol ","
   symbol ")"
   (opsTable, modOpsTables, customTypes) <- ask
   opsTable' <-

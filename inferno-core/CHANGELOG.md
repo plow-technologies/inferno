@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.3.0 -- 2024-04-01
+* Add --parse CLI arg and allow trailing commas in parser
+
 ## 0.11.2.0 -- 2024-03-26
 * Add record pattern matching
 
