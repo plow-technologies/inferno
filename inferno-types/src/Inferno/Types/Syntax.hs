@@ -1386,12 +1386,13 @@ instance Pretty (Import a) where
 
 prettyContainer :: BlockUtils f => (t -> Doc ann1) -> (t -> f pos) -> Doc ann1 -> [t] -> (Doc ann1, Doc ann2)
 prettyContainer prettyElem trailingElem sepr =
+  -- TODO endBracket?
   prettyElems True
   where
     prettyElems firstElement = \case
       [] -> (mempty, mempty)
       [x] ->
-        ( prettyElem x <> flatAlt sepr mempty,
+        ( prettyElem x,
           if hasTrailingComment (trailingElem x) then hardline else flatAlt line mempty
         )
       x : xs ->
@@ -1401,9 +1402,9 @@ prettyContainer prettyElem trailingElem sepr =
           res =
             (if not firstElement && hasLeadingComment (trailingElem x) then hardline else mempty)
               <> prettyElem x
+              <> (if hasTrailingComment (trailingElem x) then hardline else line')
               <> sepr
-              <> (if hasTrailingComment (trailingElem x) then hardline else line)
-              <> xsPretty
+              <+> xsPretty
 
 -- TODO fix these
 instance Pretty (Pat hash a) where
@@ -1559,7 +1560,7 @@ prettyPrec isBracketed prec expr =
             <> prettyOpAux (n + 1) e
     Tuple _ TNil _ -> "()"
     Tuple _ xs _ ->
-      group $ flatAlt "( " "(" <> nest 2 xsPretty <> lastLine <> ")"
+      group $ flatAlt "( " "(" <> xsPretty <> lastLine <> ")"
       where
         (xsPretty, lastLine) =
           prettyContainer (\(e, _) -> prettyPrec False 0 e) fst "," (tListToList xs)
@@ -1594,7 +1595,7 @@ prettyPrec isBracketed prec expr =
                 )
     Record _ [] _ -> "{}"
     Record _ xs _ ->
-      group $ flatAlt "{ " "{" <> nest 2 xsPretty <> lastLine <> "}"
+      group $ flatAlt "{ " "{" <> xsPretty <> lastLine <> "}"
       where
         (xsPretty, lastLine) =
           prettyContainer prettyElem (\(_, e, _) -> e) ";" xs
@@ -1604,13 +1605,13 @@ prettyPrec isBracketed prec expr =
       pretty r <> "." <> pretty f
     Array _ [] _ -> "[]"
     Array _ xs _ ->
-      group $ flatAlt "[ " "[" <> nest 2 xsPretty <> lastLine <> "]"
+      group $ flatAlt "[ " "[" <> xsPretty <> lastLine <> "]"
       where
         (xsPretty, lastLine) =
           prettyContainer prettyElem fst "," xs
         prettyElem (e, _) = align (prettyPrec False 0 e)
     ArrayComp _ e_body _ args e_cond _ ->
-      group $ flatAlt "[ " "[" <> nest 2 bodyPretty <> bodyEnd <> "| " <> nest 2 argsPretty <> lastLine <> "]"
+      group $ flatAlt "[ " "[" <> nest 2 bodyPretty <> bodyEnd <> "| " <> argsPretty <> lastLine <> "]"
       where
         bodyPretty = prettyPrec False 0 e_body
         bodyEnd = if hasTrailingComment e_body then hardline else line
