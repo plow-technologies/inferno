@@ -249,8 +249,8 @@ getParameter iid =
     q :: Query
     q =
       [sql|
-        SELECT * FROM params WHERE id = ?
-        AND status = 'active'
+        SELECT * FROM params
+        WHERE id = ? AND terminated IS NULL
         LIMIT 1
       |]
 

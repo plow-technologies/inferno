@@ -99,7 +99,7 @@ saveScriptAndParam x now pid conn = insertScript *> insertParam
           (Id 1)
           inputs
           mempty
-          Active
+          Nothing
         $ entityIdFromInteger 0
       where
         q :: Query

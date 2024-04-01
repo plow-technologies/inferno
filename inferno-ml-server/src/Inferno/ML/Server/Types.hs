@@ -93,6 +93,7 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
     ModelVersion,
   )
 import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
+import Data.Time (UTCTime)
 
 type RemoteM = ReaderT Env IO
 
@@ -374,11 +375,11 @@ pattern InferenceParam ::
   Id ModelVersion ->
   Vector (SingleOrMany PID) ->
   Vector (SingleOrMany PID) ->
-  StatusTag ->
+  Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m is os st uid =
-  Types.InferenceParam iid s m is os st uid
+pattern InferenceParam iid s m is os mt uid =
+  Types.InferenceParam iid s m is os mt uid
 
 pattern VCMeta ::
   CTime ->

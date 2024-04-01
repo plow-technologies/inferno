@@ -45,7 +45,7 @@ getModel mid =
     q =
       [sql|
         SELECT * FROM models WHERE id = ?
-        AND status = 'active'
+        AND terminated IS NULL
       |]
 
 -- Get a row from the model versions table, which contains the actual contents,
@@ -63,7 +63,7 @@ getModelVersion mid =
     q =
       [sql|
         SELECT * FROM mversions WHERE id = ?
-        AND status = 'active'
+        AND terminated IS NULL
       |]
 
 -- | Get the actual serialized bytes of the model, which is stored in the Postgres
