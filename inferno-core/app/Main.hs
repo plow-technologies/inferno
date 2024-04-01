@@ -4,7 +4,7 @@
 
 module Main where
 
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, second)
 import qualified Data.Map as Map
 import qualified Data.Text.IO as Text
 import Inferno.Eval (runEvalM)
@@ -12,6 +12,7 @@ import Inferno.Infer (inferExpr)
 import Inferno.Infer.Pinned (pinExpr)
 import Inferno.Module.Prelude (baseOpsTable, builtinModules, builtinModulesOpsTable, builtinModulesPinMap, builtinModulesTerms)
 import Inferno.Parse (parseExpr)
+import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Types.VersionControl (pinnedToMaybe)
 import Inferno.Utils.Prettyprinter (showPretty)
 import Options.Applicative
@@ -66,8 +67,11 @@ main = do
     Right (ast, _comments) ->
       if parse args
         then do
+          let ast' = insertCommentsIntoExpr _comments ast
           putStrLn "Parsed Expr:"
-          print $ bimap id (const ()) ast
+          print $ second (const ()) ast'
+          putStrLn "Pretty:"
+          showPretty ast'
         else do
           -- pin free variables to builtin prelude function hashes
           case pinExpr (builtinModulesPinMap prelude) ast of
