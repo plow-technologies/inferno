@@ -305,7 +305,7 @@ instance
       m ^. the @"name" & toField,
       m ^. the @"permissions" & Aeson & toField,
       m ^. the @"user" & toField,
-      m ^. the @"status" & toField
+      toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -402,7 +402,7 @@ instance
       mv ^. the @"card" & Aeson & toField,
       mv ^. the @"contents" & toField,
       mv ^. the @"version" & toField,
-      mv ^. the @"status" & toField
+      toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -665,7 +665,7 @@ instance
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"outputs" & Aeson & toField,
       ip ^. the @"user" & toField,
-      ip ^. the @"status" & toField
+      toField Default
     ]
 
 -- | A user, parameterized by the user and group types

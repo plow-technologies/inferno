@@ -21,7 +21,7 @@ create table if not exists models
     -- easily
   , permissions jsonb not null
   , "user" integer references users (id)
-  , status status not null
+  , status status not null default 'active'
   , unique (name, "user")
   );
 
@@ -32,7 +32,7 @@ create table if not exists mversions
   , card jsonb not null
   , contents oid not null
   , version text not null
-  , status status not null
+  , status status not null default 'active'
   , unique (version)
   );
 
@@ -51,7 +51,7 @@ create table if not exists params
   , model integer references models (id)
   , inputs jsonb
   , outputs jsonb
-  , status status not null
+  , status status not null default 'active'
   , "user" integer references users (id)
   );
 
@@ -60,7 +60,7 @@ create table if not exists instances
     id text primary key
     -- Private IP
   , ip inet not null
-  , status status not null
+  , status status not null default 'active'
   , param integer references params (id)
   );
 
