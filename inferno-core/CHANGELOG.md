@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.4.0 -- 2024-04-02
+* Add Inferno documentation and language guide to Inferno.Docs
+
 ## 0.11.3.1 -- 2024-04-01
 * Fix record field order in NonExhaustivePatternMatch error
 

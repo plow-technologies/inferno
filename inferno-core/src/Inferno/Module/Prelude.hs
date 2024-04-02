@@ -372,7 +372,7 @@ module Option
       | _ -> None
     };
 
-  @doc `Option.join` removes the outer "layer" of a nesteed option. (By definition, `Option.join == Option.reduce id None`).
+  @doc `Option.join` removes the outer "layer" of a nested option. (By definition, `Option.join == Option.reduce id None`).
   ~~~inferno
   Option.join None == None
   Option.join (Some None) == None
