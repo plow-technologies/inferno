@@ -46,7 +46,7 @@ create table if not exists mversions
   , version text not null
     -- See note above
   , terminated timestamptz
-  , unique (version)
+  , unique (version, model)
   );
 
 create table if not exists scripts
