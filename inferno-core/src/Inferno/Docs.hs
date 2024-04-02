@@ -5,7 +5,8 @@ module Inferno.Docs where
 import Text.RawString.QQ
 
 docs :: String
-docs = [r|
+docs =
+  [r|
 # Inferno: Documentation
 
 Inferno is a functional scripting language.
