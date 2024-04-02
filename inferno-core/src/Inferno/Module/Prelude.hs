@@ -365,7 +365,7 @@ module Option
     };
   singleton : forall 'a. 'a -> option of 'a := fun a -> Some a;
 
-  @doc Given a tuple `(Some x , Some y)`, `Option.mergeTuple`` returns `Some (x , y)` otherwise it returns `None`.;
+  @doc Given a tuple `(Some x , Some y)`, `Option.mergeTuple` returns `Some (x , y)`. If any of the components are `None` it returns `None`.;
   mergeTuple : forall 'a 'b. (option of 'a, option of 'b) -> option of ('a, 'b) :=
     fun ab -> match ab with {
       | (Some a , Some b) -> Some (a , b)
