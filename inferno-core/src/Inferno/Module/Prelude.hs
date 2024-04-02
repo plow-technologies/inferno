@@ -279,6 +279,7 @@ module Number
   @doc Absolute value (sometimes written |x|) on `int`, `double`, or `timeDiff`;
   abs : forall 'a. {requires abs on 'a} => 'a -> 'a := ###absFun###;
 
+  @doc Modulus operator. `n % m` is the remainder obtained when `n` is divided by `m`. E.g. `5 % 3 == 2`;
   (%) : int -> int -> int := ###modFun###;
 
   define roundable on double;
@@ -342,7 +343,7 @@ module Number
   @doc Convert double to int;
   doubleToInt : double -> int := ###doubleToInt###;
 
-  @doc A (pseudo)random `double`;
+  @doc A (pseudo)random `double` number in the `[0, 1)` interval. To obtain a random number between 20 and 30, use `(10 * random ()) + 20`. The `()` argument is needed so that each time `random` is called a new random value is generated.;
   random : () -> double := ###!randomFun###;
 
 module Option
@@ -365,14 +366,14 @@ module Option
     };
   singleton : forall 'a. 'a -> option of 'a := fun a -> Some a;
 
-  @doc Given a tuple `(Some x , Some y)`, `Option.mergeTuple`` returns `Some (x , y)` otherwise it returns `None`.;
+  @doc Given a tuple `(Some x , Some y)`, `Option.mergeTuple` returns `Some (x , y)`. If any of the components are `None` it returns `None`.;
   mergeTuple : forall 'a 'b. (option of 'a, option of 'b) -> option of ('a, 'b) :=
     fun ab -> match ab with {
       | (Some a , Some b) -> Some (a , b)
       | _ -> None
     };
 
-  @doc `Option.join` removes the outer "layer" of a nesteed option. (By definition, `Option.join == Option.reduce id None`).
+  @doc `Option.join` removes the outer "layer" of a nested option. (By definition, `Option.join == Option.reduce id None`).
   ~~~inferno
   Option.join None == None
   Option.join (Some None) == None
@@ -436,7 +437,18 @@ module Array
   ~~~;
   keepSomes : forall 'a. array of (option of 'a) -> array of 'a := ###!keepSomesFun###;
 
+  @doc `reduce` applied to a binary operator, a starting value (typically an identity of the operator, e.g. `0`), and an array, reduces the array using the binary operator, from left to right:
+  ~~~inferno
+  reduce f z [x1, x2, ..., xn] == (...((z `f` x1) `f` x2) `f`...) `f` xn
+  ~~~
+  Example: `reduce (+) 42 [1, 2, 3, 4] == 52`;
   reduce : forall 'a 'b. ('b -> 'a -> 'b) -> 'b -> array of 'a -> 'b := ###!foldlFun###;
+
+  @doc `reduceRight`, applied to a binary operator, a starting value (typically an identity of the operator), and a array, reduces the array using the binary operator, from right to left:
+  ~~~inferno
+  reduceRight f z [x1, x2, ..., xn] == x1 `f` (x2 `f` ... (xn `f` z)...)
+  ~~~
+  Example: `reduceRight (+) 42 [1, 2, 3, 4] == 52`, but `reduceRight (-) 0 [5, 3] == 2` while `reduceRight (-) 0 [3, 5] == -2`;
   reduceRight : forall 'a 'b. ('a -> 'b -> 'b) -> 'b -> array of 'a -> 'b := ###!foldrFun###;
 
   define zero on int;
@@ -530,7 +542,7 @@ module Time
 
   intervalEvery : timeDiff -> time -> time -> array of time := ###timeIntervalFun###;
 
-  @doc Convert time to int (returned as seconds);
+  @doc Convert time to int (returned as number of seconds since January 1, 1970, 00:00, not counting leap seconds);
   timeToInt : time -> int := ###timeToInt###;
 
   @doc Format time to string;
@@ -561,7 +573,13 @@ module Word
   @doc Switches the bit at the provided offset (`0` to `1` or vice versa);
   complementBit : forall 'a. {requires bitlike on 'a} => 'a -> int -> 'a := ###complementBitFun###;
 
-  @doc `shift x i` shifts `x` left by `i` bits if `i` is positive, or right by `-i` bits otherwise.  Right shifts perform sign extension on signed number types (i.e. they fill the top bits with `1` if `x` is negative and with `0` otherwise);
+  @doc `shift x i` shifts `x` left by `i` bits if `i` is positive, or right by `-i` bits otherwise.  Right shifts perform sign extension on signed number types (i.e. they fill the top bits with `1` if `x` is negative and with `0` otherwise).
+  Examples:
+  ~~~inferno
+  shift 0x0F0 4 == 0xF00
+  shift 0x0F0 (-4) == 0x00F
+  shift 0x0F0 (-8) == 0x000
+  ~~~;
   shift : forall 'a. {requires bitlike on 'a} => 'a -> int -> 'a := ###shiftFun###;
 
   @doc Bitwise AND;
