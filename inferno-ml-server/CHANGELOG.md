@@ -1,3 +1,6 @@
+## 2023.4.3
+* Add `terminated` column to DB types
+
 ## 2023.3.26
 * Move to `inferno` repo
 

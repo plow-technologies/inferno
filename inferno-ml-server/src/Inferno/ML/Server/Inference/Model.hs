@@ -42,7 +42,11 @@ getModel mid =
     =<< queryStore q (Only mid)
   where
     q :: Query
-    q = [sql| SELECT * FROM models WHERE id = ? |]
+    q =
+      [sql|
+        SELECT * FROM models WHERE id = ?
+        AND terminated IS NULL
+      |]
 
 -- Get a row from the model versions table, which contains the actual contents,
 -- description, etc... The foreign key of the version row can be used to get
@@ -56,7 +60,11 @@ getModelVersion mid =
     =<< queryStore q (Only mid)
   where
     q :: Query
-    q = [sql| SELECT * FROM mversions WHERE id = ? |]
+    q =
+      [sql|
+        SELECT * FROM mversions WHERE id = ?
+        AND terminated IS NULL
+      |]
 
 -- | Get the actual serialized bytes of the model, which is stored in the Postgres
 -- large object table (and must be explicitly imported using 'loImport'), along

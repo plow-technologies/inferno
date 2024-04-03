@@ -247,7 +247,12 @@ getParameter iid =
     =<< queryStore q (Only iid)
   where
     q :: Query
-    q = [sql| SELECT * FROM params WHERE id = ? LIMIT 1 |]
+    q =
+      [sql|
+        SELECT * FROM params
+        WHERE id = ? AND terminated IS NULL
+        LIMIT 1
+      |]
 
 -- | First retrieves the specified model version from the database, then fetches
 -- the associated parent model. The contents of the model version are retrieved

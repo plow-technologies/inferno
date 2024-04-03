@@ -38,6 +38,7 @@ import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
+import Data.Time (UTCTime)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
@@ -226,7 +227,8 @@ data Model uid gid = Model
     permissions :: Map gid ModelPermissions,
     -- | The user who owns the model, if any. Note that owning a model
     -- will implicitly set permissions
-    user :: Maybe uid
+    user :: Maybe uid,
+    terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
 
@@ -249,6 +251,7 @@ instance
       <*> field
       <*> fmap getAeson field
       <*> field
+      <*> field
 
 instance
   ( ToField uid,
@@ -262,7 +265,13 @@ instance
     [ toField Default,
       m ^. the @"name" & toField,
       m ^. the @"permissions" & Aeson & toField,
-      m ^. the @"user" & toField
+      m ^. the @"user" & toField,
+      -- The `ToRow` instance is only for new rows, so we don't want
+      -- to set the `terminated` field to anything by default
+      --
+      -- The same applies to the other `toField Default`s for different
+      -- types below
+      toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -280,6 +289,9 @@ instance
       <*> (ensureNotNull =<< o .: "name")
       <*> o .: "permissions"
       <*> o .:? "user"
+      -- If a new model is being serialized, it does not really make
+      -- sense to require a `"terminated": null` field
+      <*> o .:? "terminated"
     where
       ensureNotNull :: Text -> Parser Text
       ensureNotNull
@@ -299,7 +311,8 @@ instance
       [ "id" .= view (the @"id") m,
         "name" .= view (the @"name") m,
         "permissions" .= view (the @"permissions") m,
-        "user" .= view (the @"user") m
+        "user" .= view (the @"user") m,
+        "terminated" .= view (the @"terminated") m
       ]
 
 -- | Represents rows of the model version tables; each row is linked to its
@@ -318,7 +331,8 @@ data ModelVersion uid gid c = ModelVersion
     -- an 'Oid' pointing to the serialized bytes of the model imported into
     -- the PSQL large object table
     contents :: c,
-    version :: Version
+    version :: Version,
+    terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
@@ -339,6 +353,7 @@ instance
       <*> field
       <*> field
       <*> field
+      <*> field
 
 instance
   ( ToField uid,
@@ -352,7 +367,8 @@ instance
       mv ^. the @"model" & toField,
       mv ^. the @"card" & Aeson & toField,
       mv ^. the @"contents" & toField,
-      mv ^. the @"version" & toField
+      mv ^. the @"version" & toField,
+      toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -372,6 +388,9 @@ instance
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
+      -- If a new model version is being serialized, it does not really make
+      -- sense to require a `"terminated": null` field
+      <*> o .:? "terminated"
 {- ORMOLU_ENABLE -}
 
 instance
@@ -386,7 +405,8 @@ instance
         "model" .= view (the @"model") mv,
         "contents" .= view (the @"contents" . to unOid) mv,
         "version" .= view (the @"version") mv,
-        "card" .= view (the @"card") mv
+        "card" .= view (the @"card") mv,
+        "terminated" .= view (the @"terminated") mv
       ]
     where
       unOid :: Oid -> Word32
@@ -570,6 +590,7 @@ data InferenceParam uid gid p s = InferenceParam
     model :: Id (ModelVersion uid gid Oid),
     inputs :: Vector (SingleOrMany p),
     outputs :: Vector (SingleOrMany p),
+    terminated :: Maybe UTCTime,
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
@@ -595,6 +616,7 @@ instance
       <*> fmap getAeson field
       <*> fmap getAeson field
       <*> field
+      <*> field
 
 instance
   ( ToJSON p,
@@ -610,6 +632,7 @@ instance
       -- HACK / FIXME See above
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"outputs" & Aeson & toField,
+      toField Default,
       ip ^. the @"user" & toField
     ]
 

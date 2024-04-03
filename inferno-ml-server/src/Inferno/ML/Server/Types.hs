@@ -46,6 +46,7 @@ import Data.Int (Int64)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
+import Data.Time (UTCTime)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
@@ -374,9 +375,11 @@ pattern InferenceParam ::
   Id ModelVersion ->
   Vector (SingleOrMany PID) ->
   Vector (SingleOrMany PID) ->
+  Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m is os uid = Types.InferenceParam iid s m is os uid
+pattern InferenceParam iid s m is os mt uid =
+  Types.InferenceParam iid s m is os mt uid
 
 pattern VCMeta ::
   CTime ->
