@@ -44,14 +44,14 @@ import Data.Bifunctor (Bifunctor (first, second), bimap)
 import qualified Data.Bimap as Bimap
 import Data.Either (partitionEithers, rights)
 import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, unzip4)
+import Data.List (find, sortOn, unzip4)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import qualified Data.Map.Merge.Lazy as Map
 import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import qualified Data.Set as Set
 import qualified Data.Text as Text
-import Data.Tuple.Extra (snd3)
+import Data.Tuple.Extra (fst3, snd3)
 import Debug.Trace (trace)
 import Inferno.Infer.Env (Env (..), TypeMetadata (..), closeOver, closeOverType)
 import qualified Inferno.Infer.Env as Env
@@ -187,7 +187,9 @@ mkPattern = \case
   PEmpty _ -> cEmpty
   PArray _ ps _ -> cInf $ mkEnumArrayPat ps
   PTuple _ ps _ -> cTuple $ map (mkPattern . fst) $ tListToList ps
-  PRecord _ ps _ -> let (fs, ps', _) = unzip3 ps in cRecord (Set.fromList fs) $ map mkPattern ps'
+  PRecord _ ps _ -> cRecord (Set.fromList fs) $ map mkPattern ps'
+    where
+      (fs, ps', _) = unzip3 $ sortOn fst3 ps
   PCommentAbove _ p -> mkPattern p
   PCommentAfter p _ -> mkPattern p
   PCommentBelow p _ -> mkPattern p

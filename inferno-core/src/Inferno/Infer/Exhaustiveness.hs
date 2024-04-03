@@ -59,8 +59,8 @@ instance Ord Con where
   compare a b = compare (mkOrd a) (mkOrd b)
     where
       mkOrd = \case
-        COne -> "one"
-        CEmpty -> "empty"
+        COne -> "Some"
+        CEmpty -> "None"
         CTuple n -> show n
         CInf v -> show v
         CEnum _ e -> show e

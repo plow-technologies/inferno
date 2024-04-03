@@ -160,18 +160,13 @@ import Prettyprinter
     hsep,
     indent,
     lbrace,
-    lbracket,
     line,
     line',
     lparen,
     nest,
     rbrace,
-    rbracket,
     rparen,
     sep,
-    vsep,
-    -- sep,
-    -- tupled,
     (<+>),
   )
 import qualified Prettyprinter.Internal as Pretty
@@ -437,18 +432,16 @@ instance Pretty TypeClassShape where
 
 instance Pretty TCScheme where
   pretty (ForallTC xs tcs (ImplType impl ty)) =
-    prettyXs xs
-      <+> prettyPrecondition
-      <+> pretty ty
+    group $ prettyXs xs <> prettyPrecondition <> pretty ty
     where
       prettyXs [] = mempty
-      prettyXs xs' = "forall" <+> sep (fmap pretty xs') <+> "."
+      prettyXs xs' = "forall" <+> sep (fmap pretty xs') <> "." <> line
       prettyTcs tcs' = map (("requires" <+>) . pretty) $ Set.toList tcs'
       prettyImpls impls = map (\(ExtIdent idt, t) -> "implicit" <+> case idt of { Left i -> "var$" <> pretty i; Right i -> pretty i } <+> ":" <+> align (pretty t)) $ Map.toList impls
       prettyPrecondition =
         case prettyTcs tcs ++ prettyImpls impl of
           [] -> mempty
-          precs -> encloseSep lbrace rbrace comma precs <+> "⇒"
+          precs -> encloseSep lbrace rbrace comma precs <+> "⇒" <> line
 
 newtype Subst = Subst (Map.Map TV InfernoType)
   deriving stock (Eq, Ord)
@@ -1394,6 +1387,29 @@ instance Pretty (Import a) where
     ICommentAfter e c -> pretty e <+> pretty c
     ICommentBelow e c -> pretty e <> line <> pretty c
 
+prettyContainer :: BlockUtils f => (t -> Doc ann1) -> (t -> f pos) -> Doc ann1 -> [t] -> (Doc ann1, Doc ann2)
+prettyContainer prettyElem trailingElem sepr =
+  -- TODO endBracket?
+  prettyElems True
+  where
+    prettyElems firstElement = \case
+      [] -> (mempty, mempty)
+      [x] ->
+        ( prettyElem x,
+          if hasTrailingComment (trailingElem x) then hardline else flatAlt line mempty
+        )
+      x : xs ->
+        (res, lastLine')
+        where
+          (xsPretty, lastLine') = prettyElems False xs
+          res =
+            (if not firstElement && hasLeadingComment (trailingElem x) then hardline else mempty)
+              <> prettyElem x
+              <> (if hasTrailingComment (trailingElem x) then hardline else line')
+              <> sepr
+              <+> xsPretty
+
+-- TODO fix these
 instance Pretty (Pat hash a) where
   pretty = \case
     PVar _ (Just (Ident x)) -> pretty x
@@ -1444,7 +1460,7 @@ instance Pretty (Pat hash a) where
             <> prettyElems False closingParen es
 
 instance Pretty (Expr hash pos) where
-  pretty = prettyPrec False 0
+  pretty = group . prettyPrec False 0
 
 prettyPrec :: Bool -> Int -> Expr hash pos -> Doc ann
 prettyPrec isBracketed prec expr =
@@ -1463,7 +1479,6 @@ prettyPrec isBracketed prec expr =
           InterpolatedString {} -> p
           Tuple {} -> p
           Empty _ -> p
-          -- TODO test that these do the right thing!
           Record {} -> p
           RecordField {} -> p
           Array {} -> p
@@ -1476,17 +1491,23 @@ prettyPrec isBracketed prec expr =
           [x] -> prettyAppAux x $ prettyPrec True 0 x
           (x : xs) -> prettyAppAux x (prettyPrec True 0 x) <> (if hasTrailingComment x then hardline else line) <> prettyApp xs
     Lam _ xs _ e ->
-      let fun = "fun" <+> align (sep $ map (maybe "_" pretty . snd) $ toList xs) <+> "->"
-          body = align $ prettyPrec False 0 e
-       in group $ nest 2 $ vsep [fun, body]
+      group $ fun <> body
+      where
+        xsPretty = sep $ map (maybe "_" pretty . snd) $ toList xs
+        fun = group $ "fun" <> group (nest 2 $ line <> xsPretty) <> line <> "->"
+        body = group $ nest 2 $ line <> prettyPrec False 0 e
     Let _ _ x _ e1 _ e2 ->
-      let letPretty = "let" <+> align (pretty x <+> "=" <+> align (prettyPrec False 0 e1))
-          body = "in" <+> prettyPrec False 0 e2
-       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+      letPretty <> line <> prettyPrec False 0 e2
+      where
+        letPretty = group $ "let" <+> pretty x <+> "=" <> e1Pretty <> "in"
+        e1Pretty = group $ nest 2 (line <> prettyPrec False 0 e1) <> e1End
+        e1End = if hasTrailingComment e1 then hardline else line
     LetAnnot _ _ x _ t _ e1 _ e2 ->
-      let letPretty = "let" <+> align (pretty x <+> ":" <+> pretty t <+> "=" <+> align (prettyPrec False 0 e1))
-          body = "in" <+> prettyPrec False 0 e2
-       in letPretty <> (if hasTrailingComment e1 then hardline else line) <> body
+      letPretty <> line <> prettyPrec False 0 e2
+      where
+        e1Pretty = group $ nest 2 (line <> prettyPrec False 0 e1) <> (if hasTrailingComment e1 then hardline else line)
+        tPretty = group $ nest 2 (line <> pretty t) <> line
+        letPretty = group $ "let" <+> pretty x <+> ":" <> tPretty <> "=" <> e1Pretty <> "in"
     Lit _ l -> pretty l
     InterpolatedString _ istr _ -> enclose "`" "`" $
       group $
@@ -1525,10 +1546,10 @@ prettyPrec isBracketed prec expr =
           [] -> []
           s : xs -> ("}" <> s) : xs
     If _ c _ t _ f ->
-      let ifPretty = "if" <+> align (prettyPrec False 0 c)
-          thenPretty = "then" <+> align (prettyPrec False 0 t)
-          elsePretty = "else" <+> align (prettyPrec False 0 f)
-       in nest 2 $
+      let ifPretty = "if" <> group (nest 2 $ line <> prettyPrec False 0 c)
+          thenPretty = "then" <> group (nest 2 $ line <> prettyPrec False 0 t)
+          elsePretty = "else" <> group (nest 2 $ line <> prettyPrec False 0 f)
+       in group $
             ifPretty
               <> (if hasTrailingComment c then hardline else line)
               <> thenPretty
@@ -1561,137 +1582,91 @@ prettyPrec isBracketed prec expr =
           <+> (if hasLeadingComment e then line else mempty)
             <> prettyOpAux (n + 1) e
     Tuple _ TNil _ -> "()"
-    Tuple _ xs _ -> group $ flatAlt "( " "(" <> prettyTuple True (tListToList xs)
+    Tuple _ xs _ ->
+      group $ flatAlt "( " "(" <> xsPretty <> lastLine <> ")"
       where
-        prettyTuple firstElement = \case
-          [] -> mempty
-          [(e, _)] ->
-            align (prettyPrec False 0 e)
-              <> (if hasTrailingComment e then hardline <> ")" else flatAlt " )" ")")
-          (e, _) : es ->
-            (if not firstElement && hasLeadingComment e then line else mempty)
-              <> align (prettyPrec False 0 e)
-              <> (if hasTrailingComment e then hardline else line')
-              <> ", "
-              <> prettyTuple False es
-    One _ e -> "Some" <+> align (prettyPrec False 0 e)
+        (xsPretty, lastLine) =
+          prettyContainer (\(e, _) -> prettyPrec False 0 e) fst "," (tListToList xs)
+    One _ e ->
+      group $ nest 2 $ "Some" <> line <> prettyPrec False 0 e
     Empty _ -> "None"
     Assert _ c _ e ->
-      let assertPretty = "assert" <+> align (prettyPrec False 0 c)
-          body = flatAlt "    in" "in" <+> align (prettyPrec False 0 e)
-       in assertPretty <> (if hasTrailingComment c then hardline else line) <> body
+      assertPretty <> line <> prettyPrec False 0 e
+      where
+        assertPretty = group $ "assert" <> cPretty <> "in"
+        cPretty = group $ nest 2 (line <> prettyPrec False 0 c) <> cEnd
+        cEnd = if hasTrailingComment c then hardline else line
     Case _ e_case _ patExprs _ ->
-      group $
-        nest 2 $
-          vsep
-            [ "match" <+> align (prettyPrec False 0 e_case <> if hasTrailingComment e_case then hardline else mempty) <+> "with" <+> "{",
-              align (prettyCase True $ toList patExprs) <> flatAlt " }" "}"
-            ]
+      group $ prettyMatch <> group (nest 2 (flatAlt (line <> "| ") mempty <> prettyCases)) <> lastLine <> "}"
       where
-        prettyCase :: Bool -> [(a, Pat hash a, a, Expr hash a)] -> Doc ann
-        prettyCase firstElement = \case
-          [] -> mempty
-          [(_, pat, _, e)] ->
-            group
-              ( "|"
-                  <+> align
-                    ( pretty pat
-                        <> (if hasTrailingComment pat then hardline else mempty)
-                        <+> "->"
-                          <> line
-                          <> prettyPrec False 0 e
-                    )
-              )
-              <> (if hasTrailingComment e then hardline else mempty)
-          (_, pat, _, e) : es ->
-            (if not firstElement && hasLeadingComment pat then hardline else mempty)
-              <> group ("|" <+> align (pretty pat <> (if hasTrailingComment pat then hardline else mempty) <+> "->" <> line <> prettyPrec False 0 e))
-              <> (if hasTrailingComment e then hardline else line)
-              <> prettyCase False es
+        prettyMatch = group $ "match" <> prettyE <> "with {"
+        prettyE = group $ nest 2 (line <> prettyPrec False 0 e_case) <> eEnd
+        eEnd = if hasTrailingComment e_case then hardline else line
+
+        (prettyCases, lastLine) =
+          prettyContainer prettyPat (\(_, _, _, e) -> e) (flatAlt "|" " |") (toList patExprs)
+
+        prettyPat (_, pat, _, e) =
+          group $
+            group (nest 2 (pretty pat) <> (if hasTrailingComment pat then hardline else flatAlt line " "))
+              <> "->"
+              <> nest 2 (line <> prettyPrec False 0 e)
     Record _ [] _ -> "{}"
-    Record _ xs _ -> group $ flatAlt "{ " "{" <> prettyRecord True xs
+    Record _ xs _ ->
+      group $ flatAlt "{ " "{" <> xsPretty <> lastLine <> "}"
       where
-        prettyRecord firstElement = \case
-          [] -> mempty
-          [(Ident f, e, _)] ->
-            pretty f
-              <+> "="
-              <+> align (prettyPrec False 0 e)
-                <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
-          (Ident f, e, _) : es ->
-            (if not firstElement && hasLeadingComment e then line else mempty)
-              <> pretty f
-              <+> "="
-              <+> align (prettyPrec False 0 e)
-                <> (if hasTrailingComment e then hardline else line')
-                <> "; "
-                <> prettyRecord False es
+        (xsPretty, lastLine) =
+          prettyContainer prettyElem (\(_, e, _) -> e) ";" xs
+        prettyElem (Ident f, e, _) =
+          group $ pretty f <+> "=" <> group (nest 2 (line <> prettyPrec False 0 e))
     RecordField _ (Ident r) (Ident f) ->
       pretty r <> "." <> pretty f
     Array _ [] _ -> "[]"
-    Array _ xs _ -> group $ flatAlt "[ " "[" <> prettyArray True xs
+    Array _ xs _ ->
+      group $ flatAlt "[ " "[" <> xsPretty <> lastLine <> "]"
       where
-        prettyArray firstElement = \case
-          [] -> mempty
-          [(e, _)] ->
-            align (prettyPrec False 0 e)
-              <> (if hasTrailingComment e then hardline <> "]" else flatAlt " ]" "]")
-          (e, _) : es ->
-            (if not firstElement && hasLeadingComment e then line else mempty)
-              <> align (prettyPrec False 0 e)
-              <> (if hasTrailingComment e then hardline else line')
-              <> ", "
-              <> prettyArray False es
+        (xsPretty, lastLine) =
+          prettyContainer prettyElem fst "," xs
+        prettyElem (e, _) = align (prettyPrec False 0 e)
     ArrayComp _ e_body _ args e_cond _ ->
-      enclose lbracket rbracket $
-        align $
-          align (prettyPrec False 0 e_body <> if hasTrailingComment e_body then hardline else mempty) <+> align ("|" <+> argsPretty (toList args))
+      group $ flatAlt "[ " "[" <> nest 2 bodyPretty <> bodyEnd <> "| " <> argsPretty <> lastLine <> "]"
       where
-        argsPretty = \case
-          [] -> mempty
-          [(_, Ident n, _, e, _)] ->
-            pretty n
-              <+> "<-"
-              <+> align (prettyPrec False 0 e)
-                <> case e_cond of
-                  Just (_, c) -> (if hasTrailingComment e then hardline else line') <> "," <+> "if" <+> align (prettyPrec False 0 c) <> (if hasTrailingComment c then hardline else mempty)
-                  Nothing -> if hasTrailingComment e then hardline else mempty
-          (_, Ident n, _, e, _) : xs ->
-            pretty n
-              <+> "<-"
-              <+> align (prettyPrec False 0 e)
-                <> (if hasTrailingComment e then hardline else line')
-                <> ", "
-                <> argsPretty xs
+        bodyPretty = prettyPrec False 0 e_body
+        bodyEnd = if hasTrailingComment e_body then hardline else line
+        (argsPretty, lastLine) =
+          prettyContainer prettyElem trailingElem "," $
+            -- Make all the args Left, and if there's a cond, add it as a Right to the end
+            map Left (toList args) ++ maybe [] (\x -> [Right x]) e_cond
+        prettyElem (Left (_, Ident n, _, e, _)) =
+          pretty n <+> "<-" <> group (nest 2 $ line <> prettyPrec False 0 e)
+        prettyElem (Right (_, c)) =
+          "if" <> group (nest 2 $ line <> prettyPrec False 0 c)
+        trailingElem (Left (_, _, _, e, _)) = e
+        trailingElem (Right (_, c)) = c
     CommentAbove c e -> pretty c <> hardline <> prettyPrec isBracketed prec e
     CommentAfter e c -> prettyPrec isBracketed prec e <+> pretty c
     CommentBelow e c -> prettyPrec isBracketed prec e <> line <> pretty c
-    Bracketed _ e _ -> enclose lparen rparen $ if hasTrailingComment e then prettyPrec True prec e <> hardline else prettyPrec True prec e
-    RenameModule _ (ModuleName nNew) _ (ModuleName nOld) _ e ->
-      let letPretty = "let" <+> align ("module" <+> pretty nNew <+> "=" <+> pretty nOld)
-          body = flatAlt " in" "in" <+> align (prettyPrec False 0 e)
-       in letPretty <> line <> body
-    OpenModule _ _ (ModuleName n) ns _ e ->
-      "open"
-        <+> pretty n
-          <> ( case ns of
-                 [] -> line
-                 _ -> align (group $ flatAlt "( " "(" <> prettyImports True (map fst ns)) <> (if hasTrailingComment $ fst (last ns) then hardline else line)
-             )
-          <> flatAlt "  in" "in"
-        <+> align (prettyPrec False 0 e)
+    Bracketed _ e _ ->
+      group $ flatAlt "( " "(" <> nest 2 (prettyPrec True prec e) <> end <> ")"
       where
-        prettyImports firstElement = \case
+        end = if hasTrailingComment e then hardline else mempty
+    RenameModule _ (ModuleName nNew) _ (ModuleName nOld) _ e ->
+      letPretty <> line <> prettyPrec False 0 e
+      where
+        letPretty = group $ "let" <+> "module" <> mPretty <> line <> "in"
+        mPretty = group $ nest 2 $ line <> pretty nNew <+> "=" <+> pretty nOld
+    OpenModule _ _ (ModuleName n) ns _ e ->
+      openPretty <> line <> prettyPrec False 0 e
+      where
+        openPretty = group $ "open" <+> pretty n <> prettyImports <> iEnd
+        prettyImports = case ns of
           [] -> mempty
-          [i] ->
-            align (pretty i)
-              <> (if hasTrailingComment i then hardline <> ")" else flatAlt " )" ")")
-          i : is ->
-            (if not firstElement && hasLeadingComment i then line else mempty)
-              <> align (pretty i)
-              <> (if hasTrailingComment i then hardline else line')
-              <> ", "
-              <> prettyImports False is
+          _ -> nest 2 $ flatAlt line " " <> "(" <> flatAlt " " mempty <> nsPretty <> lastLine <> ")"
+        (nsPretty, lastLine) =
+          prettyContainer pretty id "," $ map fst ns
+        iEnd = case ns of
+          [] -> " in"
+          _ -> line <> "in"
   where
     indentE e = flatAlt (indent 2 e) e
 
