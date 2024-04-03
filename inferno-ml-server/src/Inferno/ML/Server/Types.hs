@@ -46,6 +46,7 @@ import Data.Int (Int64)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
+import Data.Time (UTCTime)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
@@ -66,6 +67,14 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( InferenceParam,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -85,15 +94,6 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
-import Data.Time (UTCTime)
 
 type RemoteM = ReaderT Env IO
 
