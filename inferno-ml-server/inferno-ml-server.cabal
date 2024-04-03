@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               inferno-ml-server
-version:            2023.3.26
+version:            2023.4.3
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
 homepage:
