@@ -22,6 +22,7 @@
         let
           inferno-core = "inferno-core:exe:inferno";
           inferno-ml = "inferno-ml:exe:inferno-ml-exe";
+          inferno-ml-lsp = "inferno-ml:exe:inferno-ml-lsp-server";
           inferno-lsp-server = packages."inferno-lsp:exe:inferno-lsp-server";
         in
         collectOutputs "packages" flakes // {
@@ -31,6 +32,7 @@
           inferno = packages.${inferno-core};
           inferno-ml = packages.${inferno-ml};
           inferno-ml-cpu = packages.${inferno-ml};
+          inferno-ml-lsp-server = flakes."${defaultCompiler}".packages.${inferno-ml-lsp};
           inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
           vscode-inferno = pkgs.runCommand "vscode-inferno"
             { }
