@@ -1,11 +1,11 @@
 # Developing Inferno scripts (with VSCode)
 
 ## Inferno syntax highlighting and LSP server
-- In a shell go to `~/inferno` (unless you cloned the `inferno` repo into a different location) and run `nix build .#vscode-inferno-lsp-server` 
+- Go to your local checkout of the `inferno` repo (e.g. `~/inferno`) and run `nix build .#vscode-inferno-lsp-server` 
     - Then in VSCode press `ctrl+shift+P` and run `Install from VSIX`
     - In the window, navigate to `~/inferno/result` and select `inferno-lsp-server.vsix`
     - Do the same after for the VSIX created using `nix build .#vscode-inferno-syntax-highlighting`
-- Run `nix build .#inferno-lsp-server --print-out-paths` (`nix build .#inferno-ml-lsp-server-ghc925` for inferno-ml)
+- Run `nix build .#inferno-lsp-server --print-out-paths` (`nix build .#inferno-ml-lsp-server` for inferno-ml)
     - Copy the store path (`nix/store/...`) that is printed to stdout to your clipboard 
     - Open VSCode, press `ctrl + shift + P` and search for `Open User Settings`
     - Search for `Inferno`, find the `Inferno LSP` extension tab and open it
@@ -72,7 +72,7 @@ let model = ML.loadModel "path/to/model/<model_name>.ts.pt" in ...
 
 You can pass arguments of type `array of tensor` to the model by passing them to `ML.forward` along with your model.
 
-like
+For example:
 
 ```
 let outputs = ML.forward model inputs in ...
@@ -113,6 +113,6 @@ If you have other Python libraries that you'd like included in the Nix shell env
 }
 ```
 
-You may also consider adding another Python shell environment to our flake `devShells`.
+You may also consider adding another Python shell environment to our flake's `devShells` (defined in `nix/dev-shells.nix`).
 
 The correct version of TorchScript can also be found [here](https://github.com/plow-technologies/inferno/blob/main/.github/workflows/build.yml) if you'd like to install it locally.
