@@ -492,6 +492,8 @@ module Array
         (None, None)
     in fun arr -> Option.mergeTuple (firstLast arr);
 
+  // bfill : forall 'a. array of ('a, int) -> array of int -> 'a -> array of ('a, int) := ###!bfillFun###;
+
   reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
 
   dropWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!dropWhileFun###;

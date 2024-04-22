@@ -177,6 +177,27 @@ foldrFun =
             _ -> throwM $ RuntimeError "reduceRight: expecting an array in the third argument"
     _ -> throwM $ RuntimeError "reduceRight: expecting a function in the first argument"
 
+-- bfill : forall 'a. array of ('a, int) -> array of int -> 'a -> array of ('a, int)
+-- bfillFun :: (MonadThrow m) => Value c m
+-- bfillFun =
+--   VFun $ \case
+--     VArray values ->
+--       pure $ VFun $ \case
+--         VArray vTimestamps ->
+--           pure $ VFun $ \vDefault -> do
+--             timestamps <- extractInts vTimestamps
+--             let res = bfill2 values timestamps vDefault
+--             pure $ VArray $ map VTuple res
+--         _ -> throwM $ RuntimeError "bfill: expecting an array in the second argument"
+--     _ -> throwM $ RuntimeError "bfill: expecting an array in the first argument"
+--   where
+--     bfill2 :: Ord b => [(a, b)] -> [b] -> a -> [(a, b)]
+--     bfill2 values@((v, t) : values') timestamps@(t' : timestamps') def
+--       | t' <= t = (v, t') : bfill2 values timestamps' def
+--       | otherwise = bfill2 values' timestamps def
+--     bfill2 [] (t' : timestamps') def = (def, t') : bfill2 [] timestamps' def
+--     bfill2 _ [] _ = []
+
 traceFun :: (Monad m, Pretty c) => (Value c m)
 traceFun = VFun $ \msg -> trace ("TRACE: " <> unpack (renderPretty msg)) $ return idFun
 
