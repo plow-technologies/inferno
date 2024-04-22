@@ -398,8 +398,7 @@ reverseFun =
     VArray vs -> pure $ VArray $ reverse vs
     _ -> throwM $ RuntimeError "reverse: expecting an array"
 
--- dropWhileFun :: (MonadThrow m) => Value c m
-dropWhileFun :: (MonadThrow m, MonadIO m) => Value c m
+dropWhileFun :: (MonadThrow m) => Value c m
 dropWhileFun =
   VFun $ \case
     VFun p ->
@@ -410,33 +409,9 @@ dropWhileFun =
   where
     dropWhile' _ [] = pure []
     dropWhile' p xs@(x : xs') =
-      -- Test -1: don't eval the predicate
-      -- randomIO >>= \case
-      --   True -> dropWhile' p xs'
-      --   False -> pure xs
-
       p x >>= \case
-        -- Original implementation:
         VEnum h "true" | h == enumBoolHash -> dropWhile' p xs'
         VEnum h "false" | h == enumBoolHash -> pure xs
-        -- Test 0: only compare Idents
-        -- VEnum _ "true" -> dropWhile' p xs'
-        -- VEnum _ "false" -> pure xs
-        -- Test 1: don't compare anything
-        -- VEnum _ _ -> do
-        --   randomIO >>= \case
-        --     True -> dropWhile' p xs'
-        --     False -> pure xs
-        -- Test 1.5: don't compare anything, but never drop
-        -- VEnum _ _ -> pure xs
-        -- Test 2: compare ints
-        -- VInt 1 -> dropWhile' p xs'
-        -- VInt 0 -> pure xs
-        -- Test 3: use VBool
-        -- VBool True -> dropWhile' p xs'
-        -- VBool False -> pure xs
-        -- Test 4: just always assume p is false
-        -- VInt _ -> pure xs
         _ -> throwM $ RuntimeError "dropWhile: expecting predicate to return a bool"
 
 singletonFun :: Monad m => (Value c m)
