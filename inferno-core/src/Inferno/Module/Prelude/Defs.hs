@@ -378,6 +378,26 @@ arrayIndexFun =
         Nothing -> throwM $ RuntimeError "Array index out of bounds"
     _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
+consFun :: (MonadThrow m) => Value c m
+consFun =
+  VFun $ \v ->
+    pure $ VFun $ \case
+      VArray vs -> pure $ VArray $ v : vs
+      _ -> throwM $ RuntimeError "cons: expecting an array"
+
+unconsFun :: (MonadThrow m) => Value c m
+unconsFun =
+  VFun $ \case
+    VArray [] -> pure VEmpty
+    VArray (v : vs) -> pure $ VOne $ VTuple [v, VArray vs]
+    _ -> throwM $ RuntimeError "uncons: expecting an array"
+
+reverseFun :: (MonadThrow m) => Value c m
+reverseFun =
+  VFun $ \case
+    VArray vs -> pure $ VArray $ reverse vs
+    _ -> throwM $ RuntimeError "reverse: expecting an array"
+
 singletonFun :: Monad m => (Value c m)
 singletonFun = VFun $ \v -> return $ VArray [v]
 

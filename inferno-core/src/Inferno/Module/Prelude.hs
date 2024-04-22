@@ -32,6 +32,7 @@ import Inferno.Module.Prelude.Defs
     clearBitFun,
     complementBitFun,
     complementFun,
+    consFun,
     cosFun,
     coshFun,
     dayFun,
@@ -83,6 +84,7 @@ import Inferno.Module.Prelude.Defs
     powFun,
     randomFun,
     recipFun,
+    reverseFun,
     roundFun,
     roundToFun,
     secondsBeforeFun,
@@ -109,6 +111,7 @@ import Inferno.Module.Prelude.Defs
     toWord64Fun,
     truncateFun,
     truncateToFun,
+    unconsFun,
     weeksBeforeFun,
     weeksFun,
     xorFun,
@@ -488,6 +491,8 @@ module Array
         (None, None)
     in fun arr -> Option.mergeTuple (firstLast arr);
 
+  reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
+
 module Text
 
   append : text -> text -> text := ###appendText###;
@@ -696,6 +701,13 @@ module Base
 
   @doc Safe array indexing: an infix operator to get the ith element of an array. Returns None if i is out of bounds.;
   (!?) : forall 'a. array of 'a -> int -> option of 'a := Array.getOpt;
+
+  cons : forall 'a. 'a -> array of 'a -> array of 'a := ###!consFun###;
+
+  // TODO why doesn't this work?
+  // (:) : forall 'a. 'a -> array of 'a -> array of 'a := cons;
+
+  uncons : forall 'a. array of 'a -> option of ('a, array of 'a) := ###!unconsFun###;
 
   @doc The `fromOption` function unwraps an optional value, if given a default value to fall back on in case the value of the optional is `None`.
   ~~~inferno
