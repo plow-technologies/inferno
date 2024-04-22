@@ -40,6 +40,7 @@ import Inferno.Module.Prelude.Defs
     daysFun,
     divFun,
     doubleToInt,
+    dropWhileFun,
     enumFromToInt64,
     eqFun,
     expFun,
@@ -492,6 +493,9 @@ module Array
     in fun arr -> Option.mergeTuple (firstLast arr);
 
   reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
+
+  dropWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!dropWhileFun###;
+  // dropWhile : forall 'a. ('a -> int) -> array of 'a -> array of 'a := ###!dropWhileFun###;
 
 module Text
 
