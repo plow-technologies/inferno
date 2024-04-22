@@ -32,6 +32,7 @@ import Inferno.Module.Prelude.Defs
     clearBitFun,
     complementBitFun,
     complementFun,
+    consFun,
     cosFun,
     coshFun,
     dayFun,
@@ -39,6 +40,7 @@ import Inferno.Module.Prelude.Defs
     daysFun,
     divFun,
     doubleToInt,
+    dropWhileFun,
     enumFromToInt64,
     eqFun,
     expFun,
@@ -83,6 +85,7 @@ import Inferno.Module.Prelude.Defs
     powFun,
     randomFun,
     recipFun,
+    reverseFun,
     roundFun,
     roundToFun,
     secondsBeforeFun,
@@ -96,6 +99,7 @@ import Inferno.Module.Prelude.Defs
     stripText,
     subFun,
     sumFun,
+    takeWhileFun,
     tanFun,
     tanhFun,
     testBitFun,
@@ -109,6 +113,7 @@ import Inferno.Module.Prelude.Defs
     toWord64Fun,
     truncateFun,
     truncateToFun,
+    unconsFun,
     weeksBeforeFun,
     weeksFun,
     xorFun,
@@ -383,6 +388,12 @@ module Option
 
 module Array
 
+  @doc Array construction. `cons x xs` is the array that has `x` as its first element and array `xs` as the rest of the array. For example, `cons 3 [1, 2] == [3, 1, 2]`;
+  cons : forall 'a. 'a -> array of 'a -> array of 'a := ###!consFun###;
+
+  @doc Array destruction into head and tail. `uncons xs` is `Some (x, xs1)` if array has at least one element and `xs == cons x xs1`, and is `None` if `xs == []`. For example, `uncons [1, 2, 3] == Some (1, [2, 3])`;
+  uncons : forall 'a. array of 'a -> option of ('a, array of 'a) := ###!unconsFun###;
+
   @doc Array indexing: gets the ith element of an array. Throws a RuntimeError if i is out of bounds.;
   get : forall 'a. array of 'a -> int -> 'a := ###!arrayIndexFun###;
 
@@ -487,6 +498,15 @@ module Array
         })
         (None, None)
     in fun arr -> Option.mergeTuple (firstLast arr);
+
+  @doc `Array.reverse xs` returns the elements of `xs` in reverse order;
+  reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
+
+  @doc `Array.takeWhile`, applied to a predicate `p` and a list `xs`, returns the longest prefix (possibly empty) of `xs` of elements that satisfy `p`;
+  takeWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!takeWhileFun###;
+
+  @doc `Array.dropWhile p xs` drops the longest (possibly empty) prefix of elements of `xs` satisfying the predicate `p` and returns the remainder;
+  dropWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!dropWhileFun###;
 
 module Text
 
@@ -696,6 +716,9 @@ module Base
 
   @doc Safe array indexing: an infix operator to get the ith element of an array. Returns None if i is out of bounds.;
   (!?) : forall 'a. array of 'a -> int -> option of 'a := Array.getOpt;
+
+  // TODO why doesn't this work?
+  // (:) : forall 'a. 'a -> array of 'a -> array of 'a := cons;
 
   @doc The `fromOption` function unwraps an optional value, if given a default value to fall back on in case the value of the optional is `None`.
   ~~~inferno

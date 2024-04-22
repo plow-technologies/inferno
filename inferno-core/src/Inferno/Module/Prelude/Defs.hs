@@ -378,6 +378,58 @@ arrayIndexFun =
         Nothing -> throwM $ RuntimeError "Array index out of bounds"
     _ -> throwM $ RuntimeError "arrayIndexFun: expecting an array"
 
+consFun :: (MonadThrow m) => Value c m
+consFun =
+  VFun $ \v ->
+    pure $ VFun $ \case
+      VArray vs -> pure $ VArray $ v : vs
+      _ -> throwM $ RuntimeError "cons: expecting an array"
+
+unconsFun :: (MonadThrow m) => Value c m
+unconsFun =
+  VFun $ \case
+    VArray [] -> pure VEmpty
+    VArray (v : vs) -> pure $ VOne $ VTuple [v, VArray vs]
+    _ -> throwM $ RuntimeError "uncons: expecting an array"
+
+reverseFun :: (MonadThrow m) => Value c m
+reverseFun =
+  VFun $ \case
+    VArray vs -> pure $ VArray $ reverse vs
+    _ -> throwM $ RuntimeError "reverse: expecting an array"
+
+takeWhileFun :: (MonadThrow m) => Value c m
+takeWhileFun =
+  VFun $ \case
+    VFun p ->
+      pure $ VFun $ \case
+        VArray vs -> VArray <$> takeWhile' p vs
+        _ -> throwM $ RuntimeError "takeWhile: expecting an array"
+    _ -> throwM $ RuntimeError "takeWhile: expecting a function"
+  where
+    takeWhile' _ [] = pure []
+    takeWhile' p (x : xs) =
+      p x >>= \case
+        VEnum h "true" | h == enumBoolHash -> (x :) <$> takeWhile' p xs
+        VEnum h "false" | h == enumBoolHash -> pure []
+        _ -> throwM $ RuntimeError "takeWhile: expecting predicate to return a bool"
+
+dropWhileFun :: (MonadThrow m) => Value c m
+dropWhileFun =
+  VFun $ \case
+    VFun p ->
+      pure $ VFun $ \case
+        VArray vs -> VArray <$> dropWhile' p vs
+        _ -> throwM $ RuntimeError "dropWhile: expecting an array"
+    _ -> throwM $ RuntimeError "dropWhile: expecting a function"
+  where
+    dropWhile' _ [] = pure []
+    dropWhile' p xs@(x : xs') =
+      p x >>= \case
+        VEnum h "true" | h == enumBoolHash -> dropWhile' p xs'
+        VEnum h "false" | h == enumBoolHash -> pure xs
+        _ -> throwM $ RuntimeError "dropWhile: expecting predicate to return a bool"
+
 singletonFun :: Monad m => (Value c m)
 singletonFun = VFun $ \v -> return $ VArray [v]
 
