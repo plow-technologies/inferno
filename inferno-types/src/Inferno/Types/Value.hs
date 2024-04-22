@@ -35,6 +35,7 @@ import System.Posix.Types (EpochTime)
 
 data Value custom m
   = VInt Int64
+  | VBool Bool
   | VDouble Double
   | VWord16 Word16
   | VWord32 Word32
@@ -53,6 +54,7 @@ data Value custom m
 
 instance NFData custom => NFData (Value custom m) where
   rnf (VInt x) = x `seq` ()
+  rnf (VBool x) = x `seq` ()
   rnf (VDouble x) = x `seq` ()
   rnf (VWord16 x) = x `seq` ()
   rnf (VWord32 x) = x `seq` ()
@@ -71,6 +73,7 @@ instance NFData custom => NFData (Value custom m) where
 
 instance Eq c => Eq (Value c m) where
   (VInt i1) == (VInt i2) = i1 == i2
+  (VBool b1) == (VBool b2) = b1 == b2
   (VDouble v1) == (VDouble v2) = v1 == v2
   (VWord16 w1) == (VWord16 w2) = w1 == w2
   (VWord32 w1) == (VWord32 w2) = w1 == w2
@@ -91,6 +94,7 @@ instance Eq c => Eq (Value c m) where
 instance Pretty c => Pretty (Value c m) where
   pretty = \case
     VInt n -> pretty n
+    VBool n -> pretty n -- TODO true instead of True?
     VDouble n -> pretty n
     VWord16 w -> "0x" <> pretty (showHex w "")
     VWord32 w -> "0x" <> pretty (showHex w "")

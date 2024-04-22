@@ -184,10 +184,10 @@ idFun :: Monad m => (Value c m)
 idFun = VFun $ \x -> return x
 
 eqFun :: (Monad m, Eq c) => (Value c m)
-eqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VEnum enumBoolHash "true" else VEnum enumBoolHash "false"
+eqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VBool True else VBool False
 
 neqFun :: (Monad m, Eq c) => (Value c m)
-neqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VEnum enumBoolHash "false" else VEnum enumBoolHash "true"
+neqFun = VFun $ \x -> return $ VFun $ \y -> return $ if x == y then VBool False else VBool True
 
 enumFromToInt64 :: Int64 -> Int64 -> [Int64]
 enumFromToInt64 = enumFromTo

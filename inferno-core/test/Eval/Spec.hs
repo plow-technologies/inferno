@@ -431,8 +431,8 @@ evalTests = describe "evaluate" $
 
     evalInMonadTest
   where
-    vTrue = VEnum enumBoolHash (Ident "true")
-    vFalse = VEnum enumBoolHash (Ident "false")
+    vTrue = VBool True
+    vFalse = VBool False
 
 -------------------------------------------------------------------------------
 -- Test running interpreter in a custom (reader) monad:

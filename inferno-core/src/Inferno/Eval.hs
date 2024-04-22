@@ -84,14 +84,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
             ( \vs -> do
                 let nenv = foldr (uncurry Map.insert) localEnv vs
                 eval (nenv, pinnedEnv) cond >>= \case
-                  VEnum hash "true" ->
-                    if hash == enumBoolHash
-                      then Just <$> eval (nenv, pinnedEnv) e
-                      else throwM $ RuntimeError "failed to match with a bool"
-                  VEnum hash "false" ->
-                    if hash == enumBoolHash
-                      then return Nothing
-                      else throwM $ RuntimeError "failed to match with a bool"
+                  VBool True -> Just <$> eval (nenv, pinnedEnv) e
+                  VBool False -> return Nothing
                   _ -> throwM $ RuntimeError "failed to match with a bool"
             )
     where
@@ -112,6 +106,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
                       return $ map ((ExtIdent $ Right x, v) :) res
                   )
             _ -> throwM $ RuntimeError "failed to match with an array"
+  Enum_ (Just hash) _ "true" | hash == enumBoolHash -> return $ VBool True
+  Enum_ (Just hash) _ "false" | hash == enumBoolHash -> return $ VBool False
   Enum_ (Just hash) _ i -> return $ VEnum hash i
   Enum_ Nothing _ _ -> throwM $ RuntimeError "All enums must be pinned"
   Var_ (Just hash) _ x ->
@@ -188,14 +184,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
     local (Map.insert x e') $ eval env body
   If_ cond tr fl ->
     eval env cond >>= \case
-      VEnum hash "true" ->
-        if hash == enumBoolHash
-          then eval env tr
-          else throwM $ RuntimeError "failed to match with a bool"
-      VEnum hash "false" ->
-        if hash == enumBoolHash
-          then eval env fl
-          else throwM $ RuntimeError "failed to match with a bool"
+      VBool True -> eval env tr
+      VBool False -> eval env fl
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Tuple_ es ->
     foldrM (\(e, _) vs -> eval env e <&> (: vs)) [] (tListToList es) <&> VTuple
@@ -214,14 +204,8 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
   Empty_ -> return VEmpty
   Assert_ cond e ->
     eval env cond >>= \case
-      VEnum hash "false" ->
-        if hash == enumBoolHash
-          then throwM AssertionFailed
-          else throwM $ RuntimeError "failed to match with a bool"
-      VEnum hash "true" ->
-        if hash == enumBoolHash
-          then eval env e
-          else throwM $ RuntimeError "failed to match with a bool"
+      VBool True -> throwM AssertionFailed
+      VBool False -> eval env e
       _ -> throwM $ RuntimeError "failed to match with a bool"
   Case_ e pats -> do
     v <- eval env e
@@ -239,6 +223,9 @@ eval env@(localEnv, pinnedEnv) expr = case expr of
       match v p = case (v, p) of
         (_, PVar _ (Just (Ident x))) -> Just (Map.singleton (ExtIdent $ Right x) v, mempty)
         (_, PVar _ Nothing) -> Just mempty
+        -- Since the expr type checked, no need to check hash == enumBoolHash
+        (VBool True, PEnum _ (Just _h) _ "true") -> Just mempty
+        (VBool False, PEnum _ (Just _h) _ "false") -> Just mempty
         (VEnum h1 i1, PEnum _ (Just h2) _ i2) ->
           if h1 == h2 && i1 == i2
             then Just mempty

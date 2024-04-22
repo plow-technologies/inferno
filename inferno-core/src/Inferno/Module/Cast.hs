@@ -70,17 +70,12 @@ instance ToValue c m Lit where
     LHex w -> VWord64 w
 
 instance ToValue c m Bool where
-  toValue True = VEnum enumBoolHash "true"
-  toValue False = VEnum enumBoolHash "false"
+  toValue True = VBool True
+  toValue False = VBool False
 
 instance Pretty c => FromValue c m Bool where
-  fromValue (VEnum hash ident) =
-    if hash == enumBoolHash
-      then
-        if ident == "true"
-          then pure True
-          else pure False
-      else couldNotCast (VEnum hash ident :: Value c m)
+  fromValue (VBool True) = pure True
+  fromValue (VBool False) = pure False
   fromValue v = couldNotCast v
 
 instance ToValue c m Double where
