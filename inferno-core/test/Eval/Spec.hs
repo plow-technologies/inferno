@@ -272,6 +272,16 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Array.sum [1.0, 2.0, 4.0, 8.0]" $ VDouble 15
     shouldEvaluateTo "open Array in range 4 13" $ VArray (map VInt [4 .. 13])
     shouldEvaluateTo "open Time in Array.sum [seconds 2, hours 5]" $ VEpochTime 18002
+    shouldEvaluateTo "Array.reverse []" $ VArray []
+    shouldEvaluateTo "Array.reverse [1.0, 2.0, 4.0, 8.0]" $ VArray (map VDouble [8, 4, 2, 1])
+    shouldEvaluateTo "Array.cons 3 [1, 2] == [3, 1, 2]" vTrue
+    shouldEvaluateTo "Array.uncons [1, 2, 3] == Some (1, [2, 3])" vTrue
+    shouldEvaluateTo "Array.takeWhile (fun x -> x < 3) [1,2,3,4,1,2,3,4] == [1, 2]" vTrue
+    shouldEvaluateTo "Array.takeWhile (fun x -> x < 9) [1,2,3] == [1,2,3]" vTrue
+    shouldEvaluateTo "Array.takeWhile (fun x -> x < 0) [1,2,3] == []" vTrue
+    shouldEvaluateTo "Array.dropWhile (fun x -> x < 3) [1,2,3,4,5,1,2,3] == [3,4,5,1,2,3]" vTrue
+    shouldEvaluateTo "Array.dropWhile (fun x -> x < 9) [1,2,3] == []" vTrue
+    shouldEvaluateTo "Array.dropWhile (fun x -> x < 0) [1,2,3] == [1,2,3]" vTrue
     -- Option type
     shouldEvaluateTo "Array.sum (Array.keepSomes [Some 3.0, None, Some 4.0])" $ VDouble 7
     shouldEvaluateTo "Array.findFirstSome [None, Some 3.0, None, Some 4.0]" $ VOne $ VDouble 3

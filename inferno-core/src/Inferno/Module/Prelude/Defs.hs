@@ -398,6 +398,22 @@ reverseFun =
     VArray vs -> pure $ VArray $ reverse vs
     _ -> throwM $ RuntimeError "reverse: expecting an array"
 
+takeWhileFun :: (MonadThrow m) => Value c m
+takeWhileFun =
+  VFun $ \case
+    VFun p ->
+      pure $ VFun $ \case
+        VArray vs -> VArray <$> takeWhile' p vs
+        _ -> throwM $ RuntimeError "takeWhile: expecting an array"
+    _ -> throwM $ RuntimeError "takeWhile: expecting a function"
+  where
+    takeWhile' _ [] = pure []
+    takeWhile' p (x : xs) =
+      p x >>= \case
+        VEnum h "true" | h == enumBoolHash -> (x :) <$> takeWhile' p xs
+        VEnum h "false" | h == enumBoolHash -> pure []
+        _ -> throwM $ RuntimeError "takeWhile: expecting predicate to return a bool"
+
 dropWhileFun :: (MonadThrow m) => Value c m
 dropWhileFun =
   VFun $ \case
