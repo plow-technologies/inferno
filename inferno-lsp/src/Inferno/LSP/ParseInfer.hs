@@ -86,10 +86,10 @@ warnDiagnostic s_line s_col e_line e_col source message =
 parseErrorDiagnostic :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, SourcePos _ l c) =
   errorDiagnostic
-    0
-    0
-    (unPos l - 1)
+    (unPos l)
     (unPos c)
+    (unPos l)
+    (unPos c + 1)
     (Just "inferno.parser")
     (pack $ prettyError err)
 
