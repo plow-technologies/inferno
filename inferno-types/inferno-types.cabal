@@ -70,3 +70,28 @@ executable pretty-test
     , containers
     , inferno-types
   default-language: Haskell2010
+
+test-suite inferno-types-tests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  -- other-modules:
+  build-depends:
+      base >=4.7 && <5
+    , containers
+    , hspec
+    , inferno-types
+    , megaparsec
+    , text
+  default-language:    Haskell2010
+  default-extensions:
+      DeriveDataTypeable
+    , DeriveFunctor
+    , DeriveGeneric
+    , FlexibleContexts
+    , FlexibleInstances
+    , LambdaCase
+    , OverloadedStrings
+    , TupleSections
+    , RecordWildCards
+  ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates -O2 -threaded

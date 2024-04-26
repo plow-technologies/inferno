@@ -163,7 +163,7 @@ lspOptions =
 -- reply sent.
 
 -- | Helper type to reduce typing
-type ParsedResult = Either [J.Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(J.Range, J.MarkupContent)])
+type ParsedResult = Either [J.Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [J.Diagnostic], [(J.Range, J.MarkupContent)])
 
 data InfernoEnv = InfernoEnv
   { hovers :: TVar (Map (J.NormalizedUri, J.Int32) [(J.Range, J.MarkupContent)]),
@@ -264,9 +264,9 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
             Left errs -> do
               sendDiagnostics doc_uri (Just 0) errs
               pure mempty
-            Right (_expr, _ty, hovers) -> do
+            Right (_expr, _ty, warns, hovers) -> do
               trace $ "Created hovers for: " ++ show doc_uri
-              sendDiagnostics doc_uri (Just 0) []
+              sendDiagnostics doc_uri (Just 0) warns
               pure hovers
 
         doc_version <-
@@ -293,9 +293,9 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
                   trace $ "Sending errs: " ++ show errs
                   sendDiagnostics doc_uri (Just doc_version) errs
                   pure mempty
-                Right (_expr, _ty, hovers) -> do
+                Right (_expr, _ty, warns, hovers) -> do
                   trace $ "Updated hovers for: " ++ show doc_uri ++ " - " ++ show doc_version
-                  sendDiagnostics doc_uri (Just doc_version) []
+                  sendDiagnostics doc_uri (Just doc_version) warns
                   pure hovers
             trace $ "Setting hovers: " ++ show hovers
             liftIO $ atomically $ modifyTVar hoversTV $ \hoversMap -> Map.insert (doc_uri, doc_version) hovers hoversMap

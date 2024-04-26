@@ -113,6 +113,7 @@ module Inferno.Types.Syntax
     typeResolution,
     typeTimeDiff,
     typeTime,
+    unusedVars,
   )
 where
 
@@ -125,6 +126,7 @@ import Data.Bifunctor (bimap, first)
 import Data.Bifunctor.TH (deriveBifunctor)
 import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
+import Data.Foldable (fold)
 import Data.Functor.Foldable (ana, cata, project)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
@@ -1377,6 +1379,24 @@ substInternalIdents m = ana $ \case
       Just (Right t) -> TypeRep pos t
       Nothing -> Var pos h ns (Impl (ExtIdent (Left i)))
   other -> project other
+
+-- | Compute the set of variable names that are defined but not used in this Expr
+unusedVars :: Expr hash SourcePos -> Set.Set (Text, SourcePos, SourcePos)
+unusedVars = fst . cata go
+  where
+    -- The folded value is (set of defined but unused vars, set of used vars)
+    go :: ExprF hash SourcePos (Set.Set (Text, SourcePos, SourcePos), Set.Set Text) -> (Set.Set (Text, SourcePos, SourcePos), Set.Set Text)
+    go = \case
+      VarF _ _ _ (Expl (ExtIdent (Right x))) -> (mempty, Set.singleton x)
+      LetF _ p (Expl (ExtIdent (Right x))) _ (unusedE, usedE) _ (unusedBody, usedBody) ->
+        (if Set.member x usedBody then unused else Set.insert xPP unused, used)
+        where
+          xPP = let (pS, pE) = elementPosition p (Ident x) in (x, pS, pE)
+          -- Remove x from usedBody because it goes out of scope after this Let
+          used = usedE <> Set.delete x usedBody
+          unused = unusedE <> unusedBody
+      -- Otherwise: we take the union of the `unused` and `used` sets of the children:
+      rest -> fold rest
 
 instance Pretty (Import a) where
   pretty = \case
