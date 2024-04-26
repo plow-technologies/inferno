@@ -74,8 +74,8 @@ data Pattern = C Con [Pattern] | W deriving (Eq, Ord)
 instance Show Pattern where
   show = \case
     W -> "_"
-    C COne [x] -> "one " <> show x
-    C CEmpty _ -> "empty"
+    C COne [x] -> "Some " <> show x
+    C CEmpty _ -> "None"
     C (CTuple _) xs -> "(" <> intercalate "," (map show xs) <> ")"
     C (CInf x) _ -> show x
     C (CEnum _ x) _ -> "#" <> show x
@@ -87,8 +87,8 @@ instance Show Pattern where
 instance Pretty Pattern where
   pretty = \case
     W -> "_"
-    C COne [x] -> "one" <+> align (pretty x)
-    C CEmpty _ -> "empty"
+    C COne [x] -> "Some" <+> align (pretty x)
+    C CEmpty _ -> "None"
     C (CTuple _) xs -> tupled (map pretty xs)
     C (CInf x) _ -> pretty x
     C (CEnum _ x) _ -> "#" <> pretty x
