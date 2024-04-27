@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.5.0 -- 2024-04-26
+* Add `unusedVars` method for `Expr`s and tests for it
+
 ## 0.4.4.0 -- 2024-04-01
 * Improve pretty printer: use consistent indentation levels
 

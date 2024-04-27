@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.5.1 -- 2024-04-26
+* Fix pretty print of Some/None pattern in error messages
+
 ## 0.11.5.0 -- 2024-04-22
 * Add Array primitives cons, uncons, reverse, takeWhile, and dropWhile
 

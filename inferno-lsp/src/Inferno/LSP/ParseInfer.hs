@@ -22,7 +22,7 @@ import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Parse (parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
-import Inferno.Types.Syntax (Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents)
+import Inferno.Types.Syntax (Expr (..), ExtIdent (..), Ident (..), ModuleName (..), Scoped (..), collectArrs, getIdentifierPositions, hideInternalIdents, unusedVars)
 import Inferno.Types.Type
   ( BaseType (..),
     ImplType (ImplType),
@@ -39,7 +39,7 @@ import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
 import Language.LSP.Types
   ( Diagnostic (..),
-    DiagnosticSeverity (DsError),
+    DiagnosticSeverity (DsError, DsWarning),
     MarkupContent (..),
     MarkupKind (MkMarkdown),
     Range,
@@ -71,13 +71,25 @@ errorDiagnostic s_line s_col e_line e_col source message =
       _relatedInformation = Nothing
     }
 
+warnDiagnostic :: Int -> Int -> Int -> Int -> Maybe Text -> Text -> Diagnostic
+warnDiagnostic s_line s_col e_line e_col source message =
+  Diagnostic
+    { _range = mkRange (fromIntegral s_line - 2) (fromIntegral s_col - 1) (fromIntegral e_line - 2) (fromIntegral e_col - 1),
+      _severity = Just DsWarning,
+      _code = Nothing,
+      _source = source,
+      _message = message,
+      _tags = Nothing,
+      _relatedInformation = Nothing
+    }
+
 parseErrorDiagnostic :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, SourcePos _ l c) =
   errorDiagnostic
-    0
-    0
-    (unPos l - 1)
+    (unPos l)
     (unPos c)
+    (unPos l)
+    (unPos c + 1)
     (Just "inferno.parser")
     (pack $ prettyError err)
 
@@ -502,7 +514,7 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-        $ ["Duplicate record field name:", indent 2 (pretty f)]
+          ["Duplicate record field name:", indent 2 (pretty f)]
     ]
 
 parseAndInferDiagnostics ::
@@ -512,7 +524,7 @@ parseAndInferDiagnostics ::
   [Maybe Ident] ->
   Text ->
   (InfernoType -> Either Text ()) ->
-  m (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [(Range, MarkupContent)]))
+  m (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [Diagnostic], [(Range, MarkupContent)]))
 parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt validateInput = do
   let input = case idents of
         [] -> "\n" <> txt
@@ -534,12 +546,14 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
           case checkScriptIsNotAFunction signature idents of
             Left errors -> return $ Left errors
             Right () -> do
+              let unusedVarWarns = getUnusedVars lamBody
               -- Insert comments into Lam body
               let final = putBackLams lams (void (insertCommentsIntoExpr comments lamBody))
               return $
                 Right
                   ( final,
                     tcSch,
+                    unusedVarWarns,
                     Map.foldrWithKey (\k v xs -> mkHover typeClasses currentClasses k v : xs) mempty tyMap
                   )
   where
@@ -573,12 +587,18 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
                                 Just (s, e) -> Left [errorDiagnosticInfer (unPos $ sourceLine s) (unPos $ sourceColumn s) (unPos $ sourceLine e) (unPos $ sourceColumn e) err]
             _ -> Right ()
 
+    -- Warning diagnostics for any defined-but-unused variables
+    getUnusedVars = Set.toList . Set.map makeWarnings . unusedVars
+      where
+        makeWarnings (x, p1, p2) =
+          warnDiagnostic (unPos $ sourceLine p1) (unPos $ sourceColumn p1) (unPos $ sourceLine p2) (unPos $ sourceColumn p2) (Just "inferno.lsp") ("Unused variable: " <> x)
+
 parseAndInferPretty :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> IO ()
 parseAndInferPretty prelude txt = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter [] txt (const $ Right ()) >>= \case
     Left err -> print err
-    Right (expr, typ, _hovers) -> do
+    Right (expr, typ, _warns, _hovers) -> do
       putStrLn $ Text.unpack $ "internal: " <> renderPretty expr
 
       putStrLn $ Text.unpack $ "\nhidden: " <> renderPretty (hideInternalIdents expr)
@@ -592,7 +612,7 @@ parseAndInferTypeReps prelude expr inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter [] expr (const $ Right ()) >>= \case
     Left err -> print err
-    Right (_expr, typ, _hovers) -> do
+    Right (_expr, typ, _warns, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
       putStrLn $ "\ntype (pretty)" <> Text.unpack (renderDoc $ mkPrettyTy typeClasses mempty typ)
 
@@ -615,7 +635,7 @@ parseAndInferPossibleTypes prelude expr args inTys outTy = do
   interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter argIdents expr (const $ Right ()) >>= \case
     Left err -> print err
-    Right (_expr, typ, _hovers) -> do
+    Right (_expr, typ, _warns, _hovers) -> do
       putStrLn $ Text.unpack $ "\ntype: " <> renderPretty typ
       putStrLn $ "\ntype (pretty)" <> Text.unpack (renderDoc $ mkPrettyTy typeClasses mempty typ)
 
