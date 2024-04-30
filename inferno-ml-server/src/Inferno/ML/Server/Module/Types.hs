@@ -31,17 +31,20 @@ import Inferno.Types.Value
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), cat, (<+>))
+import System.Posix.Types (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 
 -- | Custom type for bridge prelude
 data BridgeValue
   = VResolution InverseResolution
   | VSeries PID
+  | VWrite (PID, [(EpochTime, Double)])
   deriving stock (Generic)
 
 instance Eq BridgeValue where
   VResolution r1 == VResolution r2 = r1 == r2
   VSeries v1 == VSeries v2 = v1 == v2
+  VWrite w1 == VWrite w2 = w1 == w2
   _ == _ = False
 
 instance Pretty BridgeValue where
@@ -98,8 +101,7 @@ data BridgeFuns m = BridgeFuns
   { valueAt :: BridgeV m,
     latestValueAndTimeBefore :: BridgeV m,
     latestValueAndTime :: BridgeV m,
-    -- FIXME `writePairs` will be removed soon
-    writePairsFun :: BridgeV m
+    makeWritesFun :: BridgeV m
   }
   deriving stock (Generic)
 

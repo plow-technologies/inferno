@@ -82,6 +82,7 @@ import Servant
     ReqBody,
     Required,
     StreamBody,
+    StreamPost,
     (:<|>),
     (:>),
   )
@@ -96,7 +97,7 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI uid gid p s =
+type InfernoMlServerAPI uid gid p s t =
   -- Check if the server is up and if any job is currently running:
   --
   --  * `Nothing` -> The server is evaluating a script
@@ -108,7 +109,7 @@ type InfernoMlServerAPI uid gid p s =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
-      :> Post '[JSON] ()
+      :> StreamPost NewlineFraming JSON (PairStream t IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
@@ -120,17 +121,11 @@ type InfernoMlServerAPI uid gid p s =
 -- by a bridge server connected to a data source, not by `inferno-ml-server`
 type BridgeAPI p t =
   "bridge"
-    :> "write"
-    :> "pairs"
-    :> Capture "p" p
-    :> StreamBody NewlineFraming JSON (PairStream t IO)
-    :> Post '[JSON] ()
-    :<|> "bridge"
-      :> "value-at"
-      :> QueryParam' '[Required] "res" Int64
-      :> QueryParam' '[Required] "p" p
-      :> QueryParam' '[Required] "time" t
-      :> Get '[JSON] IValue
+    :> "value-at"
+    :> QueryParam' '[Required] "res" Int64
+    :> QueryParam' '[Required] "p" p
+    :> QueryParam' '[Required] "time" t
+    :> Get '[JSON] IValue
     :<|> "bridge"
       :> "latest-value-and-time-before"
       :> QueryParam' '[Required] "time" t

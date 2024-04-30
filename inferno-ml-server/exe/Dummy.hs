@@ -83,8 +83,9 @@ newtype DummyEnv = DummyEnv
   deriving stock (Generic)
 
 server :: ServerT (BridgeAPI PID Int) DummyM
-server = writePairs :<|> valueAt :<|> latestValueAndTimeBefore
+server = valueAt :<|> latestValueAndTimeBefore
 
+-- TODO do this with the returned values?
 -- Write the pairs to a JSON file for later inspection
 writePairs :: PID -> PairStream Int IO -> DummyM ()
 writePairs (PID p) c = liftIO $ encodeFile path =<< runConduit (c .| sinkList)

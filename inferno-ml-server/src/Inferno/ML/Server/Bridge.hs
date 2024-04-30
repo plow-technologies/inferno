@@ -46,7 +46,7 @@ registerBridgeInfo bi = do
     =<< view #interpreter
   where
     funs :: BridgeFuns RemoteM
-    funs = mkBridgeFuns valueAt latestValueAndTimeBefore writePairs
+    funs = mkBridgeFuns valueAt latestValueAndTimeBefore
 
     valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
     valueAt res pid t = callBridge =<< getBridgeRoute #valueAt ?? res ?? pid ?? t
@@ -57,8 +57,10 @@ registerBridgeInfo bi = do
 
     -- FIXME `writePairs` will be removed soon
     writePairs :: PID -> Tensor -> RemoteM ()
-    writePairs pid t = callBridge =<< getBridgeRoute #writePairs ?? pid ?? yieldTensor
+    writePairs pid t = error "TODO"
       where
+        -- writePairs pid t = callBridge =<< getBridgeRoute #writePairs ?? pid ?? yieldTensor
+
         -- Convert the (assumed two-dimensional) tensor into a list of pairs
         -- for streaming to the bridge endpoint
         yieldTensor :: PairStream Int IO

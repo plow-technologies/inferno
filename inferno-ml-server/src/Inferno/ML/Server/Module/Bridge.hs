@@ -11,10 +11,11 @@ import Data.Int (Int64)
 import qualified Data.Text as Text
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Server.Types
+import Inferno.ML.Types.Value (MlValue (..))
 import Inferno.Module.Cast (ToValue (toValue))
 import Inferno.Types.Value
   ( ImplicitCast (ImplicitCast),
-    Value (VDouble, VOne, VTuple),
+    Value (..),
     liftImplEnvM,
   )
 import System.Posix.Types (EpochTime)
@@ -27,17 +28,13 @@ mkBridgeFuns ::
   (Int64 -> PID -> EpochTime -> RemoteM IValue) ->
   -- | @latestValueAndTimeBefore@
   (EpochTime -> PID -> RemoteM IValue) ->
-  -- | @writePairs@
-  --
-  -- FIXME `writePairs` will be removed soon
-  (PID -> Tensor -> RemoteM ()) ->
   BridgeFuns RemoteM
-mkBridgeFuns valueAt latestValueAndTimeBefore writePairs =
+mkBridgeFuns valueAt latestValueAndTimeBefore =
   BridgeFuns
     valueAtFun
     latestValueAndTimeBeforeFun
     latestValueAndTimeFun
-    writePairsFun
+    makeWritesFun
   where
     valueAtFun :: BridgeV RemoteM
     valueAtFun = toValue $ ImplicitCast @"resolution" inputFunction
@@ -86,21 +83,15 @@ mkBridgeFuns valueAt latestValueAndTimeBefore writePairs =
             t@VTuple {} -> VOne t
             v -> v
 
-    -- FIXME `writePairs` will be removed soon
-    writePairsFun :: BridgeV RemoteM
-    writePairsFun = toValue writePairsFunction
+    makeWritesFun :: BridgeV RemoteM
+    makeWritesFun =
+      VFun $ \case
+        VCustom (VExtended (VSeries pid)) ->
+          pure $ VFun $ \case
+            VArray vs -> do
+              pairs <- extractPairs vs
+              pure $ VCustom $ VExtended $ VWrite (pid, pairs)
+            _ -> throwM $ RuntimeError "makeWrites: expecting an array"
+        _ -> throwM $ RuntimeError "makeWrites: expecting a pid"
       where
-        writePairsFunction :: PID -> Tensor -> BridgeImplM RemoteM
-        writePairsFunction p =
-          handle raiseRuntime
-            . liftImplEnvM
-            . fmap (const (VTuple mempty))
-            . writePairs p
-
-        raiseRuntime :: RemoteError -> BridgeImplM RemoteM
-        raiseRuntime = \case
-          -- If the tensor provided as an argument isn't the correct shape, this
-          -- will be raised, so the user should be informed clearly (it will be
-          -- thrown as an `InvalidScript` internally)
-          InvalidScript t -> throwM . RuntimeError $ Text.unpack t
-          e -> throwM e
+        extractPairs = error "TODO"

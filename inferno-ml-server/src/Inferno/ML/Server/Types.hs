@@ -109,7 +109,7 @@ data Env = Env
         ( -- ID for the inference param
           Id InferenceParam,
           -- The actual job itself. This is stored so it can be canceled later
-          Async (Maybe ())
+          Async (Maybe (PairStream EpochTime IO))
         ),
     bridge :: Bridge,
     manager :: Manager,
@@ -133,8 +133,7 @@ data Bridge = Bridge
 
 data BridgeClient = BridgeClient
   { valueAt :: Int64 -> PID -> EpochTime -> ClientM IValue,
-    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue,
-    writePairs :: PID -> PairStream Int IO -> ClientM ()
+    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue
   }
   deriving stock (Generic)
 
@@ -395,7 +394,7 @@ pattern VCMeta t a g n d p v o =
   Inferno.VersionControl.Types.VCMeta t a g n d p v o
 
 type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime
 
 -- Orphans
 

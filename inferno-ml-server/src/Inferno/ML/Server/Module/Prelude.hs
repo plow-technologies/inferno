@@ -37,8 +37,6 @@ import Lens.Micro.Platform
 -- open-source users will presumably not find these useful. Unfortunately, the
 -- Inferno interpreter used by the server needs to be initialized with these
 -- primitives
---
--- FIXME `writePairs` will be removed soon
 bridgeModules ::
   forall m.
   (MonadThrow m, MonadIO m) =>
@@ -49,16 +47,17 @@ bridgeModules
       valueAt
       latestValueAndTimeBefore
       latestValueAndTime
-      writePairsFun
+      makeWritesFun
     ) =
     [mlQuoter|
 module DataSource
+  // TODO update docstring
   @doc Write the value of a tensor to the parameter `p`. Note that the tensor
   MUST be two-dimensional, assumed to contain a series of pairs representing
   times (the first element) and values (the second element). A runtime error
   will be raised if this condition is not satisfied. The input tensor must
   must be of type `Double`;
-  writePairs : forall 'a. series of 'a -> tensor -> () := ###!writePairsFun###;
+  makeWrites : forall 'a. series of 'a -> array of (time, 'a) -> write := ###!makeWritesFun###;
 
   toResolution : int -> resolution := ###toResolution###;
 

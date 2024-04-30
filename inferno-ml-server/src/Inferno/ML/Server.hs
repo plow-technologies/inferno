@@ -50,6 +50,7 @@ import Servant
     serve,
     (:<|>) ((:<|>)),
   )
+import System.Posix.Types (EpochTime)
 import UnliftIO.Async (Async, cancel)
 import UnliftIO.Directory (doesFileExist)
 import UnliftIO.Exception
@@ -106,7 +107,6 @@ runInEnv cfg f = withRemoteTracer $ \tracer -> do
       BridgeClient
         Bridge.valueAtC
         Bridge.latestValueAndTimeBeforeC
-        Bridge.writePairsC
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
@@ -165,5 +165,5 @@ server =
         =<< tryTakeMVar
         =<< view #job
       where
-        logAndCancel :: (Id InferenceParam, Async (Maybe ())) -> RemoteM ()
+        logAndCancel :: (Id InferenceParam, Async (Maybe (PairStream EpochTime IO))) -> RemoteM ()
         logAndCancel (i, j) = logTrace (CancelingInference i) *> cancel j

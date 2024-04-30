@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Inferno.ML.Server.Client
   ( statusC,
@@ -10,10 +11,11 @@ module Inferno.ML.Server.Client
   )
 where
 
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
 import Inferno.ML.Server.Types
-import Servant ((:<|>) ((:<|>)))
+import Servant (ToHttpApiData, (:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
 -- | Get the status of the server. @Nothing@ indicates that an inference job
@@ -21,7 +23,13 @@ import Servant.Client.Streaming (ClientM, client)
 statusC :: ClientM (Maybe ())
 
 -- | Run an inference parameter
-inferenceC :: Id (InferenceParam uid gid p s) -> Maybe Int64 -> ClientM ()
+inferenceC ::
+  ( FromJSON t,
+    ToHttpApiData t
+  ) =>
+  Id (InferenceParam uid gid p s) ->
+  Maybe Int64 ->
+  ClientM (PairStream t IO)
 
 -- | Cancel the existing inference job, if it exists
 cancelC :: ClientM ()
@@ -37,7 +45,9 @@ statusC
   :<|> cancelC
   :<|> registerBridgeC
   :<|> checkBridgeC =
-    client api
+    -- client api
+    -- TODO fix the type error
+    undefined
 
-api :: Proxy (InfernoMlServerAPI uid gid p s)
+api :: Proxy (InfernoMlServerAPI uid gid p s t)
 api = Proxy
