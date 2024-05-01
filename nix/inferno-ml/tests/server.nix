@@ -228,8 +228,7 @@ pkgs.nixosTest {
     node.succeed('register-bridge')
 
     # `tests/scripts/ones.inferno`
-    # TODO second value?! runtest(1, [[151, 2.5], [251, 3.5]])
-    runtest(1, [{'contents': 1, 'tag': 'WritePid'}, {'contents': [151, 2.5], 'tag': 'WriteValue'}])
+    runtest(1, [{'contents': 1, 'tag': 'WritePid'}, {'contents': [151, 2.5], 'tag': 'WriteValue'}, {'contents': [251, 3.5], 'tag': 'WriteValue'}])
 
     # `tests/scripts/contrived.inferno`
     runtest(2, [{'contents': 2, 'tag': 'WritePid'}, {'contents': [300, 25.0], 'tag': 'WriteValue'}])
