@@ -47,4 +47,4 @@ main =
     writePairs p c = encodeFile path =<< runConduit (c .| sinkList)
       where
         path :: FilePath
-        path = "./" </> p <.> "json"
+        path = "/tmp/dummy" </> p <.> "json"

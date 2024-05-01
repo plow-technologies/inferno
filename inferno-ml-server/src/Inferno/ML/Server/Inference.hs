@@ -52,6 +52,7 @@ import Inferno.Types.Value
     runImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Inferno.VersionControl.Types
   ( VCObject (VCFunction),
   )
@@ -194,16 +195,16 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                       RemoteM (WriteStream IO)
                     yieldPairs (VArray vs) =
                       yieldMany . concat <$> mapM extractWrite vs
-                    yieldPairs _ =
-                      throwM $ InvalidScript "Script output should be an array of `write`"
+                    yieldPairs v =
+                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
 
                     extractWrite ::
                       Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
                       RemoteM [WriteStreamItem]
                     extractWrite (VCustom (VExtended (VWrite (PID pid, vals)))) =
                       pure $ WritePid pid : map WriteValue vals
-                    extractWrite _ =
-                      throwM $ InvalidScript "Script output should be an array of `write`"
+                    extractWrite v =
+                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =

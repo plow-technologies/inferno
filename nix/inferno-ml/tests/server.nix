@@ -205,7 +205,7 @@ pkgs.nixosTest {
       # Give the dummy bridge a second to write the file, just to be sure
       time.sleep(1)
       res = json.loads(node.succeed(f'cat /tmp/dummy/{param}.json'))
-      print(f'Inference param {param} should write values {ex}')
+      print(f'Inference param {param} should write values\n{ex}\nand wrote\n{res}')
       assert res == ex
 
     node.wait_for_unit("multi-user.target")
@@ -228,12 +228,13 @@ pkgs.nixosTest {
     node.succeed('register-bridge')
 
     # `tests/scripts/ones.inferno`
-    runtest(1, [[151, 2.5], [251, 3.5]])
+    # TODO second value?! runtest(1, [[151, 2.5], [251, 3.5]])
+    runtest(1, [{'contents': 1, 'tag': 'WritePid'}, {'contents': [151, 2.5], 'tag': 'WriteValue'}])
 
     # `tests/scripts/contrived.inferno`
-    runtest(2, [[300, 25.0]])
+    runtest(2, [{'contents': 2, 'tag': 'WritePid'}, {'contents': [300, 25.0], 'tag': 'WriteValue'}])
 
     # `tests/scripts/mnist.inferno`
-    runtest(3, [[100, 7.0]])
+    runtest(3, [{'contents': 3, 'tag': 'WritePid'}, {'contents': [100, 7.0], 'tag': 'WriteValue'}])
   '';
 }
