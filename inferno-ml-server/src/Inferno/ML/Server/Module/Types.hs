@@ -7,6 +7,7 @@
 module Inferno.ML.Server.Module.Types where
 
 import Control.DeepSeq (NFData)
+import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits (countLeadingZeros)
 import Data.Generics.Labels ()
@@ -16,6 +17,7 @@ import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
+import Inferno.Eval.Error (EvalError (RuntimeError))
 import "inferno-ml-server-types" Inferno.ML.Server.Types
   ( IValue (IDouble, IEmpty, IText, ITime, ITuple),
   )
@@ -38,7 +40,7 @@ import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 data BridgeValue
   = VResolution InverseResolution
   | VSeries PID
-  | VWrite (PID, [(EpochTime, Double)])
+  | VWrite (PID, [(EpochTime, IValue)])
   deriving stock (Generic)
 
 instance Eq BridgeValue where
@@ -51,6 +53,7 @@ instance Pretty BridgeValue where
   pretty = \case
     VSeries p -> cat ["<<", "series" <+> pretty p, ">>"]
     VResolution e -> pretty @Int $ 2 ^ e
+    VWrite (p, vs) -> "Write" <+> pretty p <> ":" <+> pretty (show vs)
 
 -- | Unique ID for pollable data point (for the data source that can be
 -- queried using the bridge)
@@ -112,6 +115,15 @@ fromIValue = \case
   ITime t -> VEpochTime t
   ITuple (x, y) -> VTuple [fromIValue x, fromIValue y]
   IEmpty -> VEmpty
+
+toIValue :: MonadThrow f => Value custom m -> f IValue
+toIValue = \case
+  VText t -> pure $ IText t
+  VDouble d -> pure $ IDouble d
+  VEpochTime t -> pure $ ITime t
+  VTuple [x, y] -> curry ITuple <$> toIValue x <*> toIValue y
+  VEmpty -> pure IEmpty
+  _ -> throwM $ RuntimeError "toIValue: got an unsupported value type"
 
 toResolution :: Int64 -> InverseResolution
 toResolution =

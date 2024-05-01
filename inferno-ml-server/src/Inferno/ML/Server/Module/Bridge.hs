@@ -6,9 +6,8 @@ module Inferno.ML.Server.Module.Bridge
 where
 
 import Control.Category ((>>>))
-import Control.Monad.Catch (MonadThrow (throwM), handle)
+import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Int (Int64)
-import qualified Data.Text as Text
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Server.Types
 import Inferno.ML.Types.Value (MlValue (..))
@@ -19,7 +18,6 @@ import Inferno.Types.Value
     liftImplEnvM,
   )
 import System.Posix.Types (EpochTime)
-import Torch (Tensor)
 
 -- | Create the functions that will be used for the Inferno primitives related
 -- to the data source. Effects defined in @RemoteM@ are wrapped in @ImplEnvM m ...@
@@ -94,4 +92,9 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
             _ -> throwM $ RuntimeError "makeWrites: expecting an array"
         _ -> throwM $ RuntimeError "makeWrites: expecting a pid"
       where
-        extractPairs = error "TODO"
+        extractPairs = \case
+          [] -> pure []
+          v : vs -> (:) <$> extractPair v <*> extractPairs vs
+        extractPair = \case
+          VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
+          _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"

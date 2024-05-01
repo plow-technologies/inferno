@@ -11,8 +11,9 @@ module Inferno.ML.Server.Inference
   )
 where
 
+import Conduit (yieldMany)
 import Control.Monad (void, when, (<=<))
-import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
@@ -56,7 +57,6 @@ import Inferno.VersionControl.Types
   )
 import Lens.Micro.Platform
 import System.FilePath (dropExtensions, (<.>))
-import System.Posix.Types (EpochTime)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
   ( createFileLink,
@@ -82,7 +82,7 @@ import UnliftIO.Timeout (timeout)
 runInferenceParam ::
   Id InferenceParam ->
   Maybe Int64 ->
-  RemoteM (PairStream EpochTime IO)
+  RemoteM (WriteStream IO)
 -- FIXME / TODO Deal with default resolution, probably shouldn't need to be
 -- passed on all requests
 runInferenceParam ipid (fromMaybe 128 -> res) =
@@ -95,7 +95,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
     -- Runs the inference parameter in a separate `Async` thread. The `Async`
     -- is stored in the server environment so it can be canceled at any point
     -- before the script finishes evaluating
-    run :: Int -> RemoteM (Maybe (PairStream EpochTime IO))
+    run :: Int -> RemoteM (Maybe (WriteStream IO))
     run tmo = withAsync (runInference tmo) $ \a ->
       bracket_
         ((`putMVar` (ipid, a)) =<< view #job)
@@ -103,7 +103,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
         $ wait a
 
     -- Actually runs the inference evaluation, within the configured timeout
-    runInference :: Int -> RemoteM (Maybe (PairStream EpochTime IO))
+    runInference :: Int -> RemoteM (Maybe (WriteStream IO))
     runInference tmo = timeout tmo $ do
       view #interpreter >>= readIORef >>= \case
         Nothing -> throwM BridgeNotRegistered
@@ -126,7 +126,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
               InferenceParam ->
               CTime ->
               VCMeta VCObject ->
-              RemoteM (PairStream EpochTime IO)
+              RemoteM (WriteStream IO)
             runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
               vcm ^. #obj & \case
                 VCFunction {} -> do
@@ -182,21 +182,28 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                     doEval ::
                       Expr (Maybe VCObjectHash) () ->
                       BridgeTermEnv RemoteM ->
-                      RemoteM (PairStream EpochTime IO)
+                      RemoteM (WriteStream IO)
                     doEval x env =
                       either
                         (throwInfernoError . Left . SomeInfernoError)
                         yieldPairs
                         =<< evalExpr env implEnv x
 
-                    yieldPairs :: Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) -> RemoteM (PairStream EpochTime IO)
-                    yieldPairs (VArray vs) = do
-                      pairs <- extractPairsFromVArray vs
-                      -- TODO PairStream = stream of (t, Double) but here we have many streams
-                      -- one per PID. Should we return streams of (pid, t, Double)? Or a list
-                      -- of streams?
-                      error "TODO"
-                    yieldPairs _ = throwM $ InvalidScript "Script output should be an array of `write`"
+                    yieldPairs ::
+                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
+                      RemoteM (WriteStream IO)
+                    yieldPairs (VArray vs) =
+                      yieldMany . concat <$> mapM extractWrite vs
+                    yieldPairs _ =
+                      throwM $ InvalidScript "Script output should be an array of `write`"
+
+                    extractWrite ::
+                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
+                      RemoteM [WriteStreamItem]
+                    extractWrite (VCustom (VExtended (VWrite (PID pid, vals)))) =
+                      pure $ WritePid pid : map WriteValue vals
+                    extractWrite _ =
+                      throwM $ InvalidScript "Script output should be an array of `write`"
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =
@@ -222,15 +229,6 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
     withTimeoutMillis =
       (view (#config . #timeout) >>=)
         . (. (* 1000000) . fromIntegral)
-
-extractPairsFromVArray :: (MonadThrow m) => [Value custom m] -> m [(PID, [(EpochTime, Double)])]
-extractPairsFromVArray = error "TODO"
-
--- extractInts = \case
---   [] -> pure []
---   VInt x : vs -> (x :) <$> extractInts vs
---   _ -> throwM $ RuntimeError "extractInts: got an array with mixed types"
--- yieldPairs (VCustom (VExtended (VWrite (pid, pairs)))) =
 
 getVcObject :: VCObjectHash -> RemoteM (VCMeta VCObject)
 getVcObject vch =

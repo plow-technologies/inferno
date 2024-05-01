@@ -81,7 +81,6 @@ import Servant
     QueryParam',
     ReqBody,
     Required,
-    StreamBody,
     StreamPost,
     (:<|>),
     (:>),
@@ -109,7 +108,7 @@ type InfernoMlServerAPI uid gid p s t =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
-      :> StreamPost NewlineFraming JSON (PairStream t IO)
+      :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
@@ -132,7 +131,19 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
 
-type PairStream t m = ConduitT () (t, Double) m ()
+-- | An item in the stream of writes returned by an ML parameter script.
+-- Since a script can write multiple values to multiple PIDs, we stream the results
+-- using this union type. The stream looks like the following sequence:
+-- @[WritePid p1, WriteValue (t1, v1), ..., WriteValue (tN, vN), WritePid p2, ...]@
+-- where every section starts with a 'WritePid' to specify which
+-- PID to write to, followed by zero or more 'WriteValue's that specify the
+-- (time, value) pairs to write to the given PID.
+data WriteStreamItem = WritePid Int | WriteValue (EpochTime, IValue)
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+-- | Stream of writes that an ML parameter script results in.
+type WriteStream m = ConduitT () WriteStreamItem m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo = BridgeInfo

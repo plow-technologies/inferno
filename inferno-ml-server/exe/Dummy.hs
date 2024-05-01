@@ -21,7 +21,7 @@ import Inferno.ML.Server.Module.Types (PID (PID))
 import "inferno-ml-server-types" Inferno.ML.Server.Types
   ( BridgeAPI,
     IValue (IDouble, IEmpty),
-    PairStream,
+    WriteStream,
   )
 import Lens.Micro.Platform
 import Network.HTTP.Types (Status)
@@ -87,7 +87,7 @@ server = valueAt :<|> latestValueAndTimeBefore
 
 -- TODO do this with the returned values?
 -- Write the pairs to a JSON file for later inspection
-writePairs :: PID -> PairStream Int IO -> DummyM ()
+writePairs :: PID -> WriteStream IO -> DummyM ()
 writePairs (PID p) c = liftIO $ encodeFile path =<< runConduit (c .| sinkList)
   where
     path :: FilePath

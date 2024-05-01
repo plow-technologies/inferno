@@ -6,7 +6,6 @@ module Inferno.ML.Server.Bridge
   )
 where
 
-import Conduit (mapMC, yieldMany, (.|))
 import Control.DeepSeq (NFData)
 import Control.Monad.Catch (throwM)
 import Control.Monad.IO.Class (liftIO)
@@ -29,8 +28,6 @@ import Servant.Client.Streaming
     runClientM,
   )
 import System.Posix.Types (EpochTime)
-import Torch (Tensor, asValue)
-import UnliftIO.Exception (throwIO)
 import UnliftIO.IORef (atomicWriteIORef, readIORef)
 
 -- | Save the provided 'BridgeInfo' and update the Inferno interpreter to use
@@ -54,29 +51,6 @@ registerBridgeInfo bi = do
     latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
     latestValueAndTimeBefore t pid =
       callBridge =<< getBridgeRoute #latestValueAndTimeBefore ?? t ?? pid
-
-    -- FIXME `writePairs` will be removed soon
-    writePairs :: PID -> Tensor -> RemoteM ()
-    writePairs pid t = error "TODO"
-      where
-        -- writePairs pid t = callBridge =<< getBridgeRoute #writePairs ?? pid ?? yieldTensor
-
-        -- Convert the (assumed two-dimensional) tensor into a list of pairs
-        -- for streaming to the bridge endpoint
-        yieldTensor :: PairStream Int IO
-        yieldTensor =
-          yieldMany (Torch.asValue @[[Double]] t)
-            .| mapMC mkPair
-          where
-            mkPair :: [Double] -> IO (Int, Double)
-            mkPair = \case
-              -- Since the input elements need to be homogeneous, the time value
-              -- needs to be stored as a double, which then needs to be converted
-              -- to an integer
-              [time, val] -> pure (round time, val)
-              _ ->
-                throwIO $
-                  InvalidScript "Expecting two-dimensional tensor of time/value pairs"
 
 -- | Get the previously saved 'BridgeInfo', if any
 getBridgeInfo :: RemoteM (Maybe BridgeInfo)

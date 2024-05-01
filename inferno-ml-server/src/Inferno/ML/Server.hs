@@ -50,7 +50,6 @@ import Servant
     serve,
     (:<|>) ((:<|>)),
   )
-import System.Posix.Types (EpochTime)
 import UnliftIO.Async (Async, cancel)
 import UnliftIO.Directory (doesFileExist)
 import UnliftIO.Exception
@@ -165,5 +164,5 @@ server =
         =<< tryTakeMVar
         =<< view #job
       where
-        logAndCancel :: (Id InferenceParam, Async (Maybe (PairStream EpochTime IO))) -> RemoteM ()
+        logAndCancel :: (Id InferenceParam, Async (Maybe (WriteStream IO))) -> RemoteM ()
         logAndCancel (i, j) = logTrace (CancelingInference i) *> cancel j

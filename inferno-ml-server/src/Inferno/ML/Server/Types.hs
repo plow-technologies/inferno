@@ -109,7 +109,7 @@ data Env = Env
         ( -- ID for the inference param
           Id InferenceParam,
           -- The actual job itself. This is stored so it can be canceled later
-          Async (Maybe (PairStream EpochTime IO))
+          Async (Maybe (Types.WriteStream IO))
         ),
     bridge :: Bridge,
     manager :: Manager,
