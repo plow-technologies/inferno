@@ -126,7 +126,10 @@ executable test-client
   hs-source-dirs: exe
   ghc-options:    -threaded -rtsopts -main-is Client
   build-depends:
+    , aeson
     , base
+    , conduit
+    , filepath
     , http-client
     , inferno-ml-server-types
     , iproute

@@ -85,14 +85,6 @@ newtype DummyEnv = DummyEnv
 server :: ServerT (BridgeAPI PID Int) DummyM
 server = valueAt :<|> latestValueAndTimeBefore
 
--- TODO do this with the returned values?
--- Write the pairs to a JSON file for later inspection
-writePairs :: PID -> WriteStream IO -> DummyM ()
-writePairs (PID p) c = liftIO $ encodeFile path =<< runConduit (c .| sinkList)
-  where
-    path :: FilePath
-    path = "./" </> show p <.> "json"
-
 -- Dummy implementation of `valueAt`, ignoring resolution for now
 valueAt :: Int64 -> PID -> Int -> DummyM IValue
 valueAt _ p t =
