@@ -104,7 +104,7 @@ data BridgeFuns m = BridgeFuns
   { valueAt :: BridgeV m,
     latestValueAndTimeBefore :: BridgeV m,
     latestValueAndTime :: BridgeV m,
-    makeWritesFun :: BridgeV m
+    makeWriteFun :: BridgeV m
   }
   deriving stock (Generic)
 

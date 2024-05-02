@@ -32,7 +32,7 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
     valueAtFun
     latestValueAndTimeBeforeFun
     latestValueAndTimeFun
-    makeWritesFun
+    makeWriteFun
   where
     valueAtFun :: BridgeV RemoteM
     valueAtFun = toValue $ ImplicitCast @"resolution" inputFunction
@@ -81,16 +81,16 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
             t@VTuple {} -> VOne t
             v -> v
 
-    makeWritesFun :: BridgeV RemoteM
-    makeWritesFun =
+    makeWriteFun :: BridgeV RemoteM
+    makeWriteFun =
       VFun $ \case
         VCustom (VExtended (VSeries pid)) ->
           pure $ VFun $ \case
             VArray vs -> do
               pairs <- extractPairs vs
               pure $ VCustom $ VExtended $ VWrite (pid, pairs)
-            _ -> throwM $ RuntimeError "makeWrites: expecting an array"
-        _ -> throwM $ RuntimeError "makeWrites: expecting a pid"
+            _ -> throwM $ RuntimeError "makeWrite: expecting an array"
+        _ -> throwM $ RuntimeError "makeWrite: expecting a pid"
       where
         extractPairs = \case
           [] -> pure []
