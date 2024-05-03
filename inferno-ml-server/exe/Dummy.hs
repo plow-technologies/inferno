@@ -7,22 +7,14 @@
 
 module Dummy where
 
-import Conduit (runConduit, sinkList, (.|))
 import Control.Monad.Except (ExceptT (ExceptT))
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT (runReaderT))
-import Data.Aeson (encodeFile)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Client.Bridge (api)
 import Inferno.ML.Server.Module.Types (PID (PID))
-import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( BridgeAPI,
-    IValue (IDouble, IEmpty),
-    WriteStream,
-  )
 import Lens.Micro.Platform
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
@@ -35,8 +27,11 @@ import Network.Wai.Handler.Warp
   )
 import Network.Wai.Logger (withStdoutLogger)
 import Servant
-import System.FilePath ((<.>), (</>))
 import UnliftIO.Exception (throwIO, try)
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( BridgeAPI,
+    IValue (IDouble, IEmpty),
+  )
 
 main :: IO ()
 main = do
