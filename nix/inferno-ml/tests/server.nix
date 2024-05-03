@@ -228,12 +228,12 @@ pkgs.nixosTest {
     node.succeed('register-bridge')
 
     # `tests/scripts/ones.inferno`
-    runtest(1, [{'contents': 1, 'tag': 'WritePid'}, {'contents': [151, 2.5], 'tag': 'WriteValue'}, {'contents': [251, 3.5], 'tag': 'WriteValue'}])
+    runtest(1, [1, [151, 2.5], [251, 3.5]])
 
     # `tests/scripts/contrived.inferno`
-    runtest(2, [{'contents': 2, 'tag': 'WritePid'}, {'contents': [300, 25.0], 'tag': 'WriteValue'}])
+    runtest(2, [2, [300, 25.0]])
 
     # `tests/scripts/mnist.inferno`
-    runtest(3, [{'contents': 3, 'tag': 'WritePid'}, {'contents': [100, 7.0], 'tag': 'WriteValue'}])
+    runtest(3, [3, [100, 7.0]])
   '';
 }
