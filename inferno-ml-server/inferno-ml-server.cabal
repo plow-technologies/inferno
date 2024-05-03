@@ -3,12 +3,8 @@ name:               inferno-ml-server
 version:            2023.4.3
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
-homepage:
-  https://github.com/plow-technologies/inferno.git#readme
-
-bug-reports:
-  https://github.com/plow-technologies/inferno.git/issues
-
+homepage:           https://github.com/plow-technologies/inferno.git#readme
+bug-reports:        https://github.com/plow-technologies/inferno.git/issues
 copyright:          Plow-Technologies LLC
 license:            MIT
 author:             Rory Tyler hayford
@@ -128,7 +124,10 @@ executable test-client
   build-depends:
     , aeson
     , base
+    , bytestring
     , conduit
+    , containers
+    , extra
     , filepath
     , http-client
     , inferno-ml-server-types

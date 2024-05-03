@@ -194,19 +194,12 @@ pkgs.nixosTest {
     import json
     import time
 
-    def runtest(param, ex):
-      node.succeed(f'run-inference-client-test {param}')
-      # Load the JSON file written to by the dummy server (as its implementation
-      # of the `writePairs` bridge endpoint) and confirm that the results are
-      # correct
+    def runtest(param):
+      # Runs an test for an individual param using the client executable,
+      # which confirms that the results are correct
       #
       # Note: The inference param DB ID and the associated PID are the same number
-
-      # Give the dummy bridge a second to write the file, just to be sure
-      time.sleep(1)
-      res = json.loads(node.succeed(f'cat /tmp/dummy/{param}.json'))
-      print(f'Inference param {param} should write values\n{ex}\nand wrote\n{res}')
-      assert res == ex
+      node.succeed(f'run-inference-client-test {param}')
 
     node.wait_for_unit("multi-user.target")
     node.wait_for_unit("postgresql.service")
@@ -228,12 +221,12 @@ pkgs.nixosTest {
     node.succeed('register-bridge')
 
     # `tests/scripts/ones.inferno`
-    runtest(1, [1, [151, 2.5], [251, 3.5]])
+    runtest(1)
 
     # `tests/scripts/contrived.inferno`
-    runtest(2, [2, [300, 25.0]])
+    runtest(2)
 
     # `tests/scripts/mnist.inferno`
-    runtest(3, [3, [100, 7.0]])
+    runtest(3)
   '';
 }
