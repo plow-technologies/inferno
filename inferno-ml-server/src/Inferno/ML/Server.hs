@@ -127,6 +127,7 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
         e@NoSuchParameter {} -> errWith err404 e
         e@NoSuchScript {} -> errWith err404 e
         e@InvalidScript {} -> errWith err400 e
+        e@InvalidOutput {} -> errWith err400 e
         e@InfernoError {} -> errWith err500 e
         e@BridgeNotRegistered {} -> errWith err500 e
         e@ScriptTimeout {} -> errWith err500 e

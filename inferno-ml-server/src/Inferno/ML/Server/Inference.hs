@@ -11,14 +11,14 @@ module Inferno.ML.Server.Inference
   )
 where
 
-import Conduit (yieldMany)
+import Conduit (ConduitT, awaitForever, yield, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
 import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', traverse_)
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -26,6 +26,7 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Only (Only),
@@ -193,18 +194,16 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                     yieldPairs ::
                       Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
                       RemoteM (WriteStream IO)
-                    yieldPairs (VArray vs) =
-                      yieldMany . concat <$> mapM extractWrite vs
-                    yieldPairs v =
-                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
-
-                    extractWrite ::
-                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
-                      RemoteM [WriteStreamItem]
-                    extractWrite (VCustom (VExtended (VWrite (PID pid, vals)))) =
-                      pure $ WritePid pid : map WriteValue vals
-                    extractWrite v =
-                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
+                    yieldPairs = \case
+                      VArray vs ->
+                        fmap ((.| flatten) . yieldMany) . for vs $ \case
+                          VCustom (VExtended (VWrite (PID pid, vals))) ->
+                            pure $ WritePid pid : fmap WriteValue vals
+                          v -> throwM . InvalidOutput $ renderPretty v
+                      v -> throwM . InvalidOutput $ renderPretty v
+                      where
+                        flatten :: ConduitT [WriteStreamItem] WriteStreamItem IO ()
+                        flatten = awaitForever $ traverse_ yield
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =

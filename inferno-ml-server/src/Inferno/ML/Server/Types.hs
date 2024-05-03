@@ -67,14 +67,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -94,6 +86,14 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( InferenceParam,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
@@ -277,6 +277,7 @@ data RemoteError
   | NoSuchScript VCObjectHash
   | NoSuchParameter Int64
   | InvalidScript Text
+  | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
     InfernoError SomeInfernoError
   | BridgeNotRegistered
@@ -303,6 +304,11 @@ instance Exception RemoteError where
     NoSuchParameter iid ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
     InvalidScript t -> Text.unpack t
+    InvalidOutput t ->
+      unwords
+        [ "Script output should be an array of `write` but was",
+          Text.unpack t
+        ]
     InfernoError (SomeInfernoError x) ->
       unwords
         [ "Inferno evaluation failed with:",
