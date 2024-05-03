@@ -6,11 +6,8 @@ module Inferno.ML.Server.Module.Bridge
 where
 
 import Control.Category ((>>>))
-import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Int (Int64)
-import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Server.Types
-import Inferno.ML.Types.Value (MlValue (..))
 import Inferno.Module.Cast (ToValue (toValue))
 import Inferno.Types.Value
   ( ImplicitCast (ImplicitCast),
@@ -32,7 +29,6 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
     valueAtFun
     latestValueAndTimeBeforeFun
     latestValueAndTimeFun
-    makeWriteFun
   where
     valueAtFun :: BridgeV RemoteM
     valueAtFun = toValue $ ImplicitCast @"resolution" inputFunction
@@ -80,21 +76,3 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
           fromIValue >>> \case
             t@VTuple {} -> VOne t
             v -> v
-
-    makeWriteFun :: BridgeV RemoteM
-    makeWriteFun =
-      VFun $ \case
-        VCustom (VExtended (VSeries pid)) ->
-          pure $ VFun $ \case
-            VArray vs -> do
-              pairs <- extractPairs vs
-              pure $ VCustom $ VExtended $ VWrite (pid, pairs)
-            _ -> throwM $ RuntimeError "makeWrite: expecting an array"
-        _ -> throwM $ RuntimeError "makeWrite: expecting a pid"
-      where
-        extractPairs = \case
-          [] -> pure []
-          v : vs -> (:) <$> extractPair v <*> extractPairs vs
-        extractPair = \case
-          VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
-          _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"

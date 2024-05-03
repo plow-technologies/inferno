@@ -103,8 +103,7 @@ instance FromValue (MlValue BridgeValue) m InverseResolution where
 data BridgeFuns m = BridgeFuns
   { valueAt :: BridgeV m,
     latestValueAndTimeBefore :: BridgeV m,
-    latestValueAndTime :: BridgeV m,
-    makeWriteFun :: BridgeV m
+    latestValueAndTime :: BridgeV m
   }
   deriving stock (Generic)
 
