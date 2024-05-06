@@ -10,17 +10,16 @@ module Client (main) where
 import Conduit
 import Control.Monad (unless, void)
 import Data.Coerce (coerce)
+import qualified Data.Conduit.List as Conduit.List
+import Data.Function (on)
 import Data.Int (Int64)
 import qualified Data.Map as Map
-import Data.Sequence (Seq ((:|>)), (|>))
-import qualified Data.Sequence as Sequence
 import Inferno.ML.Server.Client (inferenceC, registerBridgeC)
 import Inferno.ML.Server.Types
   ( BridgeInfo (BridgeInfo),
     IValue (IDouble),
     Id (Id),
     WriteStream,
-    WriteStreamItem (WritePid, WriteValue),
     toIPv4,
   )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
@@ -73,49 +72,19 @@ verifyWrites ipid c = do
       show ipid
     ]
   where
-    -- FIXME The reconstruction of the nested write structure should really
-    -- be done inside the conduit
-    rebuildWrites :: IO (Seq (Int, Seq (EpochTime, IValue)))
-    rebuildWrites = fmap groupWrites . runConduit $ c .| sinkList
+    rebuildWrites :: IO [(Int, [(EpochTime, IValue)])]
+    rebuildWrites =
+      runConduit $
+        c
+          .| Conduit.List.groupBy ((==) `on` fst)
+          .| Conduit.List.concat
+          .| sinkList
 
-    getExpected :: IO (Seq (Int, Seq (EpochTime, IValue)))
+    getExpected :: IO [(Int, [(EpochTime, IValue)])]
     getExpected =
       maybe (throwString "") pure . Map.lookup ipid $
         Map.fromList
-          [ ( 1,
-              Sequence.fromList
-                [ ( 1,
-                    Sequence.fromList
-                      [ (151, IDouble 2.5),
-                        (251, IDouble 3.5)
-                      ]
-                  )
-                ]
-            ),
-            ( 2,
-              Sequence.fromList
-                [ (2, Sequence.fromList [(300, IDouble 25.0)])
-                ]
-            ),
-            ( 3,
-              Sequence.fromList
-                [ (3, Sequence.fromList [(100, IDouble 7.0)])
-                ]
-            )
+          [ (1, [(1, [(151, IDouble 2.5), (251, IDouble 3.5)])]),
+            (2, [(2, [(300, IDouble 25.0)])]),
+            (3, [(3, [(100, IDouble 7.0)])])
           ]
-
-groupWrites :: [WriteStreamItem] -> Seq (Int, Seq (EpochTime, IValue))
-groupWrites xs = go xs Nothing mempty
-  where
-    go ::
-      [WriteStreamItem] ->
-      Maybe Int ->
-      Seq (Int, Seq (EpochTime, IValue)) ->
-      Seq (Int, Seq (EpochTime, IValue))
-    go [] _ acc = acc
-    go (WritePid p : ws) _ acc = go ws (Just p) $ acc |> (p, mempty)
-    go (WriteValue _ : ws) Nothing acc = go ws Nothing acc
-    go (WriteValue v : ws) (Just p) acc = case acc of
-      rest :|> (p', vs)
-        | p == p' -> go ws (Just p) $ rest |> (p, vs |> v)
-      _ -> go ws (Just p) acc

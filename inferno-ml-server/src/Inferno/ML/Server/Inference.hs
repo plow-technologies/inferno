@@ -11,14 +11,15 @@ module Inferno.ML.Server.Inference
   )
 where
 
-import Conduit (ConduitT, awaitForever, yield, yieldMany, (.|))
+import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
 import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
-import Data.Foldable (foldl', traverse_)
+import Data.Conduit.List (chunksOf, sourceList)
+import Data.Foldable (foldl')
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -59,6 +60,7 @@ import Inferno.VersionControl.Types
   )
 import Lens.Micro.Platform
 import System.FilePath (dropExtensions, (<.>))
+import System.Posix.Types (EpochTime)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
   ( createFileLink,
@@ -196,14 +198,19 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                       RemoteM (WriteStream IO)
                     yieldPairs = \case
                       VArray vs ->
-                        fmap ((.| flatten) . yieldMany) . for vs $ \case
-                          VCustom (VExtended (VWrite (PID pid, vals))) ->
-                            pure $ WritePid pid : fmap WriteValue vals
+                        fmap ((.| mkChunks) . yieldMany) . for vs $ \case
+                          VCustom (VExtended (VWrite vw)) -> pure vw
                           v -> throwM . InvalidOutput $ renderPretty v
                       v -> throwM . InvalidOutput $ renderPretty v
                       where
-                        flatten :: ConduitT [WriteStreamItem] WriteStreamItem IO ()
-                        flatten = awaitForever $ traverse_ yield
+                        mkChunks ::
+                          ConduitT
+                            (PID, [(EpochTime, IValue)])
+                            (Int, [(EpochTime, IValue)])
+                            IO
+                            ()
+                        mkChunks = awaitForever $ \(p, ws) ->
+                          sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =

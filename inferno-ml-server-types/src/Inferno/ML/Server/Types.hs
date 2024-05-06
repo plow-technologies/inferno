@@ -14,7 +14,7 @@
 module Inferno.ML.Server.Types where
 
 import Conduit (ConduitT)
-import Control.Applicative (Alternative ((<|>)), asum, optional)
+import Control.Applicative (asum, optional)
 import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Monad (void)
@@ -25,7 +25,6 @@ import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
-import Data.Foldable (toList)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.IP
@@ -132,42 +131,8 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
 
--- | An item in the stream of writes returned by an ML parameter script.
--- Since a script can write multiple values to multiple PIDs, we stream the results
--- using this union type. The stream looks like the following sequence:
--- @[WritePid p1, WriteValue (t1, v1), ..., WriteValue (tN, vN), WritePid p2, ...]@
--- where every section starts with a 'WritePid' to specify which
--- PID to write to, followed by zero or more 'WriteValue's that specify the
--- (time, value) pairs to write to the given PID.
-data WriteStreamItem = WritePid Int | WriteValue (EpochTime, IValue)
-  deriving stock (Show, Eq, Generic)
-
-instance FromJSON WriteStreamItem where
-  parseJSON = (<|>) <$> writePidP <*> writeValueP
-    where
-      writePidP :: Value -> Parser WriteStreamItem
-      writePidP =
-        withScientific "WritePid" $
-          pure
-            . WritePid
-            -- Since only integral values will ever be encoded, using
-            -- `round` is fine for `Scientific -> Int`
-            . round
-
-      writeValueP :: Value -> Parser WriteStreamItem
-      writeValueP =
-        withArray "WriteValue" $
-          toList >>> \case
-            [t, v] -> fmap WriteValue . (,) <$> parseJSON t <*> parseJSON v
-            _ -> fail "Expected a tuple of (EpochTime, IValue)"
-
-instance ToJSON WriteStreamItem where
-  toJSON = \case
-    WritePid p -> toJSON p
-    WriteValue v -> toJSON v
-
 -- | Stream of writes that an ML parameter script results in.
-type WriteStream m = ConduitT () WriteStreamItem m ()
+type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo = BridgeInfo
