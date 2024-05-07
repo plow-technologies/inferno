@@ -82,7 +82,7 @@ verifyWrites ipid c = do
 
     getExpected :: IO [(Int, [(EpochTime, IValue)])]
     getExpected =
-      maybe (throwString "") pure . Map.lookup ipid $
+      maybe (throwString "Missing PID") pure . Map.lookup ipid $
         Map.fromList
           [ (1, [(1, [(151, IDouble 2.5), (251, IDouble 3.5)])]),
             (2, [(2, [(300, IDouble 25.0)])]),
