@@ -717,8 +717,16 @@ instance FromJSON IValue where
     Object o -> ITime <$> o .: "time"
     Array a
       | [x, y] <- Vector.toList a ->
-          fmap ITuple $
-            (,) <$> parseJSON x <*> parseJSON y
+          (,) <$> parseJSON x <*> parseJSON y <&> \case
+            -- We don't want to confuse a two-element array of tuples with
+            -- a tuple itself. For example, `"[[10.0, {\"time\": 10}], [10.0, {\"time\": 10}]]"`
+            -- should parse as a two-element array of `(double, time)` tuples,
+            -- not as a `((double, time), (double, time))`. I can't think of
+            -- any reason to support the latter. An alternative would be to
+            -- change tuple encoding to an object, but then we would be transmitting
+            -- a much larger amount of data on most requests
+            (f@(ITuple _), s@(ITuple _)) -> IArray $ Vector.fromList [f, s]
+            t -> ITuple t
       | otherwise -> IArray <$> traverse (parseJSON @IValue) a
     Null -> pure IEmpty
     _ -> fail "Expected one of: string, double, time, tuple, unit (empty array), array"

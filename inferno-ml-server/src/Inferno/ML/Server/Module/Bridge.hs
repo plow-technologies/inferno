@@ -81,7 +81,9 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
             v -> v
 
     valuesBetweenFun :: BridgeV RemoteM
-    valuesBetweenFun = toValue valuesBetweenFunction
+    valuesBetweenFun =
+      toValue $
+        ImplicitCast @"resolution" valuesBetweenFunction
       where
         valuesBetweenFunction ::
           InverseResolution ->
