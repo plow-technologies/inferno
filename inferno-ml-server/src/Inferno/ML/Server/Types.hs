@@ -79,7 +79,7 @@ import Network.HTTP.Client (Manager)
 import Numeric (readHex)
 import qualified Options.Applicative as Options
 import Plow.Logging (IOTracer, traceWith)
-import Servant.Client.Streaming (ClientError, ClientM)
+import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async)
@@ -122,19 +122,8 @@ data Env = Env
 -- | A bridge (host and port) of a server that can proxy a data source. This
 -- can be set using @POST /bridge@. It's not included directly into the NixOS
 -- image because then it would be difficult to change
---
--- The client are @ClientM@ effects to perform specific queries, e.g.
--- @valueAt@, which requires connecting to a data source
-data Bridge = Bridge
-  { client :: BridgeClient,
-    info :: IORef (Maybe BridgeInfo)
-  }
-  deriving stock (Generic)
-
-data BridgeClient = BridgeClient
-  { valueAt :: Int64 -> PID -> EpochTime -> ClientM IValue,
-    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue,
-    valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> ClientM IValue
+newtype Bridge = Bridge
+  { info :: IORef (Maybe BridgeInfo)
   }
   deriving stock (Generic)
 

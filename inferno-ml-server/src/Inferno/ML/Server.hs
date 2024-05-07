@@ -17,7 +17,6 @@ import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
 import Database.PostgreSQL.Simple (withConnect)
 import Inferno.ML.Server.Bridge
-import qualified Inferno.ML.Server.Client.Bridge as Bridge
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
@@ -93,20 +92,13 @@ runInEnv cfg f = withRemoteTracer $ \tracer -> do
         <*> newIORef Nothing
   where
     mkBridge :: IO Bridge
-    mkBridge = Bridge defaultBridgeClient <$> (newIORef =<< maybeDecodeBridge)
+    mkBridge = fmap Bridge $ newIORef =<< maybeDecodeBridge
 
     maybeDecodeBridge :: IO (Maybe BridgeInfo)
     maybeDecodeBridge =
       doesFileExist bridgeCache >>= \case
         False -> pure Nothing
         True -> decodeFileStrict bridgeCache
-
-    defaultBridgeClient :: BridgeClient
-    defaultBridgeClient =
-      BridgeClient
-        Bridge.valueAtC
-        Bridge.latestValueAndTimeBeforeC
-        Bridge.valuesBetweenC
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
