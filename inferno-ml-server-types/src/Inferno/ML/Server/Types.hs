@@ -133,9 +133,9 @@ type BridgeAPI p t =
     :<|> "bridge"
       :> "values-between"
       :> QueryParam' '[Required] "res" Int64
+      :> QueryParam' '[Required] "p" p
       :> QueryParam' '[Required] "t1" t
       :> QueryParam' '[Required] "t2" t
-      :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
 
 -- | Stream of writes that an ML parameter script results in. Each element

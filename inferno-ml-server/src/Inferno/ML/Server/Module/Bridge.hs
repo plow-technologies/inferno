@@ -24,7 +24,7 @@ mkBridgeFuns ::
   -- | @latestValueAndTimeBefore@
   (EpochTime -> PID -> RemoteM IValue) ->
   -- | @valuesBetween@
-  (Int64 -> EpochTime -> EpochTime -> PID -> RemoteM IValue) ->
+  (Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue) ->
   BridgeFuns RemoteM
 mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
   BridgeFuns
@@ -87,11 +87,11 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
       where
         valuesBetweenFunction ::
           InverseResolution ->
-          EpochTime ->
-          EpochTime ->
           PID ->
+          EpochTime ->
+          EpochTime ->
           BridgeImplM RemoteM
-        valuesBetweenFunction r t1 t2 =
+        valuesBetweenFunction r pid t1 =
           liftImplEnvM
             . fmap fromIValue
-            . valuesBetween (resolutionToInt r) t1 t2
+            . valuesBetween (resolutionToInt r) pid t1

@@ -52,8 +52,8 @@ registerBridgeInfo bi = do
     latestValueAndTimeBefore t pid =
       callBridge =<< getBridgeRoute #latestValueAndTimeBefore ?? t ?? pid
 
-    valuesBetween :: Int64 -> EpochTime -> EpochTime -> PID -> RemoteM IValue
-    valuesBetween res t1 t2 pid = callBridge =<< getBridgeRoute #valuesBetween ?? res ?? t1 ?? t2 ?? pid
+    valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
+    valuesBetween res pid t1 t2 = callBridge =<< getBridgeRoute #valuesBetween ?? res ?? pid ?? t1 ?? t2
 
 -- | Get the previously saved 'BridgeInfo', if any
 getBridgeInfo :: RemoteM (Maybe BridgeInfo)
