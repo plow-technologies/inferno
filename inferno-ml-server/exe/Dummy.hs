@@ -78,7 +78,7 @@ newtype DummyEnv = DummyEnv
   deriving stock (Generic)
 
 server :: ServerT (BridgeAPI PID Int) DummyM
-server = valueAt :<|> latestValueAndTimeBefore
+server = valueAt :<|> latestValueAndTimeBefore :<|> valuesBetween
 
 -- Dummy implementation of `valueAt`, ignoring resolution for now
 valueAt :: Int64 -> PID -> Int -> DummyM IValue
@@ -87,4 +87,7 @@ valueAt _ p t =
     <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
 
 latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
-latestValueAndTimeBefore = const . const . throwIO $ userError "Unsupported"
+latestValueAndTimeBefore _ _ = throwIO $ userError "Unsupported"
+
+valuesBetween :: Int64 -> PID -> Int -> Int -> ReaderT DummyEnv IO IValue
+valuesBetween _ _ _ _ = throwIO $ userError "Unsupported"
