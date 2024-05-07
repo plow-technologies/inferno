@@ -106,6 +106,7 @@ runInEnv cfg f = withRemoteTracer $ \tracer -> do
       BridgeClient
         Bridge.valueAtC
         Bridge.latestValueAndTimeBeforeC
+        Bridge.valuesBetweenC
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server

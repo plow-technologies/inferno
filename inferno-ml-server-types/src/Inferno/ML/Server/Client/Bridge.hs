@@ -32,8 +32,13 @@ latestValueAndTimeBeforeC ::
   t ->
   p ->
   ClientM IValue
+
+-- | Get an array of values falling between the two times
+valuesBetweenC ::
+  (ToHttpApiData p, ToHttpApiData t) => Int64 -> t -> t -> p -> ClientM IValue
 valueAtC
-  :<|> latestValueAndTimeBeforeC =
+  :<|> latestValueAndTimeBeforeC
+  :<|> valuesBetweenC =
     client api
 
 api :: Proxy (BridgeAPI p t)

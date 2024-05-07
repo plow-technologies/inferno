@@ -43,7 +43,7 @@ registerBridgeInfo bi = do
     =<< view #interpreter
   where
     funs :: BridgeFuns RemoteM
-    funs = mkBridgeFuns valueAt latestValueAndTimeBefore
+    funs = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
 
     valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
     valueAt res pid t = callBridge =<< getBridgeRoute #valueAt ?? res ?? pid ?? t
@@ -51,6 +51,9 @@ registerBridgeInfo bi = do
     latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
     latestValueAndTimeBefore t pid =
       callBridge =<< getBridgeRoute #latestValueAndTimeBefore ?? t ?? pid
+
+    valuesBetween :: Int64 -> EpochTime -> EpochTime -> PID -> RemoteM IValue
+    valuesBetween res t1 t2 pid = callBridge =<< getBridgeRoute #valuesBetween ?? res ?? t1 ?? t2 ?? pid
 
 -- | Get the previously saved 'BridgeInfo', if any
 getBridgeInfo :: RemoteM (Maybe BridgeInfo)

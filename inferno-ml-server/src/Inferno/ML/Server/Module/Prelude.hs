@@ -50,6 +50,7 @@ bridgeModules
       valueAt
       latestValueAndTimeBefore
       latestValueAndTime
+      valuesBetween
     ) =
     [mlQuoter|
 module DataSource
@@ -134,6 +135,11 @@ module DataSource
     -> time
     -> option of 'a
     := ###!valueAtOrAdjacent###;
+  @doc Returns all values between two times, using the implicit resolution.
+
+  If the resolution is set to 1, this returns all the events (actual values, not approximations) in the given time window.;
+  valuesBetween : forall 'a. { implicit resolution : resolution }
+    => series of 'a -> time -> time -> array of ('a, time) := ###!valuesBetween###;
 |]
     where
       valueAtOrAdjacent :: BridgeV m

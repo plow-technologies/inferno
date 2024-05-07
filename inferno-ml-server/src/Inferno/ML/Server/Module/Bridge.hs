@@ -23,12 +23,15 @@ mkBridgeFuns ::
   (Int64 -> PID -> EpochTime -> RemoteM IValue) ->
   -- | @latestValueAndTimeBefore@
   (EpochTime -> PID -> RemoteM IValue) ->
+  -- | @valuesBetween@
+  (Int64 -> EpochTime -> EpochTime -> PID -> RemoteM IValue) ->
   BridgeFuns RemoteM
-mkBridgeFuns valueAt latestValueAndTimeBefore =
+mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
   BridgeFuns
     valueAtFun
     latestValueAndTimeBeforeFun
     latestValueAndTimeFun
+    valuesBetweenFun
   where
     valueAtFun :: BridgeV RemoteM
     valueAtFun = toValue $ ImplicitCast @"resolution" inputFunction
@@ -76,3 +79,17 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
           fromIValue >>> \case
             t@VTuple {} -> VOne t
             v -> v
+
+    valuesBetweenFun :: BridgeV RemoteM
+    valuesBetweenFun = toValue valuesBetweenFunction
+      where
+        valuesBetweenFunction ::
+          InverseResolution ->
+          EpochTime ->
+          EpochTime ->
+          PID ->
+          BridgeImplM RemoteM
+        valuesBetweenFunction r t1 t2 =
+          liftImplEnvM
+            . fmap fromIValue
+            . valuesBetween (resolutionToInt r) t1 t2

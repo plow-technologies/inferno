@@ -133,7 +133,8 @@ data Bridge = Bridge
 
 data BridgeClient = BridgeClient
   { valueAt :: Int64 -> PID -> EpochTime -> ClientM IValue,
-    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue
+    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue,
+    valuesBetween :: Int64 -> EpochTime -> EpochTime -> PID -> ClientM IValue
   }
   deriving stock (Generic)
 

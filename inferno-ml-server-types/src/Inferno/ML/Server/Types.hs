@@ -130,6 +130,13 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "time" t
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
+    :<|> "bridge"
+      :> "values-between"
+      :> QueryParam' '[Required] "res" Int64
+      :> QueryParam' '[Required] "t1" t
+      :> QueryParam' '[Required] "t2" t
+      :> QueryParam' '[Required] "p" p
+      :> Get '[JSON] IValue
 
 -- | Stream of writes that an ML parameter script results in. Each element
 -- in the stream is a chunk (sub-list) of the original values that the
@@ -697,6 +704,7 @@ data IValue
   | ITuple (IValue, IValue)
   | ITime EpochTime
   | IEmpty
+  | IArray (Vector IValue)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
 
@@ -711,8 +719,9 @@ instance FromJSON IValue where
       | [x, y] <- Vector.toList a ->
           fmap ITuple $
             (,) <$> parseJSON x <*> parseJSON y
-      | Vector.null a -> pure IEmpty
-    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array)"
+      | otherwise -> IArray <$> traverse (parseJSON @IValue) a
+    Null -> pure IEmpty
+    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array), array"
 
 instance ToJSON IValue where
   toJSON = \case
@@ -721,7 +730,8 @@ instance ToJSON IValue where
     ITuple t -> toJSON t
     -- See `FromJSON` instance above
     ITime t -> object ["time" .= t]
-    IEmpty -> toJSON ()
+    IEmpty -> toJSON Null
+    IArray is -> toJSON is
 
 -- | Used to represent inputs to the script. 'Many' allows for an array input
 data SingleOrMany a

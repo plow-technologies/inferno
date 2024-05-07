@@ -12,15 +12,13 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits (countLeadingZeros)
 import Data.Generics.Labels ()
 import Data.Int (Int64)
+import qualified Data.Vector as Vector
 import Data.Word (Word8)
 import Database.PostgreSQL.Simple.FromField (FromField)
 import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( IValue (IDouble, IEmpty, IText, ITime, ITuple),
-  )
 import Inferno.ML.Types.Value (MlValue (VExtended))
 import Inferno.Module.Cast
   ( FromValue (fromValue),
@@ -29,12 +27,15 @@ import Inferno.Module.Cast
   )
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VCustom, VDouble, VEmpty, VEpochTime, VText, VTuple),
+    Value (VArray, VCustom, VDouble, VEmpty, VEpochTime, VText, VTuple),
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), cat, (<+>))
 import System.Posix.Types (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
+  )
 
 -- | Custom type for bridge prelude
 data BridgeValue
@@ -103,7 +104,8 @@ instance FromValue (MlValue BridgeValue) m InverseResolution where
 data BridgeFuns m = BridgeFuns
   { valueAt :: BridgeV m,
     latestValueAndTimeBefore :: BridgeV m,
-    latestValueAndTime :: BridgeV m
+    latestValueAndTime :: BridgeV m,
+    valuesBetween :: BridgeV m
   }
   deriving stock (Generic)
 
@@ -114,6 +116,7 @@ fromIValue = \case
   ITime t -> VEpochTime t
   ITuple (x, y) -> VTuple [fromIValue x, fromIValue y]
   IEmpty -> VEmpty
+  IArray v -> VArray $ Vector.toList $ fromIValue <$> v
 
 toIValue :: MonadThrow f => Value custom m -> f IValue
 toIValue = \case
@@ -122,6 +125,7 @@ toIValue = \case
   VEpochTime t -> pure $ ITime t
   VTuple [x, y] -> curry ITuple <$> toIValue x <*> toIValue y
   VEmpty -> pure IEmpty
+  VArray vs -> IArray . Vector.fromList <$> traverse toIValue vs
   _ -> throwM $ RuntimeError "toIValue: got an unsupported value type"
 
 toResolution :: Int64 -> InverseResolution
