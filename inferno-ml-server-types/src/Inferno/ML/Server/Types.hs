@@ -131,7 +131,12 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
 
--- | Stream of writes that an ML parameter script results in.
+-- | Stream of writes that an ML parameter script results in. Each element
+-- in the stream is a chunk (sub-list) of the original values that the
+-- inference script evaluates to. For example, given the following output:
+-- @[ (1, [ (100, 5.0) .. (10000, 5000.0) ]) ]@; the stream items will be:
+-- @(1, [ (100, 5.0) .. (500, 2500.0) ]), (1, [ (501, 2501.0) .. (10000, 5000.0) ])@.
+-- This means the same output may appear more than once in the stream
 type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
