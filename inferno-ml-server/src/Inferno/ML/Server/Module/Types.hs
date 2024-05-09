@@ -19,6 +19,9 @@ import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
+  )
 import Inferno.ML.Types.Value (MlValue (VExtended))
 import Inferno.Module.Cast
   ( FromValue (fromValue),
@@ -33,9 +36,6 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), cat, (<+>))
 import System.Posix.Types (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
-import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
-  )
 
 -- | Custom type for bridge prelude
 data BridgeValue
