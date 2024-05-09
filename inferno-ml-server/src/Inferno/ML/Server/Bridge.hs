@@ -13,6 +13,7 @@ import Control.Monad.Reader (asks)
 import Data.Aeson (encodeFile)
 import Data.Int (Int64)
 import Inferno.Core (mkInferno)
+import qualified Inferno.ML.Server.Client.Bridge as Bridge
 import Inferno.ML.Server.Module.Bridge (mkBridgeFuns)
 import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
 import Inferno.ML.Server.Types
@@ -43,14 +44,16 @@ registerBridgeInfo bi = do
     =<< view #interpreter
   where
     funs :: BridgeFuns RemoteM
-    funs = mkBridgeFuns valueAt latestValueAndTimeBefore
+    funs = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
 
     valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
-    valueAt res pid t = callBridge =<< getBridgeRoute #valueAt ?? res ?? pid ?? t
+    valueAt res pid = callBridge . Bridge.valueAtC res pid
 
     latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
-    latestValueAndTimeBefore t pid =
-      callBridge =<< getBridgeRoute #latestValueAndTimeBefore ?? t ?? pid
+    latestValueAndTimeBefore t = callBridge . Bridge.latestValueAndTimeBeforeC t
+
+    valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
+    valuesBetween res pid t1 = callBridge . Bridge.valuesBetweenC res pid t1
 
 -- | Get the previously saved 'BridgeInfo', if any
 getBridgeInfo :: RemoteM (Maybe BridgeInfo)
@@ -77,6 +80,3 @@ callBridge c =
             (view (#host . to show) bi)
             (view (#port . to fromIntegral) bi)
             mempty
-
-getBridgeRoute :: Lens' BridgeClient (a -> b) -> RemoteM (a -> b)
-getBridgeRoute l = view $ #bridge . #client . l

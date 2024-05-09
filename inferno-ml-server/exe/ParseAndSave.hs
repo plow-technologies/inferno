@@ -139,7 +139,7 @@ parse Interpreter {parseAndInfer} =
 
 -- These are needed to parse the script, but do not need to do anything
 funs :: BridgeFuns IO
-funs = BridgeFuns notSupported notSupported notSupported notSupported
+funs = BridgeFuns notSupported notSupported notSupported
   where
     notSupported :: a
     notSupported = error "Not supported"

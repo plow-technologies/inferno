@@ -67,14 +67,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -87,13 +79,21 @@ import Network.HTTP.Client (Manager)
 import Numeric (readHex)
 import qualified Options.Applicative as Options
 import Plow.Logging (IOTracer, traceWith)
-import Servant.Client.Streaming (ClientError, ClientM)
+import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( InferenceParam,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
@@ -122,18 +122,8 @@ data Env = Env
 -- | A bridge (host and port) of a server that can proxy a data source. This
 -- can be set using @POST /bridge@. It's not included directly into the NixOS
 -- image because then it would be difficult to change
---
--- The client are @ClientM@ effects to perform specific queries, e.g.
--- @valueAt@, which requires connecting to a data source
-data Bridge = Bridge
-  { client :: BridgeClient,
-    info :: IORef (Maybe BridgeInfo)
-  }
-  deriving stock (Generic)
-
-data BridgeClient = BridgeClient
-  { valueAt :: Int64 -> PID -> EpochTime -> ClientM IValue,
-    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue
+newtype Bridge = Bridge
+  { info :: IORef (Maybe BridgeInfo)
   }
   deriving stock (Generic)
 
@@ -277,6 +267,7 @@ data RemoteError
   | NoSuchScript VCObjectHash
   | NoSuchParameter Int64
   | InvalidScript Text
+  | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
     InfernoError SomeInfernoError
   | BridgeNotRegistered
@@ -303,6 +294,11 @@ instance Exception RemoteError where
     NoSuchParameter iid ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
     InvalidScript t -> Text.unpack t
+    InvalidOutput t ->
+      unwords
+        [ "Script output should be an array of `write` but was",
+          Text.unpack t
+        ]
     InfernoError (SomeInfernoError x) ->
       unwords
         [ "Inferno evaluation failed with:",

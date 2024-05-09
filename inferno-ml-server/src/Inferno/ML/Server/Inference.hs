@@ -11,13 +11,14 @@ module Inferno.ML.Server.Inference
   )
 where
 
-import Conduit (yieldMany)
+import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
 import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
+import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl')
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
@@ -26,6 +27,7 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Only (Only),
@@ -58,6 +60,7 @@ import Inferno.VersionControl.Types
   )
 import Lens.Micro.Platform
 import System.FilePath (dropExtensions, (<.>))
+import System.Posix.Types (EpochTime)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
   ( createFileLink,
@@ -193,18 +196,21 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                     yieldPairs ::
                       Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
                       RemoteM (WriteStream IO)
-                    yieldPairs (VArray vs) =
-                      yieldMany . concat <$> mapM extractWrite vs
-                    yieldPairs v =
-                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
-
-                    extractWrite ::
-                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
-                      RemoteM [WriteStreamItem]
-                    extractWrite (VCustom (VExtended (VWrite (PID pid, vals)))) =
-                      pure $ WritePid pid : map WriteValue vals
-                    extractWrite v =
-                      throwM $ InvalidScript $ "Script output should be an array of `write` but was " <> renderPretty v
+                    yieldPairs = \case
+                      VArray vs ->
+                        fmap ((.| mkChunks) . yieldMany) . for vs $ \case
+                          VCustom (VExtended (VWrite vw)) -> pure vw
+                          v -> throwM . InvalidOutput $ renderPretty v
+                      v -> throwM . InvalidOutput $ renderPretty v
+                      where
+                        mkChunks ::
+                          ConduitT
+                            (PID, [(EpochTime, IValue)])
+                            (Int, [(EpochTime, IValue)])
+                            IO
+                            ()
+                        mkChunks = awaitForever $ \(p, ws) ->
+                          sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =

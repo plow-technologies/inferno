@@ -6,11 +6,8 @@ module Inferno.ML.Server.Module.Bridge
 where
 
 import Control.Category ((>>>))
-import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Int (Int64)
-import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Server.Types
-import Inferno.ML.Types.Value (MlValue (..))
 import Inferno.Module.Cast (ToValue (toValue))
 import Inferno.Types.Value
   ( ImplicitCast (ImplicitCast),
@@ -26,13 +23,15 @@ mkBridgeFuns ::
   (Int64 -> PID -> EpochTime -> RemoteM IValue) ->
   -- | @latestValueAndTimeBefore@
   (EpochTime -> PID -> RemoteM IValue) ->
+  -- | @valuesBetween@
+  (Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue) ->
   BridgeFuns RemoteM
-mkBridgeFuns valueAt latestValueAndTimeBefore =
+mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
   BridgeFuns
     valueAtFun
     latestValueAndTimeBeforeFun
     latestValueAndTimeFun
-    makeWriteFun
+    valuesBetweenFun
   where
     valueAtFun :: BridgeV RemoteM
     valueAtFun = toValue $ ImplicitCast @"resolution" inputFunction
@@ -81,20 +80,18 @@ mkBridgeFuns valueAt latestValueAndTimeBefore =
             t@VTuple {} -> VOne t
             v -> v
 
-    makeWriteFun :: BridgeV RemoteM
-    makeWriteFun =
-      VFun $ \case
-        VCustom (VExtended (VSeries pid)) ->
-          pure $ VFun $ \case
-            VArray vs -> do
-              pairs <- extractPairs vs
-              pure $ VCustom $ VExtended $ VWrite (pid, pairs)
-            _ -> throwM $ RuntimeError "makeWrite: expecting an array"
-        _ -> throwM $ RuntimeError "makeWrite: expecting a pid"
+    valuesBetweenFun :: BridgeV RemoteM
+    valuesBetweenFun =
+      toValue $
+        ImplicitCast @"resolution" valuesBetweenFunction
       where
-        extractPairs = \case
-          [] -> pure []
-          v : vs -> (:) <$> extractPair v <*> extractPairs vs
-        extractPair = \case
-          VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
-          _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
+        valuesBetweenFunction ::
+          InverseResolution ->
+          PID ->
+          EpochTime ->
+          EpochTime ->
+          BridgeImplM RemoteM
+        valuesBetweenFunction r pid t1 =
+          liftImplEnvM
+            . fmap fromIValue
+            . valuesBetween (resolutionToInt r) pid t1

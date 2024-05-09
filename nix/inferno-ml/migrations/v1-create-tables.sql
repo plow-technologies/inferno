@@ -20,7 +20,7 @@ create table if not exists users
   ( -- Note: this is the bson object ID represented as an integer
     id integer primary key
     -- Also a list of bson object IDs. This determines model access (see below)
-  , groups integer[]
+  , groups integer[] not null
   );
 
 create table if not exists models
@@ -42,6 +42,11 @@ create table if not exists mversions
   , model integer references models (id)
     -- Model card (description and metadata) serialized as JSON
   , card jsonb not null
+    -- The model contents are not stored directly because it might exceed
+    -- the 1GB column-size limit. Instead the model version contains a
+    -- pointer to a Postgres large object (the `oid` below). This means
+    -- that saving a model version requires as its first step `lo_import`ing
+    -- the contents
   , contents oid not null
   , version text not null
     -- See note above
@@ -61,27 +66,12 @@ create table if not exists params
   ( id serial primary key
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
-  , model integer references models (id)
-  , inputs jsonb
-  , outputs jsonb
+  , model integer references mversions (id)
+  , inputs jsonb not null
+  , outputs jsonb not null
     -- See note above
   , terminated timestamptz
   , "user" integer references users (id)
-  );
-
-create table if not exists instances
-  ( -- Note: the AWS ID
-    id text primary key
-    -- Private IP
-  , ip inet not null
-    -- See note above
-  , terminated timestamptz
-  , param integer references params (id)
-  );
-
-create table if not exists running
-  ( id text primary key references instances (id)
-  , since timestamptz not null
   );
 
 create trigger "manage-mversion-lo" before update or delete on mversions
