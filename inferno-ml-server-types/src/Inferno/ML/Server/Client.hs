@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Inferno.ML.Server.Client
   ( statusC,
@@ -21,7 +22,10 @@ import Servant.Client.Streaming (ClientM, client)
 statusC :: ClientM (Maybe ())
 
 -- | Run an inference parameter
-inferenceC :: Id (InferenceParam uid gid p s) -> Maybe Int64 -> ClientM ()
+inferenceC ::
+  Id (InferenceParam uid gid p s) ->
+  Maybe Int64 ->
+  ClientM (WriteStream IO)
 
 -- | Cancel the existing inference job, if it exists
 cancelC :: ClientM ()
@@ -39,5 +43,5 @@ statusC
   :<|> checkBridgeC =
     client api
 
-api :: Proxy (InfernoMlServerAPI uid gid p s)
+api :: Proxy (InfernoMlServerAPI uid gid p s t)
 api = Proxy

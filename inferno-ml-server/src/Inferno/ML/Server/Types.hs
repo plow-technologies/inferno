@@ -87,7 +87,7 @@ import Network.HTTP.Client (Manager)
 import Numeric (readHex)
 import qualified Options.Applicative as Options
 import Plow.Logging (IOTracer, traceWith)
-import Servant.Client.Streaming (ClientError, ClientM)
+import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async)
@@ -109,7 +109,7 @@ data Env = Env
         ( -- ID for the inference param
           Id InferenceParam,
           -- The actual job itself. This is stored so it can be canceled later
-          Async (Maybe ())
+          Async (Maybe (Types.WriteStream IO))
         ),
     bridge :: Bridge,
     manager :: Manager,
@@ -122,19 +122,8 @@ data Env = Env
 -- | A bridge (host and port) of a server that can proxy a data source. This
 -- can be set using @POST /bridge@. It's not included directly into the NixOS
 -- image because then it would be difficult to change
---
--- The client are @ClientM@ effects to perform specific queries, e.g.
--- @valueAt@, which requires connecting to a data source
-data Bridge = Bridge
-  { client :: BridgeClient,
-    info :: IORef (Maybe BridgeInfo)
-  }
-  deriving stock (Generic)
-
-data BridgeClient = BridgeClient
-  { valueAt :: Int64 -> PID -> EpochTime -> ClientM IValue,
-    latestValueAndTimeBefore :: EpochTime -> PID -> ClientM IValue,
-    writePairs :: PID -> PairStream Int IO -> ClientM ()
+newtype Bridge = Bridge
+  { info :: IORef (Maybe BridgeInfo)
   }
   deriving stock (Generic)
 
@@ -278,6 +267,7 @@ data RemoteError
   | NoSuchScript VCObjectHash
   | NoSuchParameter Int64
   | InvalidScript Text
+  | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
     InfernoError SomeInfernoError
   | BridgeNotRegistered
@@ -304,6 +294,11 @@ instance Exception RemoteError where
     NoSuchParameter iid ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
     InvalidScript t -> Text.unpack t
+    InvalidOutput t ->
+      unwords
+        [ "Script output should be an array of `write` but was",
+          Text.unpack t
+        ]
     InfernoError (SomeInfernoError x) ->
       unwords
         [ "Inferno evaluation failed with:",
@@ -395,7 +390,7 @@ pattern VCMeta t a g n d p v o =
   Inferno.VersionControl.Types.VCMeta t a g n d p v o
 
 type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime
 
 -- Orphans
 

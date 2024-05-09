@@ -1,7 +1,8 @@
 fun input0 ->
-let mkV = fun t -> valueAt input0 (Time.toTime (Time.seconds t)) ? 0.0
-in let v1 = mkV 150
-in let v2 = mkV 250
-in let xs = ML.ones ML.#double [1, 2]
-in let vs = ML.asTensor2 ML.#double [[150.0, v1], [250.0, v2]]
-in writePairs input0 (ML.add xs vs)
+  let mkV = fun t -> valueAt input0 (Time.toTime (Time.seconds t)) ? 0.0 in
+  let ts = [150, 250] in
+  let vs = Array.map mkV ts in
+  let xs = ML.ones ML.#double [2] in
+  let ts1 = Array.map (fun t -> Time.toTime (Time.seconds (t + 1))) ts in
+  let vs1 = ML.asArray1 (ML.add xs (ML.asTensor1 ML.#double vs)) in
+  [makeWrites input0 (zip ts1 vs1)]

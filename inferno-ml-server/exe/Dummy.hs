@@ -7,11 +7,8 @@
 
 module Dummy where
 
-import Conduit (runConduit, sinkList, (.|))
 import Control.Monad.Except (ExceptT (ExceptT))
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT (runReaderT))
-import Data.Aeson (encodeFile)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -21,7 +18,6 @@ import Inferno.ML.Server.Module.Types (PID (PID))
 import "inferno-ml-server-types" Inferno.ML.Server.Types
   ( BridgeAPI,
     IValue (IDouble, IEmpty),
-    PairStream,
   )
 import Lens.Micro.Platform
 import Network.HTTP.Types (Status)
@@ -35,7 +31,6 @@ import Network.Wai.Handler.Warp
   )
 import Network.Wai.Logger (withStdoutLogger)
 import Servant
-import System.FilePath ((<.>), (</>))
 import UnliftIO.Exception (throwIO, try)
 
 main :: IO ()
@@ -83,14 +78,7 @@ newtype DummyEnv = DummyEnv
   deriving stock (Generic)
 
 server :: ServerT (BridgeAPI PID Int) DummyM
-server = writePairs :<|> valueAt :<|> latestValueAndTimeBefore
-
--- Write the pairs to a JSON file for later inspection
-writePairs :: PID -> PairStream Int IO -> DummyM ()
-writePairs (PID p) c = liftIO $ encodeFile path =<< runConduit (c .| sinkList)
-  where
-    path :: FilePath
-    path = "./" </> show p <.> "json"
+server = valueAt :<|> latestValueAndTimeBefore :<|> valuesBetween
 
 -- Dummy implementation of `valueAt`, ignoring resolution for now
 valueAt :: Int64 -> PID -> Int -> DummyM IValue
@@ -99,4 +87,7 @@ valueAt _ p t =
     <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
 
 latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
-latestValueAndTimeBefore = const . const . throwIO $ userError "Unsupported"
+latestValueAndTimeBefore _ _ = throwIO $ userError "Unsupported"
+
+valuesBetween :: Int64 -> PID -> Int -> Int -> ReaderT DummyEnv IO IValue
+valuesBetween _ _ _ _ = throwIO $ userError "Unsupported"

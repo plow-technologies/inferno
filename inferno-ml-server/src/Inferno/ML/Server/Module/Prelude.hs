@@ -11,6 +11,7 @@ where
 
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO)
+import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
@@ -19,16 +20,18 @@ import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Server.Module.Types
+import Inferno.ML.Server.Types (IValue)
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VCustom, VEmpty, VEpochTime, VFun),
+    Value (VArray, VCustom, VEmpty, VEpochTime, VFun, VTuple),
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
+import System.Posix.Types (EpochTime)
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
@@ -37,8 +40,6 @@ import Lens.Micro.Platform
 -- open-source users will presumably not find these useful. Unfortunately, the
 -- Inferno interpreter used by the server needs to be initialized with these
 -- primitives
---
--- FIXME `writePairs` will be removed soon
 bridgeModules ::
   forall m.
   (MonadThrow m, MonadIO m) =>
@@ -49,16 +50,14 @@ bridgeModules
       valueAt
       latestValueAndTimeBefore
       latestValueAndTime
-      writePairsFun
+      valuesBetween
     ) =
     [mlQuoter|
 module DataSource
-  @doc Write the value of a tensor to the parameter `p`. Note that the tensor
-  MUST be two-dimensional, assumed to contain a series of pairs representing
-  times (the first element) and values (the second element). A runtime error
-  will be raised if this condition is not satisfied. The input tensor must
-  must be of type `Double`;
-  writePairs : forall 'a. series of 'a -> tensor -> () := ###!writePairsFun###;
+  @doc Create a `write` object encapsulating an array of `(time, 'a)` values to be
+  written to a given parameter. All ML scripts must return an array of such `write`
+  objects, potentially empty, and this is the only way for them to write values to parameters.;
+  makeWrites : forall 'a. series of 'a -> array of (time, 'a) -> write := ###!makeWriteFun###;
 
   toResolution : int -> resolution := ###toResolution###;
 
@@ -138,6 +137,11 @@ module DataSource
     -> time
     -> option of 'a
     := ###!valueAtOrAdjacent###;
+  @doc Returns all values between two times, using the implicit resolution.
+
+  If the resolution is set to 1, this returns all the events (actual values, not approximations) in the given time window.;
+  valuesBetween : forall 'a. { implicit resolution : resolution }
+    => series of 'a -> time -> time -> array of ('a, time) := ###!valuesBetween###;
 |]
     where
       valueAtOrAdjacent :: BridgeV m
@@ -178,6 +182,28 @@ module DataSource
         where
           e :: EvalError
           e = RuntimeError "valueAt: expected a function"
+
+      makeWriteFun :: BridgeV m
+      makeWriteFun =
+        VFun $ \case
+          VCustom (VExtended (VSeries pid)) ->
+            pure . VFun $ \case
+              VArray vs ->
+                VCustom . VExtended . VWrite . (pid,) <$> extractPairs vs
+              _ -> throwM $ RuntimeError "makeWrite: expecting an array"
+          _ -> throwM $ RuntimeError "makeWrite: expecting a pid"
+        where
+          extractPairs ::
+            [Value c n] ->
+            ImplEnvM m BridgeMlValue [(EpochTime, IValue)]
+          extractPairs = flip foldrM mempty $ \v acc -> (: acc) <$> extractPair v
+
+          extractPair ::
+            Value c n ->
+            ImplEnvM m BridgeMlValue (EpochTime, IValue)
+          extractPair = \case
+            VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
+            _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
 
 mkBridgePrelude ::
   forall m.

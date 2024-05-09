@@ -12,17 +12,6 @@ import Servant ((:<|>) (..))
 import Servant.Client.Streaming (ClientM, client)
 import Web.HttpApiData (ToHttpApiData)
 
--- | Write a stream of @(t, Double)@ pairs to the bridge server, where @t@ will
--- typically represent some time value (e.g. @EpochTime@)
-writePairsC ::
-  ( ToJSON t,
-    ToHttpApiData p,
-    ToHttpApiData t
-  ) =>
-  p ->
-  PairStream t IO ->
-  ClientM ()
-
 -- | Get the value at the given time via the bridge, for the given entity @p@
 valueAtC ::
   ( ToJSON t,
@@ -43,9 +32,13 @@ latestValueAndTimeBeforeC ::
   t ->
   p ->
   ClientM IValue
-writePairsC
-  :<|> valueAtC
-  :<|> latestValueAndTimeBeforeC =
+
+-- | Get an array of values falling between the two times
+valuesBetweenC ::
+  (ToHttpApiData p, ToHttpApiData t) => Int64 -> p -> t -> t -> ClientM IValue
+valueAtC
+  :<|> latestValueAndTimeBeforeC
+  :<|> valuesBetweenC =
     client api
 
 api :: Proxy (BridgeAPI p t)

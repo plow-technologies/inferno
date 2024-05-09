@@ -40,7 +40,7 @@ instance Pretty x => FromValue (MlValue x) m T.ScriptModule where
   fromValue v = couldNotCast v
 
 customTypes :: [CustomType]
-customTypes = ["tensor", "model"]
+customTypes = ["tensor", "model", "write"]
 
 mlQuoter :: QuasiQuoter
 mlQuoter = moduleQuoter customTypes

@@ -1,5 +1,5 @@
 fun input0 ->
-let t = Time.toTime (Time.seconds 200)
-in let ?resolution = (toResolution 128)
-in let v = valueAt input0 t ? 0.0
-in writePairs input0 (ML.asTensor2 ML.#double [[300.0, v + 5.0]])
+  let t = Time.toTime (Time.seconds 200) in
+  let ?resolution = (toResolution 128) in
+  let v = valueAt input0 t ? 0.0 in
+  [makeWrites input0 [(Time.toTime (Time.seconds 300), v + 5.0)]]

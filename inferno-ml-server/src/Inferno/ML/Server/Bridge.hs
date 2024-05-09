@@ -6,7 +6,6 @@ module Inferno.ML.Server.Bridge
   )
 where
 
-import Conduit (mapMC, yieldMany, (.|))
 import Control.DeepSeq (NFData)
 import Control.Monad.Catch (throwM)
 import Control.Monad.IO.Class (liftIO)
@@ -14,6 +13,7 @@ import Control.Monad.Reader (asks)
 import Data.Aeson (encodeFile)
 import Data.Int (Int64)
 import Inferno.Core (mkInferno)
+import qualified Inferno.ML.Server.Client.Bridge as Bridge
 import Inferno.ML.Server.Module.Bridge (mkBridgeFuns)
 import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
 import Inferno.ML.Server.Types
@@ -29,8 +29,6 @@ import Servant.Client.Streaming
     runClientM,
   )
 import System.Posix.Types (EpochTime)
-import Torch (Tensor, asValue)
-import UnliftIO.Exception (throwIO)
 import UnliftIO.IORef (atomicWriteIORef, readIORef)
 
 -- | Save the provided 'BridgeInfo' and update the Inferno interpreter to use
@@ -46,35 +44,16 @@ registerBridgeInfo bi = do
     =<< view #interpreter
   where
     funs :: BridgeFuns RemoteM
-    funs = mkBridgeFuns valueAt latestValueAndTimeBefore writePairs
+    funs = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
 
     valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
-    valueAt res pid t = callBridge =<< getBridgeRoute #valueAt ?? res ?? pid ?? t
+    valueAt res pid = callBridge . Bridge.valueAtC res pid
 
     latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
-    latestValueAndTimeBefore t pid =
-      callBridge =<< getBridgeRoute #latestValueAndTimeBefore ?? t ?? pid
+    latestValueAndTimeBefore t = callBridge . Bridge.latestValueAndTimeBeforeC t
 
-    -- FIXME `writePairs` will be removed soon
-    writePairs :: PID -> Tensor -> RemoteM ()
-    writePairs pid t = callBridge =<< getBridgeRoute #writePairs ?? pid ?? yieldTensor
-      where
-        -- Convert the (assumed two-dimensional) tensor into a list of pairs
-        -- for streaming to the bridge endpoint
-        yieldTensor :: PairStream Int IO
-        yieldTensor =
-          yieldMany (Torch.asValue @[[Double]] t)
-            .| mapMC mkPair
-          where
-            mkPair :: [Double] -> IO (Int, Double)
-            mkPair = \case
-              -- Since the input elements need to be homogeneous, the time value
-              -- needs to be stored as a double, which then needs to be converted
-              -- to an integer
-              [time, val] -> pure (round time, val)
-              _ ->
-                throwIO $
-                  InvalidScript "Expecting two-dimensional tensor of time/value pairs"
+    valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
+    valuesBetween res pid t1 = callBridge . Bridge.valuesBetweenC res pid t1
 
 -- | Get the previously saved 'BridgeInfo', if any
 getBridgeInfo :: RemoteM (Maybe BridgeInfo)
@@ -101,6 +80,3 @@ callBridge c =
             (view (#host . to show) bi)
             (view (#port . to fromIntegral) bi)
             mempty
-
-getBridgeRoute :: Lens' BridgeClient (a -> b) -> RemoteM (a -> b)
-getBridgeRoute l = view $ #bridge . #client . l

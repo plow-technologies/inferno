@@ -11,12 +11,14 @@ module Inferno.ML.Server.Inference
   )
 where
 
+import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
 import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
+import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl')
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
@@ -25,6 +27,7 @@ import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Traversable (for)
 import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Only (Only),
@@ -46,15 +49,18 @@ import Inferno.Types.Syntax
     Scoped (LocalScope),
   )
 import Inferno.Types.Value
-  ( Value (VArray, VCustom, VEpochTime),
+  ( ImplEnvM,
+    Value (VArray, VCustom, VEpochTime),
     runImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Inferno.VersionControl.Types
   ( VCObject (VCFunction),
   )
 import Lens.Micro.Platform
 import System.FilePath (dropExtensions, (<.>))
+import System.Posix.Types (EpochTime)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
   ( createFileLink,
@@ -80,7 +86,7 @@ import UnliftIO.Timeout (timeout)
 runInferenceParam ::
   Id InferenceParam ->
   Maybe Int64 ->
-  RemoteM ()
+  RemoteM (WriteStream IO)
 -- FIXME / TODO Deal with default resolution, probably shouldn't need to be
 -- passed on all requests
 runInferenceParam ipid (fromMaybe 128 -> res) =
@@ -93,7 +99,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
     -- Runs the inference parameter in a separate `Async` thread. The `Async`
     -- is stored in the server environment so it can be canceled at any point
     -- before the script finishes evaluating
-    run :: Int -> RemoteM (Maybe ())
+    run :: Int -> RemoteM (Maybe (WriteStream IO))
     run tmo = withAsync (runInference tmo) $ \a ->
       bracket_
         ((`putMVar` (ipid, a)) =<< view #job)
@@ -101,7 +107,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
         $ wait a
 
     -- Actually runs the inference evaluation, within the configured timeout
-    runInference :: Int -> RemoteM (Maybe ())
+    runInference :: Int -> RemoteM (Maybe (WriteStream IO))
     runInference tmo = timeout tmo $ do
       view #interpreter >>= readIORef >>= \case
         Nothing -> throwM BridgeNotRegistered
@@ -124,7 +130,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
               InferenceParam ->
               CTime ->
               VCMeta VCObject ->
-              RemoteM ()
+              RemoteM (WriteStream IO)
             runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
               vcm ^. #obj & \case
                 VCFunction {} -> do
@@ -180,19 +186,31 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                     doEval ::
                       Expr (Maybe VCObjectHash) () ->
                       BridgeTermEnv RemoteM ->
-                      RemoteM ()
+                      RemoteM (WriteStream IO)
                     doEval x env =
-                      -- FIXME / TODO Do we want to just void any results here?
-                      -- Users should use the bridge API to write to a PID, so
-                      -- the script shouldn't evaluate to anything. Should we
-                      -- check that the script evaluates to `unit`? Or we might
-                      -- want to retain the return value of the script (provided
-                      -- it evaluates to a limited subset of Inferno types) and
-                      -- display it in the UI?
                       either
                         (throwInfernoError . Left . SomeInfernoError)
-                        (const (pure ()))
+                        yieldPairs
                         =<< evalExpr env implEnv x
+
+                    yieldPairs ::
+                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
+                      RemoteM (WriteStream IO)
+                    yieldPairs = \case
+                      VArray vs ->
+                        fmap ((.| mkChunks) . yieldMany) . for vs $ \case
+                          VCustom (VExtended (VWrite vw)) -> pure vw
+                          v -> throwM . InvalidOutput $ renderPretty v
+                      v -> throwM . InvalidOutput $ renderPretty v
+                      where
+                        mkChunks ::
+                          ConduitT
+                            (PID, [(EpochTime, IValue)])
+                            (Int, [(EpochTime, IValue)])
+                            IO
+                            ()
+                        mkChunks = awaitForever $ \(p, ws) ->
+                          sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =

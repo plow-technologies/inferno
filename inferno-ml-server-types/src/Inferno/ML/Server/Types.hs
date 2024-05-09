@@ -81,7 +81,7 @@ import Servant
     QueryParam',
     ReqBody,
     Required,
-    StreamBody,
+    StreamPost,
     (:<|>),
     (:>),
   )
@@ -96,7 +96,7 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI uid gid p s =
+type InfernoMlServerAPI uid gid p s t =
   -- Check if the server is up and if any job is currently running:
   --
   --  * `Nothing` -> The server is evaluating a script
@@ -108,7 +108,7 @@ type InfernoMlServerAPI uid gid p s =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
-      :> Post '[JSON] ()
+      :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
     -- bridge endpoint
@@ -120,24 +120,31 @@ type InfernoMlServerAPI uid gid p s =
 -- by a bridge server connected to a data source, not by `inferno-ml-server`
 type BridgeAPI p t =
   "bridge"
-    :> "write"
-    :> "pairs"
-    :> Capture "p" p
-    :> StreamBody NewlineFraming JSON (PairStream t IO)
-    :> Post '[JSON] ()
-    :<|> "bridge"
-      :> "value-at"
-      :> QueryParam' '[Required] "res" Int64
-      :> QueryParam' '[Required] "p" p
-      :> QueryParam' '[Required] "time" t
-      :> Get '[JSON] IValue
+    :> "value-at"
+    :> QueryParam' '[Required] "res" Int64
+    :> QueryParam' '[Required] "p" p
+    :> QueryParam' '[Required] "time" t
+    :> Get '[JSON] IValue
     :<|> "bridge"
       :> "latest-value-and-time-before"
       :> QueryParam' '[Required] "time" t
       :> QueryParam' '[Required] "p" p
       :> Get '[JSON] IValue
+    :<|> "bridge"
+      :> "values-between"
+      :> QueryParam' '[Required] "res" Int64
+      :> QueryParam' '[Required] "p" p
+      :> QueryParam' '[Required] "t1" t
+      :> QueryParam' '[Required] "t2" t
+      :> Get '[JSON] IValue
 
-type PairStream t m = ConduitT () (t, Double) m ()
+-- | Stream of writes that an ML parameter script results in. Each element
+-- in the stream is a chunk (sub-list) of the original values that the
+-- inference script evaluates to. For example, given the following output:
+-- @[ (1, [ (100, 5.0) .. (10000, 5000.0) ]) ]@; the stream items will be:
+-- @(1, [ (100, 5.0) .. (500, 2500.0) ]), (1, [ (501, 2501.0) .. (10000, 5000.0) ])@.
+-- This means the same output may appear more than once in the stream
+type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo = BridgeInfo
@@ -697,6 +704,7 @@ data IValue
   | ITuple (IValue, IValue)
   | ITime EpochTime
   | IEmpty
+  | IArray (Vector IValue)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
 
@@ -709,10 +717,19 @@ instance FromJSON IValue where
     Object o -> ITime <$> o .: "time"
     Array a
       | [x, y] <- Vector.toList a ->
-          fmap ITuple $
-            (,) <$> parseJSON x <*> parseJSON y
-      | Vector.null a -> pure IEmpty
-    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array)"
+          (,) <$> parseJSON x <*> parseJSON y <&> \case
+            -- We don't want to confuse a two-element array of tuples with
+            -- a tuple itself. For example, `"[[10.0, {\"time\": 10}], [10.0, {\"time\": 10}]]"`
+            -- should parse as a two-element array of `(double, time)` tuples,
+            -- not as a `((double, time), (double, time))`. I can't think of
+            -- any reason to support the latter. An alternative would be to
+            -- change tuple encoding to an object, but then we would be transmitting
+            -- a much larger amount of data on most requests
+            (f@(ITuple _), s@(ITuple _)) -> IArray $ Vector.fromList [f, s]
+            t -> ITuple t
+      | otherwise -> IArray <$> traverse (parseJSON @IValue) a
+    Null -> pure IEmpty
+    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array), array"
 
 instance ToJSON IValue where
   toJSON = \case
@@ -721,7 +738,8 @@ instance ToJSON IValue where
     ITuple t -> toJSON t
     -- See `FromJSON` instance above
     ITime t -> object ["time" .= t]
-    IEmpty -> toJSON ()
+    IEmpty -> toJSON Null
+    IArray is -> toJSON is
 
 -- | Used to represent inputs to the script. 'Many' allows for an array input
 data SingleOrMany a
