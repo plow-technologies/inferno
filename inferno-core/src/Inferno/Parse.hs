@@ -665,6 +665,87 @@ tupleElems =
       endPos <- getSourcePos
       return ([], endPos)
 
+-- | Parses a list @a, b, c, ...)@ WITHOUT opening paren @(@ but with closing paren @)@
+-- This function can be instantiated with the separator (@,@ in the example)
+-- and the closing paren (@)@ in the example above).
+-- Returns (list of (expr, commaPos), endParenPos)
+restOfListParser :: Parser a -> Char -> Char -> Parser ([(a, Maybe SourcePos)], SourcePos)
+restOfListParser p sep end =
+  ( do
+      e <- p
+      ( do
+          endPos <- lexeme $ char end *> getSourcePos
+          return ([(e, Nothing)], endPos)
+        )
+        <|> ( do
+                commaPos <- lexeme $ char sep *> getSourcePos
+                (es, endPos) <- restOfListParser p sep end
+                return ((e, Just commaPos) : es, endPos)
+            )
+  )
+    <|> do
+      endPos <- lexeme $ char end *> getSourcePos
+      return ([], endPos)
+
+arrayComp ::
+  SourcePos ->
+  Expr () SourcePos ->
+  SourcePos ->
+  Parser (Expr () SourcePos)
+arrayComp begPos lhsExp sepPos = do
+  symbol "|"
+  (sels, cond) <- rhsE
+  endPos <- getSourcePos
+  _ <- optional $ symbol ","
+  symbol "]"
+  return $ ArrayComp begPos lhsExp sepPos (NEList.fromList sels) cond endPos
+  where
+    -- TODO use restOfList here too?
+    selectE :: Parser (SourcePos, Ident, SourcePos, Expr () SourcePos)
+    selectE = do
+      startPos <- getSourcePos
+      var <- lexeme $ Ident <$> variable
+      arrPos <- getSourcePos
+      e <- symbol "<-" *> expr
+      return (startPos, var, arrPos, e)
+
+    rhsE :: Parser ([(SourcePos, Ident, SourcePos, Expr () SourcePos, Maybe SourcePos)], Maybe (SourcePos, Expr () SourcePos))
+    rhsE =
+      try
+        ( do
+            (startPos, var, arrPos, e) <- selectE
+            pos <- getSourcePos <* symbol ","
+            (xs, mcond) <- try rhsE <|> (\c -> ([], Just c)) <$> condE
+            pure ((startPos, var, arrPos, e, Just pos) : xs, mcond)
+        )
+        <|> (\(startPos, var, arrPos, e) -> ([(startPos, var, arrPos, e, Nothing)], Nothing)) <$> selectE
+
+    condE :: Parser (SourcePos, Expr () SourcePos)
+    condE = do
+      ifPos <- getSourcePos
+      (ifPos,) <$> (rword "if" *> expr)
+
+-- | Array literal or array comprehension
+arrayE :: Parser (Expr () SourcePos)
+arrayE = label "array\nfor example: [1,2,3,4,5] or [n * 2 + 1 | n <- range 0 10, if n % 2 == 0]" $ do
+  startPos <- getSourcePos
+  symbol "["
+  endOfArray startPos [] <|> nonEmptyArray startPos
+  where
+    endOfArray startPos es = do
+      endPos <- lexeme $ char ']' *> getSourcePos
+      return $ Array startPos es endPos
+
+    nonEmptyArray startPos = do
+      e <- expr
+      sepPos <- getSourcePos
+      arrayComp startPos e sepPos <|> endOfArray startPos [(e, Nothing)] <|> arrayLit startPos e sepPos
+
+    arrayLit startPos e sepPos = do
+      symbol ","
+      (es, endPos) <- restOfListParser expr ',' ']'
+      return $ Array startPos ((e, Just sepPos) : es) endPos
+
 -- | Parses any bracketed expression: tuples, bracketed exprs (1 + 2), and prefix ops (+)
 bracketedE :: Parser (Expr () SourcePos)
 bracketedE = do
@@ -683,6 +764,10 @@ bracketedE = do
 term :: Parser (Expr () SourcePos)
 term =
   bracketedE
+    <|> arrayE
+    <|> (uncurry3 Record <$> record expr)
+    -- <|> arrayComprE
+    <|> interpolatedStringE
     <|> try (hexadecimal Lit)
     <|> try doubleE
     <|> intE
@@ -720,10 +805,6 @@ term =
     <|> caseE
     <|> try implVarE
     <|> stringE Lit
-    <|> interpolatedStringE
-    <|> try (uncurry3 Array <$> array expr)
-    <|> try (uncurry3 Record <$> record expr)
-    <|> arrayComprE
 
 app :: Parser (Expr () SourcePos)
 app =

@@ -53,6 +53,7 @@ executable inferno-ml-exe
     , inferno-core
     , inferno-ml
     , inferno-types
+    , optparse-applicative
     , text
   default-language: Haskell2010
 
