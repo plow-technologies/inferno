@@ -5,7 +5,7 @@ module Golden.Spec (goldenTests) where
 import Data.Proxy (Proxy (Proxy))
 import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (BaseType, Ident, InfernoType, ModuleName, TV)
-import Inferno.Types.Type (Namespace)
+import Inferno.Types.Type (Namespace, RestOfRecord)
 import Inferno.VersionControl.Types
   ( VCIncompatReason,
     VCObject,
@@ -44,6 +44,7 @@ goldenAesonTests = do
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @BaseType
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @TV
   Aeson.roundtripAndGoldenADTSpecs $ Proxy @InfernoType
+  Aeson.roundtripAndGoldenADTSpecs $ Proxy @RestOfRecord
 
 goldenCerealTests :: Spec
 goldenCerealTests = do

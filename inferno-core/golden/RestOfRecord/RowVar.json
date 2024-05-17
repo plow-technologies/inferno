@@ -1,0 +1,25 @@
+{
+    "samples": [
+        {
+            "contents": 28,
+            "tag": "RowVar"
+        },
+        {
+            "contents": 3,
+            "tag": "RowVar"
+        },
+        {
+            "contents": 2,
+            "tag": "RowVar"
+        },
+        {
+            "contents": -26,
+            "tag": "RowVar"
+        },
+        {
+            "contents": -12,
+            "tag": "RowVar"
+        }
+    ],
+    "seed": -1342020460
+}
