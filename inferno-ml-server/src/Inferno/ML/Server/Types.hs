@@ -368,13 +368,12 @@ pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
   Id ModelVersion ->
-  Vector (SingleOrMany PID) ->
-  Vector (SingleOrMany PID) ->
+  Vector (SingleOrMany PID, ScriptInputType) ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m is os mt uid =
-  Types.InferenceParam iid s m is os mt uid
+pattern InferenceParam iid s m ios mt uid =
+  Types.InferenceParam iid s m ios mt uid
 
 pattern VCMeta ::
   CTime ->

@@ -79,16 +79,16 @@ import UnliftIO.IORef (readIORef)
 import UnliftIO.MVar (putMVar, takeMVar, withMVar)
 import UnliftIO.Timeout (timeout)
 
--- Run an inference param, locking the `MVar` held in the `Env`. This is to avoid
--- running params in parallel (which may lead to problems with model caching,
--- etc...) and also to indicate whether any active process is running in the
--- `status` endpoint (using `tryTakeMVar`)
+-- | Run an inference param, locking the @MVar@ held in the 'Env'. This is to
+-- avoid running params in parallel (which may lead to problems with model
+-- caching, etc...) and also to indicate whether any active process is running
+-- in the @/status@ endpoint (using @tryTakeMVar@)
 runInferenceParam ::
   Id InferenceParam ->
+  -- | Optional resolution, defaulting to 128. This is needed in case the
+  -- parameter evaluates a script that calls e.g. @valueAt@
   Maybe Int64 ->
   RemoteM (WriteStream IO)
--- FIXME / TODO Deal with default resolution, probably shouldn't need to be
--- passed on all requests
 runInferenceParam ipid (fromMaybe 128 -> res) =
   withTimeoutMillis $ \t -> do
     logTrace $ RunningInference ipid t
@@ -151,8 +151,16 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                                 pids ^.. each & over mapped toSeries & VArray
                               )
                         where
+                          -- Note that this both includes inputs (i.e. readable)
+                          -- and outputs (i.e. writable, or readable/writable).
+                          -- These need to be provided to the script in order
+                          -- for the symbolic identifer (e.g. `output0`) to
+                          -- resolve. We can discard the input type here,
+                          -- however. The distinction is only relevant for the
+                          -- runtime that runs as a script evaluation engine
+                          -- and commits the output write object
                           ps :: [SingleOrMany PID]
-                          ps = param ^.. #inputs . each
+                          ps = param ^.. #inputs . each . _1
 
                       closure :: Map VCObjectHash VCObject
                       closure =
@@ -168,6 +176,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                           )
                           args
                         where
+                          -- See note above about inputs/outputs
                           args :: [Expr (Maybe a) ()]
                           args =
                             [0 .. param ^. #inputs & Vector.length & (- 1)]
@@ -181,18 +190,10 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
                           dummy :: ImplExpl
                           dummy = Expl . ExtIdent $ Right "dummy"
 
-                  doEval expr =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
+                  either (throwInfernoError . Left . SomeInfernoError) yieldPairs
+                    =<< flip (`evalExpr` implEnv) expr
+                    =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
                   where
-                    doEval ::
-                      Expr (Maybe VCObjectHash) () ->
-                      BridgeTermEnv RemoteM ->
-                      RemoteM (WriteStream IO)
-                    doEval x env =
-                      either
-                        (throwInfernoError . Left . SomeInfernoError)
-                        yieldPairs
-                        =<< evalExpr env implEnv x
-
                     yieldPairs ::
                       Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
                       RemoteM (WriteStream IO)

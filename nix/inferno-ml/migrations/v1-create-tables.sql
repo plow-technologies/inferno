@@ -67,8 +67,10 @@ create table if not exists params
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
   , model integer references mversions (id)
+    -- Strictly speaking, this includes both inputs and outputs. The
+    -- corresponding Haskell type is a `Vector (p, ScriptInputType)`, with
+    -- the second element determining readability and writability
   , inputs jsonb not null
-  , outputs jsonb not null
     -- See note above
   , terminated timestamptz
   , "user" integer references users (id)
