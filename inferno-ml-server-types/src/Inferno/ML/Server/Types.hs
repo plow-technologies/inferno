@@ -170,8 +170,9 @@ newtype Id a = Id Int64
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
-  { -- NOTE: This is the ID for each row, stored as a `bytea` (bytes of the hash)
+  { -- | This is the ID for each row, stored as a @bytea@ (bytes of the hash)
     hash :: VCObjectHash,
+    -- | Script closure
     obj :: VCMeta uid gid VCObject
   }
   deriving stock (Show, Eq, Generic)
@@ -235,6 +236,8 @@ data Model uid gid = Model
     -- | The user who owns the model, if any. Note that owning a model
     -- will implicitly set permissions
     user :: Maybe uid,
+    -- | The time that this model was "deleted", if any. For active models,
+    -- this will be @Nothing@
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
@@ -339,6 +342,8 @@ data ModelVersion uid gid c = ModelVersion
     -- the PSQL large object table
     contents :: c,
     version :: Version,
+    -- | The time that this model version was "deleted", if any. For active
+    -- models versions, this will be @Nothing@
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
@@ -595,8 +600,26 @@ data InferenceParam uid gid p s = InferenceParam
     -- | This needs to be linked to a specific version of a model rather
     -- than the @model@ table itself
     model :: Id (ModelVersion uid gid Oid),
-    inputs :: Vector (SingleOrMany p),
-    outputs :: Vector (SingleOrMany p),
+    -- | This is called @inputs@ but is also used for script outputs as
+    -- well. The access (input or output) is controlled by the 'ScriptInputType'.
+    -- For example, if this field is set to @[Single (p, Readable)]@, the script
+    -- will only have a single read-only input and will not be able to write
+    -- anywhere
+    --
+    -- NOTE: This cannot be a @Map@-like structure. The order of inputs must
+    -- /exactly/ match the order of script @Ident@s declared when creating the
+    -- corresponding inference script because the inputs are applied to the
+    -- original Inferno expression
+    --
+    -- A @Map@, @HashMap@, etc... will not maintain this order. Even if we were
+    -- to create an ordered @Map@ structure, if it were serialized to a JSON
+    -- object, it would still lose its original ordering by the intermediate
+    -- @HashMap@ used in the Aeson @Object@. It would need to be serialized to
+    -- an @Array@, but in that case we should just store it as a @Vector@
+    -- directly
+    inputs :: Vector (SingleOrMany p, ScriptInputType),
+    -- | The time that this parameter was "deleted", if any. For active parameters,
+    -- this will be @Nothing@
     terminated :: Maybe UTCTime,
     user :: uid
   }
@@ -617,10 +640,6 @@ instance
       <$> field
       <*> fmap wrappedTo (field @VCObjectHashRow)
       <*> field
-      -- HACK / FIXME This is a pretty awful hack (storing as `jsonb`),
-      -- but Postgres sub-arrays need to be the same length and writing
-      -- a custom parser might be painful
-      <*> fmap getAeson field
       <*> fmap getAeson field
       <*> field
       <*> field
@@ -636,12 +655,40 @@ instance
     [ toField Default,
       ip ^. the @"script" & VCObjectHashRow & toField,
       ip ^. the @"model" & toField,
-      -- HACK / FIXME See above
       ip ^. the @"inputs" & Aeson & toField,
-      ip ^. the @"outputs" & Aeson & toField,
       toField Default,
       ip ^. the @"user" & toField
     ]
+
+-- | Controls input interaction within a script, i.e. ability to read from
+-- and\/or write to this input. Although the term "input" is used, "output"
+-- is a more precise term for those with writes enabled
+data ScriptInputType
+  = -- | Script input can be read, but not written
+    Readable
+  | -- | Script input can be written, i.e. can be used in array of
+    -- write objects returned from script evaluation
+    Writable
+  | -- | Script input can be both read from and written to; this allows
+    -- the same script identifier to point to the same PID with both
+    -- types of access enabled
+    ReadableWritable
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData)
+
+instance FromJSON ScriptInputType where
+  parseJSON = withText "ScriptInputType" $ \case
+    "r" -> pure Readable
+    "w" -> pure Writable
+    "rw" -> pure ReadableWritable
+    s -> fail $ "Invalid script input type: " <> Text.unpack s
+
+instance ToJSON ScriptInputType where
+  toJSON =
+    String . \case
+      Readable -> "r"
+      Writable -> "w"
+      ReadableWritable -> "rw"
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
