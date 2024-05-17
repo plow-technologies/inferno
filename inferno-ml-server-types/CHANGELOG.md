@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0
+* Change representation of script inputs/outputs
+
 ## 0.2.0
 * Add `terminated` columns for DB types
 

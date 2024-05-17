@@ -1,3 +1,6 @@
+## 2023.5.17
+* Change representation of script inputs/outputs
+
 ## 2023.4.3
 * Add `terminated` column to DB types
 
