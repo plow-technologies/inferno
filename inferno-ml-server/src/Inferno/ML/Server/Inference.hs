@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LexicalNegation #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -26,9 +27,12 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
+import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
+import Data.UUID (UUID)
 import qualified Data.Vector as Vector
+import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only),
     Query,
@@ -59,8 +63,11 @@ import Inferno.VersionControl.Types
   ( VCObject (VCFunction),
   )
 import Lens.Micro.Platform
+import System.CPUTime (getCPUTime)
 import System.FilePath (dropExtensions, (<.>))
+import System.Mem (getAllocationCounter, setAllocationCounter)
 import System.Posix.Types (EpochTime)
+import UnliftIO (withRunInIO)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
   ( createFileLink,
@@ -86,10 +93,9 @@ import UnliftIO.Timeout (timeout)
 runInferenceParam ::
   Id InferenceParam ->
   Maybe Int64 ->
+  UUID ->
   RemoteM (WriteStream IO)
--- FIXME / TODO Deal with default resolution, probably shouldn't need to be
--- passed on all requests
-runInferenceParam ipid (fromMaybe 128 -> res) =
+runInferenceParam ipid (fromMaybe 128 -> res) uuid =
   withTimeoutMillis $ \t -> do
     logTrace $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
@@ -107,8 +113,13 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
         $ wait a
 
     -- Actually runs the inference evaluation, within the configured timeout
+    --
+    -- NOTE: Do not fork anything else inside here; this is already running
+    -- in an `Async` and we want to be able to get execution statistics from
+    -- the runtime. Specifically, we are using `getAllocationCounter`, but
+    -- this only captures the allocations _in this thread only_
     runInference :: Int -> RemoteM (Maybe (WriteStream IO))
-    runInference tmo = timeout tmo $ do
+    runInference tmo = timeout tmo . withExecutionInfo $ do
       view #interpreter >>= readIORef >>= \case
         Nothing -> throwM BridgeNotRegistered
         Just interpreter -> do
@@ -235,7 +246,52 @@ runInferenceParam ipid (fromMaybe 128 -> res) =
     withTimeoutMillis :: (Int -> RemoteM b) -> RemoteM b
     withTimeoutMillis =
       (view (#config . #timeout) >>=)
-        . (. (* 1000000) . fromIntegral)
+        . (. (* 1_000_000) . fromIntegral)
+
+    withExecutionInfo :: RemoteM a -> RemoteM a
+    withExecutionInfo f = withRunInIO $ \r -> do
+      -- So allocation counter doesn't go below the lower limit, which is
+      -- unlikely but should be accounted for at any rate
+      setAllocationCounter maxBound
+      start <- getCurrentTime
+      bytes0 <- getAllocationCounter
+      cpu0 <- getCPUTime
+      ws <- r f
+      end <- getCurrentTime
+      bytes1 <- getAllocationCounter
+      cpu1 <- getCPUTime
+
+      ws <$ r (saveExecutionInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
+      where
+        saveExecutionInfo ::
+          -- End and start times
+          (UTCTime, UTCTime) ->
+          -- Ending and beginning byte allocation
+          (Int64, Int64) ->
+          -- Ending and beginning CPU time
+          (Integer, Integer) ->
+          RemoteM ()
+        saveExecutionInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
+          executeStore q $
+            ExecutionInfo uuid ipid start end allocated cpuMillis
+          where
+            -- Note that the allocation counter counts *down*, so we need to
+            -- subtract the second value from the first value
+            allocated :: Word64
+            allocated =
+              fromIntegral
+                -- In the unlikely event that more memory was freed in
+                -- this thread between the beginning of evaluation and
+                -- the end, so we don't end up with `maxBound @Word64`
+                . max 0
+                $ bytes0 - bytes1
+
+            -- Convert the picoseconds of CPU time to milliseconds
+            cpuMillis :: Word64
+            cpuMillis = fromIntegral $ (cpu1 - cpu0) `div` 1_000_000_000
+
+            q :: Query
+            q = [sql| INSERT INTO exinfo VALUES (?, ?, ?, ?, ?, ?) |]
 
 getVcObject :: VCObjectHash -> RemoteM (VCMeta VCObject)
 getVcObject vch =

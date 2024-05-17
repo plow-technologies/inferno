@@ -31,6 +31,7 @@ import Servant.Client.Streaming
   )
 import System.Exit (die)
 import System.Posix.Types (EpochTime)
+import System.Random (randomIO)
 import Text.Read (readMaybe)
 import UnliftIO (throwString)
 import UnliftIO.Environment (getArgs)
@@ -41,6 +42,7 @@ main =
   getArgs >>= \case
     i : _ -> do
       ipid <- maybe (throwString "Invalid ID") (pure . Id) $ readMaybe i
+      uuid <- randomIO
       env <-
         mkClientEnv
           <$> newManager defaultManagerSettings
@@ -51,7 +53,7 @@ main =
         . registerBridgeC
         . flip BridgeInfo 9999
         $ toIPv4 (127, 0, 0, 1)
-      withClientM (inferenceC ipid Nothing) env . either throwIO $
+      withClientM (inferenceC ipid Nothing uuid) env . either throwIO $
         verifyWrites (coerce ipid)
     _ -> die "Usage: test-client <inference-parameter-id>"
 

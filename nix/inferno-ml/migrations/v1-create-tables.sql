@@ -74,5 +74,19 @@ create table if not exists params
   , "user" integer references users (id)
   );
 
+-- Execution info for inference evaluation
+create table if not exists exinfo
+  ( id uuid primary key
+  , param integer not null references params (id)
+    -- When inference evaluation began
+  , started timestamptz not null
+    -- When inference evaluation ended
+  , ended timestamptz not null
+    -- Number of bytes allocated in the evaluation thread
+  , allocated bigint not null
+    -- CPU time between `start` and `end`, in milliseconds
+  , cpu bigint not null
+  );
+
 create trigger "manage-mversion-lo" before update or delete on mversions
   for each row execute function lo_manage(contents);

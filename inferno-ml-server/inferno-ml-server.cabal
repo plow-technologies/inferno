@@ -85,6 +85,7 @@ library
     , text
     , time
     , unliftio
+    , uuid
     , vector
     , wai
     , wai-logger
@@ -132,8 +133,10 @@ executable test-client
     , http-client
     , inferno-ml-server-types
     , iproute
+    , random
     , servant-client
     , unliftio
+    , uuid
 
 executable dummy-bridge
   import:         common

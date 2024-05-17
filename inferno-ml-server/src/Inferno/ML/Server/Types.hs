@@ -68,7 +68,8 @@ import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
+  ( ExecutionInfo,
+    InferenceParam,
     InferenceScript,
     InfernoMlServerAPI,
     Model,
@@ -94,6 +95,7 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import Data.UUID (UUID)
 
 type RemoteM = ReaderT Env IO
 
@@ -353,6 +355,8 @@ f ?? x = ($ x) <$> f
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
 
+type ExecutionInfo = Types.ExecutionInfo (EntityId UId) (EntityId GId) PID
+
 type Model = Types.Model (EntityId UId) (EntityId GId)
 
 type ModelVersion = Types.ModelVersion (EntityId UId) (EntityId GId) Oid
@@ -388,6 +392,16 @@ pattern VCMeta ::
   VCMeta o
 pattern VCMeta t a g n d p v o =
   Inferno.VersionControl.Types.VCMeta t a g n d p v o
+
+pattern ExecutionInfo ::
+  UUID ->
+  Id InferenceParam ->
+  UTCTime ->
+  UTCTime ->
+  Word64 ->
+  Word64 ->
+  ExecutionInfo
+pattern ExecutionInfo u i s e m c = Types.ExecutionInfo u i s e m c
 
 type InfernoMlServerAPI =
   Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime

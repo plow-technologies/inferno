@@ -64,4 +64,5 @@ library
     , unix
     , uri-bytestring
     , uri-bytestring-aeson
+    , uuid
     , vector
