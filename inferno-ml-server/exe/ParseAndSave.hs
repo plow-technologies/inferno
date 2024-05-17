@@ -96,17 +96,18 @@ saveScriptAndParam x now pid conn = insertScript *> insertParam
         . InferenceParam
           Nothing
           hash
+          -- Bit of a hack. We only have one model version in the
+          -- tests, so we can just hard-code the ID here
           (Id 1)
           inputs
-          mempty
           Nothing
         $ entityIdFromInteger 0
       where
         q :: Query
-        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?, ?) |]
+        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?) |]
 
-        inputs :: Vector (SingleOrMany PID)
-        inputs = Vector.singleton $ Single pid
+        inputs :: Vector (SingleOrMany PID, ScriptInputType)
+        inputs = Vector.singleton (Single pid, Writable)
 
     vcfunc :: VCObject
     vcfunc = uncurry VCFunction x
