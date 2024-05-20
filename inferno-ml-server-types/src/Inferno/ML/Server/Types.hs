@@ -649,7 +649,7 @@ instance
 -- @inferno-ml-server@ after script evaluation completes and can be queried
 -- later by using the same job identifier that was provided to the @/inference@
 -- route
-data ExecutionInfo uid gid p = ExecutionInfo
+data EvaluationInfo uid gid p = EvaluationInfo
   { -- | Note that this is the job identifier provided to the inference
     -- evaluation route, and is also the primary key of the database table
     id :: UUID,
@@ -667,9 +667,9 @@ data ExecutionInfo uid gid p = ExecutionInfo
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-instance FromRow (ExecutionInfo uid gid p) where
+instance FromRow (EvaluationInfo uid gid p) where
   fromRow =
-    ExecutionInfo
+    EvaluationInfo
       <$> field
       <*> field
       <*> field
@@ -677,7 +677,7 @@ instance FromRow (ExecutionInfo uid gid p) where
       <*> fmap (fromIntegral @Int64) field
       <*> fmap (fromIntegral @Int64) field
 
-instance ToRow (ExecutionInfo uid gid p) where
+instance ToRow (EvaluationInfo uid gid p) where
   toRow ei =
     [ ei ^. the @"id" & toField,
       ei ^. the @"param" & toField,

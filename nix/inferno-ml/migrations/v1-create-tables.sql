@@ -75,7 +75,7 @@ create table if not exists params
   );
 
 -- Execution info for inference evaluation
-create table if not exists exinfo
+create table if not exists evalinfo
   ( id uuid primary key
   , param integer not null references params (id)
     -- When inference evaluation began

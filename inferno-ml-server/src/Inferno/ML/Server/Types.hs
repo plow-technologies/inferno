@@ -68,7 +68,7 @@ import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( ExecutionInfo,
+  ( EvaluationInfo,
     InferenceParam,
     InferenceScript,
     InfernoMlServerAPI,
@@ -355,7 +355,7 @@ f ?? x = ($ x) <$> f
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
 
-type ExecutionInfo = Types.ExecutionInfo (EntityId UId) (EntityId GId) PID
+type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
 
 type Model = Types.Model (EntityId UId) (EntityId GId)
 
@@ -393,15 +393,15 @@ pattern VCMeta ::
 pattern VCMeta t a g n d p v o =
   Inferno.VersionControl.Types.VCMeta t a g n d p v o
 
-pattern ExecutionInfo ::
+pattern EvaluationInfo ::
   UUID ->
   Id InferenceParam ->
   UTCTime ->
   UTCTime ->
   Word64 ->
   Word64 ->
-  ExecutionInfo
-pattern ExecutionInfo u i s e m c = Types.ExecutionInfo u i s e m c
+  EvaluationInfo
+pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
 type InfernoMlServerAPI =
   Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime

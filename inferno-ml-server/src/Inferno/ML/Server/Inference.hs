@@ -119,7 +119,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
     -- the runtime. Specifically, we are using `getAllocationCounter`, but
     -- this only captures the allocations _in this thread only_
     runInference :: Int -> RemoteM (Maybe (WriteStream IO))
-    runInference tmo = timeout tmo . withExecutionInfo $ do
+    runInference tmo = timeout tmo . withEvaluationInfo $ do
       view #interpreter >>= readIORef >>= \case
         Nothing -> throwM BridgeNotRegistered
         Just interpreter -> do
@@ -248,8 +248,8 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
       (view (#config . #timeout) >>=)
         . (. (* 1_000_000) . fromIntegral)
 
-    withExecutionInfo :: RemoteM a -> RemoteM a
-    withExecutionInfo f = withRunInIO $ \r -> do
+    withEvaluationInfo :: RemoteM a -> RemoteM a
+    withEvaluationInfo f = withRunInIO $ \r -> do
       -- So allocation counter doesn't go below the lower limit, which is
       -- unlikely but should be accounted for at any rate
       setAllocationCounter maxBound
@@ -261,9 +261,9 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
       bytes1 <- getAllocationCounter
       cpu1 <- getCPUTime
 
-      ws <$ r (saveExecutionInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
+      ws <$ r (saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
       where
-        saveExecutionInfo ::
+        saveEvaluationInfo ::
           -- End and start times
           (UTCTime, UTCTime) ->
           -- Ending and beginning byte allocation
@@ -271,9 +271,9 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
           -- Ending and beginning CPU time
           (Integer, Integer) ->
           RemoteM ()
-        saveExecutionInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
+        saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
           executeStore q $
-            ExecutionInfo uuid ipid start end allocated cpuMillis
+            EvaluationInfo uuid ipid start end allocated cpuMillis
           where
             -- Note that the allocation counter counts *down*, so we need to
             -- subtract the second value from the first value
@@ -291,7 +291,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
             cpuMillis = fromIntegral $ (cpu1 - cpu0) `div` 1_000_000_000
 
             q :: Query
-            q = [sql| INSERT INTO exinfo VALUES (?, ?, ?, ?, ?, ?) |]
+            q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
 
 getVcObject :: VCObjectHash -> RemoteM (VCMeta VCObject)
 getVcObject vch =
