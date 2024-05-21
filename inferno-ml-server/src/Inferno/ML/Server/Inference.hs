@@ -39,6 +39,7 @@ import Database.PostgreSQL.Simple
   )
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime)
+import GHC.Stats (getRTSStats)
 import Inferno.Core
   ( Interpreter (Interpreter, evalExpr, mkEnvFromClosure),
   )
@@ -65,7 +66,6 @@ import Inferno.VersionControl.Types
 import Lens.Micro.Platform
 import System.CPUTime (getCPUTime)
 import System.FilePath (dropExtensions, (<.>))
-import System.Mem (getAllocationCounter, setAllocationCounter)
 import System.Posix.Types (EpochTime)
 import UnliftIO (withRunInIO)
 import UnliftIO.Async (wait, withAsync)
@@ -252,13 +252,12 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
     withEvaluationInfo f = withRunInIO $ \r -> do
       -- So allocation counter doesn't go below the lower limit, which is
       -- unlikely but should be accounted for at any rate
-      setAllocationCounter maxBound
       start <- getCurrentTime
-      bytes0 <- getAllocationCounter
+      bytes0 <- view #max_mem_in_use_bytes <$> getRTSStats
       cpu0 <- getCPUTime
       ws <- r f
       end <- getCurrentTime
-      bytes1 <- getAllocationCounter
+      bytes1 <- view #max_mem_in_use_bytes <$> getRTSStats
       cpu1 <- getCPUTime
 
       ws <$ r (saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
@@ -267,24 +266,21 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
           -- End and start times
           (UTCTime, UTCTime) ->
           -- Ending and beginning byte allocation
-          (Int64, Int64) ->
+          (Word64, Word64) ->
           -- Ending and beginning CPU time
           (Integer, Integer) ->
           RemoteM ()
         saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
           executeStore q $
-            EvaluationInfo uuid ipid start end allocated cpuMillis
+            EvaluationInfo uuid ipid start end mem cpuMillis
           where
-            -- Note that the allocation counter counts *down*, so we need to
-            -- subtract the second value from the first value
-            allocated :: Word64
-            allocated =
-              fromIntegral
-                -- In the unlikely event that more memory was freed in
-                -- this thread between the beginning of evaluation and
-                -- the end, so we don't end up with `maxBound @Word64`
-                . max 0
-                $ bytes0 - bytes1
+            mem :: Word64
+            mem =
+              -- In the unlikely event that more memory was freed in
+              -- this thread between the beginning of evaluation and
+              -- the end, so we don't end up with `maxBound @Word64`
+              max 0 $
+                bytes1 - bytes0
 
             -- Convert the picoseconds of CPU time to milliseconds
             cpuMillis :: Word64
