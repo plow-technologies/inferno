@@ -36,6 +36,7 @@ import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only),
     Query,
+    SqlError,
   )
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime)
@@ -80,7 +81,12 @@ import UnliftIO.Directory
     removePathForcibly,
     withCurrentDirectory,
   )
-import UnliftIO.Exception (bracket_, catchIO, displayException)
+import UnliftIO.Exception
+  ( bracket_,
+    catch,
+    catchIO,
+    displayException,
+  )
 import UnliftIO.IO.File (writeBinaryFileDurableAtomic)
 import UnliftIO.IORef (readIORef)
 import UnliftIO.MVar (putMVar, takeMVar, withMVar)
@@ -272,9 +278,16 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
           (Integer, Integer) ->
           RemoteM ()
         saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
-          executeStore q $
-            EvaluationInfo uuid ipid start end allocated cpuMillis
+          insert `catch` logAndIgnore
           where
+            insert :: RemoteM ()
+            insert =
+              executeStore q $
+                EvaluationInfo uuid ipid start end allocated cpuMillis
+              where
+                q :: Query
+                q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
+
             -- Note that the allocation counter counts *down*, so we need to
             -- subtract the second value from the first value
             allocated :: Word64
@@ -290,8 +303,16 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
             cpuMillis :: Word64
             cpuMillis = fromIntegral $ (cpu1 - cpu0) `div` 1_000_000_000
 
-            q :: Query
-            q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
+            -- We don't want a DB error to completely break inference
+            -- evaluation. Inability to store the eval info is more of
+            -- an inconvenience than a fatal error
+            logAndIgnore :: SqlError -> RemoteM ()
+            logAndIgnore =
+              logTrace
+                . OtherWarn
+                . ("Failed to save eval info: " <>)
+                . Text.pack
+                . displayException
 
 getVcObject :: VCObjectHash -> RemoteM (VCMeta VCObject)
 getVcObject vch =
