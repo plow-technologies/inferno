@@ -658,7 +658,11 @@ data EvaluationInfo uid gid p = EvaluationInfo
     start :: UTCTime,
     -- | When inference evaluation ended
     end :: UTCTime,
-    -- | The number of bytes allocated between the @start@ and @end@
+    -- | The number of bytes allocated between the @start@ and @end@. Note
+    -- that this is /total/ allocation over the course of evaluation, which
+    -- can be many times greater than peak memory usage. Nevertheless, this
+    -- can be useful to track memory usage over time and across different
+    -- script revisions
     allocated :: Word64,
     -- | Additional CPU time used between the @start@ and @end@. This is
     -- converted from picoseconds to milliseconds
