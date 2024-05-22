@@ -1,3 +1,6 @@
+## 2023.5.22
+* Add support for tracking evaluation info
+
 ## 2023.4.3
 * Add `terminated` column to DB types
 
