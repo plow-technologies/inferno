@@ -39,6 +39,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
 import Data.Time (UTCTime)
+import Data.UUID (UUID)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word32, Word64)
@@ -108,6 +109,7 @@ type InfernoMlServerAPI uid gid p s t =
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
       :> QueryParam "res" Int64
+      :> QueryParam' '[Required] "uuid" UUID
       :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
     -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
@@ -641,6 +643,52 @@ instance
       ip ^. the @"outputs" & Aeson & toField,
       toField Default,
       ip ^. the @"user" & toField
+    ]
+
+-- | Information about execution time and resource usage. This is saved by
+-- @inferno-ml-server@ after script evaluation completes and can be queried
+-- later by using the same job identifier that was provided to the @/inference@
+-- route
+data EvaluationInfo uid gid p = EvaluationInfo
+  { -- | Note that this is the job identifier provided to the inference
+    -- evaluation route, and is also the primary key of the database table
+    id :: UUID,
+    param :: Id (InferenceParam uid gid p VCObjectHash),
+    -- | When inference evaluation started
+    start :: UTCTime,
+    -- | When inference evaluation ended
+    end :: UTCTime,
+    -- | The number of bytes allocated between the @start@ and @end@. Note
+    -- that this is /total/ allocation over the course of evaluation, which
+    -- can be many times greater than peak memory usage. Nevertheless, this
+    -- can be useful to track memory usage over time and across different
+    -- script revisions
+    allocated :: Word64,
+    -- | Additional CPU time used between the @start@ and @end@. This is
+    -- converted from picoseconds to milliseconds
+    cpu :: Word64
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+instance FromRow (EvaluationInfo uid gid p) where
+  fromRow =
+    EvaluationInfo
+      <$> field
+      <*> field
+      <*> field
+      <*> field
+      <*> fmap (fromIntegral @Int64) field
+      <*> fmap (fromIntegral @Int64) field
+
+instance ToRow (EvaluationInfo uid gid p) where
+  toRow ei =
+    [ ei ^. the @"id" & toField,
+      ei ^. the @"param" & toField,
+      ei ^. the @"start" & toField,
+      ei ^. the @"end" & toField,
+      ei ^. the @"allocated" & toField,
+      ei ^. the @"cpu" & toField
     ]
 
 -- | A user, parameterized by the user and group types

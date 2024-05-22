@@ -47,6 +47,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
+import Data.UUID (UUID)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
@@ -68,7 +69,8 @@ import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( InferenceParam,
+  ( EvaluationInfo,
+    InferenceParam,
     InferenceScript,
     InfernoMlServerAPI,
     Model,
@@ -353,6 +355,8 @@ f ?? x = ($ x) <$> f
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
 
+type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
+
 type Model = Types.Model (EntityId UId) (EntityId GId)
 
 type ModelVersion = Types.ModelVersion (EntityId UId) (EntityId GId) Oid
@@ -388,6 +392,16 @@ pattern VCMeta ::
   VCMeta o
 pattern VCMeta t a g n d p v o =
   Inferno.VersionControl.Types.VCMeta t a g n d p v o
+
+pattern EvaluationInfo ::
+  UUID ->
+  Id InferenceParam ->
+  UTCTime ->
+  UTCTime ->
+  Word64 ->
+  Word64 ->
+  EvaluationInfo
+pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
 type InfernoMlServerAPI =
   Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime
