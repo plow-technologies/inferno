@@ -120,7 +120,7 @@ executable tests
 executable test-client
   import:         common
   main-is:        Client.hs
-  hs-source-dirs: exe
+  hs-source-dirs: test
   ghc-options:    -threaded -rtsopts -main-is Client
   build-depends:
     , aeson

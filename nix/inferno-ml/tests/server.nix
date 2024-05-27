@@ -205,8 +205,6 @@ pkgs.nixosTest {
     def runtest(param):
       # Runs an test for an individual param using the client executable,
       # which confirms that the results are correct
-      #
-      # Note: The inference param DB ID and the associated PID are the same number
       node.succeed(f'run-inference-client-test {param}')
 
     node.wait_for_unit("multi-user.target")
