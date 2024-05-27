@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               inferno-ml-server
-version:            2023.5.17
+version:            2023.5.27
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
 homepage:           https://github.com/plow-technologies/inferno.git#readme
@@ -85,6 +85,7 @@ library
     , text
     , time
     , unliftio
+    , uuid
     , vector
     , wai
     , wai-logger
@@ -132,8 +133,10 @@ executable test-client
     , http-client
     , inferno-ml-server-types
     , iproute
+    , random
     , servant-client
     , unliftio
+    , uuid
 
 executable dummy-bridge
   import:         common

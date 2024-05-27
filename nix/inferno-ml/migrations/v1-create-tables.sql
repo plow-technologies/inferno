@@ -68,12 +68,26 @@ create table if not exists params
   , script bytea not null references scripts (id)
   , model integer references mversions (id)
     -- Strictly speaking, this includes both inputs and outputs. The
-    -- corresponding Haskell type is a `Vector (p, ScriptInputType)`, with
+    -- corresponding Haskell type contains `(p, ScriptInputType)`, with
     -- the second element determining readability and writability
   , inputs jsonb not null
     -- See note above
   , terminated timestamptz
   , "user" integer references users (id)
+  );
+
+-- Execution info for inference evaluation
+create table if not exists evalinfo
+  ( id uuid primary key
+  , param integer not null references params (id)
+    -- When inference evaluation began
+  , started timestamptz not null
+    -- When inference evaluation ended
+  , ended timestamptz not null
+    -- Number of bytes allocated in the evaluation thread
+  , allocated bigint not null
+    -- CPU time between `start` and `end`, in milliseconds
+  , cpu bigint not null
   );
 
 create trigger "manage-mversion-lo" before update or delete on mversions
