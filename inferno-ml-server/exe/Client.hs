@@ -75,7 +75,17 @@ verifyWrites ipid c = do
     getExpected =
       maybe (throwString "Missing PID") pure . Map.lookup ipid $
         Map.fromList
-          [ (1, [(1, [(151, IDouble 2.5), (251, IDouble 3.5)])]),
-            (2, [(2, [(300, IDouble 25.0)])]),
-            (3, [(3, [(100, IDouble 7.0)])])
+          [ ( 1,
+              [ (1, [(151, IDouble 2.5), (251, IDouble 3.5)])
+              ]
+            ),
+            ( 2,
+              [ (2, [(300, IDouble 25.0)])
+              ]
+            ),
+            ( 3,
+              [ (3, [(100, IDouble 7.0)]),
+                (4, [(100, IDouble 8.0)])
+              ]
+            )
           ]

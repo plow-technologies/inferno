@@ -64,6 +64,7 @@ import Database.PostgreSQL.Simple.Types
   )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
+import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash,
     byteStringToVCObjectHash,
@@ -597,7 +598,7 @@ data InferenceParam uid gid p s = InferenceParam
     -- (e.g. a UUID for use with @inferno-lsp@)
     --
     -- For existing inference params, this is the foreign key for the specific
-    -- script in the 'InferenceScript' table
+    -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
     script :: s,
     -- | This needs to be linked to a specific version of a model rather
     -- than the @model@ table itself
@@ -608,18 +609,9 @@ data InferenceParam uid gid p s = InferenceParam
     -- will only have a single read-only input and will not be able to write
     -- anywhere
     --
-    -- NOTE: This cannot be a @Map@-like structure. The order of inputs must
-    -- /exactly/ match the order of script @Ident@s declared when creating the
-    -- corresponding inference script because the inputs are applied to the
-    -- original Inferno expression
-    --
-    -- A @Map@, @HashMap@, etc... will not maintain this order. Even if we were
-    -- to create an ordered @Map@ structure, if it were serialized to a JSON
-    -- object, it would still lose its original ordering by the intermediate
-    -- @HashMap@ used in the Aeson @Object@. It would need to be serialized to
-    -- an @Array@, but in that case we should just store it as a @Vector@
-    -- directly
-    inputs :: Vector (SingleOrMany p, ScriptInputType),
+    -- Mapping the input\/output to the Inferno identifier helps ensure that we
+    -- will alwys maintain them in the correct order
+    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
     -- | The time that this parameter was "deleted", if any. For active parameters,
     -- this will be @Nothing@
     terminated :: Maybe UTCTime,

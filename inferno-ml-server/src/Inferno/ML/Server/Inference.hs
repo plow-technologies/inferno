@@ -31,7 +31,6 @@ import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
 import Data.UUID (UUID)
-import qualified Data.Vector as Vector
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only),
@@ -169,17 +168,17 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
                               ( mkIdent i,
                                 pids ^.. each & over mapped toSeries & VArray
                               )
-                        where
-                          -- Note that this both includes inputs (i.e. readable)
-                          -- and outputs (i.e. writable, or readable/writable).
-                          -- These need to be provided to the script in order
-                          -- for the symbolic identifer (e.g. `output0`) to
-                          -- resolve. We can discard the input type here,
-                          -- however. The distinction is only relevant for the
-                          -- runtime that runs as a script evaluation engine
-                          -- and commits the output write object
-                          ps :: [SingleOrMany PID]
-                          ps = param ^.. #inputs . each . _1
+
+                      -- Note that this both includes inputs (i.e. readable)
+                      -- and outputs (i.e. writable, or readable/writable).
+                      -- These need to be provided to the script in order
+                      -- for the symbolic identifer (e.g. `output0`) to
+                      -- resolve. We can discard the input type here,
+                      -- however. The distinction is only relevant for the
+                      -- runtime that runs as a script evaluation engine
+                      -- and commits the output write object
+                      ps :: [SingleOrMany PID]
+                      ps = param ^.. #inputs . to Map.toAscList . each . _2 . _1
 
                       closure :: Map VCObjectHash VCObject
                       closure =
@@ -198,7 +197,7 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
                           -- See note above about inputs/outputs
                           args :: [Expr (Maybe a) ()]
                           args =
-                            [0 .. param ^. #inputs & Vector.length & (- 1)]
+                            [0 .. length ps - 1]
                               <&> Var () Nothing LocalScope
                                 . Expl
                                 . ExtIdent

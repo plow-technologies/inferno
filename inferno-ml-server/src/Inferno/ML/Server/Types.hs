@@ -48,7 +48,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
-import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
@@ -96,6 +95,8 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import Data.Map.Strict (Map)
+import Inferno.Types.Syntax (Ident)
 
 type RemoteM = ReaderT Env IO
 
@@ -372,7 +373,7 @@ pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
   Id ModelVersion ->
-  Vector (SingleOrMany PID, ScriptInputType) ->
+  Map Ident (SingleOrMany PID, ScriptInputType) ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam

@@ -1,4 +1,4 @@
-fun input0 ->
+fun input0 input1 ->
   let input = ML.asTensor4 ML.#float [[[
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -34,7 +34,7 @@ fun input0 ->
   match ML.forward model [input] with {
     | [scores] ->
         let m = ML.toType ML.#double (ML.argmax 1 #false scores) in
-        [makeWrites input0 [(t, ML.asDouble m)]]
+        [makeWrites input0 [(t, ML.asDouble m)], makeWrites input1 [(t, ML.asDouble m + 1.0)]]
     | _ ->
-        [makeWrites input0 [(t, -1.0)]]
+        [makeWrites input0 [(t, -1.0)], makeWrites input1 [(t, -1.0)]]
   }

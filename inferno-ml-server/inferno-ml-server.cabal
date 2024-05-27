@@ -166,8 +166,10 @@ executable parse-and-save
   hs-source-dirs: exe
   ghc-options:    -threaded -rtsopts -main-is ParseAndSave
   build-depends:
+    , aeson
     , base
     , bytestring
+    , containers
     , inferno-core
     , inferno-ml
     , inferno-ml-server
