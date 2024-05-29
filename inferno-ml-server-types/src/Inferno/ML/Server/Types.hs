@@ -239,7 +239,7 @@ data Model uid gid = Model
     -- | The user who owns the model, if any. Note that owning a model
     -- will implicitly set permissions
     user :: Maybe uid,
-    -- | The time that this model was "deleted", if any. For active models,
+    -- | The time that this model was \"deleted\", if any. For active models,
     -- this will be @Nothing@
     terminated :: Maybe UTCTime
   }
@@ -345,7 +345,7 @@ data ModelVersion uid gid c = ModelVersion
     -- the PSQL large object table
     contents :: c,
     version :: Version,
-    -- | The time that this model version was "deleted", if any. For active
+    -- | The time that this model version was \"deleted\", if any. For active
     -- models versions, this will be @Nothing@
     terminated :: Maybe UTCTime
   }
@@ -605,15 +605,17 @@ data InferenceParam uid gid p s = InferenceParam
     model :: Id (ModelVersion uid gid Oid),
     -- | This is called @inputs@ but is also used for script outputs as
     -- well. The access (input or output) is controlled by the 'ScriptInputType'.
-    -- For example, if this field is set to @[Single (p, Readable)]@, the script
-    -- will only have a single read-only input and will not be able to write
-    -- anywhere
+    -- For example, if this field is set to @[("input0", Single (p, Readable))]@,
+    -- the script will only have a single read-only input and will not be able to
+    -- write anywhere (note that we should disallow this scenario, as script
+    -- evaluation would not work properly)
     --
-    -- Mapping the input\/output to the Inferno identifier helps ensure that we
-    -- will alwys maintain them in the correct order
+    -- Mapping the input\/output to the Inferno identifier helps ensure that
+    -- Inferno identifiers are always pointing to the correct input\/output;
+    -- otherwise we would need to rely on the order of the original identifiers
     inputs :: Map Ident (SingleOrMany p, ScriptInputType),
-    -- | The time that this parameter was "deleted", if any. For active parameters,
-    -- this will be @Nothing@
+    -- | The time that this parameter was \"deleted\", if any. For active
+    -- parameters, this will be @Nothing@
     terminated :: Maybe UTCTime,
     user :: uid
   }
@@ -655,8 +657,8 @@ instance
     ]
 
 -- | Controls input interaction within a script, i.e. ability to read from
--- and\/or write to this input. Although the term "input" is used, "output"
--- is a more precise term for those with writes enabled
+-- and\/or write to this input. Although the term \"input\" is used, those with
+-- writes enabled can also be described as \"outputs\"
 data ScriptInputType
   = -- | Script input can be read, but not written
     Readable
