@@ -17,7 +17,7 @@ import Conduit (ConduitT)
 import Control.Applicative (asum, optional)
 import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
-import Control.Monad (void)
+import Control.Monad (void, (<=<))
 import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
@@ -803,22 +803,42 @@ instance FromJSON IValue where
     Number n -> pure . IDouble $ toRealFloat n
     -- It's easier to just mark the time explicitly in an object,
     -- rather than try to deal with distinguishing times and doubles
-    Object o -> ITime <$> o .: "time"
+    Object o ->
+      asum
+        [ ITime <$> o .: "time",
+          fmap IArray $ arrayP =<< o .: "array"
+        ]
+    -- Note that this preserves a plain JSON array for tuples. But we need
+    -- some straightforward way of distinguishing tuples and arrays; since
+    -- the bridge often transmits a large number of individual tuples (times
+    -- and values), it's better to use arrays for the tuples and a tagged object
+    -- for arrays themselves; we often will only deal with one large array, and
+    -- adding a few bytes to this is better than adding a few bytes to thousands
+    -- of encoded tuples
     Array a
       | [x, y] <- Vector.toList a ->
-          (,) <$> parseJSON x <*> parseJSON y <&> \case
-            -- We don't want to confuse a two-element array of tuples with
-            -- a tuple itself. For example, `"[[10.0, {\"time\": 10}], [10.0, {\"time\": 10}]]"`
-            -- should parse as a two-element array of `(double, time)` tuples,
-            -- not as a `((double, time), (double, time))`. I can't think of
-            -- any reason to support the latter. An alternative would be to
-            -- change tuple encoding to an object, but then we would be transmitting
-            -- a much larger amount of data on most requests
-            (f@(ITuple _), s@(ITuple _)) -> IArray $ Vector.fromList [f, s]
-            t -> ITuple t
-      | otherwise -> IArray <$> traverse (parseJSON @IValue) a
+          fmap ITuple $ (,) <$> parseJSON x <*> parseJSON y
+      | otherwise -> fail "Only two-element tuples are supported"
     Null -> pure IEmpty
-    _ -> fail "Expected one of: string, double, time, tuple, unit (empty array), array"
+    _ -> fail "Expected one of: string, double, time, tuple, null, array"
+    where
+      arrayP :: Vector Value -> Parser (Vector IValue)
+      arrayP a =
+        -- This is a bit tedious, but we want to make sure that the array elements
+        -- are homogeneous; parsing all elements to `IValue`s first can't guarantee
+        -- this
+        asum
+          [ -- This alternative means that `null` will be correctly parsed to NaN
+            -- when inside an array of doubles
+            fmap IDouble <$> traverse parseJSON a,
+            fmap ITuple <$> traverse parseJSON a,
+            fmap IText <$> traverse parseJSON a,
+            fmap ITime <$> traverse (withObject "EpochTime" (.: "time")) a,
+            -- Nested array support
+            fmap IArray
+              <$> traverse (withObject "IArray" (arrayP <=< (.: "array"))) a,
+            fail "Expected a heterogeneous array"
+          ]
 
 instance ToJSON IValue where
   toJSON = \case
@@ -827,8 +847,9 @@ instance ToJSON IValue where
     ITuple t -> toJSON t
     -- See `FromJSON` instance above
     ITime t -> object ["time" .= t]
+    -- See `FromJSON` instance above
+    IArray is -> object ["array" .= is]
     IEmpty -> toJSON Null
-    IArray is -> toJSON is
 
 -- | Used to represent inputs to the script. 'Many' allows for an array input
 data SingleOrMany a
