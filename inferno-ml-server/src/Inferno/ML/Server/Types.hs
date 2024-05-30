@@ -43,6 +43,7 @@ import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
@@ -76,6 +77,7 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
     ModelVersion,
   )
 import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
+import Inferno.Types.Syntax (Ident)
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -95,8 +97,6 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
-import Data.Map.Strict (Map)
-import Inferno.Types.Syntax (Ident)
 
 type RemoteM = ReaderT Env IO
 
