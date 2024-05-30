@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               inferno-ml-server
-version:            2023.5.22
+version:            2023.5.29
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
 homepage:           https://github.com/plow-technologies/inferno.git#readme
@@ -120,7 +120,7 @@ executable tests
 executable test-client
   import:         common
   main-is:        Client.hs
-  hs-source-dirs: exe
+  hs-source-dirs: test
   ghc-options:    -threaded -rtsopts -main-is Client
   build-depends:
     , aeson
@@ -166,8 +166,10 @@ executable parse-and-save
   hs-source-dirs: exe
   ghc-options:    -threaded -rtsopts -main-is ParseAndSave
   build-depends:
+    , aeson
     , base
     , bytestring
+    , containers
     , inferno-core
     , inferno-ml
     , inferno-ml-server

@@ -89,14 +89,22 @@ pkgs.nixosTest {
           # with an associated inference param for each
           text =
             let
-              dbstr =
-                "host='127.0.0.1' dbname='inferno' "
-                + "user='inferno' password=''";
+              dbstr = "host='127.0.0.1' dbname='inferno' user='inferno' password=''";
+              ios =
+                builtins.mapAttrs (_: builtins.toJSON) {
+                  ones = { input0 = [ 1 "rw" ]; };
+                  contrived = { input0 = [ 2 "rw" ]; };
+                  # This test uses two outputs
+                  mnist = {
+                    input0 = [ 3 "rw" ];
+                    input1 = [ 4 "w" ];
+                  };
+                };
             in
             ''
-              parse-and-save ${./scripts/ones.inferno} 1 ${dbstr}
-              parse-and-save ${./scripts/contrived.inferno} 2 ${dbstr}
-              parse-and-save ${./scripts/mnist.inferno} 3 ${dbstr}
+              parse-and-save ${./scripts/ones.inferno} '${ios.ones}' ${dbstr}
+              parse-and-save ${./scripts/contrived.inferno} '${ios.contrived}' ${dbstr}
+              parse-and-save ${./scripts/mnist.inferno} '${ios.mnist}' ${dbstr}
             '';
         }
       )
@@ -197,8 +205,6 @@ pkgs.nixosTest {
     def runtest(param):
       # Runs an test for an individual param using the client executable,
       # which confirms that the results are correct
-      #
-      # Note: The inference param DB ID and the associated PID are the same number
       node.succeed(f'run-inference-client-test {param}')
 
     node.wait_for_unit("multi-user.target")

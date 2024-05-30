@@ -43,12 +43,12 @@ import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
-import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
@@ -77,6 +77,7 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
     ModelVersion,
   )
 import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
+import Inferno.Types.Syntax (Ident)
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -372,13 +373,12 @@ pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
   Id ModelVersion ->
-  Vector (SingleOrMany PID) ->
-  Vector (SingleOrMany PID) ->
+  Map Ident (SingleOrMany PID, ScriptInputType) ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m is os mt uid =
-  Types.InferenceParam iid s m is os mt uid
+pattern InferenceParam iid s m ios mt uid =
+  Types.InferenceParam iid s m ios mt uid
 
 pattern VCMeta ::
   CTime ->

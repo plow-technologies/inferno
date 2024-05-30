@@ -87,7 +87,9 @@ valueAt _ p t =
     <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
 
 latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
-latestValueAndTimeBefore _ _ = throwIO $ userError "Unsupported"
+latestValueAndTimeBefore _ _ =
+  throwIO $
+    userError "Unsupported: latestValueAndTimeBefore"
 
 valuesBetween :: Int64 -> PID -> Int -> Int -> ReaderT DummyEnv IO IValue
-valuesBetween _ _ _ _ = throwIO $ userError "Unsupported"
+valuesBetween _ _ _ _ = throwIO $ userError "Unsupported: valuesBetween"

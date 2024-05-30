@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeApplications #-}
 
 -- NOTE
 -- This executable is only intended for testing the inference endpoint with the
@@ -10,8 +9,6 @@ module Client (main) where
 import Conduit
 import Control.Monad (unless, void)
 import Data.Coerce (coerce)
-import qualified Data.Conduit.List as Conduit.List
-import Data.Function (on)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Inferno.ML.Server.Client (inferenceC, registerBridgeC)
@@ -58,13 +55,13 @@ main =
     _ -> die "Usage: test-client <inference-parameter-id>"
 
 -- Check that the returned write stream matches the expected value
-verifyWrites ::
-  Int64 ->
-  WriteStream IO ->
-  IO ()
+verifyWrites :: Int64 -> WriteStream IO -> IO ()
 verifyWrites ipid c = do
   expected <- getExpected
-  result <- rebuildWrites
+  -- Note that there is only one chunk per PID in the output stream, so we
+  -- don't need to concatenate the results by PID. We can just sink it into
+  -- a list directly
+  result <- runConduit $ c .| sinkList
   unless (result == expected) . throwString . unwords $
     [ "Expected: ",
       show expected,
@@ -74,19 +71,21 @@ verifyWrites ipid c = do
       show ipid
     ]
   where
-    rebuildWrites :: IO [(Int, [(EpochTime, IValue)])]
-    rebuildWrites =
-      runConduit $
-        c
-          .| Conduit.List.groupBy ((==) `on` fst)
-          .| Conduit.List.concat
-          .| sinkList
-
     getExpected :: IO [(Int, [(EpochTime, IValue)])]
     getExpected =
       maybe (throwString "Missing PID") pure . Map.lookup ipid $
         Map.fromList
-          [ (1, [(1, [(151, IDouble 2.5), (251, IDouble 3.5)])]),
-            (2, [(2, [(300, IDouble 25.0)])]),
-            (3, [(3, [(100, IDouble 7.0)])])
+          [ ( 1,
+              [ (1, [(151, IDouble 2.5), (251, IDouble 3.5)])
+              ]
+            ),
+            ( 2,
+              [ (2, [(300, IDouble 25.0)])
+              ]
+            ),
+            ( 3,
+              [ (3, [(100, IDouble 7.0)]),
+                (4, [(100, IDouble 8.0)])
+              ]
+            )
           ]

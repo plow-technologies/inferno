@@ -13,13 +13,14 @@ module ParseAndSave (main) where
 import Control.Category ((>>>))
 import Control.Exception (Exception (displayException))
 import Control.Monad (void)
+import Data.Aeson (eitherDecode)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
+import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Vector (Vector)
-import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
     Query,
@@ -37,7 +38,7 @@ import Inferno.Core
 import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
 import Inferno.ML.Server.Types
 import Inferno.ML.Types.Value (customTypes)
-import Inferno.Types.Syntax (Expr, TCScheme)
+import Inferno.Types.Syntax (Expr, Ident, TCScheme)
 import Inferno.Types.VersionControl
   ( Pinned,
     VCObjectHash,
@@ -50,35 +51,37 @@ import Inferno.VersionControl.Types
   )
 import System.Environment (getArgs)
 import System.Exit (die)
-import Text.Read (readMaybe)
 import UnliftIO.Exception (bracket, throwString)
 
 main :: IO ()
 main =
   getArgs >>= \case
-    scriptp : p : conns : _ ->
-      maybe
-        (throwString "Invalid PID")
-        (parseAndSave scriptp (Char8.pack conns) . PID)
-        $ readMaybe p
-    _ -> die "Usage ./parse <SCRIPT-PATH> <PID> <DB-STR>"
+    scriptp : pstr : conns : _ ->
+      either throwString (parseAndSave scriptp (Char8.pack conns))
+        . eitherDecode
+        $ Lazy.Char8.pack pstr
+    _ -> die "Usage ./parse <SCRIPT-PATH> <PID-MAP-JSON> <DB-STR>"
 
-parseAndSave :: FilePath -> ByteString -> PID -> IO ()
-parseAndSave p conns pid = do
+parseAndSave ::
+  FilePath ->
+  ByteString ->
+  Map Ident (SingleOrMany PID, ScriptInputType) ->
+  IO ()
+parseAndSave p conns inputs = do
   t <- Text.IO.readFile p
   now <- fromIntegral @Int . round <$> getPOSIXTime
   ast <-
     either (throwString . displayException) pure . (`parse` t)
       =<< mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
-  bracket (connectPostgreSQL conns) close (saveScriptAndParam ast now pid)
+  bracket (connectPostgreSQL conns) close (saveScriptAndParam ast now inputs)
 
 saveScriptAndParam ::
   (Expr (Pinned VCObjectHash) (), TCScheme) ->
   CTime ->
-  PID ->
+  Map Ident (SingleOrMany PID, ScriptInputType) ->
   Connection ->
   IO ()
-saveScriptAndParam x now pid conn = insertScript *> insertParam
+saveScriptAndParam x now inputs conn = insertScript *> insertParam
   where
     insertScript :: IO ()
     insertScript =
@@ -96,17 +99,15 @@ saveScriptAndParam x now pid conn = insertScript *> insertParam
         . InferenceParam
           Nothing
           hash
+          -- Bit of a hack. We only have one model version in the
+          -- tests, so we can just hard-code the ID here
           (Id 1)
           inputs
-          mempty
           Nothing
         $ entityIdFromInteger 0
       where
         q :: Query
-        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?, ?) |]
-
-        inputs :: Vector (SingleOrMany PID)
-        inputs = Vector.singleton $ Single pid
+        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?) |]
 
     vcfunc :: VCObject
     vcfunc = uncurry VCFunction x

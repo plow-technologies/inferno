@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.0
+* Change representation of script inputs/outputs
+
 ## 0.3.0
 * Add support for tracking evaluation info
 
