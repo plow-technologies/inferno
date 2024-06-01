@@ -1,3 +1,6 @@
+## 2023.6.1
+* Add `resolution` to `InferenceParam`
+
 ## 2023.5.29
 * Change representation of script inputs/outputs
 
