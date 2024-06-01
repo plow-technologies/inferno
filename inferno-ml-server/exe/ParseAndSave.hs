@@ -103,11 +103,12 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
           -- tests, so we can just hard-code the ID here
           (Id 1)
           inputs
+          128
           Nothing
         $ entityIdFromInteger 0
       where
         q :: Query
-        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?) |]
+        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?, ?) |]
 
     vcfunc :: VCObject
     vcfunc = uncurry VCFunction x
