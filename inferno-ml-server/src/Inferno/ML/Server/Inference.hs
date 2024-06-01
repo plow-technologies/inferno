@@ -356,7 +356,8 @@ getParameter iid =
     q =
       [sql|
         SELECT * FROM params
-        WHERE id = ? AND terminated IS NULL
+        WHERE id = ?
+          AND terminated IS NULL
         LIMIT 1
       |]
 
@@ -370,7 +371,6 @@ getParameter iid =
 -- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModel :: ModelCache -> Id ModelVersion -> RemoteM FilePath
 getAndCacheModel cache mid = do
-  logTrace $ CopyingModel mid
   -- Both the individual version is required (in order to fetch the contents)
   -- as well as the parent model row (for the model name)
   mversion <- getModelVersion mid
@@ -380,7 +380,8 @@ getAndCacheModel cache mid = do
     copyAndCache :: Model -> ModelVersion -> RemoteM FilePath
     copyAndCache model mversion =
       versioned <$ do
-        unlessM (doesPathExist versioned) $
+        unlessM (doesPathExist versioned) $ do
+          logTrace $ CopyingModel mid
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
             =<< getModelSizeAndContents (view #contents mversion)
       where
@@ -388,9 +389,10 @@ getAndCacheModel cache mid = do
         -- `<name>.ts.pt.<version>`, which will later be
         -- symlinked to `<name>.ts.pt`
         versioned :: FilePath
-        versioned =
-          model ^. #name . unpacked
-            & (<.> view (#version . to showVersion . unpacked) mversion)
+        versioned = model ^. #name . unpacked & (<.> v)
+          where
+            v :: FilePath
+            v = mversion ^. #version . to showVersion . unpacked
 
     -- Checks that the configured cache size will not be exceeded by
     -- caching the new model. If it will, least-recently-used models
