@@ -25,7 +25,6 @@ import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -97,12 +96,13 @@ import UnliftIO.Timeout (timeout)
 -- in the @/status@ endpoint (using @tryTakeMVar@)
 runInferenceParam ::
   Id InferenceParam ->
-  -- | Optional resolution, defaulting to 128. This is needed in case the
-  -- parameter evaluates a script that calls e.g. @valueAt@
+  -- | Optional resolution. If not provided, @InferenceParam.resolution@ will
+  -- be used. This is provided in order to allow users to override the stored
+  -- resolution without needing to alter the DB
   Maybe Int64 ->
   UUID ->
   RemoteM (WriteStream IO)
-runInferenceParam ipid (fromMaybe 128 -> res) uuid =
+runInferenceParam ipid mres uuid =
   withTimeoutMillis $ \t -> do
     logTrace $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
@@ -231,13 +231,22 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
                         mkChunks = awaitForever $ \(p, ws) ->
                           sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
+                    -- If the optional resolution override has been provided,
+                    -- use that. Otherwise, use the resolution stored in the
+                    -- parameter
+                    resolution :: InverseResolution
+                    resolution =
+                      mres
+                        ^. non
+                          (view (#resolution . to fromIntegral) param)
+                        & toResolution
+
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =
                       Map.fromList
                         [ (ExtIdent $ Right "now", VEpochTime t),
                           ( ExtIdent $ Right "resolution",
-                            VCustom . VExtended . VResolution $
-                              toResolution res
+                            VCustom . VExtended $ VResolution resolution
                           )
                         ]
                 _ ->

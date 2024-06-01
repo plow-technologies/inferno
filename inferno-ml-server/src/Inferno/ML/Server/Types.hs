@@ -374,11 +374,12 @@ pattern InferenceParam ::
   VCObjectHash ->
   Id ModelVersion ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
+  Word64 ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m ios mt uid =
-  Types.InferenceParam iid s m ios mt uid
+pattern InferenceParam iid s m ios res mt uid =
+  Types.InferenceParam iid s m ios res mt uid
 
 pattern VCMeta ::
   CTime ->

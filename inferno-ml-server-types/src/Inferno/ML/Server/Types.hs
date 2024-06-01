@@ -28,7 +28,7 @@ import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.IP
-import Data.Int (Int64)
+import Data.Int (Int64, Int32)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
@@ -614,6 +614,8 @@ data InferenceParam uid gid p s = InferenceParam
     -- Inferno identifiers are always pointing to the correct input\/output;
     -- otherwise we would need to rely on the order of the original identifiers
     inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    -- | Resolution, passed to bridge routes
+    resolution :: Word64,
     -- | The time that this parameter was \"deleted\", if any. For active
     -- parameters, this will be @Nothing@
     terminated :: Maybe UTCTime,
@@ -637,6 +639,7 @@ instance
       <*> fmap wrappedTo (field @VCObjectHashRow)
       <*> field
       <*> fmap getAeson field
+      <*> fmap fromIntegral (field @Int32)
       <*> field
       <*> field
 
@@ -652,6 +655,7 @@ instance
       ip ^. the @"script" & VCObjectHashRow & toField,
       ip ^. the @"model" & toField,
       ip ^. the @"inputs" & Aeson & toField,
+      ip ^. the @"resolution" & Aeson & toField,
       toField Default,
       ip ^. the @"user" & toField
     ]

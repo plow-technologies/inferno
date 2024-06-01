@@ -27,7 +27,9 @@ inferenceC ::
   -- | SQL identifier of the inference parameter to be run
   Id (InferenceParam uid gid p s) ->
   -- | Optional resolution for scripts that use e.g. @valueAt@; defaults to
-  -- 128 if not specified
+  -- the param\'s stored resolution if not provided. This lets users override
+  -- the resolution on an ad-hoc basis without needing to alter the stored
+  -- values for the parameter
   Maybe Int64 ->
   -- | Job identifer. This is used to save execution statistics for each
   -- inference evaluation
