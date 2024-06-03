@@ -28,7 +28,7 @@ import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.IP
-import Data.Int (Int64, Int32)
+import Data.Int (Int32, Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)

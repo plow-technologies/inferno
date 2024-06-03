@@ -11,7 +11,7 @@ import Inferno.ML.Server.Types
 import Inferno.Module.Cast (ToValue (toValue))
 import Inferno.Types.Value
   ( ImplicitCast (ImplicitCast),
-    Value (VDouble, VTuple, VOne),
+    Value (VDouble, VOne, VTuple),
     liftImplEnvM,
   )
 import System.Posix.Types (EpochTime)
