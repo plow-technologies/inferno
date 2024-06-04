@@ -28,7 +28,7 @@ import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.IP
-import Data.Int (Int32, Int64)
+import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
@@ -639,7 +639,7 @@ instance
       <*> fmap wrappedTo (field @VCObjectHashRow)
       <*> field
       <*> fmap getAeson field
-      <*> fmap fromIntegral (field @Int32)
+      <*> fmap fromIntegral (field @Int64)
       <*> field
       <*> field
 
