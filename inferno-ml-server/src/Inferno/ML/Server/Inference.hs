@@ -25,7 +25,6 @@ import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -97,12 +96,13 @@ import UnliftIO.Timeout (timeout)
 -- in the @/status@ endpoint (using @tryTakeMVar@)
 runInferenceParam ::
   Id InferenceParam ->
-  -- | Optional resolution, defaulting to 128. This is needed in case the
-  -- parameter evaluates a script that calls e.g. @valueAt@
+  -- | Optional resolution. If not provided, @InferenceParam.resolution@ will
+  -- be used. This is provided in order to allow users to override the stored
+  -- resolution without needing to alter the DB
   Maybe Int64 ->
   UUID ->
   RemoteM (WriteStream IO)
-runInferenceParam ipid (fromMaybe 128 -> res) uuid =
+runInferenceParam ipid mres uuid =
   withTimeoutMillis $ \t -> do
     logTrace $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
@@ -231,13 +231,22 @@ runInferenceParam ipid (fromMaybe 128 -> res) uuid =
                         mkChunks = awaitForever $ \(p, ws) ->
                           sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
+                    -- If the optional resolution override has been provided,
+                    -- use that. Otherwise, use the resolution stored in the
+                    -- parameter
+                    resolution :: InverseResolution
+                    resolution =
+                      mres
+                        ^. non
+                          (view (#resolution . to fromIntegral) param)
+                        & toResolution
+
                     implEnv :: Map ExtIdent (Value BridgeMlValue m)
                     implEnv =
                       Map.fromList
                         [ (ExtIdent $ Right "now", VEpochTime t),
                           ( ExtIdent $ Right "resolution",
-                            VCustom . VExtended . VResolution $
-                              toResolution res
+                            VCustom . VExtended $ VResolution resolution
                           )
                         ]
                 _ ->
@@ -347,7 +356,8 @@ getParameter iid =
     q =
       [sql|
         SELECT * FROM params
-        WHERE id = ? AND terminated IS NULL
+        WHERE id = ?
+          AND terminated IS NULL
         LIMIT 1
       |]
 
@@ -361,7 +371,6 @@ getParameter iid =
 -- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModel :: ModelCache -> Id ModelVersion -> RemoteM FilePath
 getAndCacheModel cache mid = do
-  logTrace $ CopyingModel mid
   -- Both the individual version is required (in order to fetch the contents)
   -- as well as the parent model row (for the model name)
   mversion <- getModelVersion mid
@@ -371,7 +380,8 @@ getAndCacheModel cache mid = do
     copyAndCache :: Model -> ModelVersion -> RemoteM FilePath
     copyAndCache model mversion =
       versioned <$ do
-        unlessM (doesPathExist versioned) $
+        unlessM (doesPathExist versioned) $ do
+          logTrace $ CopyingModel mid
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
             =<< getModelSizeAndContents (view #contents mversion)
       where
@@ -379,9 +389,10 @@ getAndCacheModel cache mid = do
         -- `<name>.ts.pt.<version>`, which will later be
         -- symlinked to `<name>.ts.pt`
         versioned :: FilePath
-        versioned =
-          model ^. #name . unpacked
-            & (<.> view (#version . to showVersion . unpacked) mversion)
+        versioned = model ^. #name . unpacked & (<.> v)
+          where
+            v :: FilePath
+            v = mversion ^. #version . to showVersion . unpacked
 
     -- Checks that the configured cache size will not be exceeded by
     -- caching the new model. If it will, least-recently-used models

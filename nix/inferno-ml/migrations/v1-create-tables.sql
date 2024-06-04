@@ -71,6 +71,8 @@ create table if not exists params
     -- corresponding Haskell type contains `(p, ScriptInputType)`, with
     -- the second element determining readability and writability
   , inputs jsonb not null
+    -- Resolution passed to script evaluator
+  , resolution integer not null
     -- See note above
   , terminated timestamptz
   , "user" integer references users (id)
