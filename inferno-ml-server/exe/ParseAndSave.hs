@@ -21,6 +21,7 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
     Query,
@@ -101,7 +102,7 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
           hash
           -- Bit of a hack. We only have one model version in the
           -- tests, so we can just hard-code the ID here
-          (Id 1)
+          (Vector.singleton (Id 1))
           inputs
           128
           Nothing

@@ -66,7 +66,11 @@ create table if not exists params
   ( id serial primary key
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
-  , model integer references mversions (id)
+    -- Array of model version IDs; unfortunately we lose referential
+    -- integrity because Postgres does not allow arrays of foreign keys.
+    -- However, we don't allow model version deletion anyway, which
+    -- mitigates this to some degree
+  , models integer[] not null
     -- Strictly speaking, this includes both inputs and outputs. The
     -- corresponding Haskell type contains `(p, ScriptInputType)`, with
     -- the second element determining readability and writability
@@ -91,6 +95,23 @@ create table if not exists evalinfo
     -- CPU time between `start` and `end`, in milliseconds
   , cpu bigint not null
   );
+
+create or replace function verifymvs()
+returns trigger as $$
+declare
+  mv int;
+begin
+  foreach mv in array new.models loop
+    if not exists(select 1 from mversions where id = mv) then
+      raise exception 'Model version ID % is not a valid primary key', mv;
+    end if;
+  end loop;
+  return new;
+end;
+$$ language plpgsql;
+
+create trigger "verify-param-models" before insert or update on params
+  for each row execute function verifymvs();
 
 create trigger "manage-mversion-lo" before update or delete on mversions
   for each row execute function lo_manage(contents);

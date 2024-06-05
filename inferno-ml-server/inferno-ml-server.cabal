@@ -116,6 +116,7 @@ executable tests
     , mtl
     , text
     , unliftio
+    , vector
 
 executable test-client
   import:         common
