@@ -103,7 +103,7 @@ declare
 begin
   foreach mv in array new.models loop
     if not exists(select 1 from mversions where id = mv) then
-      raise exception 'Model version ID % is not a valid primary key', mv;
+      raise exception 'ID % is not a valid model version primary key', mv;
     end if;
   end loop;
   return new;

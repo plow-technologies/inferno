@@ -159,6 +159,4 @@ server =
         =<< view #job
       where
         logAndCancel :: (Id InferenceParam, Async (Maybe (WriteStream IO))) -> RemoteM ()
-        logAndCancel (i, j) =
-          (logTrace . WarnTrace . CancelingInference) i
-            *> cancel j
+        logAndCancel (i, j) = logWarn (CancelingInference i) *> cancel j

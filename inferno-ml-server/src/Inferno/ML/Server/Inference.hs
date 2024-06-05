@@ -105,7 +105,7 @@ runInferenceParam ::
   RemoteM (WriteStream IO)
 runInferenceParam ipid mres uuid =
   withTimeoutMillis $ \t -> do
-    logTrace . InfoTrace $ RunningInference ipid t
+    logInfo $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
@@ -140,7 +140,7 @@ runInferenceParam ipid mres uuid =
           -- need to be updated to use an absolute path to a versioned model,
           -- e.g. `loadModel "~/inferno/.cache/..."`)
           withCurrentDirectory (view #path cache) $ do
-            logTrace . InfoTrace $ EvaluatingScript ipid
+            logInfo $ EvaluatingScript ipid
             traverse_ linkVersionedModel
               =<< getAndCacheModels cache (view #models param)
             runEval interpreter param t obj
@@ -321,8 +321,7 @@ runInferenceParam ipid mres uuid =
             -- an inconvenience than a fatal error
             logAndIgnore :: SqlError -> RemoteM ()
             logAndIgnore =
-              logTrace
-                . WarnTrace
+              logWarn
                 . OtherWarn
                 . ("Failed to save eval info: " <>)
                 . Text.pack
@@ -383,7 +382,7 @@ getAndCacheModels cache =
     copyAndCache model mversion =
       versioned <$ do
         unlessM (doesPathExist versioned) $ do
-          mversion ^. #id & (`whenJust` logTrace . InfoTrace . CopyingModel)
+          mversion ^. #id & (`whenJust` logInfo . CopyingModel)
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
             =<< getModelVersionSizeAndContents (view #contents mversion)
       where
@@ -427,8 +426,7 @@ getAndCacheModels cache =
               tryRemoveFile :: RemoteM ()
               tryRemoveFile =
                 catchIO (removeFile m) $
-                  logTrace
-                    . WarnTrace
+                  logWarn
                     . OtherWarn
                     . Text.pack
                     . displayException

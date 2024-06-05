@@ -372,6 +372,15 @@ logTrace t =
     shouldLog :: RemoteM Bool
     shouldLog = (traceLevel t >=) <$> view (#config . #logLevel)
 
+logInfo :: TraceInfo -> RemoteM ()
+logInfo = logTrace . InfoTrace
+
+logWarn :: TraceWarn -> RemoteM ()
+logWarn = logTrace . WarnTrace
+
+logError :: RemoteError -> RemoteM ()
+logError = logTrace . ErrorTrace
+
 -- FLAP!
 infixl 4 ??
 
