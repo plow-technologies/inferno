@@ -114,6 +114,7 @@ executable tests
     , inferno-ml-server
     , microlens-platform
     , mtl
+    , plow-log
     , text
     , unliftio
     , vector

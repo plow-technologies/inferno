@@ -26,6 +26,7 @@ import Inferno.ML.Server.Inference.Model
   )
 import Inferno.ML.Server.Types hiding (models)
 import Lens.Micro.Platform
+import Plow.Logging.Message (LogLevel (LevelWarn))
 import Test.Hspec (Spec)
 import qualified Test.Hspec as Hspec
 import UnliftIO (throwString)
@@ -43,7 +44,8 @@ main =
   getArgs >>= \case
     cfg : args ->
       (`runInEnv` runTests args)
-        =<< either throwString pure
+        -- Silence logs
+        =<< either throwString (pure . set #logLevel LevelWarn)
         =<< eitherDecodeFileStrict @Config cfg
     _ -> throwString "Missing path to configuration file"
   where

@@ -105,7 +105,7 @@ runInferenceParam ::
   RemoteM (WriteStream IO)
 runInferenceParam ipid mres uuid =
   withTimeoutMillis $ \t -> do
-    logTrace $ RunningInference ipid t
+    logTrace . InfoTrace $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
@@ -140,7 +140,7 @@ runInferenceParam ipid mres uuid =
           -- need to be updated to use an absolute path to a versioned model,
           -- e.g. `loadModel "~/inferno/.cache/..."`)
           withCurrentDirectory (view #path cache) $ do
-            logTrace $ EvaluatingScript ipid
+            logTrace . InfoTrace $ EvaluatingScript ipid
             traverse_ linkVersionedModel
               =<< getAndCacheModels cache (view #models param)
             runEval interpreter param t obj
@@ -322,6 +322,7 @@ runInferenceParam ipid mres uuid =
             logAndIgnore :: SqlError -> RemoteM ()
             logAndIgnore =
               logTrace
+                . WarnTrace
                 . OtherWarn
                 . ("Failed to save eval info: " <>)
                 . Text.pack
@@ -365,6 +366,14 @@ getParameter iid =
 
 -- | For all of the model version IDs declared in the param, fetch the model
 -- version and the parent model, and then cache them
+--
+-- The contents of the model version are retrieved (the Postgres large object),
+-- then copied to the model cache if it has not yet been cached. Previously
+-- saved model versions(s) are evicted if the cache 'maxSize' is exceeded by
+-- adding the model version contents; this is based on access time
+--
+-- NOTE: This action assumes that the current working directory is the model
+-- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModels ::
   ModelCache -> Vector (Id ModelVersion) -> RemoteM (Vector FilePath)
 getAndCacheModels cache =
@@ -374,7 +383,7 @@ getAndCacheModels cache =
     copyAndCache model mversion =
       versioned <$ do
         unlessM (doesPathExist versioned) $ do
-          mversion ^. #id & (`whenJust` logTrace . CopyingModel)
+          mversion ^. #id & (`whenJust` logTrace . InfoTrace . CopyingModel)
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
             =<< getModelVersionSizeAndContents (view #contents mversion)
       where
@@ -419,6 +428,7 @@ getAndCacheModels cache =
               tryRemoveFile =
                 catchIO (removeFile m) $
                   logTrace
+                    . WarnTrace
                     . OtherWarn
                     . Text.pack
                     . displayException

@@ -36,7 +36,7 @@ import UnliftIO.IORef (atomicWriteIORef, readIORef)
 -- data from\/to the data source)
 registerBridgeInfo :: BridgeInfo -> RemoteM ()
 registerBridgeInfo bi = do
-  logTrace $ RegisteringBridge bi
+  logTrace . InfoTrace $ RegisteringBridge bi
   liftIO $ encodeFile bridgeCache bi
   (`atomicWriteIORef` Just bi) =<< view (#bridge . #info)
   interpreter <- mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
