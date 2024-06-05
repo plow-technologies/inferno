@@ -7,7 +7,7 @@
 
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
-    getAndCacheModel,
+    getAndCacheModels,
     linkVersionedModel,
   )
 where
@@ -15,12 +15,12 @@ where
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
 import Control.Monad.Catch (throwM)
-import Control.Monad.Extra (loopM, unlessM, whenM)
+import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
 import Data.Conduit.List (chunksOf, sourceList)
-import Data.Foldable (foldl')
+import Data.Foldable (foldl', traverse_)
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -30,6 +30,7 @@ import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
 import Data.UUID (UUID)
+import Data.Vector (Vector)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only),
@@ -140,7 +141,8 @@ runInferenceParam ipid mres uuid =
           -- e.g. `loadModel "~/inferno/.cache/..."`)
           withCurrentDirectory (view #path cache) $ do
             logTrace $ EvaluatingScript ipid
-            linkVersionedModel =<< getAndCacheModel cache (view #model param)
+            traverse_ linkVersionedModel
+              =<< getAndCacheModels cache (view #models param)
             runEval interpreter param t obj
           where
             runEval ::
@@ -361,29 +363,20 @@ getParameter iid =
         LIMIT 1
       |]
 
--- | First retrieves the specified model version from the database, then fetches
--- the associated parent model. The contents of the model version are retrieved
--- (the Postgres large object), then copied to the model cache if it has not
--- yet been cached. Older previously saved model versions(s) are evicted if the
--- cache 'maxSize' is exceeded by adding the model version contents
---
--- NOTE: This action assumes that the current working directory is the model
--- cache! It can be run using e.g. 'withCurrentDirectory'
-getAndCacheModel :: ModelCache -> Id ModelVersion -> RemoteM FilePath
-getAndCacheModel cache mid = do
-  -- Both the individual version is required (in order to fetch the contents)
-  -- as well as the parent model row (for the model name)
-  mversion <- getModelVersion mid
-  model <- getModel $ view #model mversion
-  copyAndCache model mversion
+-- | For all of the model version IDs declared in the param, fetch the model
+-- version and the parent model, and then cache them
+getAndCacheModels ::
+  ModelCache -> Vector (Id ModelVersion) -> RemoteM (Vector FilePath)
+getAndCacheModels cache =
+  traverse (uncurry copyAndCache) <=< getModelsAndVersions
   where
     copyAndCache :: Model -> ModelVersion -> RemoteM FilePath
     copyAndCache model mversion =
       versioned <$ do
         unlessM (doesPathExist versioned) $ do
-          logTrace $ CopyingModel mid
+          mversion ^. #id & (`whenJust` logTrace . CopyingModel)
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
-            =<< getModelSizeAndContents (view #contents mversion)
+            =<< getModelVersionSizeAndContents (view #contents mversion)
       where
         -- Cache the model with its specific version, i.e.
         -- `<name>.ts.pt.<version>`, which will later be

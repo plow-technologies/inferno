@@ -12,6 +12,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Inferno.ML.Server.Types
   ( module Inferno.ML.Server.Types,
@@ -55,6 +56,7 @@ import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
     ResultError (ConversionFailed, UnexpectedNull),
+    (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
@@ -97,6 +99,7 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import Data.Vector (Vector)
 
 type RemoteM = ReaderT Env IO
 
@@ -372,14 +375,14 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Id ModelVersion ->
+  Vector (Id ModelVersion) ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m ios res mt uid =
-  Types.InferenceParam iid s m ios res mt uid
+pattern InferenceParam iid s ms ios res mt uid =
+  Types.InferenceParam iid s ms ios res mt uid
 
 pattern VCMeta ::
   CTime ->
@@ -418,3 +421,6 @@ instance ToField VCObjectHash where
 deriving newtype instance ToHttpApiData EpochTime
 
 deriving newtype instance FromHttpApiData EpochTime
+
+joinToTuple :: (a :. b) -> (a, b)
+joinToTuple (a :. b) = (a, b)
