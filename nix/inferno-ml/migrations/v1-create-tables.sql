@@ -99,14 +99,20 @@ create table if not exists evalinfo
 -- Because the `params` table references an array of model versions, and
 -- because Postgres does not natively support arrays of foreign keys, this
 -- trigger function checks that each array item in the `models` column is
--- a valid `mversions` primary key
+-- a valid `mversions` primary key and that the model has not been terminated
 create or replace function verifymvs()
 returns trigger as $$
 declare
   mv int;
 begin
   foreach mv in array new.models loop
-    if not exists(select 1 from mversions where id = mv) then
+    if
+      not exists
+        ( select 1 from mversions
+          where id = mv
+            and terminated is null
+        )
+    then
       raise exception 'ID % is not a valid model version primary key', mv;
     end if;
   end loop;
