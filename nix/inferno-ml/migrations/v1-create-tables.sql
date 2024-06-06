@@ -96,6 +96,10 @@ create table if not exists evalinfo
   , cpu bigint not null
   );
 
+-- Because the `params` table references an array of model versions, and
+-- because Postgres does not natively support arrays of foreign keys, this
+-- trigger function checks that each array item in the `models` column is
+-- a valid `mversions` primary key
 create or replace function verifymvs()
 returns trigger as $$
 declare
