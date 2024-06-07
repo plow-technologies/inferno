@@ -2,17 +2,18 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Inference.Model
-  ( getModel,
-    getModelVersion,
-    getModelSizeAndContents,
+  ( getModelsAndVersions,
+    getModelVersionSizeAndContents,
   )
 where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
-import Data.Generics.Wrapped (wrappedTo)
+import Data.Foldable (toList)
+import Data.Vector (Vector)
 import Database.PostgreSQL.Simple
-  ( Only (Only, fromOnly),
+  ( In (In),
+    Only (Only, fromOnly),
     Query,
     withTransaction,
   )
@@ -33,47 +34,37 @@ import Lens.Micro.Platform
 import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Exception (bracket)
 
--- | Get the model row itself. This is to access things like the name,
--- permissions, etc... that are not contained in the model version table
--- (see 'getModelVersion')
-getModel :: Id Model -> RemoteM Model
-getModel mid =
-  firstOrThrow (NoSuchModel (wrappedTo mid))
-    =<< queryStore q (Only mid)
+-- | Get an array of model versions along with the parent model of each; note
+-- that this does not retrieve the model version contents -- each version only
+-- contains the 'Oid' of the large object
+getModelsAndVersions ::
+  Vector (Id ModelVersion) -> RemoteM (Vector (Model, ModelVersion))
+getModelsAndVersions =
+  fmap (fmap joinToTuple)
+    . queryStore q
+    . Only
+    . In
+    . toList
   where
     q :: Query
     q =
       [sql|
-        SELECT * FROM models WHERE id = ?
-        AND terminated IS NULL
-      |]
-
--- Get a row from the model versions table, which contains the actual contents,
--- description, etc... The foreign key of the version row can be used to get
--- the invariant model metadata (see 'getModel')
---
--- This does not include the actual contents of the model, which need to be
--- fetched separately using 'loImport'
-getModelVersion :: Id ModelVersion -> RemoteM ModelVersion
-getModelVersion mid =
-  firstOrThrow (NoSuchModel (wrappedTo mid))
-    =<< queryStore q (Only mid)
-  where
-    q :: Query
-    q =
-      [sql|
-        SELECT * FROM mversions WHERE id = ?
-        AND terminated IS NULL
+        SELECT M.*, V.*
+        FROM mversions V
+          INNER JOIN models M ON V.model = M.id
+        WHERE V.id IN ?
+          AND V.terminated IS NULL
+          AND M.terminated IS NULL
       |]
 
 -- | Get the actual serialized bytes of the model, which is stored in the Postgres
 -- large object table (and must be explicitly imported using 'loImport'), along
 -- with the number of bytes
-getModelSizeAndContents :: Oid -> RemoteM (Integer, ByteString)
-getModelSizeAndContents m =
+getModelVersionSizeAndContents :: Oid -> RemoteM (Integer, ByteString)
+getModelVersionSizeAndContents m =
   view #store >>= \conn -> withRunInIO $ \r ->
     withTransaction conn . r $ do
-      size <- getModelSize m
+      size <- getModelVersionSize m
       bs <-
         liftIO
           . bracket (loOpen conn m ReadMode) (loClose conn)
@@ -84,8 +75,8 @@ getModelSizeAndContents m =
 -- | Get the size of the model contents themselves (byte count of large object).
 -- It is better to do this via Postgres rather than using @ByteString.length@
 -- on the returned bytes
-getModelSize :: Oid -> RemoteM Integer
-getModelSize oid =
+getModelVersionSize :: Oid -> RemoteM Integer
+getModelVersionSize oid =
   fmap fromOnly $
     firstOrThrow (OtherRemoteError "Could not get model size")
       =<< queryStore q (Only oid)

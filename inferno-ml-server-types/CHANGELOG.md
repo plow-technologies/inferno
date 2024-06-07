@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.6.0
+* Support linking multiple models to inference parameters
+
 ## 0.5.0
 * Add `resolution` to `InferenceParam`
 

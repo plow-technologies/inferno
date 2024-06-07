@@ -20,9 +20,9 @@ import UnliftIO.IO (Handle, stderr, stdout)
 
 traceRemote :: RemoteTrace -> Message
 traceRemote = \case
-  StartingServer -> info "Starting `inferno-ml-server`"
-  RunningInference ipid t ->
-    info $
+  InfoTrace i -> info $ case i of
+    StartingServer -> "Starting `inferno-ml-server`"
+    RunningInference ipid t ->
       Text.unwords
         [ "Running inference param:",
           tshow ipid <> ",",
@@ -30,30 +30,32 @@ traceRemote = \case
           tshow $ t `div` 1000000,
           "(seconds)"
         ]
-  EvaluatingScript i ->
-    info $
+    EvaluatingScript s ->
       Text.unwords
         [ "Evaluating inferno script for parameter:",
-          tshow i
+          tshow s
         ]
-  CancelingInference i ->
-    warn $
+    CopyingModel m ->
       Text.unwords
-        [ "Canceling inference job for param:",
-          tshow i
+        [ "Copying model to cache:",
+          tshow m
         ]
-  CopyingModel i -> info $ Text.unwords ["Copying model to cache:", tshow i]
-  RegisteringBridge bi ->
-    info $
+    RegisteringBridge bi ->
       Text.unwords
         [ "Registering orchestrator bridge with IP address",
           bi ^. #host & tshow,
           "and port",
           bi ^. #port & tshow
         ]
-  RemoteError e -> err . Text.pack $ displayException e
-  OtherInfo t -> info t
-  OtherWarn t -> warn t
+    OtherInfo t -> t
+  WarnTrace w -> warn $ case w of
+    CancelingInference i ->
+      Text.unwords
+        [ "Canceling inference job for param:",
+          tshow i
+        ]
+    OtherWarn t -> t
+  ErrorTrace e -> err . Text.pack $ displayException e
   where
     info, err, warn :: Text -> Message
     info = Message LevelInfo . Stdout

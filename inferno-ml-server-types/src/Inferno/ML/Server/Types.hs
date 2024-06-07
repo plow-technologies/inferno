@@ -600,9 +600,16 @@ data InferenceParam uid gid p s = InferenceParam
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
     script :: s,
-    -- | This needs to be linked to a specific version of a model rather
-    -- than the @model@ table itself
-    model :: Id (ModelVersion uid gid Oid),
+    -- | All of the (specific versions of) models that can be used with this
+    -- parameters. @inferno-ml-server@ will copy the contents of each of the
+    -- model versions when evaluating inference scripts. Inference scripts can
+    -- reference any of the linked model versions by referring to the parent
+    -- model\'s name, e.g. @loadModel "name.ts.pt"@
+    --
+    -- Each element represents the ID of a specific model version. However, due
+    -- to limitations in PostgreSQL, there is no referential integrity; i.e.
+    -- the elements are treated as plain integers
+    models :: Vector (Id (ModelVersion uid gid Oid)),
     -- | This is called @inputs@ but is also used for script outputs as
     -- well. The access (input or output) is controlled by the 'ScriptInputType'.
     -- For example, if this field is set to @[("input0", Single (p, Readable))]@,
@@ -629,7 +636,9 @@ data InferenceParam uid gid p s = InferenceParam
 instance
   ( FromJSON p,
     Typeable p,
-    FromField uid
+    FromField uid,
+    Typeable gid,
+    Typeable uid
   ) =>
   FromRow (InferenceParam uid gid p VCObjectHash)
   where
@@ -653,7 +662,7 @@ instance
   toRow ip =
     [ toField Default,
       ip ^. the @"script" & VCObjectHashRow & toField,
-      ip ^. the @"model" & toField,
+      ip ^. the @"models" & toField,
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"resolution" & Aeson & toField,
       toField Default,
@@ -781,7 +790,7 @@ fromIPv4 :: IPv4 -> (Int, Int, Int, Int)
 fromIPv4 =
   wrappedTo >>> Data.IP.fromIPv4 >>> \case
     [a, b, c, d] -> (a, b, c, d)
-    -- Should not happen
+    -- Should not happen, `fromIPv4` always produces a 4-element list
     _ -> error "Invalid IP address"
 
 -- Bridge-related types

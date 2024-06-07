@@ -81,7 +81,7 @@ main = runServer =<< mkOptions
 
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f = withRemoteTracer $ \tracer -> do
-  traceWith tracer StartingServer
+  traceWith tracer $ InfoTrace StartingServer
   withConnect (view #store cfg) $ \conn ->
     f
       =<< Env cfg conn tracer
@@ -159,4 +159,4 @@ server =
         =<< view #job
       where
         logAndCancel :: (Id InferenceParam, Async (Maybe (WriteStream IO))) -> RemoteM ()
-        logAndCancel (i, j) = logTrace (CancelingInference i) *> cancel j
+        logAndCancel (i, j) = logWarn (CancelingInference i) *> cancel j

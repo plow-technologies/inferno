@@ -113,7 +113,7 @@ pkgs.nixosTest {
           name = "register-bridge";
           runtimeInputs = with pkgs; [ curl jo ];
           text = ''
-            curl -X POST -H 'Content-Type: application/json' \
+            curl --fail -s -X POST -H 'Content-Type: application/json' \
               localhost:8080/bridge -d "$(jo host=127.0.0.1 port=9999)"
           '';
         }
@@ -150,23 +150,30 @@ pkgs.nixosTest {
       '';
     };
 
-    systemd.services = {
-      dummy-bridge = {
-        description = "Run dummy bridge server";
-        wantedBy = [ "default.target" ];
-        after = [ "network.target" ];
-        serviceConfig =
-          let
-            inherit (pkgs.inferno-ml-server) dummy-bridge;
-          in
-          {
-            WorkingDirectory = "/tmp/dummy";
-            ExecStart = "${dummy-bridge}/bin/dummy-bridge";
-            Restart = "always";
-            RestartSec = 5;
-          };
+    systemd = {
+      user.services.inferno-ml-server = {
+        # Silences logs
+        serviceConfig.StandardOutput = pkgs.lib.mkForce "null";
+        serviceConfig.StandardError = pkgs.lib.mkForce "null";
       };
 
+      services = {
+        dummy-bridge = {
+          description = "Run dummy bridge server";
+          wantedBy = [ "default.target" ];
+          after = [ "network.target" ];
+          serviceConfig =
+            let
+              inherit (pkgs.inferno-ml-server) dummy-bridge;
+            in
+            {
+              WorkingDirectory = "/tmp/dummy";
+              ExecStart = "${dummy-bridge}/bin/dummy-bridge";
+              Restart = "always";
+              RestartSec = 5;
+            };
+        };
+      };
     };
     # See https://github.com/NixOS/nixpkgs/issues/183629
     system.activationScripts = {
@@ -222,7 +229,7 @@ pkgs.nixosTest {
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
 
     node.systemctl("start inferno-ml-server.service", user="inferno")
-    node.succeed('sudo -HE -u inferno run-db-test')
+    node.succeed('sudo -HE -u inferno run-db-test >&2')
 
     node.succeed('register-bridge')
 

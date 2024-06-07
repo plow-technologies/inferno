@@ -9,6 +9,7 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -21,6 +22,7 @@ where
 
 import Control.Applicative (asum, (<**>))
 import Control.Exception (Exception (displayException))
+import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
@@ -33,7 +35,9 @@ import Data.Aeson
     genericParseJSON,
     withObject,
     withText,
+    (.!=),
     (.:),
+    (.:?),
   )
 import Data.Aeson.Types (Parser)
 import qualified Data.Bits as Bits
@@ -49,12 +53,14 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
+import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
     ResultError (ConversionFailed, UnexpectedNull),
+    (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
@@ -90,6 +96,9 @@ import Network.HTTP.Client (Manager)
 import Numeric (readHex)
 import qualified Options.Applicative as Options
 import Plow.Logging (IOTracer, traceWith)
+import Plow.Logging.Message
+  ( LogLevel (LevelError, LevelInfo, LevelWarn),
+  )
 import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
@@ -199,6 +208,8 @@ data Config = Config
     --
     -- NOTE: Timeout is in seconds, not milliseconds
     timeout :: Word64,
+    -- | Minimum log level; logs below this level will be ignored
+    logLevel :: LogLevel,
     -- | Configuration for PostgreSQL database
     store :: ConnectInfo
   }
@@ -211,6 +222,7 @@ instance FromJSON Config where
       <$> o .: "port"
       <*> o .: "cache"
       <*> o .: "timeout"
+      <*> o .:? "log-level" .!= LevelWarn
       <*> (connInfoP =<< o .: "store")
     where
       connInfoP :: Object -> Parser ConnectInfo
@@ -333,19 +345,41 @@ instance Exception SomeInfernoError where
   displayException (SomeInfernoError x) = show x
 
 data RemoteTrace
+  = InfoTrace TraceInfo
+  | WarnTrace TraceWarn
+  | ErrorTrace RemoteError
+  deriving stock (Show, Eq, Generic)
+
+data TraceInfo
   = StartingServer
-  | RemoteError RemoteError
-  | OtherInfo Text
-  | OtherWarn Text
   | RegisteringBridge BridgeInfo
   | RunningInference (Id InferenceParam) Int
   | EvaluatingScript (Id InferenceParam)
   | CopyingModel (Id ModelVersion)
-  | CancelingInference (Id InferenceParam)
+  | OtherInfo Text
+  deriving stock (Show, Eq, Generic)
+
+data TraceWarn
+  = CancelingInference (Id InferenceParam)
+  | OtherWarn Text
   deriving stock (Show, Eq, Generic)
 
 logTrace :: RemoteTrace -> RemoteM ()
-logTrace t = (`traceWith` t) =<< view #tracer
+logTrace t =
+  whenM shouldLog $
+    (`traceWith` t) =<< view #tracer
+  where
+    shouldLog :: RemoteM Bool
+    shouldLog = (traceLevel t >=) <$> view (#config . #logLevel)
+
+logInfo :: TraceInfo -> RemoteM ()
+logInfo = logTrace . InfoTrace
+
+logWarn :: TraceWarn -> RemoteM ()
+logWarn = logTrace . WarnTrace
+
+logError :: RemoteError -> RemoteM ()
+logError = logTrace . ErrorTrace
 
 -- FLAP!
 infixl 4 ??
@@ -372,14 +406,14 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Id ModelVersion ->
+  Vector (Id ModelVersion) ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s m ios res mt uid =
-  Types.InferenceParam iid s m ios res mt uid
+pattern InferenceParam iid s ms ios res mt uid =
+  Types.InferenceParam iid s ms ios res mt uid
 
 pattern VCMeta ::
   CTime ->
@@ -405,7 +439,12 @@ pattern EvaluationInfo ::
 pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
 type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI (EntityId UId) (EntityId GId) PID VCObjectHash EpochTime
+  Types.InfernoMlServerAPI
+    (EntityId UId)
+    (EntityId GId)
+    PID
+    VCObjectHash
+    EpochTime
 
 -- Orphans
 
@@ -418,3 +457,12 @@ instance ToField VCObjectHash where
 deriving newtype instance ToHttpApiData EpochTime
 
 deriving newtype instance FromHttpApiData EpochTime
+
+joinToTuple :: (a :. b) -> (a, b)
+joinToTuple (a :. b) = (a, b)
+
+traceLevel :: RemoteTrace -> LogLevel
+traceLevel = \case
+  InfoTrace {} -> LevelInfo
+  WarnTrace {} -> LevelWarn
+  ErrorTrace {} -> LevelError
