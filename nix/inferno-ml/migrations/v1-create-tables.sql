@@ -96,6 +96,15 @@ create table if not exists evalinfo
   , cpu bigint not null
   );
 
+-- Stores information required to call the data bridge
+create table if not exists bridges
+  ( id serial primary key
+  , param integer not null references params (id)
+    -- Host of the bridge server
+  , ip inet not null
+  , port integer check (port > 0)
+  );
+
 -- Because the `params` table references an array of model versions, and
 -- because Postgres does not natively support arrays of foreign keys, this
 -- trigger function checks that each array item in the `models` column is

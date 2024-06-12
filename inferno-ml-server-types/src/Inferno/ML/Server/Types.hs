@@ -77,11 +77,9 @@ import Servant
     Get,
     JSON,
     NewlineFraming,
-    Post,
     Put,
     QueryParam,
     QueryParam',
-    ReqBody,
     Required,
     StreamPost,
     (:<|>),
@@ -113,9 +111,6 @@ type InfernoMlServerAPI uid gid p s t =
       :> QueryParam' '[Required] "uuid" UUID
       :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
-    -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
-    -- bridge endpoint
-    :<|> "bridge" :> ReqBody '[JSON] BridgeInfo :> Post '[JSON] ()
     -- Check for bridge registration
     :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
