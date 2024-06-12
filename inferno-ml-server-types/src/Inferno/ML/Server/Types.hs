@@ -111,8 +111,6 @@ type InfernoMlServerAPI uid gid p s t =
       :> QueryParam' '[Required] "uuid" UUID
       :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
-    -- Check for bridge registration
-    :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
 -- A bridge to get or write data for use with Inferno scripts. This is implemented
 -- by a bridge server connected to a data source, not by `inferno-ml-server`
@@ -145,12 +143,27 @@ type BridgeAPI p t =
 type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
-data BridgeInfo = BridgeInfo
-  { host :: IPv4,
+data BridgeInfo uid gid p s = BridgeInfo
+  { id :: Id (InferenceParam uid gid p s),
+    host :: IPv4,
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
+
+instance FromRow (BridgeInfo uid gid p s) where
+  fromRow =
+    BridgeInfo
+      <$> field
+      <*> field
+      <*> fmap (fromIntegral @Int64) field
+
+instance ToRow (BridgeInfo uid gid p s) where
+  toRow bi =
+    [ bi ^. the @"id" & toField,
+      bi ^. the @"host" & toField,
+      bi ^. the @"port" & toField
+    ]
 
 -- | The ID of a database entity
 newtype Id a = Id Int64

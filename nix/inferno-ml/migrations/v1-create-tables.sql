@@ -98,8 +98,8 @@ create table if not exists evalinfo
 
 -- Stores information required to call the data bridge
 create table if not exists bridges
-  ( id serial primary key
-  , param integer not null references params (id)
+  ( -- Same ID as the referenced param
+    id integer not null references params (id)
     -- Host of the bridge server
   , ip inet not null
   , port integer check (port > 0)

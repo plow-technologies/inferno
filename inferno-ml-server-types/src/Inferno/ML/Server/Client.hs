@@ -6,7 +6,6 @@ module Inferno.ML.Server.Client
   ( statusC,
     inferenceC,
     cancelC,
-    checkBridgeC,
   )
 where
 
@@ -42,15 +41,8 @@ inferenceC ::
 
 -- | Cancel the existing inference job, if it exists
 cancelC :: ClientM ()
-
--- | Check if any bridge information has been previously registered with this
--- server instance
-checkBridgeC :: ClientM (Maybe BridgeInfo)
-statusC
-  :<|> inferenceC
-  :<|> cancelC
-  :<|> checkBridgeC =
-    client api
+statusC :<|> inferenceC :<|> cancelC =
+  client api
 
 api :: Proxy (InfernoMlServerAPI uid gid p s t)
 api = Proxy

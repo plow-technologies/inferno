@@ -75,7 +75,8 @@ import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( EvaluationInfo,
+  ( BridgeInfo,
+    EvaluationInfo,
     InferenceParam,
     InferenceScript,
     InfernoMlServerAPI,
@@ -123,19 +124,10 @@ data Env = Env
           -- The actual job itself. This is stored so it can be canceled later
           Async (Maybe (Types.WriteStream IO))
         ),
-    bridge :: Bridge,
     manager :: Manager,
     -- The interpreter needs to be updated if the bridge info changes,
     -- hence the need to keep it in an `IORef`
     interpreter :: IORef (Maybe (Interpreter RemoteM BridgeMlValue))
-  }
-  deriving stock (Generic)
-
--- | A bridge (host and port) of a server that can proxy a data source. This
--- can be set using @POST /bridge@. It's not included directly into the NixOS
--- image because then it would be difficult to change
-newtype Bridge = Bridge
-  { info :: IORef (Maybe BridgeInfo)
   }
   deriving stock (Generic)
 
@@ -285,7 +277,7 @@ data RemoteError
   | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
     InfernoError SomeInfernoError
-  | BridgeNotRegistered
+  | NoBridgeSaved
   | ScriptTimeout Int
   | ClientError ClientError
   | OtherRemoteError Text
@@ -319,7 +311,7 @@ instance Exception RemoteError where
         [ "Inferno evaluation failed with:",
           show x
         ]
-    BridgeNotRegistered -> "No bridge has been registered"
+    NoBridgeSaved -> "No bridge has been saved"
     ScriptTimeout t ->
       unwords
         [ "Script evaluation timed out after",
@@ -352,7 +344,6 @@ data RemoteTrace
 
 data TraceInfo
   = StartingServer
-  | RegisteringBridge BridgeInfo
   | RunningInference (Id InferenceParam) Int
   | EvaluatingScript (Id InferenceParam)
   | CopyingModel (Id ModelVersion)
@@ -389,6 +380,9 @@ f ?? x = ($ x) <$> f
 
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
+
+type BridgeInfo =
+  Types.BridgeInfo (EntityId UId) (EntityId GId) PID VCObjectHash
 
 type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
 
