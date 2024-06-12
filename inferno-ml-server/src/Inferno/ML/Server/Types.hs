@@ -409,6 +409,9 @@ pattern InferenceParam ::
 pattern InferenceParam iid s ms ios res mt uid =
   Types.InferenceParam iid s ms ios res mt uid
 
+pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo
+pattern BridgeInfo ipid h p = Types.BridgeInfo ipid h p
+
 pattern VCMeta ::
   CTime ->
   ScriptMetadata ->

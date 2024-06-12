@@ -177,6 +177,7 @@ executable parse-and-save
     , inferno-ml-server
     , inferno-types
     , inferno-vc
+    , microlens-platform
     , postgresql-simple
     , text
     , time

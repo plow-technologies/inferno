@@ -110,16 +110,6 @@ pkgs.nixosTest {
       )
       (
         pkgs.writeShellApplication {
-          name = "register-bridge";
-          runtimeInputs = with pkgs; [ curl jo ];
-          text = ''
-            curl --fail -s -X POST -H 'Content-Type: application/json' \
-              localhost:8080/bridge -d "$(jo host=127.0.0.1 port=9999)"
-          '';
-        }
-      )
-      (
-        pkgs.writeShellApplication {
           name = "run-inference-client-test";
           runtimeInputs = with pkgs; [ inferno-ml-server.test-client ];
           text = ''
@@ -230,8 +220,6 @@ pkgs.nixosTest {
 
     node.systemctl("start inferno-ml-server.service", user="inferno")
     node.succeed('sudo -HE -u inferno run-db-test >&2')
-
-    node.succeed('register-bridge')
 
     # `tests/scripts/ones.inferno`
     runtest(1)

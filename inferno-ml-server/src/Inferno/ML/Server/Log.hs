@@ -9,7 +9,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types
-import Lens.Micro.Platform
 import Plow.Logging (IOTracer (IOTracer), withEitherTracer)
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging.Message

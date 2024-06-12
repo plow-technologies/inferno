@@ -24,10 +24,12 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
+    Only (fromOnly),
     Query,
     close,
     connectPostgreSQL,
     execute,
+    query,
     withTransaction,
   )
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -50,6 +52,7 @@ import Inferno.VersionControl.Types
     VCObjectPred (Init),
     VCObjectVisibility (VCObjectPublic),
   )
+import Lens.Micro.Platform
 import System.Environment (getArgs)
 import System.Exit (die)
 import UnliftIO.Exception (bracket, throwString)
@@ -94,22 +97,43 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
 
     insertParam :: IO ()
     insertParam =
-      void
-        . withTransaction conn
-        . execute conn q
-        . InferenceParam
-          Nothing
-          hash
-          -- Bit of a hack. We only have one model version in the
-          -- tests, so we can just hard-code the ID here
-          (Vector.singleton (Id 1))
-          inputs
-          128
-          Nothing
-        $ entityIdFromInteger 0
+      maybe (throwString "Can't get param ID") (saveBridgeInfo . fromOnly)
+        . preview _head
+        =<< saveParam
       where
-        q :: Query
-        q = [sql| INSERT INTO params VALUES (?, ?, ?, ?, ?, ?, ?) |]
+        saveParam :: IO [Only (Id InferenceParam)]
+        saveParam =
+          withTransaction conn
+            . query conn q
+            . InferenceParam
+              Nothing
+              hash
+              -- Bit of a hack. We only have one model version in the
+              -- tests, so we can just hard-code the ID here
+              (Vector.singleton (Id 1))
+              inputs
+              128
+              Nothing
+            $ entityIdFromInteger 0
+          where
+            q :: Query
+            q =
+              [sql|
+                INSERT INTO params
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+              |]
+
+        saveBridgeInfo :: Id InferenceParam -> IO ()
+        saveBridgeInfo ipid =
+          void
+            . withTransaction conn
+            . execute conn q
+            . flip (BridgeInfo ipid) 9999
+            $ toIPv4 (127, 0, 0, 1)
+          where
+            q :: Query
+            q = [sql| INSERT INTO bridges VALUES (?, ?, ?) |]
 
     vcfunc :: VCObject
     vcfunc = uncurry VCFunction x
