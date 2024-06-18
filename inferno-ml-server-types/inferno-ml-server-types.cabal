@@ -48,6 +48,7 @@ library
     , deepseq
     , extra
     , generic-lens
+    , hashable
     , http-api-data
     , inferno-core
     , inferno-types

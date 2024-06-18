@@ -27,6 +27,7 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
+import Data.Hashable (Hashable)
 import qualified Data.IP
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
@@ -170,10 +171,14 @@ newtype Id a = Id Int64
   deriving stock (Show, Generic)
   deriving newtype
     ( Eq,
+      Ord,
+      Hashable,
       FromField,
       ToField,
       FromJSON,
       ToJSON,
+      FromJSONKey,
+      ToJSONKey,
       ToHttpApiData,
       FromHttpApiData
     )
@@ -637,7 +642,28 @@ data InferenceParam uid gid p s = InferenceParam
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToJSON)
+
+{- ORMOLU_DISABLE -}
+instance
+  ( FromJSON s,
+    FromJSON p,
+    FromJSON uid
+  ) =>
+  FromJSON (InferenceParam uid gid p s)
+  where
+  parseJSON = withObject "InferenceParam" $ \o ->
+    InferenceParam
+      -- The ID needs to be included when deserializing
+      <$> o .: "id"
+      <*> o .: "script"
+      <*> o .: "models"
+      <*> o .: "inputs"
+      <*> o .:? "resolution" .!= 128
+      -- We shouldn't require this field
+      <*> o .:? "terminated"
+      <*> o .: "user"
+{- ORMOLU_ENABLE -}
 
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
 -- should not be possible to store a new param with a raw script)
@@ -759,7 +785,13 @@ data User uid gid = User
     groups :: Vector gid
   }
   deriving stock (Show, Generic, Eq)
-  deriving anyclass (FromRow, ToRow, NFData)
+  deriving anyclass
+    ( FromRow,
+      ToRow,
+      FromJSON,
+      ToJSON,
+      NFData
+    )
 
 -- | IPv4 address with some useful instances
 newtype IPv4 = IPv4 Data.IP.IPv4
