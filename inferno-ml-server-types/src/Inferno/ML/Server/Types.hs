@@ -613,16 +613,6 @@ data InferenceParam uid gid p s = InferenceParam
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
     script :: s,
-    -- | All of the (specific versions of) models that can be used with this
-    -- parameters. @inferno-ml-server@ will copy the contents of each of the
-    -- model versions when evaluating inference scripts. Inference scripts can
-    -- reference any of the linked model versions by referring to the parent
-    -- model\'s name, e.g. @loadModel "name.ts.pt"@
-    --
-    -- Each element represents the ID of a specific model version. However, due
-    -- to limitations in PostgreSQL, there is no referential integrity; i.e.
-    -- the elements are treated as plain integers
-    models :: Vector (Id (ModelVersion uid gid Oid)),
     -- | This is called @inputs@ but is also used for script outputs as
     -- well. The access (input or output) is controlled by the 'ScriptInputType'.
     -- For example, if this field is set to @[("input0", Single (p, Readable))]@,
@@ -657,7 +647,6 @@ instance
       -- The ID needs to be included when deserializing
       <$> o .: "id"
       <*> o .: "script"
-      <*> o .: "models"
       <*> o .: "inputs"
       <*> o .:? "resolution" .!= 128
       -- We shouldn't require this field
@@ -680,7 +669,6 @@ instance
     InferenceParam
       <$> field
       <*> fmap wrappedTo (field @VCObjectHashRow)
-      <*> field
       <*> fmap getAeson field
       <*> fmap fromIntegral (field @Int64)
       <*> field
@@ -696,12 +684,19 @@ instance
   toRow ip =
     [ toField Default,
       ip ^. the @"script" & VCObjectHashRow & toField,
-      ip ^. the @"models" & toField,
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"resolution" & Aeson & toField,
       toField Default,
       ip ^. the @"user" & toField
     ]
+
+-- | An 'InferenceParam' together with all of the model versions that are
+-- linked to it indirectly via its script. This is provided for convenience
+data InferenceParamWithModels uid gid p s = InferenceParamWithModels
+  { param :: InferenceParam uid gid p s,
+    models :: Vector (Id (ModelVersion uid gid Oid))
+  }
+  deriving stock (Show, Eq, Generic)
 
 -- | Controls input interaction within a script, i.e. ability to read from
 -- and\/or write to this input. Although the term \"input\" is used, those with

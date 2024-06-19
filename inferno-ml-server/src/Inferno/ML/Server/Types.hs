@@ -74,16 +74,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( BridgeInfo,
-    EvaluationInfo,
-    InferenceParam,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.Types.Syntax (Ident)
 import Inferno.VersionControl.Types
   ( VCObject,
@@ -107,6 +97,17 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( BridgeInfo,
+    EvaluationInfo,
+    InferenceParam,
+    InferenceParamWithModels,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
@@ -381,6 +382,9 @@ f ?? x = ($ x) <$> f
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
 
+type InferenceParamWithModels =
+  Types.InferenceParamWithModels (EntityId UId) (EntityId GId) PID VCObjectHash
+
 type BridgeInfo =
   Types.BridgeInfo (EntityId UId) (EntityId GId) PID VCObjectHash
 
@@ -400,14 +404,19 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Vector (Id ModelVersion) ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s ms ios res mt uid =
-  Types.InferenceParam iid s ms ios res mt uid
+pattern InferenceParam iid s ios res mt uid =
+  Types.InferenceParam iid s ios res mt uid
+
+pattern InferenceParamWithModels ::
+  InferenceParam ->
+  Vector (Id ModelVersion) ->
+  InferenceParamWithModels
+pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo
 pattern BridgeInfo ipid h p = Types.BridgeInfo ipid h p

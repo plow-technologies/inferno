@@ -21,7 +21,6 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
     Only (fromOnly),
@@ -93,7 +92,19 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
         InferenceScript hash vcmeta
       where
         q :: Query
-        q = [sql| INSERT INTO scripts (id, obj) VALUES (?, ?) |]
+        q =
+          -- Bit of a hack. We only have one model version in the
+          -- tests, so we can just hard-code the ID here
+          [sql|
+            WITH ins AS (
+              INSERT INTO scripts (id, obj)
+              VALUES (?, ?)
+              RETURNING id
+            )
+            INSERT INTO smodels (script, model)
+              SELECT id, 1::integer
+            FROM ins
+          |]
 
     insertParam :: IO ()
     insertParam =
@@ -108,9 +119,6 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
             . InferenceParam
               Nothing
               hash
-              -- Bit of a hack. We only have one model version in the
-              -- tests, so we can just hard-code the ID here
-              (Vector.singleton (Id 1))
               inputs
               128
               Nothing
@@ -120,7 +128,7 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
             q =
               [sql|
                 INSERT INTO params
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id
               |]
 
