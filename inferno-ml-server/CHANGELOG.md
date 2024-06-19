@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2023.6.19
+* Save `BridgeInfo` to DB
+
 ## 2023.6.5
 * Support linking multiple models to inference parameters
 

@@ -1,6 +1,10 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.7.0
+* Change representation of `BridgeInfo`
+* Add more instances for various types
+
 ## 0.6.0
 * Support linking multiple models to inference parameters
 
