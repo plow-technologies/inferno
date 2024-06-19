@@ -33,7 +33,7 @@ import Data.UUID (UUID)
 import Data.Vector (Vector)
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
-  ( Only (Only),
+  ( Only (Only, fromOnly),
     Query,
     SqlError,
   )
@@ -133,8 +133,8 @@ runInferenceParam ipid mres uuid =
       -- will not have been initialized yet. After that, it will be reused
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
-      param <- getParameter ipid
-      obj <- getVcObject $ view #script param
+      pwm <- getParameterWithModels ipid
+      obj <- pwm ^. #param . #script & getVcObject
       cache <- view $ #config . #cache
       t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
@@ -144,8 +144,8 @@ runInferenceParam ipid mres uuid =
       withCurrentDirectory (view #path cache) $ do
         logInfo $ EvaluatingScript ipid
         traverse_ linkVersionedModel
-          =<< getAndCacheModels cache (view #models param)
-        runEval interpreter param t obj
+          =<< getAndCacheModels cache (view #models pwm)
+        runEval interpreter (view #param pwm) t obj
       where
         runEval ::
           Interpreter RemoteM BridgeMlValue ->
@@ -365,18 +365,23 @@ linkVersionedModel withVersion = do
     withExt :: FilePath
     withExt = dropExtensions withVersion <.> "ts" <.> "pt"
 
-getParameter :: Id InferenceParam -> RemoteM InferenceParam
-getParameter iid =
-  firstOrThrow (NoSuchParameter (wrappedTo iid))
+getParameterWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
+getParameterWithModels iid =
+  fmap (uncurry InferenceParamWithModels . fmap fromOnly . joinToTuple)
+    . firstOrThrow (NoSuchParameter (wrappedTo iid))
     =<< queryStore q (Only iid)
   where
     q :: Query
     q =
       [sql|
-        SELECT * FROM params
-        WHERE id = ?
-          AND terminated IS NULL
-        LIMIT 1
+        SELECT P.*, array_agg(M.model) models
+        FROM params P
+          INNER JOIN scripts S ON P.script = S.id
+          INNER JOIN smodels M ON M.script = S.id
+        WHERE P.id = ?
+          AND P.terminated IS NULL
+        GROUP BY
+          P.id
       |]
 
 -- | For all of the model version IDs declared in the param, fetch the model
