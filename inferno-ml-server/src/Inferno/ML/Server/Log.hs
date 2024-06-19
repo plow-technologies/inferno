@@ -9,7 +9,6 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types
-import Lens.Micro.Platform
 import Plow.Logging (IOTracer (IOTracer), withEitherTracer)
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging.Message
@@ -39,13 +38,6 @@ traceRemote = \case
       Text.unwords
         [ "Copying model to cache:",
           tshow m
-        ]
-    RegisteringBridge bi ->
-      Text.unwords
-        [ "Registering orchestrator bridge with IP address",
-          bi ^. #host & tshow,
-          "and port",
-          bi ^. #port & tshow
         ]
     OtherInfo t -> t
   WarnTrace w -> warn $ case w of

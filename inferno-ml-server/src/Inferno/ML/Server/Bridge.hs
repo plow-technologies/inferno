@@ -1,8 +1,7 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Inferno.ML.Server.Bridge
-  ( registerBridgeInfo,
-    getBridgeInfo,
+  ( initializeInferno,
   )
 where
 
@@ -10,9 +9,10 @@ import Control.DeepSeq (NFData)
 import Control.Monad.Catch (throwM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (asks)
-import Data.Aeson (encodeFile)
 import Data.Int (Int64)
-import Inferno.Core (mkInferno)
+import Database.PostgreSQL.Simple (Only (Only), Query)
+import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Inferno.Core (Interpreter, mkInferno)
 import qualified Inferno.ML.Server.Client.Bridge as Bridge
 import Inferno.ML.Server.Module.Bridge (mkBridgeFuns)
 import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
@@ -29,50 +29,45 @@ import Servant.Client.Streaming
     runClientM,
   )
 import System.Posix.Types (EpochTime)
-import UnliftIO.IORef (atomicWriteIORef, readIORef)
 
--- | Save the provided 'BridgeInfo' and update the Inferno interpreter to use
--- the given bridge (the special primitives must call the bridge to read\/write
--- data from\/to the data source)
-registerBridgeInfo :: BridgeInfo -> RemoteM ()
-registerBridgeInfo bi = do
-  logInfo $ RegisteringBridge bi
-  liftIO $ encodeFile bridgeCache bi
-  (`atomicWriteIORef` Just bi) =<< view (#bridge . #info)
-  interpreter <- mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
-  (`atomicWriteIORef` Just interpreter)
-    =<< view #interpreter
+-- | Retrieve the 'BridgeInfo' associated with an inference param and update the
+-- Inferno interpreter to use the given bridge (the special primitives must call
+-- the bridge to read\/write data from\/to the data source)
+initializeInferno ::
+  Id InferenceParam -> RemoteM (Interpreter RemoteM BridgeMlValue)
+initializeInferno ipid = do
+  (`mkInferno` customTypes) . mkBridgePrelude . mkFuns
+    =<< getBridgeInfo
   where
-    funs :: BridgeFuns RemoteM
-    funs = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
-
-    valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
-    valueAt res pid = callBridge . Bridge.valueAtC res pid
-
-    latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
-    latestValueAndTimeBefore t = callBridge . Bridge.latestValueAndTimeBeforeC t
-
-    valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
-    valuesBetween res pid t1 = callBridge . Bridge.valuesBetweenC res pid t1
-
--- | Get the previously saved 'BridgeInfo', if any
-getBridgeInfo :: RemoteM (Maybe BridgeInfo)
-getBridgeInfo = readIORef =<< view (#bridge . #info)
-
--- | Call one of the bridge endpoints using the saved 'BridgeInfo', throwing an
--- exception if the info has not been saved yet
-callBridge :: NFData a => ClientM a -> RemoteM a
-callBridge c =
-  view (#bridge . #info) >>= readIORef >>= \case
-    Nothing -> throwM BridgeNotRegistered
-    Just bi ->
-      either (throwM . ClientError) pure
-        =<< liftIO . runClientM c
-        =<< mkEnv
+    -- There should always be a bridge saved for the param
+    getBridgeInfo :: RemoteM BridgeInfo
+    getBridgeInfo = firstOrThrow NoBridgeSaved =<< queryStore q (Only ipid)
       where
-        mkEnv :: RemoteM ClientEnv
-        mkEnv = asks $ (`mkClientEnv` url) . view #manager
+        q :: Query
+        q = [sql| SELECT * FROM bridges WHERE id = ? |]
 
+    mkFuns :: BridgeInfo -> BridgeFuns RemoteM
+    mkFuns bi = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
+      where
+        valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
+        valueAt res pid = callBridge bi . Bridge.valueAtC res pid
+
+        latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
+        latestValueAndTimeBefore t =
+          callBridge bi . Bridge.latestValueAndTimeBeforeC t
+
+        valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
+        valuesBetween res pid t1 =
+          callBridge bi . Bridge.valuesBetweenC res pid t1
+
+-- | Call one of the bridge endpoints using the given 'BridgeInfo'
+callBridge :: NFData a => BridgeInfo -> ClientM a -> RemoteM a
+callBridge bi c =
+  either (throwM . ClientError) pure =<< liftIO . runClientM c =<< mkEnv
+  where
+    mkEnv :: RemoteM ClientEnv
+    mkEnv = asks $ (`mkClientEnv` url) . view #manager
+      where
         url :: BaseUrl
         url =
           BaseUrl

@@ -27,6 +27,7 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedTo)
+import Data.Hashable (Hashable)
 import qualified Data.IP
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
@@ -77,11 +78,9 @@ import Servant
     Get,
     JSON,
     NewlineFraming,
-    Post,
     Put,
     QueryParam,
     QueryParam',
-    ReqBody,
     Required,
     StreamPost,
     (:<|>),
@@ -113,11 +112,6 @@ type InfernoMlServerAPI uid gid p s t =
       :> QueryParam' '[Required] "uuid" UUID
       :> StreamPost NewlineFraming JSON (WriteStream IO)
     :<|> "inference" :> "cancel" :> Put '[JSON] ()
-    -- Register the bridge. This is an `inferno-ml-server` endpoint, not a
-    -- bridge endpoint
-    :<|> "bridge" :> ReqBody '[JSON] BridgeInfo :> Post '[JSON] ()
-    -- Check for bridge registration
-    :<|> "bridge" :> Get '[JSON] (Maybe BridgeInfo)
 
 -- A bridge to get or write data for use with Inferno scripts. This is implemented
 -- by a bridge server connected to a data source, not by `inferno-ml-server`
@@ -150,22 +144,41 @@ type BridgeAPI p t =
 type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
-data BridgeInfo = BridgeInfo
-  { host :: IPv4,
+data BridgeInfo uid gid p s = BridgeInfo
+  { id :: Id (InferenceParam uid gid p s),
+    host :: IPv4,
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
+
+instance FromRow (BridgeInfo uid gid p s) where
+  fromRow =
+    BridgeInfo
+      <$> field
+      <*> field
+      <*> fmap (fromIntegral @Int64) field
+
+instance ToRow (BridgeInfo uid gid p s) where
+  toRow bi =
+    [ bi ^. the @"id" & toField,
+      bi ^. the @"host" & toField,
+      bi ^. the @"port" & toField
+    ]
 
 -- | The ID of a database entity
 newtype Id a = Id Int64
   deriving stock (Show, Generic)
   deriving newtype
     ( Eq,
+      Ord,
+      Hashable,
       FromField,
       ToField,
       FromJSON,
       ToJSON,
+      FromJSONKey,
+      ToJSONKey,
       ToHttpApiData,
       FromHttpApiData
     )
@@ -629,7 +642,28 @@ data InferenceParam uid gid p s = InferenceParam
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToJSON)
+
+{- ORMOLU_DISABLE -}
+instance
+  ( FromJSON s,
+    FromJSON p,
+    FromJSON uid
+  ) =>
+  FromJSON (InferenceParam uid gid p s)
+  where
+  parseJSON = withObject "InferenceParam" $ \o ->
+    InferenceParam
+      -- The ID needs to be included when deserializing
+      <$> o .: "id"
+      <*> o .: "script"
+      <*> o .: "models"
+      <*> o .: "inputs"
+      <*> o .:? "resolution" .!= 128
+      -- We shouldn't require this field
+      <*> o .:? "terminated"
+      <*> o .: "user"
+{- ORMOLU_ENABLE -}
 
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
 -- should not be possible to store a new param with a raw script)
@@ -751,7 +785,13 @@ data User uid gid = User
     groups :: Vector gid
   }
   deriving stock (Show, Generic, Eq)
-  deriving anyclass (FromRow, ToRow, NFData)
+  deriving anyclass
+    ( FromRow,
+      ToRow,
+      FromJSON,
+      ToJSON,
+      NFData
+    )
 
 -- | IPv4 address with some useful instances
 newtype IPv4 = IPv4 Data.IP.IPv4

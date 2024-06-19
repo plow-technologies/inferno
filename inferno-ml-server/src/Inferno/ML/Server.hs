@@ -12,15 +12,12 @@ where
 import Control.Monad.Catch (throwM)
 import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.Reader (ReaderT (runReaderT))
-import Data.Aeson (decodeFileStrict)
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
 import Database.PostgreSQL.Simple (withConnect)
-import Inferno.ML.Server.Bridge
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
-import Inferno.ML.Server.Utils (bridgeCache)
 import Lens.Micro.Platform
 import Network.HTTP.Client
   ( defaultManagerSettings,
@@ -50,7 +47,6 @@ import Servant
     (:<|>) ((:<|>)),
   )
 import UnliftIO.Async (Async, cancel)
-import UnliftIO.Directory (doesFileExist)
 import UnliftIO.Exception
   ( Exception (displayException),
     handle,
@@ -87,18 +83,8 @@ runInEnv cfg f = withRemoteTracer $ \tracer -> do
       =<< Env cfg conn tracer
         <$> newMVar ()
         <*> newEmptyMVar
-        <*> mkBridge
         <*> newManager defaultManagerSettings
         <*> newIORef Nothing
-  where
-    mkBridge :: IO Bridge
-    mkBridge = fmap Bridge $ newIORef =<< maybeDecodeBridge
-
-    maybeDecodeBridge :: IO (Maybe BridgeInfo)
-    maybeDecodeBridge =
-      doesFileExist bridgeCache >>= \case
-        False -> pure Nothing
-        True -> decodeFileStrict bridgeCache
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
@@ -122,7 +108,7 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
         e@InvalidScript {} -> errWith err400 e
         e@InvalidOutput {} -> errWith err400 e
         e@InfernoError {} -> errWith err500 e
-        e@BridgeNotRegistered {} -> errWith err500 e
+        e@NoBridgeSaved {} -> errWith err500 e
         e@ScriptTimeout {} -> errWith err500 e
         e@ClientError {} -> errWith err500 e
       where
@@ -138,12 +124,7 @@ api :: Proxy InfernoMlServerAPI
 api = Proxy
 
 server :: ServerT InfernoMlServerAPI RemoteM
-server =
-  getStatus
-    :<|> runInferenceParam
-    :<|> cancelInference
-    :<|> registerBridgeInfo
-    :<|> getBridgeInfo
+server = getStatus :<|> runInferenceParam :<|> cancelInference
   where
     -- If the server is currently evaluating a script, this will return `Nothing`,
     -- otherwise `Just ()`
@@ -158,5 +139,6 @@ server =
         =<< tryTakeMVar
         =<< view #job
       where
-        logAndCancel :: (Id InferenceParam, Async (Maybe (WriteStream IO))) -> RemoteM ()
+        logAndCancel ::
+          (Id InferenceParam, Async (Maybe (WriteStream IO))) -> RemoteM ()
         logAndCancel (i, j) = logWarn (CancelingInference i) *> cancel j

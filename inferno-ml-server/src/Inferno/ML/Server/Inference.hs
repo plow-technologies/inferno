@@ -42,6 +42,7 @@ import Foreign.C (CTime)
 import Inferno.Core
   ( Interpreter (Interpreter, evalExpr, mkEnvFromClosure),
   )
+import Inferno.ML.Server.Bridge (initializeInferno)
 import Inferno.ML.Server.Inference.Model
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
@@ -87,7 +88,7 @@ import UnliftIO.Exception
     displayException,
   )
 import UnliftIO.IO.File (writeBinaryFileDurableAtomic)
-import UnliftIO.IORef (readIORef)
+import UnliftIO.IORef (atomicWriteIORef, readIORef)
 import UnliftIO.MVar (putMVar, takeMVar, withMVar)
 import UnliftIO.Timeout (timeout)
 
@@ -128,137 +129,138 @@ runInferenceParam ipid mres uuid =
     -- this only captures the allocations _in this thread only_
     runInference :: Int -> RemoteM (Maybe (WriteStream IO))
     runInference tmo = timeout tmo . withEvaluationInfo $ do
-      view #interpreter >>= readIORef >>= \case
-        Nothing -> throwM BridgeNotRegistered
-        Just interpreter -> do
-          param <- getParameter ipid
-          obj <- getVcObject $ view #script param
-          cache <- view $ #config . #cache
-          t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
-          -- Change working directories to the model cache so that Hasktorch
-          -- can find the models using relative paths (otherwise the AST would
-          -- need to be updated to use an absolute path to a versioned model,
-          -- e.g. `loadModel "~/inferno/.cache/..."`)
-          withCurrentDirectory (view #path cache) $ do
-            logInfo $ EvaluatingScript ipid
-            traverse_ linkVersionedModel
-              =<< getAndCacheModels cache (view #models param)
-            runEval interpreter param t obj
-          where
-            runEval ::
-              Interpreter RemoteM BridgeMlValue ->
-              InferenceParam ->
-              CTime ->
-              VCMeta VCObject ->
-              RemoteM (WriteStream IO)
-            runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
-              vcm ^. #obj & \case
-                VCFunction {} -> do
-                  -- Need to set up envs for script eval
-                  let mkIdent :: Int -> ExtIdent
-                      mkIdent = ExtIdent . Right . ("input$" <>) . tshow
+      -- If this is the first request after the server starts, the interpreter
+      -- will not have been initialized yet. After that, it will be reused
+      -- until the server is started again
+      interpreter <- getOrMkInferno ipid
+      param <- getParameter ipid
+      obj <- getVcObject $ view #script param
+      cache <- view $ #config . #cache
+      t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
+      -- Change working directories to the model cache so that Hasktorch
+      -- can find the models using relative paths (otherwise the AST would
+      -- need to be updated to use an absolute path to a versioned model,
+      -- e.g. `loadModel "~/inferno/.cache/..."`)
+      withCurrentDirectory (view #path cache) $ do
+        logInfo $ EvaluatingScript ipid
+        traverse_ linkVersionedModel
+          =<< getAndCacheModels cache (view #models param)
+        runEval interpreter param t obj
+      where
+        runEval ::
+          Interpreter RemoteM BridgeMlValue ->
+          InferenceParam ->
+          CTime ->
+          VCMeta VCObject ->
+          RemoteM (WriteStream IO)
+        runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
+          vcm ^. #obj & \case
+            VCFunction {} -> do
+              -- Need to set up envs for script eval
+              let mkIdent :: Int -> ExtIdent
+                  mkIdent = ExtIdent . Right . ("input$" <>) . tshow
 
-                      toSeries :: PID -> Value BridgeMlValue m
-                      toSeries = VCustom . VExtended . VSeries
+                  toSeries :: PID -> Value BridgeMlValue m
+                  toSeries = VCustom . VExtended . VSeries
 
-                      localEnv :: Map ExtIdent (Value BridgeMlValue m)
-                      localEnv =
-                        Map.fromList $
-                          zip [0 ..] ps <&> \case
-                            (i, Single pid) -> (mkIdent i, toSeries pid)
-                            (i, Many pids) ->
-                              ( mkIdent i,
-                                pids ^.. each & over mapped toSeries & VArray
-                              )
-
-                      -- Note that this both includes inputs (i.e. readable)
-                      -- and outputs (i.e. writable, or readable/writable).
-                      -- These need to be provided to the script in order
-                      -- for the symbolic identifer (e.g. `output0`) to
-                      -- resolve. We can discard the input type here,
-                      -- however. The distinction is only relevant for the
-                      -- runtime that runs as a script evaluation engine
-                      -- and commits the output write object
-                      ps :: [SingleOrMany PID]
-                      ps = param ^.. #inputs . to Map.toAscList . each . _2 . _1
-
-                      closure :: Map VCObjectHash VCObject
-                      closure =
-                        param ^. #script
-                          & ( `Map.singleton` view #obj vcm
-                            )
-
-                      expr :: Expr (Maybe VCObjectHash) ()
-                      expr =
-                        foldl'
-                          App
-                          ( Var () (preview #script param) LocalScope dummy
+                  localEnv :: Map ExtIdent (Value BridgeMlValue m)
+                  localEnv =
+                    Map.fromList $
+                      zip [0 ..] ps <&> \case
+                        (i, Single pid) -> (mkIdent i, toSeries pid)
+                        (i, Many pids) ->
+                          ( mkIdent i,
+                            pids ^.. each & over mapped toSeries & VArray
                           )
-                          args
-                        where
-                          -- See note above about inputs/outputs
-                          args :: [Expr (Maybe a) ()]
-                          args =
-                            [0 .. length ps - 1]
-                              <&> Var () Nothing LocalScope
-                                . Expl
-                                . ExtIdent
-                                . Right
-                                . ("input$" <>)
-                                . tshow
 
-                          dummy :: ImplExpl
-                          dummy = Expl . ExtIdent $ Right "dummy"
+                  -- Note that this both includes inputs (i.e. readable)
+                  -- and outputs (i.e. writable, or readable/writable).
+                  -- These need to be provided to the script in order
+                  -- for the symbolic identifer (e.g. `output0`) to
+                  -- resolve. We can discard the input type here,
+                  -- however. The distinction is only relevant for the
+                  -- runtime that runs as a script evaluation engine
+                  -- and commits the output write object
+                  ps :: [SingleOrMany PID]
+                  ps = param ^.. #inputs . to Map.toAscList . each . _2 . _1
 
-                  either (throwInfernoError . Left . SomeInfernoError) yieldPairs
-                    =<< flip (`evalExpr` implEnv) expr
-                    =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
-                  where
-                    yieldPairs ::
-                      Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
-                      RemoteM (WriteStream IO)
-                    yieldPairs = \case
-                      VArray vs ->
-                        fmap ((.| mkChunks) . yieldMany) . for vs $ \case
-                          VCustom (VExtended (VWrite vw)) -> pure vw
-                          v -> throwM . InvalidOutput $ renderPretty v
+                  closure :: Map VCObjectHash VCObject
+                  closure =
+                    param ^. #script
+                      & ( `Map.singleton` view #obj vcm
+                        )
+
+                  expr :: Expr (Maybe VCObjectHash) ()
+                  expr =
+                    foldl'
+                      App
+                      ( Var () (preview #script param) LocalScope dummy
+                      )
+                      args
+                    where
+                      -- See note above about inputs/outputs
+                      args :: [Expr (Maybe a) ()]
+                      args =
+                        [0 .. length ps - 1]
+                          <&> Var () Nothing LocalScope
+                            . Expl
+                            . ExtIdent
+                            . Right
+                            . ("input$" <>)
+                            . tshow
+
+                      dummy :: ImplExpl
+                      dummy = Expl . ExtIdent $ Right "dummy"
+
+              either (throwInfernoError . Left . SomeInfernoError) yieldPairs
+                =<< flip (`evalExpr` implEnv) expr
+                =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
+              where
+                yieldPairs ::
+                  Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
+                  RemoteM (WriteStream IO)
+                yieldPairs = \case
+                  VArray vs ->
+                    fmap ((.| mkChunks) . yieldMany) . for vs $ \case
+                      VCustom (VExtended (VWrite vw)) -> pure vw
                       v -> throwM . InvalidOutput $ renderPretty v
-                      where
-                        mkChunks ::
-                          ConduitT
-                            (PID, [(EpochTime, IValue)])
-                            (Int, [(EpochTime, IValue)])
-                            IO
-                            ()
-                        mkChunks = awaitForever $ \(p, ws) ->
-                          sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
+                  v -> throwM . InvalidOutput $ renderPretty v
+                  where
+                    mkChunks ::
+                      ConduitT
+                        (PID, [(EpochTime, IValue)])
+                        (Int, [(EpochTime, IValue)])
+                        IO
+                        ()
+                    mkChunks = awaitForever $ \(p, ws) ->
+                      sourceList ws .| chunksOf 500 .| mapC (wrappedTo p,)
 
-                    -- If the optional resolution override has been provided,
-                    -- use that. Otherwise, use the resolution stored in the
-                    -- parameter
-                    resolution :: InverseResolution
-                    resolution =
-                      mres
-                        ^. non
-                          (view (#resolution . to fromIntegral) param)
-                        & toResolution
+                -- If the optional resolution override has been provided,
+                -- use that. Otherwise, use the resolution stored in the
+                -- parameter
+                resolution :: InverseResolution
+                resolution =
+                  mres
+                    ^. non
+                      (view (#resolution . to fromIntegral) param)
+                    & toResolution
 
-                    implEnv :: Map ExtIdent (Value BridgeMlValue m)
-                    implEnv =
-                      Map.fromList
-                        [ (ExtIdent $ Right "now", VEpochTime t),
-                          ( ExtIdent $ Right "resolution",
-                            VCustom . VExtended $ VResolution resolution
-                          )
-                        ]
-                _ ->
-                  throwM
-                    . InvalidScript
-                    $ Text.unwords
-                      [ "Script identified by VC hash",
-                        param ^. #script & tshow,
-                        "is not a function"
-                      ]
+                implEnv :: Map ExtIdent (Value BridgeMlValue m)
+                implEnv =
+                  Map.fromList
+                    [ (ExtIdent $ Right "now", VEpochTime t),
+                      ( ExtIdent $ Right "resolution",
+                        VCustom . VExtended $ VResolution resolution
+                      )
+                    ]
+            _ ->
+              throwM
+                . InvalidScript
+                $ Text.unwords
+                  [ "Script identified by VC hash",
+                    param ^. #script & tshow,
+                    "is not a function"
+                  ]
 
     -- Convert the script timeout from seconds (for ease of configuration) to
     -- milliseconds, for use with `timeout`
@@ -326,6 +328,20 @@ runInferenceParam ipid mres uuid =
                 . ("Failed to save eval info: " <>)
                 . Text.pack
                 . displayException
+
+getOrMkInferno ::
+  Id InferenceParam -> RemoteM (Interpreter RemoteM BridgeMlValue)
+getOrMkInferno ipid =
+  maybe (saveInterpreter =<< initializeInferno ipid) pure
+    =<< readIORef
+    =<< view #interpreter
+  where
+    saveInterpreter ::
+      Interpreter RemoteM BridgeMlValue ->
+      RemoteM (Interpreter RemoteM BridgeMlValue)
+    saveInterpreter i =
+      i <$ do
+        (`atomicWriteIORef` Just i) =<< view #interpreter
 
 getVcObject :: VCObjectHash -> RemoteM (VCMeta VCObject)
 getVcObject vch =

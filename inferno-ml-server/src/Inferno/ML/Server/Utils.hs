@@ -4,7 +4,6 @@ module Inferno.ML.Server.Utils
   ( throwInfernoError,
     firstOrThrow,
     queryStore,
-    bridgeCache,
     executeStore,
   )
 where
@@ -39,8 +38,3 @@ executeStore q x =
 
 firstOrThrow :: (MonadThrow m, Exception e) => e -> Vector a -> m a
 firstOrThrow e = maybe (throwM e) pure . (!? 0)
-
--- | Pathe to the cached bridge info; the server will save the info when the
--- bridge is registered
-bridgeCache :: FilePath
-bridgeCache = "/home/inferno/.cache/bridge/info.json"

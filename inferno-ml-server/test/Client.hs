@@ -7,23 +7,20 @@
 module Client (main) where
 
 import Conduit
-import Control.Monad (unless, void)
+import Control.Monad (unless)
 import Data.Coerce (coerce)
 import Data.Int (Int64)
 import qualified Data.Map as Map
-import Inferno.ML.Server.Client (inferenceC, registerBridgeC)
+import Inferno.ML.Server.Client (inferenceC)
 import Inferno.ML.Server.Types
-  ( BridgeInfo (BridgeInfo),
-    IValue (IDouble),
+  ( IValue (IDouble),
     Id (Id),
     WriteStream,
-    toIPv4,
   )
 import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Servant.Client.Streaming
   ( mkClientEnv,
     parseBaseUrl,
-    runClientM,
     withClientM,
   )
 import System.Exit (die)
@@ -44,12 +41,6 @@ main =
         mkClientEnv
           <$> newManager defaultManagerSettings
           <*> parseBaseUrl "http://localhost:8080"
-      -- Register the bridge to communicate with the dummy bridge server
-      void
-        . flip runClientM env
-        . registerBridgeC
-        . flip BridgeInfo 9999
-        $ toIPv4 (127, 0, 0, 1)
       withClientM (inferenceC ipid Nothing uuid) env . either throwIO $
         verifyWrites (coerce ipid)
     _ -> die "Usage: test-client <inference-parameter-id>"
