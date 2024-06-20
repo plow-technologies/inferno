@@ -367,6 +367,11 @@ linkVersionedModel withVersion = do
 
 getParameterWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
 getParameterWithModels iid =
+  -- NOTE: `fromOnly` is required on the second tuple element; this means
+  -- that the query returns `InferenceParam :. Only (Vector (Id ModelVersion))`,
+  -- i.e. the entire array of model version IDs is parsed at once. Otherwise,
+  -- the row parser will try to parse each model version ID individually, which
+  -- will fail
   fmap (uncurry InferenceParamWithModels . fmap fromOnly . joinToTuple)
     . firstOrThrow (NoSuchParameter (wrappedTo iid))
     =<< queryStore q (Only iid)
