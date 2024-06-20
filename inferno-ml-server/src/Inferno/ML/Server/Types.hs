@@ -246,6 +246,13 @@ mkOptions = decodeFileThrow =<< p
             Options.long "config"
               <> Options.metavar "FILEPATH"
 
+data MlMetadata = MlMetadata
+  { metadata :: ScriptMetadata,
+    models :: Vector (Id ModelVersion)
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata
   { author :: EntityId UId,
@@ -394,9 +401,9 @@ type Model = Types.Model (EntityId UId) (EntityId GId)
 
 type ModelVersion = Types.ModelVersion (EntityId UId) (EntityId GId) Oid
 
-type InferenceScript = Types.InferenceScript ScriptMetadata (EntityId GId)
+type InferenceScript = Types.InferenceScript MlMetadata (EntityId GId)
 
-type VCMeta a = Inferno.VersionControl.Types.VCMeta ScriptMetadata (EntityId GId) a
+type VCMeta a = Inferno.VersionControl.Types.VCMeta MlMetadata (EntityId GId) a
 
 pattern InferenceScript :: VCObjectHash -> VCMeta VCObject -> InferenceScript
 pattern InferenceScript h o = Types.InferenceScript h o
@@ -423,7 +430,7 @@ pattern BridgeInfo ipid h p = Types.BridgeInfo ipid h p
 
 pattern VCMeta ::
   CTime ->
-  ScriptMetadata ->
+  MlMetadata ->
   EntityId GId ->
   Text ->
   Text ->
