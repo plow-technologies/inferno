@@ -67,6 +67,7 @@ create table if not exists scripts
 create table if not exists smodels
   ( script bytea not null references scripts (id)
   , model integer not null references mversions (id)
+  , unique (script, model)
   );
 
 create table if not exists params
