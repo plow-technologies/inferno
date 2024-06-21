@@ -24,7 +24,13 @@ import Inferno.ML.Server.Inference.Model
   ( getModelVersionSizeAndContents,
     getModelsAndVersions,
   )
-import Inferno.ML.Server.Types hiding (models)
+import Inferno.ML.Server.Types
+  ( Config,
+    Env,
+    Id (Id),
+    ModelVersion,
+    showVersion,
+  )
 import Lens.Micro.Platform
 import Plow.Logging.Message (LogLevel (LevelWarn))
 import Test.Hspec (Spec)

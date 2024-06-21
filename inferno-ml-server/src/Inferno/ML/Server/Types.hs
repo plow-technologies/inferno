@@ -250,7 +250,8 @@ mkOptions = decodeFileThrow =<< p
 data ScriptMetadata = ScriptMetadata
   { author :: EntityId UId,
     scriptTypes :: [Text],
-    categoryIds :: [Int]
+    categoryIds :: [Int],
+    models :: Vector (Id ModelVersion)
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON)
@@ -264,7 +265,7 @@ instance FromJSON ScriptMetadata where
       ]
     where
       fromUid :: EntityId UId -> ScriptMetadata
-      fromUid uid = ScriptMetadata uid mempty mempty
+      fromUid uid = ScriptMetadata uid mempty mempty mempty
 
 data RemoteError
   = CacheSizeExceeded
