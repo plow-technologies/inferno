@@ -21,7 +21,6 @@ import Data.Map.Strict (Map)
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
     Only (fromOnly),
@@ -151,13 +150,10 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
     hash = vcHash vcfunc
 
     vcmeta :: VCMeta VCObject
-    vcmeta = VCMeta now mlmd gid "mnist" "A script" Init VCObjectPublic vcfunc
-      where
-        mlmd :: MlMetadata
-        mlmd = MlMetadata smd . Vector.singleton $ Id 1
+    vcmeta = VCMeta now smd gid "mnist" "A script" Init VCObjectPublic vcfunc
 
-        smd :: ScriptMetadata
-        smd = ScriptMetadata uid mempty mempty
+    smd :: ScriptMetadata
+    smd = ScriptMetadata uid mempty mempty
 
     uid :: EntityId UId
     uid = entityIdFromInteger 0
