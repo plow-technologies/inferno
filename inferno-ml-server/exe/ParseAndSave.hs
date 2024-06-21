@@ -153,7 +153,7 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
     vcmeta = VCMeta now smd gid "mnist" "A script" Init VCObjectPublic vcfunc
 
     smd :: ScriptMetadata
-    smd = ScriptMetadata uid mempty mempty
+    smd = ScriptMetadata uid mempty mempty mempty
 
     uid :: EntityId UId
     uid = entityIdFromInteger 0
