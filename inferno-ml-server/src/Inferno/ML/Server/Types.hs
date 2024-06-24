@@ -53,7 +53,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
-import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
@@ -251,7 +250,7 @@ data ScriptMetadata = ScriptMetadata
   { author :: EntityId UId,
     scriptTypes :: [Text],
     categoryIds :: [Int],
-    models :: Vector (Id ModelVersion)
+    models :: Map Ident (Id ModelVersion)
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON)
@@ -415,7 +414,7 @@ pattern InferenceParam iid s ios res mt uid =
 
 pattern InferenceParamWithModels ::
   InferenceParam ->
-  Vector (Id ModelVersion) ->
+  Map Ident (Id ModelVersion, Text) ->
   InferenceParamWithModels
 pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 

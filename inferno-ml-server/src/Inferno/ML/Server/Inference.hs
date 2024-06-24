@@ -4,6 +4,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
@@ -21,22 +22,25 @@ import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
 import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl', traverse_)
-import Data.Generics.Wrapped (wrappedTo)
+import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only, fromOnly),
     Query,
     SqlError,
   )
+import Database.PostgreSQL.Simple.Newtypes (getAeson)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime)
 import Inferno.Core
@@ -46,10 +50,11 @@ import Inferno.ML.Server.Bridge (initializeInferno)
 import Inferno.ML.Server.Inference.Model
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
-import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.ML.Types.Value (MlValue (VExtended, VModelName))
 import Inferno.Types.Syntax
   ( Expr (App, Var),
     ExtIdent (ExtIdent),
+    Ident,
     ImplExpl (Expl),
     Scoped (LocalScope),
   )
@@ -133,8 +138,8 @@ runInferenceParam ipid mres uuid =
       -- will not have been initialized yet. After that, it will be reused
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
-      pwm <- getParameterWithModels ipid
-      obj <- pwm ^. #param . #script & getVcObject
+      paramWithModels <- getParameterWithModels ipid
+      obj <- paramWithModels ^. #param . #script & getVcObject
       cache <- view $ #config . #cache
       t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
@@ -144,36 +149,19 @@ runInferenceParam ipid mres uuid =
       withCurrentDirectory (view #path cache) $ do
         logInfo $ EvaluatingScript ipid
         traverse_ linkVersionedModel
-          =<< getAndCacheModels cache (view #models pwm)
-        runEval interpreter (view #param pwm) t obj
+          =<< getAndCacheModels cache (view #models paramWithModels)
+        runEval interpreter paramWithModels t obj
       where
         runEval ::
           Interpreter RemoteM BridgeMlValue ->
-          InferenceParam ->
+          InferenceParamWithModels ->
           CTime ->
           VCMeta VCObject ->
           RemoteM (WriteStream IO)
-        runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
+        runEval Interpreter {evalExpr, mkEnvFromClosure} paramWithModels t vcm =
           vcm ^. #obj & \case
             VCFunction {} -> do
-              -- Need to set up envs for script eval
-              let mkIdent :: Int -> ExtIdent
-                  mkIdent = ExtIdent . Right . ("input$" <>) . tshow
-
-                  toSeries :: PID -> Value BridgeMlValue m
-                  toSeries = VCustom . VExtended . VSeries
-
-                  localEnv :: Map ExtIdent (Value BridgeMlValue m)
-                  localEnv =
-                    Map.fromList $
-                      zip [0 ..] ps <&> \case
-                        (i, Single pid) -> (mkIdent i, toSeries pid)
-                        (i, Many pids) ->
-                          ( mkIdent i,
-                            pids ^.. each & over mapped toSeries & VArray
-                          )
-
-                  -- Note that this both includes inputs (i.e. readable)
+              let -- Note that this both includes inputs (i.e. readable)
                   -- and outputs (i.e. writable, or readable/writable).
                   -- These need to be provided to the script in order
                   -- for the symbolic identifer (e.g. `output0`) to
@@ -182,32 +170,91 @@ runInferenceParam ipid mres uuid =
                   -- runtime that runs as a script evaluation engine
                   -- and commits the output write object
                   ps :: [SingleOrMany PID]
-                  ps = param ^.. #inputs . to Map.toAscList . each . _2 . _1
+                  ps =
+                    paramWithModels
+                      ^.. #param
+                        . #inputs
+                        . to Map.toAscList
+                        . each
+                        . _2
+                        . _1
+
+                  models :: [(Id ModelVersion, Text)]
+                  models =
+                    paramWithModels
+                      ^.. #models
+                        . to Map.toAscList
+                        . each
+                        . _2
+
+                  mkIdentWith :: Text -> Int -> ExtIdent
+                  mkIdentWith x = ExtIdent . Right . (x <>) . tshow
+
+                  toSeries :: PID -> Value BridgeMlValue m
+                  toSeries = VCustom . VExtended . VSeries
+
+                  toModelName :: FilePath -> Value BridgeMlValue m
+                  toModelName = VCustom . VModelName . wrappedFrom
+
+                  localEnv :: Map ExtIdent (Value BridgeMlValue m)
+                  localEnv = Map.fromList $ inputArgs <> modelArgs
+                    where
+                      inputArgs :: [(ExtIdent, Value BridgeMlValue m)]
+                      inputArgs =
+                        zip [0 ..] ps <&> \case
+                          (i, Single pid) ->
+                            ( mkIdentWith "input$" i,
+                              toSeries pid
+                            )
+                          (i, Many pids) ->
+                            ( mkIdentWith "input$" i,
+                              pids ^.. each & over mapped toSeries & VArray
+                            )
+
+                      modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
+                      modelArgs =
+                        zip [0 ..] models <&> \(i, (_, name)) ->
+                          ( mkIdentWith "model$" i,
+                            toModelName $ Text.unpack name
+                          )
 
                   closure :: Map VCObjectHash VCObject
                   closure =
-                    param ^. #script
+                    paramWithModels ^. #param . #script
                       & ( `Map.singleton` view #obj vcm
                         )
 
                   expr :: Expr (Maybe VCObjectHash) ()
                   expr =
-                    foldl'
-                      App
-                      ( Var () (preview #script param) LocalScope dummy
-                      )
-                      args
+                    flip (foldl' App) args $
+                      Var () mhash LocalScope dummy
                     where
+                      mhash :: Maybe VCObjectHash
+                      mhash = paramWithModels ^? #param . #script
+
                       -- See note above about inputs/outputs
                       args :: [Expr (Maybe a) ()]
-                      args =
-                        [0 .. length ps - 1]
-                          <&> Var () Nothing LocalScope
-                            . Expl
-                            . ExtIdent
-                            . Right
-                            . ("input$" <>)
-                            . tshow
+                      args = inputArgs <> modelArgs
+                        where
+                          modelArgs :: [Expr (Maybe a) ()]
+                          modelArgs =
+                            [0 .. length models - 1]
+                              <&> Var () Nothing LocalScope
+                                . Expl
+                                . ExtIdent
+                                . Right
+                                . ("model$" <>)
+                                . tshow
+
+                          inputArgs :: [Expr (Maybe a) ()]
+                          inputArgs =
+                            [0 .. length ps - 1]
+                              <&> Var () Nothing LocalScope
+                                . Expl
+                                . ExtIdent
+                                . Right
+                                . ("input$" <>)
+                                . tshow
 
                       dummy :: ImplExpl
                       dummy = Expl . ExtIdent $ Right "dummy"
@@ -239,11 +286,10 @@ runInferenceParam ipid mres uuid =
                 -- use that. Otherwise, use the resolution stored in the
                 -- parameter
                 resolution :: InverseResolution
-                resolution =
-                  mres
-                    ^. non
-                      (view (#resolution . to fromIntegral) param)
-                    & toResolution
+                resolution = mres ^. non res & toResolution
+                  where
+                    res :: Int64
+                    res = paramWithModels ^. #param . #resolution & fromIntegral
 
                 implEnv :: Map ExtIdent (Value BridgeMlValue m)
                 implEnv =
@@ -258,7 +304,7 @@ runInferenceParam ipid mres uuid =
                 . InvalidScript
                 $ Text.unwords
                   [ "Script identified by VC hash",
-                    param ^. #script & tshow,
+                    paramWithModels ^. #param . #script & tshow,
                     "is not a function"
                   ]
 
@@ -372,17 +418,20 @@ getParameterWithModels iid =
   -- i.e. the entire array of model version IDs is parsed at once. Otherwise,
   -- the row parser will try to parse each model version ID individually, which
   -- will fail
-  fmap (uncurry InferenceParamWithModels . fmap fromOnly . joinToTuple)
+  fmap (uncurry InferenceParamWithModels . fmap (getAeson . fromOnly) . joinToTuple)
     . firstOrThrow (NoSuchParameter (wrappedTo iid))
     =<< queryStore q (Only iid)
   where
     q :: Query
     q =
       [sql|
-        SELECT P.*, array_agg(M.model) models
+        SELECT
+          P.*, jsonb_object_agg(MS.ident, jsonb_build_array(MS.model, M.name)) models
         FROM params P
           INNER JOIN scripts S ON P.script = S.id
-          INNER JOIN smodels M ON M.script = S.id
+          INNER JOIN mselection MS ON MS.script = S.id
+          INNER JOIN mversions MV ON MV.id = MS.model
+          INNER JOIN models M ON MV.model = M.id
         WHERE P.id = ?
           AND P.terminated IS NULL
         GROUP BY
@@ -400,9 +449,12 @@ getParameterWithModels iid =
 -- NOTE: This action assumes that the current working directory is the model
 -- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModels ::
-  ModelCache -> Vector (Id ModelVersion) -> RemoteM (Vector FilePath)
+  ModelCache -> Map Ident (Id ModelVersion, Text) -> RemoteM (Vector FilePath)
 getAndCacheModels cache =
-  traverse (uncurry copyAndCache) <=< getModelsAndVersions
+  traverse (uncurry copyAndCache)
+    <=< getModelsAndVersions
+      . Vector.fromList
+      . toListOf (each . _1)
   where
     copyAndCache :: Model -> ModelVersion -> RemoteM FilePath
     copyAndCache model mversion =

@@ -694,7 +694,13 @@ instance
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels uid gid p s = InferenceParamWithModels
   { param :: InferenceParam uid gid p s,
-    models :: Vector (Id (ModelVersion uid gid Oid))
+    models ::
+      Map
+        Ident
+        ( Id (ModelVersion uid gid Oid),
+          -- Name of parent model
+          Text
+        )
   }
   deriving stock (Show, Eq, Generic)
 

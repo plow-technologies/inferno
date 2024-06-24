@@ -34,6 +34,7 @@ library
     , template-haskell
     , text
     , prettyprinter
+    , filepath
   default-language: Haskell2010
   default-extensions:
       LambdaCase
