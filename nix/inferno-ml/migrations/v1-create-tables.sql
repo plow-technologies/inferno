@@ -64,7 +64,7 @@ create table if not exists scripts
 
 -- Model versions linked to specific Inferno scripts (i.e. junction table
 -- between `scripts` and `mversions`)
-create table if not exists mselection
+create table if not exists mselections
   ( script bytea not null references scripts (id)
   , model integer not null references mversions (id)
     -- Inferno identifier linked to this specific model version
