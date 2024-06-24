@@ -101,7 +101,7 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
               VALUES (?, ?)
               RETURNING id
             )
-            INSERT INTO mselection (script, model, ident)
+            INSERT INTO mselections (script, model, ident)
               SELECT id, 1::integer, 'mnist'
             FROM ins
           |]
