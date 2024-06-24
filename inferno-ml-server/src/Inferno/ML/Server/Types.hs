@@ -132,7 +132,7 @@ data Env = Env
   deriving stock (Generic)
 
 -- | Config for caching ML models to be used with Inferno scripts. When a script
--- uses @ML.loadScript@, models will be copied from the DB and saved to the cache
+-- uses @ML.loadModel@, models will be copied from the DB and saved to the cache
 -- directory. Once the 'maxSize' has been exceeded, least-recently-used cached
 -- models will be removed
 data ModelCache = ModelCache

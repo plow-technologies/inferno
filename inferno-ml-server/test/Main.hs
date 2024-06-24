@@ -12,6 +12,9 @@ import Data.Aeson (eitherDecodeFileStrict)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Foldable (toList, traverse_)
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Text (Text)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word8)
@@ -31,6 +34,7 @@ import Inferno.ML.Server.Types
     ModelVersion,
     showVersion,
   )
+import Inferno.Types.Syntax (Ident)
 import Lens.Micro.Platform
 import Plow.Logging.Message (LogLevel (LevelWarn))
 import Test.Hspec (Spec)
@@ -79,7 +83,7 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
     cacheModel =
       void . flip runReaderT env $
         traverse_ linkVersionedModel
-          =<< (`getAndCacheModels` models)
+          =<< (`getAndCacheModels` modelsWithIdents)
           =<< view (#config . #cache)
 
     clearCache :: IO ()
@@ -91,6 +95,9 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
 
     cdCache :: IO a -> IO a
     cdCache = env ^. #config . #cache . #path & withCurrentDirectory
+
+modelsWithIdents :: Map Ident (Id ModelVersion, Text)
+modelsWithIdents = Map.singleton "dummy" (mnistV1, "mnist")
 
 mkDbSpec :: Env -> Spec
 mkDbSpec env = Hspec.describe "Database" $ do

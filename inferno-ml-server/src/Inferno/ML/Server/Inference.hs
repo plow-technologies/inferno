@@ -145,7 +145,7 @@ runInferenceParam ipid mres uuid =
       -- Change working directories to the model cache so that Hasktorch
       -- can find the models using relative paths (otherwise the AST would
       -- need to be updated to use an absolute path to a versioned model,
-      -- e.g. `loadScript "~/inferno/.cache/..."`)
+      -- e.g. `loadModel "~/inferno/.cache/..."`)
       withCurrentDirectory (view #path cache) $ do
         logInfo $ EvaluatingScript ipid
         traverse_ linkVersionedModel
