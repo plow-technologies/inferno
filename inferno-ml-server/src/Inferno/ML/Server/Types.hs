@@ -20,7 +20,7 @@ module Inferno.ML.Server.Types
   )
 where
 
-import Control.Applicative (asum, (<**>))
+import Control.Applicative (Alternative ((<|>)), asum, (<**>))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT)
@@ -248,9 +248,8 @@ mkOptions = decodeFileThrow =<< p
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata
   { author :: EntityId UId,
-    scriptTypes :: [Text],
-    categoryIds :: [Int],
-    models :: Map Ident (Id ModelVersion)
+    scriptTypes :: [ScriptType],
+    categoryIds :: [Int]
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON)
@@ -264,7 +263,32 @@ instance FromJSON ScriptMetadata where
       ]
     where
       fromUid :: EntityId UId -> ScriptMetadata
-      fromUid uid = ScriptMetadata uid mempty mempty mempty
+      fromUid uid = ScriptMetadata uid mempty mempty
+
+data ScriptType
+  = MLInferenceScript InferenceOptions
+  | OtherScript
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON)
+
+instance FromJSON ScriptType where
+  parseJSON v =
+    genericParseJSON defaultOptions v
+      <|> tagP v
+      <|> pure OtherScript
+    where
+      tagP :: Value -> Parser ScriptType
+      tagP = withText "ScriptType" $ \case
+        "MLInferenceScript" ->
+          pure . MLInferenceScript $
+            InferenceOptions mempty
+        _ -> pure OtherScript
+
+newtype InferenceOptions = InferenceOptions
+  { models :: Map Ident (Id ModelVersion)
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 data RemoteError
   = CacheSizeExceeded
