@@ -449,9 +449,13 @@ getParameterWithModels iid =
     -- where the second element of each tuple value is the name of the parent
     -- model
     --
+    -- `jsonb_object_agg` is used in order to convert the row of results
+    -- into a single JSONB object
+    --
     -- Note that `jsonb_build_array` is used with the model version ID and
     -- parent model name to create a two-element array, because this is the
-    -- tuple encoding expected by Aeson
+    -- tuple encoding expected by Aeson, and the `FromJSON` instance is
+    -- reused in order to parse the `InferenceParamWithModels`
     q :: Query
     q =
       [sql|
