@@ -25,11 +25,11 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value (Value (..))
 import Prettyprinter (Pretty)
+import System.FilePath ((<.>))
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
 import qualified Torch.Script as TS
-import System.FilePath ((<.>))
 
 getDtype :: (MonadThrow m) => String -> Ident -> m DType
 getDtype funName = \case
