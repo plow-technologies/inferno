@@ -1,6 +1,10 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.8.0
+* Store model IDs in script metadata mapped to model name 
+* Remove model IDs from `InferenceParam`
+
 ## 0.7.0
 * Change representation of `BridgeInfo`
 * Add more instances for various types

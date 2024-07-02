@@ -64,10 +64,10 @@ Tensor Int64 [2,10] [[ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1],
 
 # Importing a TorchScript model into Inferno
 
-In an Inferno script, you can load the model using the `ML.loadModel` function. For instance,
+In an Inferno script, you can load the model using the `ML.unsafeLoadScript` function. For instance,
 
 ```
-let model = ML.loadModel "path/to/model/<model_name>.ts.pt" in ...
+let model = ML.unsafeLoadScript "path/to/model/<model_name>.ts.pt" in ...
 ```
 
 You can pass arguments of type `array of tensor` to the model by passing them to `ML.forward` along with your model.

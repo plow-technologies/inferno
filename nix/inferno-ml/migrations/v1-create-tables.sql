@@ -62,15 +62,20 @@ create table if not exists scripts
   , obj jsonb not null
   );
 
+-- Model versions linked to specific Inferno scripts (i.e. junction table
+-- between `scripts` and `mversions`)
+create table if not exists mselections
+  ( script bytea not null references scripts (id)
+  , model integer not null references mversions (id)
+    -- Inferno identifier linked to this specific model version
+  , ident text not null
+  , unique (script, model)
+  );
+
 create table if not exists params
   ( id serial primary key
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
-    -- Array of model version IDs; unfortunately we lose referential
-    -- integrity because Postgres does not allow arrays of foreign keys.
-    -- However, we don't allow model version deletion anyway, which
-    -- mitigates this to some degree
-  , models integer[] not null
     -- Strictly speaking, this includes both inputs and outputs. The
     -- corresponding Haskell type contains `(p, ScriptInputType)`, with
     -- the second element determining readability and writability
@@ -104,33 +109,6 @@ create table if not exists bridges
   , ip inet not null
   , port integer check (port > 0)
   );
-
--- Because the `params` table references an array of model versions, and
--- because Postgres does not natively support arrays of foreign keys, this
--- trigger function checks that each array item in the `models` column is
--- a valid `mversions` primary key and that the model has not been terminated
-create or replace function verifymvs()
-returns trigger as $$
-declare
-  mv int;
-begin
-  foreach mv in array new.models loop
-    if
-      not exists
-        ( select 1 from mversions
-          where id = mv
-            and terminated is null
-        )
-    then
-      raise exception 'ID % is not a valid model version primary key', mv;
-    end if;
-  end loop;
-  return new;
-end;
-$$ language plpgsql;
-
-create trigger "verify-param-models" before insert or update on params
-  for each row execute function verifymvs();
 
 create trigger "manage-mversion-lo" before update or delete on mversions
   for each row execute function lo_manage(contents);

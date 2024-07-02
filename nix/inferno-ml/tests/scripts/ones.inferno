@@ -1,4 +1,4 @@
-fun input0 ->
+fun input0 mnist ->
   let mkV = fun t -> valueAt input0 (Time.toTime (Time.seconds t)) ? 0.0 in
   let ts = [150, 250] in
   let vs = Array.map mkV ts in

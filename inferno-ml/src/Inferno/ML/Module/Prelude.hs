@@ -5,7 +5,13 @@
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
-import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
+import Control.Monad.Catch
+  ( Exception (displayException),
+    MonadCatch,
+    MonadThrow (throwM),
+    SomeException,
+    try,
+  )
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor ((<&>))
 import qualified Data.Map as Map
@@ -19,6 +25,7 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value (Value (..))
 import Prettyprinter (Pretty)
+import System.FilePath ((<.>))
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -125,8 +132,19 @@ tanHTFun = Torch.Functional.tanh
 powTFun :: Int -> Tensor -> Tensor
 powTFun = pow
 
-loadModelFun :: Text -> ScriptModule
-loadModelFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
+unsafeLoadScriptFun :: Text -> ScriptModule
+unsafeLoadScriptFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
+
+loadModelFun ::
+  forall m x. (Pretty x, MonadIO m, MonadThrow m) => Value (MlValue x) m
+loadModelFun = VFun $ \case
+  VCustom (VModelName (ModelName mn)) ->
+    either (throwM . RuntimeError . displayException) (pure . VCustom . VModel)
+      =<< liftIO (try @_ @SomeException loadModel)
+    where
+      loadModel :: IO ScriptModule
+      loadModel = TS.loadScript TS.WithoutRequiredGrad $ mn <.> "ts.pt"
+  _ -> throwM $ RuntimeError "Expected a modelName"
 
 forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
 forwardFun m ts =
@@ -231,7 +249,10 @@ module ML
   @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
   toDevice : text -> tensor -> tensor := ###toDeviceFun###;
 
-  loadModel : text -> model := ###loadModelFun###;
+  @doc Load a named, serialized model;
+  loadModel : modelName -> model := ###!loadModelFun###;
+
+  unsafeLoadScript : text -> model := ###unsafeLoadScriptFun###;
 
   forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 

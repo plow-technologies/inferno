@@ -1,6 +1,10 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.0.0 -- 2024-07-02
+* Breaking change: old `loadModel` renamed to `unsafeLoadScript`
+* Breaking change: new `loadModel` primitive
+
 ## 0.3.3.0 -- 2024-03-18
 * HLint everything
 

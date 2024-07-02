@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2023.7.2
+* Use new `loadModel` primitive and pass model names to script evaluator
+
 ## 2023.6.19
 * Save `BridgeInfo` to DB
 

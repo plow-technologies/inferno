@@ -1,4 +1,4 @@
-fun input0 ->
+fun input0 mnist ->
   let t = Time.toTime (Time.seconds 200) in
   let ?resolution = (toResolution 128) in
   let v = valueAt input0 t ? 0.0 in

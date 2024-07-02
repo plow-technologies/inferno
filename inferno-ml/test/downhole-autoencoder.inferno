@@ -51,7 +51,7 @@ let good_input = ML.asTensor2 ML.#float [
   1.3800e+02]]
 in
 let bad_input = ML.asTensor2 ML.#float [[if x == 1 then 1234 else 0 | x <- 1 .. 295]] in
-let model = ML.loadModel "downhole_autoencoder.ts.pt" in
+let model = ML.unsafeLoadScript "downhole_autoencoder.ts.pt" in
 let get_model_loss = fun input ->
   match ML.forward model [input] with {
     | [output] ->
