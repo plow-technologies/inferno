@@ -132,8 +132,8 @@ tanHTFun = Torch.Functional.tanh
 powTFun :: Int -> Tensor -> Tensor
 powTFun = pow
 
-loadScriptFun :: Text -> ScriptModule
-loadScriptFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
+unsafeLoadScriptFun :: Text -> ScriptModule
+unsafeLoadScriptFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
 
 loadModelFun ::
   forall m x. (Pretty x, MonadIO m, MonadThrow m) => Value (MlValue x) m
@@ -252,7 +252,7 @@ module ML
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModelFun###;
 
-  loadScript : text -> model := ###loadScriptFun###;
+  unsafeLoadScript : text -> model := ###loadScriptFun###;
 
   forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 

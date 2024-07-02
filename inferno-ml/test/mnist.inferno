@@ -30,7 +30,7 @@ let input = ML.asTensor4 ML.#float [[[
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ]]] in
-let model = ML.loadScript "mnist.ts.pt" in
+let model = ML.unsafeLoadScript "mnist.ts.pt" in
 let prediction =
   match ML.forward model [input] with {
     | [scores] -> ML.asDouble (ML.argmax 1 #false scores)
