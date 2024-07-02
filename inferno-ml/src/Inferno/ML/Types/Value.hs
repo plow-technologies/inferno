@@ -14,6 +14,7 @@ import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Prettyprinter (Pretty (pretty), align)
 import qualified Torch as T
 
+-- | The name of a serialized model, e.g. @model.ts.pt@
 newtype ModelName = ModelName FilePath
   deriving stock (Show, Generic)
   deriving newtype (Eq, Pretty)

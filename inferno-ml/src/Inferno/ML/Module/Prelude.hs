@@ -252,7 +252,7 @@ module ML
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModelFun###;
 
-  unsafeLoadScript : text -> model := ###loadScriptFun###;
+  unsafeLoadScript : text -> model := ###unsafeLoadScriptFun###;
 
   forward : model -> array of tensor -> array of tensor := ###forwardFun###;
 
