@@ -499,11 +499,9 @@ instance FromJSON ModelDescription where
 
 -- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
-  { languages :: Vector ISO63912,
-    tags :: Vector Text,
+  { categories :: Vector Int,
     datasets :: Vector Text,
     metrics :: Vector Text,
-    license :: Maybe Text,
     baseModel :: Maybe Text,
     thumbnail :: Maybe (Text, URIRef Absolute)
   }
@@ -515,11 +513,9 @@ instance NFData ModelMetadata where
 instance FromJSON ModelMetadata where
   parseJSON = withObject "ModelMetadata" $ \o ->
     ModelMetadata
-      <$> o .:? "languages" .!= mempty
-      <*> o .:? "tags" .!= mempty
+      <$> o .:? "categories" .!= mempty
       <*> o .:? "datasets" .!= mempty
       <*> o .:? "metrics" .!= mempty
-      <*> o .:? "license"
       <*> o .:? "base_model"
       <*> (thumbnailP =<< o .:? "thumbnail")
     where
