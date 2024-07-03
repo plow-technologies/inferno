@@ -9,6 +9,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types where
@@ -26,14 +27,13 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
-import Data.Generics.Wrapped (wrappedTo)
+import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Hashable (Hashable)
 import qualified Data.IP
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 import Data.Scientific (toRealFloat)
 import Data.Text (Text)
@@ -65,6 +65,7 @@ import Database.PostgreSQL.Simple.Types
   )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
+import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash,
@@ -88,6 +89,25 @@ import Servant
   )
 import Servant.Conduit ()
 import System.Posix (EpochTime)
+import Test.QuickCheck
+  ( Arbitrary (arbitrary),
+    Gen,
+    Positive (getPositive),
+    choose,
+  )
+import Test.QuickCheck.Arbitrary.ADT
+  ( ADTArbitrary (ADTArbitrary),
+    ADTArbitrarySingleton (ADTArbitrarySingleton),
+    ConstructorArbitraryPair (ConstructorArbitraryPair),
+    ToADTArbitrary
+      ( toADTArbitrary,
+        toADTArbitrarySingleton
+      ),
+    genericArbitrary,
+  )
+import Test.QuickCheck.Instances.Time ()
+import Test.QuickCheck.Instances.UUID ()
+import Test.QuickCheck.Instances.Vector ()
 import Text.Read (readMaybe)
 import URI.ByteString (Absolute, URIRef)
 import URI.ByteString.Aeson ()
@@ -182,7 +202,10 @@ newtype Id a = Id Int64
       ToHttpApiData,
       FromHttpApiData
     )
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary (Id a) where
+  arbitrary = wrappedFrom . getPositive <$> arbitrary
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
@@ -192,6 +215,15 @@ data InferenceScript uid gid = InferenceScript
     obj :: VCMeta uid gid VCObject
   }
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToADTArbitrary)
+
+instance
+  ( Arbitrary uid,
+    Arbitrary gid
+  ) =>
+  Arbitrary (InferenceScript uid gid)
+  where
+  arbitrary = genericArbitrary
 
 -- Newtype just for `FromRow`/`ToRow` instances. It would be possible to just
 -- add the instances to `inferno-types`, but then there would be a dependency
@@ -257,6 +289,16 @@ data Model uid gid = Model
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToADTArbitrary)
+
+instance
+  ( Ord gid,
+    Arbitrary gid,
+    Arbitrary uid
+  ) =>
+  Arbitrary (Model uid gid)
+  where
+  arbitrary = genericArbitrary
 
 instance NFData (Model uid gid) where
   rnf = rwhnf
@@ -363,7 +405,11 @@ data ModelVersion uid gid c = ModelVersion
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  -- NOTE: This may require an orphan instance for the `c` type variable
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
+  arbitrary = genericArbitrary
 
 instance
   ( FromField uid,
@@ -447,7 +493,10 @@ data ModelPermissions
   | -- | The model can be updated e.g. during training
     WriteModel
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary ModelPermissions where
+  arbitrary = genericArbitrary
 
 instance FromJSON ModelPermissions where
   parseJSON = withText "ModelPermissions" $ \case
@@ -468,8 +517,11 @@ data ModelCard = ModelCard
     metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON, NFData)
+  deriving anyclass (FromJSON, ToJSON, NFData, ToADTArbitrary)
   deriving (FromField, ToField) via Aeson ModelCard
+
+instance Arbitrary ModelCard where
+  arbitrary = genericArbitrary
 
 -- | Structured description of a model
 data ModelDescription = ModelDescription
@@ -484,7 +536,10 @@ data ModelDescription = ModelDescription
     evaluation :: Text
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToJSON, NFData)
+  deriving anyclass (ToJSON, NFData, ToADTArbitrary)
+
+instance Arbitrary ModelDescription where
+  arbitrary = genericArbitrary
 
 {- ORMOLU_DISABLE -}
 instance FromJSON ModelDescription where
@@ -506,6 +561,27 @@ data ModelMetadata = ModelMetadata
     thumbnail :: Maybe (Text, URIRef Absolute)
   }
   deriving stock (Show, Eq, Generic)
+
+instance Arbitrary ModelMetadata where
+  arbitrary =
+    ModelMetadata
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      -- For the sake of simplicity, just set this field
+      -- unconditionally to `Nothing` for now
+      <*> pure Nothing
+
+instance ToADTArbitrary ModelMetadata where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelMetadata"
+      . ConstructorArbitraryPair "ModelMetadata"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "ModelMetadata"
+      <$> sequence [ConstructorArbitraryPair "ModelMetadata" <$> arbitrary]
 
 instance NFData ModelMetadata where
   rnf = rwhnf
@@ -542,7 +618,10 @@ data Version
       [Text]
       -- ^ Any tags
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary Version where
+  arbitrary = genericArbitrary
 
 -- Compares based on digits, not on tag
 instance Ord Version where
@@ -628,7 +707,16 @@ data InferenceParam uid gid p s = InferenceParam
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData, ToJSON)
+  deriving anyclass (NFData, ToJSON, ToADTArbitrary)
+
+instance
+  ( Arbitrary s,
+    Arbitrary p,
+    Arbitrary uid
+  ) =>
+  Arbitrary (InferenceParam uid gid p s)
+  where
+  arbitrary = genericArbitrary
 
 {- ORMOLU_DISABLE -}
 instance
@@ -714,7 +802,10 @@ data ScriptInputType
     -- types of access enabled
     ReadableWritable
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary ScriptInputType where
+  arbitrary = genericArbitrary
 
 instance FromJSON ScriptInputType where
   parseJSON = withText "ScriptInputType" $ \case
@@ -754,7 +845,10 @@ data EvaluationInfo uid gid p = EvaluationInfo
     cpu :: Word64
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
+
+instance Arbitrary (EvaluationInfo uid gid p) where
+  arbitrary = genericArbitrary
 
 instance FromRow (EvaluationInfo uid gid p) where
   fromRow =
@@ -787,13 +881,39 @@ data User uid gid = User
       ToRow,
       FromJSON,
       ToJSON,
-      NFData
+      NFData,
+      ToADTArbitrary
     )
+
+instance (Arbitrary uid, Arbitrary gid) => Arbitrary (User uid gid) where
+  arbitrary = genericArbitrary
 
 -- | IPv4 address with some useful instances
 newtype IPv4 = IPv4 Data.IP.IPv4
   deriving stock (Generic)
   deriving newtype (Show, Eq, Ord, Read)
+
+instance Arbitrary IPv4 where
+  arbitrary = genFromOctects
+
+instance ToADTArbitrary IPv4 where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "IPv4"
+      . ConstructorArbitraryPair "IPv4"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "IPv4"
+      <$> sequence [ConstructorArbitraryPair "IPv4" <$> arbitrary]
+
+genFromOctects :: Gen IPv4
+genFromOctects =
+  toIPv4
+    <$> ( (,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen
+        )
+
+octetGen :: Gen Int
+octetGen = choose (0, 255)
 
 instance NFData IPv4 where
   rnf = rwhnf
@@ -906,7 +1026,10 @@ data SingleOrMany a
   = Single a
   | Many (Vector a)
   deriving stock (Show, Eq, Generic, Functor)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary a => Arbitrary (SingleOrMany a) where
+  arbitrary = genericArbitrary
 
 instance FromJSON a => FromJSON (SingleOrMany a) where
   parseJSON v =
@@ -937,96 +1060,3 @@ maybeConversion f fld =
   maybe (returnError UnexpectedNull fld mempty) $
     maybe (returnError ConversionFailed fld mempty) pure
       . f
-
--- ISO63912 language tag for model card
-
-data ISO63912 = ISO63912
-  { code :: (Char, Char),
-    name :: Text
-  }
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData)
-
-instance FromJSON ISO63912 where
-  parseJSON = withText "ISO63912" $ \case
-    t
-      | Just (f, r) <- Text.uncons t,
-        Just (s, l) <- Text.uncons r,
-        l == mempty ->
-          maybe (fail "Missing ISO6391 language") pure $ fromChars (f, s)
-      | otherwise -> fail "Invalid ISO63912 code"
-    where
-      fromChars :: (Char, Char) -> Maybe ISO63912
-      fromChars c = ISO63912 c <$> Map.lookup c languagesByCode
-
-instance ToJSON ISO63912 where
-  toJSON (ISO63912 (f, s) _) = String . flip Text.snoc s $ Text.singleton f
-
-{- ORMOLU_DISABLE -}
-languagesByCode :: Map (Char, Char) Text
-languagesByCode =
-  Map.fromList
-    [ (('a', 'a'), "Afar"), (('a', 'b'), "Abkhazian"), (('a', 'e'), "Avestan"),
-      (('a', 'f'), "Afrikaans"), (('a', 'k'), "Akan"), (('a', 'm'), "Amharic"),
-      (('a', 'n'), "Aragonese"), (('a', 'r'), "Arabic"), (('a', 's'), "Assamese"),
-      (('a', 'v'), "Avaric"), (('a', 'y'), "Aymara"), (('a', 'z'), "Azerbaijani"),
-      (('b', 'a'), "Bashkir"), (('b', 'e'), "Belarusian"), (('b', 'g'), "Bulgarian"),
-      (('b', 'h'), "Bihari"), (('b', 'm'), "Bambara"), (('b', 'i'), "Bislama"),
-      (('b', 'n'), "Bengali"), (('b', 'o'), "Tibetan"), (('b', 'r'), "Breton"),
-      (('b', 's'), "Bosnian"), (('c', 'a'), "Catalan"), (('c', 'e'), "Chechen"),
-      (('c', 'h'), "Chamorro"), (('c', 'o'), "Corsican"), (('c', 'r'), "Cree"),
-      (('c', 's'), "Czech"), (('c', 'u'), "Church Slavic"), (('c', 'v'), "Chuvash"),
-      (('c', 'y'), "Welsh"), (('d', 'a'), "Danish"), (('d', 'e'), "German"),
-      (('d', 'v'), "Divehi"), (('d', 'z'), "Dzongkha"), (('e', 'e'), "Ewe"),
-      (('e', 'l'), "Greek"), (('e', 'n'), "English"), (('e', 'o'), "Esperanto"),
-      (('e', 's'), "Spanish"), (('e', 't'), "Estonian"), (('e', 'u'), "Basque"),
-      (('f', 'a'), "Persian"), (('f', 'f'), "Fulah"), (('f', 'i'), "Finnish"),
-      (('f', 'j'), "Fijian"), (('f', 'o'), "Faroese"), (('f', 'r'), "French"),
-      (('f', 'y'), "Frisian"), (('g', 'a'), "Irish"), (('g', 'd'), "Gaelic"),
-      (('g', 'l'), "Galician"), (('g', 'n'), "Guarani"), (('g', 'u'), "Gujarati"),
-      (('g', 'v'), "Manx"), (('h', 'a'), "Hausa"), (('h', 'e'), "Hebrew"),
-      (('h', 'i'), "Hindi"), (('h', 'o'), "Hiri Motu"), (('h', 'r'), "Croatian"),
-      (('h', 't'), "Haitian"), (('h', 'u'), "Hungarian"), (('h', 'y'), "Armenian"),
-      (('h', 'z'), "Herero"), (('i', 'a'), "Interlingua"), (('i', 'd'), "Indonesian"),
-      (('i', 'e'), "Interlingue"), (('i', 'g'), "Igbo"), (('i', 'i'), "Sichuan Yi"),
-      (('i', 'k'), "Inupiaq"), (('i', 'o'), "Ido"), (('i', 's'), "Icelandic"),
-      (('i', 't'), "Italian"), (('i', 'u'), "Inuktitut"), (('j', 'a'), "Japanese"),
-      (('j', 'v'), "Javanese"), (('k', 'a'), "Georgian"), (('k', 'g'), "Kongo"),
-      (('k', 'i'), "Kikuyu"), (('k', 'j'), "Kuanyama"), (('k', 'k'), "Kazakh"),
-      (('k', 'l'), "Kalaallisut"), (('k', 'm'), "Khmer"), (('k', 'n'), "Kannada"),
-      (('k', 'o'), "Korean"), (('k', 'r'), "Kanuri"), (('k', 's'), "Kashmiri"),
-      (('k', 'u'), "Kurdish"), (('k', 'v'), "Komi"), (('k', 'w'), "Cornish"),
-      (('k', 'y'), "Kirghiz"), (('l', 'a'), "Latin"), (('l', 'b'), "Luxembourgish"),
-      (('l', 'g'), "Ganda"), (('l', 'i'), "Limburgan"), (('l', 'n'), "Lingala"),
-      (('l', 'o'), "Lao"), (('l', 't'), "Lithuanian"), (('l', 'u'), "Luba-Katanga"),
-      (('l', 'v'), "Latvian"), (('m', 'g'), "Malagasy"), (('m', 'h'), "Marshallese"),
-      (('m', 'i'), "Maori"), (('m', 'k'), "Macedonian"), (('m', 'l'), "Malayalam"),
-      (('m', 'n'), "Mongolian"), (('m', 'r'), "Marathi"), (('m', 's'), "Malay"),
-      (('m', 't'), "Maltese"), (('m', 'y'), "Burmese"), (('n', 'a'), "Nauru"),
-      (('n', 'b'), "Bokmål"), (('n', 'd'), "Ndebele, North"), (('n', 'e'), "Nepali"),
-      (('n', 'g'), "Ndonga"), (('n', 'l'), "Dutch"), (('n', 'n'), "Nynorsk"),
-      (('n', 'o'), "Norwegian"), (('n', 'r'), "Ndebele"), (('n', 'v'), "Navajo"),
-      (('n', 'y'), "Chichewa"), (('o', 'c'), "Occitan"), (('o', 'j'), "Ojibwa"),
-      (('o', 'm'), "Oromo"), (('o', 'r'), "Oriya"), (('o', 's'), "Ossetian"),
-      (('p', 'a'), "Panjabi"), (('p', 'i'), "Pali"), (('p', 'l'), "Polish"),
-      (('p', 's'), "Pushto"), (('p', 't'), "Portuguese"), (('q', 'u'), "Quechua"),
-      (('r', 'm'), "Romansh"), (('r', 'n'), "Rundi"), (('r', 'o'), "Romanian"),
-      (('r', 'u'), "Russian"), (('r', 'w'), "Kinyarwanda"), (('s', 'a'), "Sanskrit"),
-      (('s', 'c'), "Sardinian"), (('s', 'd'), "Sindhi"), (('s', 'e'), "Sami"),
-      (('s', 'g'), "Sango"), (('s', 'i'), "Sinhala"), (('s', 'k'), "Slovak"),
-      (('s', 'l'), "Slovenian"), (('s', 'm'), "Samoan"), (('s', 'n'), "Shona"),
-      (('s', 'o'), "Somali"), (('s', 'q'), "Albanian"), (('s', 'r'), "Serbian"),
-      (('s', 's'), "Swati"), (('s', 't'), "Sotho"), (('s', 'u'), "Sundanese"),
-      (('s', 'v'), "Swedish"), (('s', 'w'), "Swahili"), (('t', 'a'), "Tamil"),
-      (('t', 'e'), "Telugu"), (('t', 'g'), "Tajik"), (('t', 'h'), "Thai"),
-      (('t', 'i'), "Tigrinya"), (('t', 'k'), "Turkmen"), (('t', 'l'), "Tagalog"),
-      (('t', 'n'), "Tswana"), (('t', 'o'), "Tonga"), (('t', 'r'), "Turkish"),
-      (('t', 's'), "Tsonga"), (('t', 't'), "Tatar"), (('t', 'w'), "Twi"),
-      (('t', 'y'), "Tahitian"), (('u', 'g'), "Uighur"), (('u', 'k'), "Ukrainian"),
-      (('u', 'r'), "Urdu"), (('u', 'z'), "Uzbek"), (('v', 'e'), "Venda"),
-      (('v', 'i'), "Vietnamese"), (('v', 'o'), "Volapük"), (('w', 'a'), "Walloon"),
-      (('w', 'o'), "Wolof"), (('x', 'h'), "Xhosa"), (('y', 'i'), "Yiddish"),
-      (('y', 'o'), "Yoruba"), (('z', 'a'), "Zhuang"), (('z', 'h'), "Chinese"),
-      (('z', 'u'), "Zulu")
-    ]
-{- ORMOLU_ENABLE -}
