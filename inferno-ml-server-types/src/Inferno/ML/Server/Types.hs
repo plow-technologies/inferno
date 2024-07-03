@@ -457,10 +457,7 @@ instance
   where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
-      -- Note that for a model serialized as JSON, the `id` must be present
-      -- (this assumes that a model version serialized as JSON always refers
-      -- to one that exists in the DB already)
-      <$> fmap Just (o .: "id")
+      <$> o .:? "id"
       <*> o .: "model"
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
