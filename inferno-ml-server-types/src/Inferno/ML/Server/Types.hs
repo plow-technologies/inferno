@@ -24,6 +24,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import Data.Char (chr)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
@@ -93,6 +94,9 @@ import Test.QuickCheck
     Gen,
     Positive (getPositive),
     choose,
+    listOf,
+    suchThat,
+    vectorOf,
   )
 import Test.QuickCheck.Arbitrary.ADT
   ( ADTArbitrary (ADTArbitrary),
@@ -620,7 +624,20 @@ data Version
   deriving anyclass (NFData, ToADTArbitrary)
 
 instance Arbitrary Version where
-  arbitrary = genericArbitrary
+  arbitrary =
+    Version
+      <$> genDigits
+      -- This can't be some arbitrary text, otherwise JSON parsing will fail
+      <*> genTags
+    where
+      genDigits :: Gen (NonEmpty Int)
+      genDigits = fmap (fmap abs) $ arbitrary `suchThat` ((<= 5) . length)
+
+      genTags :: Gen [Text]
+      genTags = listOf asciiTextGen `suchThat` ((<= 5) . length)
+        where
+          asciiTextGen :: Gen Text
+          asciiTextGen = fmap Text.pack . vectorOf 5 $ chr <$> choose (97, 122)
 
 -- Compares based on digits, not on tag
 instance Ord Version where
