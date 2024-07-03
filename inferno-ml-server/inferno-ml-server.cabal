@@ -109,9 +109,11 @@ executable tests
     , aeson
     , base
     , bytestring
+    , containers
     , generic-lens
     , hspec
     , inferno-ml-server
+    , inferno-types
     , microlens-platform
     , mtl
     , plow-log

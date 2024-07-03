@@ -18,10 +18,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8
 import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import qualified Data.Vector as Vector
 import Database.PostgreSQL.Simple
   ( Connection,
     Only (fromOnly),
@@ -93,7 +93,19 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
         InferenceScript hash vcmeta
       where
         q :: Query
-        q = [sql| INSERT INTO scripts (id, obj) VALUES (?, ?) |]
+        q =
+          -- Bit of a hack. We only have one model version in the
+          -- tests, so we can just hard-code the ID here
+          [sql|
+            WITH ins AS (
+              INSERT INTO scripts (id, obj)
+              VALUES (?, ?)
+              RETURNING id
+            )
+            INSERT INTO mselections (script, model, ident)
+              SELECT id, 1::integer, 'mnist'
+            FROM ins
+          |]
 
     insertParam :: IO ()
     insertParam =
@@ -108,9 +120,6 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
             . InferenceParam
               Nothing
               hash
-              -- Bit of a hack. We only have one model version in the
-              -- tests, so we can just hard-code the ID here
-              (Vector.singleton (Id 1))
               inputs
               128
               Nothing
@@ -120,7 +129,7 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
             q =
               [sql|
                 INSERT INTO params
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 RETURNING id
               |]
 
@@ -145,7 +154,14 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
     vcmeta = VCMeta now smd gid "mnist" "A script" Init VCObjectPublic vcfunc
 
     smd :: ScriptMetadata
-    smd = ScriptMetadata uid mempty mempty
+    smd = ScriptMetadata uid [inferenceScript] mempty
+      where
+        inferenceScript :: ScriptType
+        inferenceScript =
+          MLInferenceScript
+            . InferenceOptions
+            . Map.singleton "mnist"
+            $ Id 1
 
     uid :: EntityId UId
     uid = entityIdFromInteger 0

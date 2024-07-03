@@ -1,4 +1,4 @@
-fun input0 input1 ->
+fun input0 input1 mnist ->
   let input = ML.asTensor4 ML.#float [[[
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -30,7 +30,7 @@ fun input0 input1 ->
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
   ]]] in
   let t = Time.toTime (Time.seconds 100) in
-  let model = ML.loadModel "mnist.ts.pt" in
+  let model = ML.loadModel mnist in
   match ML.forward model [input] with {
     | [scores] ->
         let m = ML.toType ML.#double (ML.argmax 1 #false scores) in

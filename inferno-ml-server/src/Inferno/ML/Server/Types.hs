@@ -20,7 +20,7 @@ module Inferno.ML.Server.Types
   )
 where
 
-import Control.Applicative (asum, (<**>))
+import Control.Applicative (Alternative ((<|>)), asum, (<**>))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
 import Control.Monad.Reader (ReaderT)
@@ -53,7 +53,6 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
-import Data.Vector (Vector)
 import Data.Word (Word64)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
@@ -78,6 +77,7 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
   ( BridgeInfo,
     EvaluationInfo,
     InferenceParam,
+    InferenceParamWithModels,
     InferenceScript,
     InfernoMlServerAPI,
     Model,
@@ -248,7 +248,7 @@ mkOptions = decodeFileThrow =<< p
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata
   { author :: EntityId UId,
-    scriptTypes :: [Text],
+    scriptTypes :: [ScriptType],
     categoryIds :: [Int]
   }
   deriving stock (Show, Eq, Generic)
@@ -264,6 +264,31 @@ instance FromJSON ScriptMetadata where
     where
       fromUid :: EntityId UId -> ScriptMetadata
       fromUid uid = ScriptMetadata uid mempty mempty
+
+data ScriptType
+  = MLInferenceScript InferenceOptions
+  | OtherScript
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON)
+
+instance FromJSON ScriptType where
+  parseJSON v =
+    genericParseJSON defaultOptions v
+      <|> tagP v
+      <|> pure OtherScript
+    where
+      tagP :: Value -> Parser ScriptType
+      tagP = withText "ScriptType" $ \case
+        "MLInferenceScript" ->
+          pure . MLInferenceScript $
+            InferenceOptions mempty
+        _ -> pure OtherScript
+
+newtype InferenceOptions = InferenceOptions
+  { models :: Map Ident (Id ModelVersion)
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 data RemoteError
   = CacheSizeExceeded
@@ -381,6 +406,9 @@ f ?? x = ($ x) <$> f
 type InferenceParam =
   Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
 
+type InferenceParamWithModels =
+  Types.InferenceParamWithModels (EntityId UId) (EntityId GId) PID VCObjectHash
+
 type BridgeInfo =
   Types.BridgeInfo (EntityId UId) (EntityId GId) PID VCObjectHash
 
@@ -400,14 +428,19 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Vector (Id ModelVersion) ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
   EntityId UId ->
   InferenceParam
-pattern InferenceParam iid s ms ios res mt uid =
-  Types.InferenceParam iid s ms ios res mt uid
+pattern InferenceParam iid s ios res mt uid =
+  Types.InferenceParam iid s ios res mt uid
+
+pattern InferenceParamWithModels ::
+  InferenceParam ->
+  Map Ident (Id ModelVersion, Text) ->
+  InferenceParamWithModels
+pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo
 pattern BridgeInfo ipid h p = Types.BridgeInfo ipid h p
