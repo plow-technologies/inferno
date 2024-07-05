@@ -112,8 +112,6 @@ import Test.QuickCheck.Instances.Time ()
 import Test.QuickCheck.Instances.UUID ()
 import Test.QuickCheck.Instances.Vector ()
 import Text.Read (readMaybe)
-import URI.ByteString (Absolute, URIRef)
-import URI.ByteString.Aeson ()
 import Web.HttpApiData
   ( FromHttpApiData (parseUrlPiece),
     ToHttpApiData (toUrlPiece),
@@ -557,8 +555,7 @@ data ModelMetadata = ModelMetadata
   { categories :: Vector Int,
     datasets :: Vector Text,
     metrics :: Vector Text,
-    baseModel :: Maybe Text,
-    thumbnail :: Maybe (Text, URIRef Absolute)
+    baseModel :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
 
@@ -569,9 +566,6 @@ instance Arbitrary ModelMetadata where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
-      -- For the sake of simplicity, just set this field
-      -- unconditionally to `Nothing` for now
-      <*> pure Nothing
 
 instance ToADTArbitrary ModelMetadata where
   toADTArbitrarySingleton _ =
@@ -593,12 +587,6 @@ instance FromJSON ModelMetadata where
       <*> o .:? "datasets" .!= mempty
       <*> o .:? "metrics" .!= mempty
       <*> o .:? "base_model"
-      <*> (thumbnailP =<< o .:? "thumbnail")
-    where
-      thumbnailP :: Maybe Object -> Parser (Maybe (Text, URIRef Absolute))
-      thumbnailP = \case
-        Nothing -> pure Nothing
-        Just o -> fmap Just $ (,) <$> o .: "description" <*> o .: "url"
 
 instance ToJSON ModelMetadata where
   toJSON =
