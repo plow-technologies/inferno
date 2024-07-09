@@ -24,22 +24,23 @@ import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import Data.Char (chr)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed), the)
-import Data.Generics.Wrapped (wrappedTo)
+import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Hashable (Hashable)
 import qualified Data.IP
 import Data.Int (Int64)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as Map
 import Data.Ord (comparing)
 import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
 import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
@@ -65,6 +66,7 @@ import Database.PostgreSQL.Simple.Types
   )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
+import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash,
@@ -88,9 +90,30 @@ import Servant
   )
 import Servant.Conduit ()
 import System.Posix (EpochTime)
+import Test.QuickCheck
+  ( Arbitrary (arbitrary),
+    Gen,
+    Positive (getPositive),
+    choose,
+    chooseInt,
+    listOf,
+    oneof,
+    suchThat,
+    vectorOf,
+  )
+import Test.QuickCheck.Arbitrary.ADT
+  ( ADTArbitrary (ADTArbitrary),
+    ADTArbitrarySingleton (ADTArbitrarySingleton),
+    ConstructorArbitraryPair (ConstructorArbitraryPair),
+    ToADTArbitrary
+      ( toADTArbitrary,
+        toADTArbitrarySingleton
+      ),
+    genericArbitrary,
+  )
+import Test.QuickCheck.Instances.UUID ()
+import Test.QuickCheck.Instances.Vector ()
 import Text.Read (readMaybe)
-import URI.ByteString (Absolute, URIRef)
-import URI.ByteString.Aeson ()
 import Web.HttpApiData
   ( FromHttpApiData (parseUrlPiece),
     ToHttpApiData (toUrlPiece),
@@ -182,7 +205,10 @@ newtype Id a = Id Int64
       ToHttpApiData,
       FromHttpApiData
     )
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary (Id a) where
+  arbitrary = wrappedFrom . getPositive <$> arbitrary
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
@@ -192,6 +218,7 @@ data InferenceScript uid gid = InferenceScript
     obj :: VCMeta uid gid VCObject
   }
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToADTArbitrary)
 
 -- Newtype just for `FromRow`/`ToRow` instances. It would be possible to just
 -- add the instances to `inferno-types`, but then there would be a dependency
@@ -231,6 +258,14 @@ instance
     InferenceScript
       <$> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
+
+instance
+  ( Arbitrary uid,
+    Arbitrary gid
+  ) =>
+  Arbitrary (InferenceScript uid gid)
+  where
+  arbitrary = genericArbitrary
 
 -- | Row of the model table, parameterized by the user and group type. This
 -- table contains metadata for models that should not change between different
@@ -341,6 +376,36 @@ instance
         "terminated" .= view (the @"terminated") m
       ]
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance
+  ( Ord gid,
+    Arbitrary gid,
+    Arbitrary uid
+  ) =>
+  Arbitrary (Model uid gid)
+  where
+  arbitrary =
+    Model
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance
+  (Arbitrary uid, Arbitrary gid, Ord gid) =>
+  ToADTArbitrary (Model uid gid)
+  where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "Model"
+      . ConstructorArbitraryPair "Model"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "Model"
+      <$> sequence [ConstructorArbitraryPair "Model" <$> arbitrary]
+
 -- | Represents rows of the model version tables; each row is linked to its
 -- 'Model' parent and also contains the actual contents of the model. This
 -- is parameterized by the user and group types as well as the type of the
@@ -363,6 +428,7 @@ data ModelVersion uid gid c = ModelVersion
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
+  -- NOTE: This may require an orphan instance for the `c` type variable
   deriving anyclass (NFData)
 
 instance
@@ -408,10 +474,7 @@ instance
   where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
-      -- Note that for a model serialized as JSON, the `id` must be present
-      -- (this assumes that a model version serialized as JSON always refers
-      -- to one that exists in the DB already)
-      <$> fmap Just (o .: "id")
+      <$> o .:? "id"
       <*> o .: "model"
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
@@ -440,6 +503,28 @@ instance
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
+  arbitrary =
+    ModelVersion
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance (Arbitrary c) => ToADTArbitrary (ModelVersion uid gid c) where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelVersion"
+      . ConstructorArbitraryPair "ModelVersion"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
+      <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
+
 -- | Permissions for reading or writing a model
 data ModelPermissions
   = -- | The model can be read e.g. for inference
@@ -447,7 +532,7 @@ data ModelPermissions
   | -- | The model can be updated e.g. during training
     WriteModel
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
 
 instance FromJSON ModelPermissions where
   parseJSON = withText "ModelPermissions" $ \case
@@ -461,6 +546,9 @@ instance ToJSON ModelPermissions where
       ReadModel -> "read"
       WriteModel -> "write"
 
+instance Arbitrary ModelPermissions where
+  arbitrary = genericArbitrary
+
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
   { -- | High-level, structured overview of model details and summary
@@ -468,8 +556,11 @@ data ModelCard = ModelCard
     metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON, NFData)
+  deriving anyclass (FromJSON, ToJSON, NFData, ToADTArbitrary)
   deriving (FromField, ToField) via Aeson ModelCard
+
+instance Arbitrary ModelCard where
+  arbitrary = genericArbitrary
 
 -- | Structured description of a model
 data ModelDescription = ModelDescription
@@ -484,7 +575,7 @@ data ModelDescription = ModelDescription
     evaluation :: Text
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToJSON, NFData)
+  deriving anyclass (ToJSON, NFData, ToADTArbitrary)
 
 {- ORMOLU_DISABLE -}
 instance FromJSON ModelDescription where
@@ -497,15 +588,15 @@ instance FromJSON ModelDescription where
       <*> o .:? "evaluation" .!= mempty
 {- ORMOLU_ENABLE -}
 
+instance Arbitrary ModelDescription where
+  arbitrary = genericArbitrary
+
 -- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
-  { languages :: Vector ISO63912,
-    tags :: Vector Text,
+  { categories :: Vector Int,
     datasets :: Vector Text,
     metrics :: Vector Text,
-    license :: Maybe Text,
-    baseModel :: Maybe Text,
-    thumbnail :: Maybe (Text, URIRef Absolute)
+    baseModel :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
 
@@ -515,26 +606,36 @@ instance NFData ModelMetadata where
 instance FromJSON ModelMetadata where
   parseJSON = withObject "ModelMetadata" $ \o ->
     ModelMetadata
-      <$> o .:? "languages" .!= mempty
-      <*> o .:? "tags" .!= mempty
+      <$> o .:? "categories" .!= mempty
       <*> o .:? "datasets" .!= mempty
       <*> o .:? "metrics" .!= mempty
-      <*> o .:? "license"
-      <*> o .:? "base_model"
-      <*> (thumbnailP =<< o .:? "thumbnail")
-    where
-      thumbnailP :: Maybe Object -> Parser (Maybe (Text, URIRef Absolute))
-      thumbnailP = \case
-        Nothing -> pure Nothing
-        Just o -> fmap Just $ (,) <$> o .: "description" <*> o .: "url"
+      <*> o .:? "base-model"
 
 instance ToJSON ModelMetadata where
   toJSON =
     genericToJSON
       defaultOptions
-        { fieldLabelModifier = camelTo2 '_',
+        { fieldLabelModifier = camelTo2 '-',
           omitNothingFields = True
         }
+
+instance Arbitrary ModelMetadata where
+  arbitrary =
+    ModelMetadata
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+
+instance ToADTArbitrary ModelMetadata where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelMetadata"
+      . ConstructorArbitraryPair "ModelMetadata"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "ModelMetadata"
+      <$> sequence [ConstructorArbitraryPair "ModelMetadata" <$> arbitrary]
 
 -- | Similar to the @Version@ type from base, but allows for a leading @v@ and
 -- guarantees that there is at least one digit. Digits must be separated by @.@;
@@ -546,7 +647,7 @@ data Version
       [Text]
       -- ^ Any tags
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
 
 -- Compares based on digits, not on tag
 instance Ord Version where
@@ -570,6 +671,22 @@ instance FromField Version where
 
 instance ToField Version where
   toField = Escape . Text.Encoding.encodeUtf8 . showVersion
+
+instance Arbitrary Version where
+  arbitrary =
+    Version
+      <$> genDigits
+      -- This can't be some arbitrary text, otherwise JSON parsing will fail
+      <*> genTags
+    where
+      genDigits :: Gen (NonEmpty Int)
+      genDigits = fmap (fmap abs) $ arbitrary `suchThat` ((<= 5) . length)
+
+      genTags :: Gen [Text]
+      genTags = listOf asciiTextGen `suchThat` ((<= 5) . length)
+        where
+          asciiTextGen :: Gen Text
+          asciiTextGen = fmap Text.pack . vectorOf 5 $ chr <$> choose (97, 122)
 
 versionP :: Attoparsec.Parser Version
 versionP = do
@@ -690,6 +807,40 @@ instance
       ip ^. the @"user" & toField
     ]
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance
+  ( Arbitrary s,
+    Arbitrary p,
+    Arbitrary uid
+  ) =>
+  Arbitrary (InferenceParam uid gid p s)
+  where
+  arbitrary =
+    InferenceParam
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+      <*> arbitrary
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance
+  ( Arbitrary s,
+    Arbitrary p,
+    Arbitrary uid
+  ) =>
+  ToADTArbitrary (InferenceParam uid gid p s)
+  where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
+      . ConstructorArbitraryPair "InferenceParam"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "InferenceParam"
+      <$> sequence [ConstructorArbitraryPair "InferenceParam" <$> arbitrary]
+
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels uid gid p s = InferenceParamWithModels
@@ -718,7 +869,7 @@ data ScriptInputType
     -- types of access enabled
     ReadableWritable
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
 
 instance FromJSON ScriptInputType where
   parseJSON = withText "ScriptInputType" $ \case
@@ -733,6 +884,9 @@ instance ToJSON ScriptInputType where
       Readable -> "r"
       Writable -> "w"
       ReadableWritable -> "rw"
+
+instance Arbitrary ScriptInputType where
+  arbitrary = genericArbitrary
 
 -- | Information about execution time and resource usage. This is saved by
 -- @inferno-ml-server@ after script evaluation completes and can be queried
@@ -780,6 +934,17 @@ instance ToRow (EvaluationInfo uid gid p) where
       ei ^. the @"cpu" & toField
     ]
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance Arbitrary (EvaluationInfo uid gid p) where
+  arbitrary =
+    EvaluationInfo
+      <$> arbitrary
+      <*> arbitrary
+      <*> genUtc
+      <*> genUtc
+      <*> arbitrary
+      <*> arbitrary
+
 -- | A user, parameterized by the user and group types
 data User uid gid = User
   { id :: uid,
@@ -791,8 +956,12 @@ data User uid gid = User
       ToRow,
       FromJSON,
       ToJSON,
-      NFData
+      NFData,
+      ToADTArbitrary
     )
+
+instance (Arbitrary uid, Arbitrary gid) => Arbitrary (User uid gid) where
+  arbitrary = genericArbitrary
 
 -- | IPv4 address with some useful instances
 newtype IPv4 = IPv4 Data.IP.IPv4
@@ -823,6 +992,28 @@ instance FromField IPv4 where
 
 instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
+
+instance Arbitrary IPv4 where
+  arbitrary = genFromOctects
+
+instance ToADTArbitrary IPv4 where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "IPv4"
+      . ConstructorArbitraryPair "IPv4"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "IPv4"
+      <$> sequence [ConstructorArbitraryPair "IPv4" <$> arbitrary]
+
+genFromOctects :: Gen IPv4
+genFromOctects =
+  toIPv4
+    <$> ( (,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen
+        )
+
+octetGen :: Gen Int
+octetGen = choose (0, 255)
 
 toIPv4 :: (Int, Int, Int, Int) -> IPv4
 toIPv4 (a, b, c, d) = IPv4 $ Data.IP.toIPv4 [a, b, c, d]
@@ -910,7 +1101,10 @@ data SingleOrMany a
   = Single a
   | Many (Vector a)
   deriving stock (Show, Eq, Generic, Functor)
-  deriving anyclass (NFData)
+  deriving anyclass (NFData, ToADTArbitrary)
+
+instance Arbitrary a => Arbitrary (SingleOrMany a) where
+  arbitrary = genericArbitrary
 
 instance FromJSON a => FromJSON (SingleOrMany a) where
   parseJSON v =
@@ -942,95 +1136,12 @@ maybeConversion f fld =
     maybe (returnError ConversionFailed fld mempty) pure
       . f
 
--- ISO63912 language tag for model card
+genMUtc :: Gen (Maybe UTCTime)
+genMUtc = oneof [Just <$> genUtc, pure Nothing]
 
-data ISO63912 = ISO63912
-  { code :: (Char, Char),
-    name :: Text
-  }
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData)
-
-instance FromJSON ISO63912 where
-  parseJSON = withText "ISO63912" $ \case
-    t
-      | Just (f, r) <- Text.uncons t,
-        Just (s, l) <- Text.uncons r,
-        l == mempty ->
-          maybe (fail "Missing ISO6391 language") pure $ fromChars (f, s)
-      | otherwise -> fail "Invalid ISO63912 code"
-    where
-      fromChars :: (Char, Char) -> Maybe ISO63912
-      fromChars c = ISO63912 c <$> Map.lookup c languagesByCode
-
-instance ToJSON ISO63912 where
-  toJSON (ISO63912 (f, s) _) = String . flip Text.snoc s $ Text.singleton f
-
-{- ORMOLU_DISABLE -}
-languagesByCode :: Map (Char, Char) Text
-languagesByCode =
-  Map.fromList
-    [ (('a', 'a'), "Afar"), (('a', 'b'), "Abkhazian"), (('a', 'e'), "Avestan"),
-      (('a', 'f'), "Afrikaans"), (('a', 'k'), "Akan"), (('a', 'm'), "Amharic"),
-      (('a', 'n'), "Aragonese"), (('a', 'r'), "Arabic"), (('a', 's'), "Assamese"),
-      (('a', 'v'), "Avaric"), (('a', 'y'), "Aymara"), (('a', 'z'), "Azerbaijani"),
-      (('b', 'a'), "Bashkir"), (('b', 'e'), "Belarusian"), (('b', 'g'), "Bulgarian"),
-      (('b', 'h'), "Bihari"), (('b', 'm'), "Bambara"), (('b', 'i'), "Bislama"),
-      (('b', 'n'), "Bengali"), (('b', 'o'), "Tibetan"), (('b', 'r'), "Breton"),
-      (('b', 's'), "Bosnian"), (('c', 'a'), "Catalan"), (('c', 'e'), "Chechen"),
-      (('c', 'h'), "Chamorro"), (('c', 'o'), "Corsican"), (('c', 'r'), "Cree"),
-      (('c', 's'), "Czech"), (('c', 'u'), "Church Slavic"), (('c', 'v'), "Chuvash"),
-      (('c', 'y'), "Welsh"), (('d', 'a'), "Danish"), (('d', 'e'), "German"),
-      (('d', 'v'), "Divehi"), (('d', 'z'), "Dzongkha"), (('e', 'e'), "Ewe"),
-      (('e', 'l'), "Greek"), (('e', 'n'), "English"), (('e', 'o'), "Esperanto"),
-      (('e', 's'), "Spanish"), (('e', 't'), "Estonian"), (('e', 'u'), "Basque"),
-      (('f', 'a'), "Persian"), (('f', 'f'), "Fulah"), (('f', 'i'), "Finnish"),
-      (('f', 'j'), "Fijian"), (('f', 'o'), "Faroese"), (('f', 'r'), "French"),
-      (('f', 'y'), "Frisian"), (('g', 'a'), "Irish"), (('g', 'd'), "Gaelic"),
-      (('g', 'l'), "Galician"), (('g', 'n'), "Guarani"), (('g', 'u'), "Gujarati"),
-      (('g', 'v'), "Manx"), (('h', 'a'), "Hausa"), (('h', 'e'), "Hebrew"),
-      (('h', 'i'), "Hindi"), (('h', 'o'), "Hiri Motu"), (('h', 'r'), "Croatian"),
-      (('h', 't'), "Haitian"), (('h', 'u'), "Hungarian"), (('h', 'y'), "Armenian"),
-      (('h', 'z'), "Herero"), (('i', 'a'), "Interlingua"), (('i', 'd'), "Indonesian"),
-      (('i', 'e'), "Interlingue"), (('i', 'g'), "Igbo"), (('i', 'i'), "Sichuan Yi"),
-      (('i', 'k'), "Inupiaq"), (('i', 'o'), "Ido"), (('i', 's'), "Icelandic"),
-      (('i', 't'), "Italian"), (('i', 'u'), "Inuktitut"), (('j', 'a'), "Japanese"),
-      (('j', 'v'), "Javanese"), (('k', 'a'), "Georgian"), (('k', 'g'), "Kongo"),
-      (('k', 'i'), "Kikuyu"), (('k', 'j'), "Kuanyama"), (('k', 'k'), "Kazakh"),
-      (('k', 'l'), "Kalaallisut"), (('k', 'm'), "Khmer"), (('k', 'n'), "Kannada"),
-      (('k', 'o'), "Korean"), (('k', 'r'), "Kanuri"), (('k', 's'), "Kashmiri"),
-      (('k', 'u'), "Kurdish"), (('k', 'v'), "Komi"), (('k', 'w'), "Cornish"),
-      (('k', 'y'), "Kirghiz"), (('l', 'a'), "Latin"), (('l', 'b'), "Luxembourgish"),
-      (('l', 'g'), "Ganda"), (('l', 'i'), "Limburgan"), (('l', 'n'), "Lingala"),
-      (('l', 'o'), "Lao"), (('l', 't'), "Lithuanian"), (('l', 'u'), "Luba-Katanga"),
-      (('l', 'v'), "Latvian"), (('m', 'g'), "Malagasy"), (('m', 'h'), "Marshallese"),
-      (('m', 'i'), "Maori"), (('m', 'k'), "Macedonian"), (('m', 'l'), "Malayalam"),
-      (('m', 'n'), "Mongolian"), (('m', 'r'), "Marathi"), (('m', 's'), "Malay"),
-      (('m', 't'), "Maltese"), (('m', 'y'), "Burmese"), (('n', 'a'), "Nauru"),
-      (('n', 'b'), "Bokmål"), (('n', 'd'), "Ndebele, North"), (('n', 'e'), "Nepali"),
-      (('n', 'g'), "Ndonga"), (('n', 'l'), "Dutch"), (('n', 'n'), "Nynorsk"),
-      (('n', 'o'), "Norwegian"), (('n', 'r'), "Ndebele"), (('n', 'v'), "Navajo"),
-      (('n', 'y'), "Chichewa"), (('o', 'c'), "Occitan"), (('o', 'j'), "Ojibwa"),
-      (('o', 'm'), "Oromo"), (('o', 'r'), "Oriya"), (('o', 's'), "Ossetian"),
-      (('p', 'a'), "Panjabi"), (('p', 'i'), "Pali"), (('p', 'l'), "Polish"),
-      (('p', 's'), "Pushto"), (('p', 't'), "Portuguese"), (('q', 'u'), "Quechua"),
-      (('r', 'm'), "Romansh"), (('r', 'n'), "Rundi"), (('r', 'o'), "Romanian"),
-      (('r', 'u'), "Russian"), (('r', 'w'), "Kinyarwanda"), (('s', 'a'), "Sanskrit"),
-      (('s', 'c'), "Sardinian"), (('s', 'd'), "Sindhi"), (('s', 'e'), "Sami"),
-      (('s', 'g'), "Sango"), (('s', 'i'), "Sinhala"), (('s', 'k'), "Slovak"),
-      (('s', 'l'), "Slovenian"), (('s', 'm'), "Samoan"), (('s', 'n'), "Shona"),
-      (('s', 'o'), "Somali"), (('s', 'q'), "Albanian"), (('s', 'r'), "Serbian"),
-      (('s', 's'), "Swati"), (('s', 't'), "Sotho"), (('s', 'u'), "Sundanese"),
-      (('s', 'v'), "Swedish"), (('s', 'w'), "Swahili"), (('t', 'a'), "Tamil"),
-      (('t', 'e'), "Telugu"), (('t', 'g'), "Tajik"), (('t', 'h'), "Thai"),
-      (('t', 'i'), "Tigrinya"), (('t', 'k'), "Turkmen"), (('t', 'l'), "Tagalog"),
-      (('t', 'n'), "Tswana"), (('t', 'o'), "Tonga"), (('t', 'r'), "Turkish"),
-      (('t', 's'), "Tsonga"), (('t', 't'), "Tatar"), (('t', 'w'), "Twi"),
-      (('t', 'y'), "Tahitian"), (('u', 'g'), "Uighur"), (('u', 'k'), "Ukrainian"),
-      (('u', 'r'), "Urdu"), (('u', 'z'), "Uzbek"), (('v', 'e'), "Venda"),
-      (('v', 'i'), "Vietnamese"), (('v', 'o'), "Volapük"), (('w', 'a'), "Walloon"),
-      (('w', 'o'), "Wolof"), (('x', 'h'), "Xhosa"), (('y', 'i'), "Yiddish"),
-      (('y', 'o'), "Yoruba"), (('z', 'a'), "Zhuang"), (('z', 'h'), "Chinese"),
-      (('z', 'u'), "Zulu")
-    ]
-{- ORMOLU_ENABLE -}
+-- This provides a reasonable timestamp rounded to the second, instead of
+-- having fractional seconds as when using the `Arbitrary UTCTime` instance
+-- from `Test.QuickCheck.Instances.Time`
+genUtc :: Gen UTCTime
+genUtc =
+  posixSecondsToUTCTime . realToFrac <$> chooseInt (1420000000, 1720000000)

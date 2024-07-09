@@ -1,6 +1,6 @@
 cabal-version: 2.4
 name:          inferno-ml-server-types
-version:       0.8.0
+version:       0.9.0
 synopsis:      Types for Inferno ML server
 description:   Types for Inferno ML server
 homepage:      https://github.com/plow-technologies/inferno.git#readme
@@ -56,6 +56,9 @@ library
     , iproute
     , microlens-platform
     , postgresql-simple
+    , QuickCheck
+    , quickcheck-arbitrary-adt
+    , quickcheck-instances
     , scientific
     , servant-client
     , servant-conduit
@@ -63,7 +66,5 @@ library
     , text
     , time
     , unix
-    , uri-bytestring
-    , uri-bytestring-aeson
     , uuid
     , vector
