@@ -40,6 +40,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
 import Data.Time (UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
@@ -94,7 +95,9 @@ import Test.QuickCheck
     Gen,
     Positive (getPositive),
     choose,
+    chooseInt,
     listOf,
+    oneof,
     suchThat,
     vectorOf,
   )
@@ -108,7 +111,6 @@ import Test.QuickCheck.Arbitrary.ADT
       ),
     genericArbitrary,
   )
-import Test.QuickCheck.Instances.Time ()
 import Test.QuickCheck.Instances.UUID ()
 import Test.QuickCheck.Instances.Vector ()
 import Text.Read (readMaybe)
@@ -218,14 +220,6 @@ data InferenceScript uid gid = InferenceScript
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToADTArbitrary)
 
-instance
-  ( Arbitrary uid,
-    Arbitrary gid
-  ) =>
-  Arbitrary (InferenceScript uid gid)
-  where
-  arbitrary = genericArbitrary
-
 -- Newtype just for `FromRow`/`ToRow` instances. It would be possible to just
 -- add the instances to `inferno-types`, but then there would be a dependency
 -- on `postgresql-simple`
@@ -265,6 +259,14 @@ instance
       <$> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
 
+instance
+  ( Arbitrary uid,
+    Arbitrary gid
+  ) =>
+  Arbitrary (InferenceScript uid gid)
+  where
+  arbitrary = genericArbitrary
+
 -- | Row of the model table, parameterized by the user and group type. This
 -- table contains metadata for models that should not change between different
 -- versions, e.g. model name and permissions. A second table, 'ModelVersion',
@@ -290,16 +292,6 @@ data Model uid gid = Model
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (ToADTArbitrary)
-
-instance
-  ( Ord gid,
-    Arbitrary gid,
-    Arbitrary uid
-  ) =>
-  Arbitrary (Model uid gid)
-  where
-  arbitrary = genericArbitrary
 
 instance NFData (Model uid gid) where
   rnf = rwhnf
@@ -384,6 +376,36 @@ instance
         "terminated" .= view (the @"terminated") m
       ]
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance
+  ( Ord gid,
+    Arbitrary gid,
+    Arbitrary uid
+  ) =>
+  Arbitrary (Model uid gid)
+  where
+  arbitrary =
+    Model
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance
+  (Arbitrary uid, Arbitrary gid, Ord gid) =>
+  ToADTArbitrary (Model uid gid)
+  where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "Model"
+      . ConstructorArbitraryPair "Model"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "Model"
+      <$> sequence [ConstructorArbitraryPair "Model" <$> arbitrary]
+
 -- | Represents rows of the model version tables; each row is linked to its
 -- 'Model' parent and also contains the actual contents of the model. This
 -- is parameterized by the user and group types as well as the type of the
@@ -407,10 +429,7 @@ data ModelVersion uid gid c = ModelVersion
   }
   deriving stock (Show, Eq, Generic)
   -- NOTE: This may require an orphan instance for the `c` type variable
-  deriving anyclass (NFData, ToADTArbitrary)
-
-instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
-  arbitrary = genericArbitrary
+  deriving anyclass (NFData)
 
 instance
   ( FromField uid,
@@ -484,6 +503,28 @@ instance
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
+  arbitrary =
+    ModelVersion
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance (Arbitrary c) => ToADTArbitrary (ModelVersion uid gid c) where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelVersion"
+      . ConstructorArbitraryPair "ModelVersion"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
+      <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
+
 -- | Permissions for reading or writing a model
 data ModelPermissions
   = -- | The model can be read e.g. for inference
@@ -492,9 +533,6 @@ data ModelPermissions
     WriteModel
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
-
-instance Arbitrary ModelPermissions where
-  arbitrary = genericArbitrary
 
 instance FromJSON ModelPermissions where
   parseJSON = withText "ModelPermissions" $ \case
@@ -507,6 +545,9 @@ instance ToJSON ModelPermissions where
     String . \case
       ReadModel -> "read"
       WriteModel -> "write"
+
+instance Arbitrary ModelPermissions where
+  arbitrary = genericArbitrary
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
@@ -536,9 +577,6 @@ data ModelDescription = ModelDescription
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, NFData, ToADTArbitrary)
 
-instance Arbitrary ModelDescription where
-  arbitrary = genericArbitrary
-
 {- ORMOLU_DISABLE -}
 instance FromJSON ModelDescription where
   parseJSON = withObject "ModelDescription" $ \o ->
@@ -550,6 +588,9 @@ instance FromJSON ModelDescription where
       <*> o .:? "evaluation" .!= mempty
 {- ORMOLU_ENABLE -}
 
+instance Arbitrary ModelDescription where
+  arbitrary = genericArbitrary
+
 -- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
   { categories :: Vector Int,
@@ -558,6 +599,25 @@ data ModelMetadata = ModelMetadata
     baseModel :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
+
+instance NFData ModelMetadata where
+  rnf = rwhnf
+
+instance FromJSON ModelMetadata where
+  parseJSON = withObject "ModelMetadata" $ \o ->
+    ModelMetadata
+      <$> o .:? "categories" .!= mempty
+      <*> o .:? "datasets" .!= mempty
+      <*> o .:? "metrics" .!= mempty
+      <*> o .:? "base-model"
+
+instance ToJSON ModelMetadata where
+  toJSON =
+    genericToJSON
+      defaultOptions
+        { fieldLabelModifier = camelTo2 '-',
+          omitNothingFields = True
+        }
 
 instance Arbitrary ModelMetadata where
   arbitrary =
@@ -577,25 +637,6 @@ instance ToADTArbitrary ModelMetadata where
     ADTArbitrary "Inferno.ML.Server.Types" "ModelMetadata"
       <$> sequence [ConstructorArbitraryPair "ModelMetadata" <$> arbitrary]
 
-instance NFData ModelMetadata where
-  rnf = rwhnf
-
-instance FromJSON ModelMetadata where
-  parseJSON = withObject "ModelMetadata" $ \o ->
-    ModelMetadata
-      <$> o .:? "categories" .!= mempty
-      <*> o .:? "datasets" .!= mempty
-      <*> o .:? "metrics" .!= mempty
-      <*> o .:? "base_model"
-
-instance ToJSON ModelMetadata where
-  toJSON =
-    genericToJSON
-      defaultOptions
-        { fieldLabelModifier = camelTo2 '_',
-          omitNothingFields = True
-        }
-
 -- | Similar to the @Version@ type from base, but allows for a leading @v@ and
 -- guarantees that there is at least one digit. Digits must be separated by @.@;
 -- multiple tags are allowed, separated by @-@
@@ -607,22 +648,6 @@ data Version
       -- ^ Any tags
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
-
-instance Arbitrary Version where
-  arbitrary =
-    Version
-      <$> genDigits
-      -- This can't be some arbitrary text, otherwise JSON parsing will fail
-      <*> genTags
-    where
-      genDigits :: Gen (NonEmpty Int)
-      genDigits = fmap (fmap abs) $ arbitrary `suchThat` ((<= 5) . length)
-
-      genTags :: Gen [Text]
-      genTags = listOf asciiTextGen `suchThat` ((<= 5) . length)
-        where
-          asciiTextGen :: Gen Text
-          asciiTextGen = fmap Text.pack . vectorOf 5 $ chr <$> choose (97, 122)
 
 -- Compares based on digits, not on tag
 instance Ord Version where
@@ -646,6 +671,22 @@ instance FromField Version where
 
 instance ToField Version where
   toField = Escape . Text.Encoding.encodeUtf8 . showVersion
+
+instance Arbitrary Version where
+  arbitrary =
+    Version
+      <$> genDigits
+      -- This can't be some arbitrary text, otherwise JSON parsing will fail
+      <*> genTags
+    where
+      genDigits :: Gen (NonEmpty Int)
+      genDigits = fmap (fmap abs) $ arbitrary `suchThat` ((<= 5) . length)
+
+      genTags :: Gen [Text]
+      genTags = listOf asciiTextGen `suchThat` ((<= 5) . length)
+        where
+          asciiTextGen :: Gen Text
+          asciiTextGen = fmap Text.pack . vectorOf 5 $ chr <$> choose (97, 122)
 
 versionP :: Attoparsec.Parser Version
 versionP = do
@@ -708,16 +749,7 @@ data InferenceParam uid gid p s = InferenceParam
     user :: uid
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData, ToJSON, ToADTArbitrary)
-
-instance
-  ( Arbitrary s,
-    Arbitrary p,
-    Arbitrary uid
-  ) =>
-  Arbitrary (InferenceParam uid gid p s)
-  where
-  arbitrary = genericArbitrary
+  deriving anyclass (NFData, ToJSON)
 
 {- ORMOLU_DISABLE -}
 instance
@@ -775,6 +807,40 @@ instance
       ip ^. the @"user" & toField
     ]
 
+-- Not derived generically in order to use special `Gen UTCTime`
+instance
+  ( Arbitrary s,
+    Arbitrary p,
+    Arbitrary uid
+  ) =>
+  Arbitrary (InferenceParam uid gid p s)
+  where
+  arbitrary =
+    InferenceParam
+      <$> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
+      <*> arbitrary
+
+-- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
+instance
+  ( Arbitrary s,
+    Arbitrary p,
+    Arbitrary uid
+  ) =>
+  ToADTArbitrary (InferenceParam uid gid p s)
+  where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
+      . ConstructorArbitraryPair "InferenceParam"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "InferenceParam"
+      <$> sequence [ConstructorArbitraryPair "InferenceParam" <$> arbitrary]
+
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels uid gid p s = InferenceParamWithModels
@@ -805,9 +871,6 @@ data ScriptInputType
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
 
-instance Arbitrary ScriptInputType where
-  arbitrary = genericArbitrary
-
 instance FromJSON ScriptInputType where
   parseJSON = withText "ScriptInputType" $ \case
     "r" -> pure Readable
@@ -821,6 +884,9 @@ instance ToJSON ScriptInputType where
       Readable -> "r"
       Writable -> "w"
       ReadableWritable -> "rw"
+
+instance Arbitrary ScriptInputType where
+  arbitrary = genericArbitrary
 
 -- | Information about execution time and resource usage. This is saved by
 -- @inferno-ml-server@ after script evaluation completes and can be queried
@@ -846,10 +912,7 @@ data EvaluationInfo uid gid p = EvaluationInfo
     cpu :: Word64
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
-
-instance Arbitrary (EvaluationInfo uid gid p) where
-  arbitrary = genericArbitrary
+  deriving anyclass (FromJSON, ToJSON)
 
 instance FromRow (EvaluationInfo uid gid p) where
   fromRow =
@@ -870,6 +933,17 @@ instance ToRow (EvaluationInfo uid gid p) where
       ei ^. the @"allocated" & toField,
       ei ^. the @"cpu" & toField
     ]
+
+-- Not derived generically in order to use special `Gen UTCTime`
+instance Arbitrary (EvaluationInfo uid gid p) where
+  arbitrary =
+    EvaluationInfo
+      <$> arbitrary
+      <*> arbitrary
+      <*> genUtc
+      <*> genUtc
+      <*> arbitrary
+      <*> arbitrary
 
 -- | A user, parameterized by the user and group types
 data User uid gid = User
@@ -893,28 +967,6 @@ instance (Arbitrary uid, Arbitrary gid) => Arbitrary (User uid gid) where
 newtype IPv4 = IPv4 Data.IP.IPv4
   deriving stock (Generic)
   deriving newtype (Show, Eq, Ord, Read)
-
-instance Arbitrary IPv4 where
-  arbitrary = genFromOctects
-
-instance ToADTArbitrary IPv4 where
-  toADTArbitrarySingleton _ =
-    ADTArbitrarySingleton "Inferno.ML.Server.Types" "IPv4"
-      . ConstructorArbitraryPair "IPv4"
-      <$> arbitrary
-
-  toADTArbitrary _ =
-    ADTArbitrary "Inferno.ML.Server.Types" "IPv4"
-      <$> sequence [ConstructorArbitraryPair "IPv4" <$> arbitrary]
-
-genFromOctects :: Gen IPv4
-genFromOctects =
-  toIPv4
-    <$> ( (,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen
-        )
-
-octetGen :: Gen Int
-octetGen = choose (0, 255)
 
 instance NFData IPv4 where
   rnf = rwhnf
@@ -940,6 +992,28 @@ instance FromField IPv4 where
 
 instance ToField IPv4 where
   toField = Escape . ByteString.Char8.pack . show
+
+instance Arbitrary IPv4 where
+  arbitrary = genFromOctects
+
+instance ToADTArbitrary IPv4 where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Server.Types" "IPv4"
+      . ConstructorArbitraryPair "IPv4"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "IPv4"
+      <$> sequence [ConstructorArbitraryPair "IPv4" <$> arbitrary]
+
+genFromOctects :: Gen IPv4
+genFromOctects =
+  toIPv4
+    <$> ( (,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen
+        )
+
+octetGen :: Gen Int
+octetGen = choose (0, 255)
 
 toIPv4 :: (Int, Int, Int, Int) -> IPv4
 toIPv4 (a, b, c, d) = IPv4 $ Data.IP.toIPv4 [a, b, c, d]
@@ -1061,3 +1135,13 @@ maybeConversion f fld =
   maybe (returnError UnexpectedNull fld mempty) $
     maybe (returnError ConversionFailed fld mempty) pure
       . f
+
+genMUtc :: Gen (Maybe UTCTime)
+genMUtc = oneof [Just <$> genUtc, pure Nothing]
+
+-- This provides a reasonable timestamp rounded to the second, instead of
+-- having fractional seconds as when using the `Arbitrary UTCTime` instance
+-- from `Test.QuickCheck.Instances.Time`
+genUtc :: Gen UTCTime
+genUtc =
+  posixSecondsToUTCTime . realToFrac <$> chooseInt (1420000000, 1720000000)
