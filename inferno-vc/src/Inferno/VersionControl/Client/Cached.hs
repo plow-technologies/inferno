@@ -16,16 +16,14 @@ import Control.Concurrent.STM
     retry,
     writeTVar,
   )
-
-import Control.Monad.Catch (MonadMask, bracket_)
 import Control.Monad (forM, forM_)
+import Control.Monad.Catch (MonadMask, bracket_)
 import Control.Monad.Error.Lens (throwing)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Reader (MonadReader (..), asks)
 import Crypto.Hash (digestFromByteString)
 import Data.Aeson (FromJSON, ToJSON, eitherDecodeStrict, encode)
-import Data.List (foldl')
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
@@ -33,6 +31,7 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Either (partitionEithers)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
+import Data.List (foldl')
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
@@ -105,16 +104,17 @@ fetchVCObjectClosure ::
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
   env@VCCacheEnv {cachePath} <- asks getTyped
-  deps <- withInFlight env [objHash] $ 
-    liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
-      False -> do
-        deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
-        liftIO
-          $ atomicWriteFile
-            (cachePath </> "deps" </> show objHash)
-          $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
-        pure deps
-      True -> fetchVCObjectClosureHashes objHash
+  deps <-
+    withInFlight env [objHash] $
+      liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
+        False -> do
+          deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
+          liftIO
+            $ atomicWriteFile
+              (cachePath </> "deps" </> show objHash)
+            $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
+          pure deps
+        True -> fetchVCObjectClosureHashes objHash
   withInFlight env deps $ do
     (nonLocalHashes, localHashes) <-
       partitionEithers
