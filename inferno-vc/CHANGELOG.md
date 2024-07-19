@@ -1,6 +1,11 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.7.0 -- 2024-08-19
+* Cached client now serializes requests to server for the same script ids in
+  order to avoid DOSing the server when the same script is requested many times
+  simultaneously
+
 ## 0.3.6.0 -- 2024-03-18
 * HLint everything
 
