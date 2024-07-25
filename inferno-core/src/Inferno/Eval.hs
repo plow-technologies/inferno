@@ -3,8 +3,8 @@
 
 module Inferno.Eval where
 
+import Control.Monad (forM)
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM), try)
-import Control.Monad.Except (forM)
 import Control.Monad.Reader (ask, local)
 import Data.Foldable (foldrM)
 import Data.Functor ((<&>))
