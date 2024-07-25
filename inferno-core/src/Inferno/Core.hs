@@ -6,7 +6,7 @@ module Inferno.Core where
 
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadCatch, MonadThrow)
-import Control.Monad.Except (MonadFix)
+import Control.Monad.Fix (MonadFix)
 import Data.Bifunctor (bimap, first)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map

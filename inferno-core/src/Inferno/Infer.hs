@@ -16,14 +16,16 @@ module Inferno.Infer
   )
 where
 
-import Control.Monad (when)
+import Control.Monad
+  ( foldM,
+    forM,
+    forM_,
+    when
+  )
 import Control.Monad.Except
   ( Except,
     ExceptT,
     MonadError (catchError, throwError),
-    foldM,
-    forM,
-    forM_,
     runExcept,
     runExceptT,
   )

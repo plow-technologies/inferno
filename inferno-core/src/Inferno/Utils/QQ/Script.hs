@@ -8,7 +8,8 @@ module Inferno.Utils.QQ.Script where
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
-import Control.Monad.Writer (WriterT (..), appEndo)
+import Control.Monad.Writer (WriterT (..))
+import Data.Monoid (appEndo)
 import qualified Crypto.Hash as Crypto
 import Data.ByteArray (convert)
 import Data.ByteString (ByteString, unpack)

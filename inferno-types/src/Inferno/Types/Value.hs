@@ -6,10 +6,11 @@ module Inferno.Types.Value where
 
 import Control.DeepSeq (NFData, rnf)
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
-import Control.Monad.Except (MonadError, lift)
+import Control.Monad.Except (MonadError)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader, ReaderT (..))
+import Control.Monad.Trans (lift)
 import Data.Int (Int64)
 import qualified Data.Map as Map
 import Data.Text (Text)
@@ -51,7 +52,7 @@ data Value custom m
   | VTypeRep InfernoType
   | VCustom custom
 
-instance NFData custom => NFData (Value custom m) where
+instance (NFData custom) => NFData (Value custom m) where
   rnf (VInt x) = x `seq` ()
   rnf (VDouble x) = x `seq` ()
   rnf (VWord16 x) = x `seq` ()
@@ -69,7 +70,7 @@ instance NFData custom => NFData (Value custom m) where
   rnf (VTypeRep x) = rnf x
   rnf (VCustom x) = rnf x
 
-instance Eq c => Eq (Value c m) where
+instance (Eq c) => Eq (Value c m) where
   (VInt i1) == (VInt i2) = i1 == i2
   (VDouble v1) == (VDouble v2) = v1 == v2
   (VWord16 w1) == (VWord16 w2) = w1 == w2
@@ -88,7 +89,7 @@ instance Eq c => Eq (Value c m) where
   (VCustom c1) == (VCustom c2) = c1 == c2
   _ == _ = False
 
-instance Pretty c => Pretty (Value c m) where
+instance (Pretty c) => Pretty (Value c m) where
   pretty = \case
     VInt n -> pretty n
     VDouble n -> pretty n
@@ -113,14 +114,14 @@ instance Pretty c => Pretty (Value c m) where
 newtype ImplEnvM m c a = ImplEnvM {unImplEnvM :: ReaderT (Map.Map ExtIdent (Value c (ImplEnvM m c))) m a}
   deriving (Applicative, Functor, Monad, MonadReader (Map.Map ExtIdent (Value c (ImplEnvM m c))), MonadError e, MonadFix, MonadIO)
 
-instance MonadThrow m => MonadThrow (ImplEnvM m c) where
+instance (MonadThrow m) => MonadThrow (ImplEnvM m c) where
   throwM = ImplEnvM . lift . throwM
 
-instance MonadCatch m => MonadCatch (ImplEnvM m c) where
+instance (MonadCatch m) => MonadCatch (ImplEnvM m c) where
   catch (ImplEnvM (ReaderT m)) c = ImplEnvM $ ReaderT $ \env ->
     m env `catch` \e -> runImplEnvM env (c e)
 
-liftImplEnvM :: Monad m => m a -> ImplEnvM m c a
+liftImplEnvM :: (Monad m) => m a -> ImplEnvM m c a
 liftImplEnvM = ImplEnvM . lift
 
 runImplEnvM :: Map.Map ExtIdent (Value c (ImplEnvM m c)) -> ImplEnvM m c a -> m a
