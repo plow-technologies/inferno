@@ -1,6 +1,6 @@
 cabal-version:       >=1.10
 name:                inferno-types
-version:             0.4.5.0
+version:             0.4.6.0
 synopsis:            Core types for Inferno
 description:         Core types for the Inferno language
 category:            DSL,Scripting
@@ -43,7 +43,7 @@ library
     , hashable                           >= 1.4.1 && < 1.5
     , megaparsec                         >= 9.2.1 && < 9.3
     , memory                             >= 0.18.0 && < 0.19
-    , mtl                                >= 2.2.2 && < 2.3
+    , mtl                                >= 2.2.2 && < 2.4
     , prettyprinter                      >= 1.7.1 && < 1.8
     , recursion-schemes                  >= 5.2.2.3 && < 5.3
     , servant                            >= 0.19 && < 0.20
