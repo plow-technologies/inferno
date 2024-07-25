@@ -20,7 +20,7 @@ import Control.Monad
   ( foldM,
     forM,
     forM_,
-    when
+    when,
   )
 import Control.Monad.Except
   ( Except,

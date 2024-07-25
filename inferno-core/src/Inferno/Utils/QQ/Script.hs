@@ -9,7 +9,6 @@ import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (ReaderT (..))
 import Control.Monad.Writer (WriterT (..))
-import Data.Monoid (appEndo)
 import qualified Crypto.Hash as Crypto
 import Data.ByteArray (convert)
 import Data.ByteString (ByteString, unpack)
@@ -18,6 +17,7 @@ import Data.Generics.Aliases (extQ)
 import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Maybe as Maybe
+import Data.Monoid (appEndo)
 import Data.Text (pack)
 import Inferno.Infer (inferExpr)
 import Inferno.Infer.Pinned (pinExpr)
