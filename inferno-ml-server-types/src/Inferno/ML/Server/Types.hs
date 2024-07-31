@@ -284,9 +284,6 @@ data Model uid gid = Model
     -- text (which is required to use @hstore@). So using @jsonb@ allows
     -- for greater potential flexibility
     permissions :: Map gid ModelPermissions,
-    -- | The user who owns the model, if any. Note that owning a model
-    -- will implicitly set permissions
-    user :: Maybe uid,
     -- | The time that this model was \"deleted\", if any. For active models,
     -- this will be @Nothing@
     terminated :: Maybe UTCTime
@@ -312,7 +309,6 @@ instance
       <*> field
       <*> fmap getAeson field
       <*> field
-      <*> field
 
 instance
   ( ToField uid,
@@ -326,7 +322,6 @@ instance
     [ toField Default,
       m ^. the @"name" & toField,
       m ^. the @"permissions" & Aeson & toField,
-      m ^. the @"user" & toField,
       -- The `ToRow` instance is only for new rows, so we don't want
       -- to set the `terminated` field to anything by default
       --
@@ -349,7 +344,6 @@ instance
       <$> o .:? "id"
       <*> (ensureNotNull =<< o .: "name")
       <*> o .: "permissions"
-      <*> o .:? "user"
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
@@ -372,7 +366,6 @@ instance
       [ "id" .= view (the @"id") m,
         "name" .= view (the @"name") m,
         "permissions" .= view (the @"permissions") m,
-        "user" .= view (the @"user") m,
         "terminated" .= view (the @"terminated") m
       ]
 
@@ -387,7 +380,6 @@ instance
   arbitrary =
     Model
       <$> arbitrary
-      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> genMUtc

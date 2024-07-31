@@ -31,10 +31,8 @@ create table if not exists models
     -- might allow us to include a more complex structure in the future more
     -- easily
   , permissions jsonb not null
-  , "user" integer references users (id)
     -- See note above
   , terminated timestamptz
-  , unique (name, "user")
   );
 
 create table if not exists mversions
