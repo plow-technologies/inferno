@@ -937,24 +937,6 @@ instance Arbitrary (EvaluationInfo uid gid p) where
       <*> arbitrary
       <*> arbitrary
 
--- | A user, parameterized by the user and group types
-data User uid gid = User
-  { id :: uid,
-    groups :: Vector gid
-  }
-  deriving stock (Show, Generic, Eq)
-  deriving anyclass
-    ( FromRow,
-      ToRow,
-      FromJSON,
-      ToJSON,
-      NFData,
-      ToADTArbitrary
-    )
-
-instance (Arbitrary uid, Arbitrary gid) => Arbitrary (User uid gid) where
-  arbitrary = genericArbitrary
-
 -- | IPv4 address with some useful instances
 newtype IPv4 = IPv4 Data.IP.IPv4
   deriving stock (Generic)

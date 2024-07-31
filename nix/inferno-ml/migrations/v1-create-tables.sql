@@ -16,13 +16,6 @@ create extension lo;
 -- caching models, etc... If the field is not null, then the entity has been
 -- "deleted" and cannot be used any longer
 
-create table if not exists users
-  ( -- Note: this is the bson object ID represented as an integer
-    id integer primary key
-    -- Also a list of bson object IDs. This determines model access (see below)
-  , groups integer[] not null
-  );
-
 create table if not exists models
   ( id serial primary key
   , name text not null
@@ -82,7 +75,7 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , "user" integer references users (id)
+  , "user" bigint not null
   );
 
 -- Execution info for inference evaluation
