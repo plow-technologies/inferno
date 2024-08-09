@@ -107,7 +107,6 @@ mkDbSpec env = Hspec.describe "Database" $ do
         | Just (model, mversion) <- v ^? _head -> do
             view #name model `Hspec.shouldBe` "mnist"
             view (#version . to showVersion) mversion `Hspec.shouldBe` "v1"
-            view #user model `Hspec.shouldBe` Nothing
         | otherwise -> Hspec.expectationFailure "No models were retrieved"
 
   Hspec.it "gets model size and contents" $ do

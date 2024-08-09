@@ -409,6 +409,7 @@ data ModelVersion uid gid c = ModelVersion
     -- | Foreign key of the @model@ table, which contains invariant metadata
     -- related to the model, i.e. name, permissions, user
     model :: Id (Model uid gid),
+    description :: Text,
     card :: ModelCard,
     -- | The actual contents of version of the model. Normally this will be
     -- an 'Oid' pointing to the serialized bytes of the model imported into
@@ -435,6 +436,7 @@ instance
   fromRow =
     ModelVersion
       <$> field
+      <*> field
       <*> field
       <*> field
       <*> field
@@ -468,6 +470,7 @@ instance
     ModelVersion
       <$> o .:? "id"
       <*> o .: "model"
+      <*> o .: "description"
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
@@ -500,6 +503,7 @@ instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
+      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
