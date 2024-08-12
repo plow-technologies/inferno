@@ -28,28 +28,28 @@ library
       src
   ghc-options: -Wall -Wunused-packages -Wincomplete-uni-patterns -Wincomplete-record-updates
   build-depends:
-      base                               >= 4.13 && < 4.17
-    , bytestring                         >= 0.10.10 && < 0.12
-    , co-log-core                        >= 0.3.1 && < 0.4
-    , containers                         >= 0.6.2 && < 0.7
-    , inferno-core                       >= 0.8.0 && < 0.12
-    , inferno-types                      >= 0.2.0 && < 0.5
-    , inferno-vc                         >= 0.3.0 && < 0.4
-    , lsp                                >= 1.6.0 && < 1.7
-    , lsp-types                          >= 1.6.0 && < 1.7
-    , megaparsec                         >= 9.2.1 && < 9.3
-    , microlens                          >= 0.4.13 && < 0.5
-    , plow-log                           >= 0.1.6 && < 0.2
-    , plow-log-async                     >= 0.1.4 && < 0.2
-    , prettyprinter                      >= 1.7.1 && < 1.8
-    , safe                               >= 0.3.19 && < 0.4
-    , special-keys                       >= 0.1.0 && < 0.2
-    , stm                                >= 2.5.0 && < 2.6
-    , text                               >= 2.0.1 && < 2.1
-    , text-rope                          >= 0.2 && < 0.3
-    , time                               >= 1.9.3 && < 1.12
-    , transformers                       >= 0.5.6 && < 0.6
-    , uuid                               >= 1.3.15 && < 1.4
+      base                               >= 4.13 && < 4.20
+    , bytestring
+    , co-log-core
+    , containers
+    , inferno-core
+    , inferno-types
+    , inferno-vc
+    , lsp
+    , lsp-types
+    , megaparsec
+    , microlens
+    , plow-log
+    , plow-log-async
+    , prettyprinter
+    , safe
+    , special-keys
+    , stm
+    , text
+    , text-rope
+    , time
+    , transformers
+    , uuid
   default-language: Haskell2010
   default-extensions:
       DeriveDataTypeable

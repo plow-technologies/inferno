@@ -18,7 +18,7 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-    stable.follows = "haskell-nix/nixpkgs-2205";
+    stable.follows = "haskell-nix/nixpkgs-2405";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
@@ -92,7 +92,7 @@
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:
         let
-          defaultCompiler = "ghc925";
+          defaultCompiler = "ghc966";
 
           # This should be parameterized by the `pkgs` used to build the project. We
           # want users who get packages from our `overlays.default` to be able to
@@ -151,12 +151,8 @@
 
             } // builtins.listToAttrs
               (
-                lib.lists.forEach
-                  (
-                    [ defaultCompiler ]
-                      # only GHC 8.10.7 or newer is supported on M1 Macs
-                      ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884"
-                  )
+                # Just one default compiler version now
+                lib.lists.forEach ([ defaultCompiler ])
                   (
                     compiler: lib.attrsets.nameValuePair
                       compiler
@@ -207,19 +203,6 @@
               {
                 ormolu = {
                   enable = true;
-                  package =
-                    let
-                      # Using `hackage-package` will prevent building `ormolu`
-                      # from interfering with the build plan (incl. incompatible
-                      # compiler versions)
-                      o = pkgs.haskell-nix.hackage-package {
-                        name = "ormolu";
-                        version = "0.5.0.1";
-                        compiler-nix-name = defaultCompiler;
-                        configureArgs = "--disable-benchmarks --disable-tests";
-                      };
-                    in
-                    o.getComponent "exe:ormolu";
                   ghcOpts = [ "TypeApplications" ];
                 };
               };

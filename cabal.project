@@ -4,6 +4,16 @@ packages:
   ./inferno-lsp
   ./inferno-vc
 
+allow-newer: all
+
+constraints:
+    lsp < 1.7
+  , lsp-types < 1.7
+  , picosat == 0.1.6
+
+allow-newer:
+  piscosat:transformers
+
 source-repository-package
     type: git
     location: https://github.com/plow-technologies/special-keys.git

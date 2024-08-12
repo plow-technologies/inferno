@@ -117,7 +117,7 @@ module Inferno.Types.Syntax
   )
 where
 
-import Control.Applicative (liftA2, liftA3)
+import Control.Applicative (liftA3)
 import Control.DeepSeq (NFData (..))
 import Control.Monad (replicateM)
 import Data.Aeson (FromJSON (..), FromJSONKey (..), FromJSONKeyFunction (FromJSONKeyTextParser), ToJSON (..), ToJSONKey (..))
