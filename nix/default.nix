@@ -2,7 +2,7 @@
 , config
 , ghcOptions ? [ ]
 , profiling ? false
-  # Must be of the form: { device = <cpu|cuda-10|cuda-11>; }
+  # Must be of the form: `{ cudaSupport = <true|false>; }`
 , torchConfig ? { }
 , inputs
 , ...
@@ -14,7 +14,7 @@ let
   # version is older than GHC 9.2.4
   isAtLeastGhc924 = builtins.compareVersions compiler "ghc924" != -1;
   hasktorchSupport = isAtLeastGhc924 && args.pkgs.stdenv.isx86_64;
-  cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
+  cudaSupport = torchConfig.cudaSupport or false;
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
   #
@@ -36,6 +36,8 @@ let
               # These should always be the same as `torch`
               c10 = torch;
               torch_cpu = torch;
+              tokenizers_haskell = pkgs.tokenizersPackages.tokenizers-haskell;
+              pkgconfig = pkgs.pkg-config;
             } // lib.optionalAttrs cudaSupport {
               torch_cuda = torch;
             }

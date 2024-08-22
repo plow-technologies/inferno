@@ -44,15 +44,11 @@
     image-config.url = "path:./nix/inferno-ml/dummy";
 
     # Needed for the `hasktorch` integration
-    hasktorch = {
-      url = "github:hasktorch/hasktorch";
-      # NOTE: `hasktorch` does have its own flake, but none of its outputs are
-      # useful to us. We just need the source for `libtorch`
-      flake = false;
-    };
     tokenizers = {
-      url = "github:hasktorch/tokenizers/flakes";
+      url = "github:hasktorch/tokenizers";
     };
+    # Needed to build `tokenizers` packages
+    naersk.url = "github:nix-community/naersk";
   };
 
   # NOTE: The flake outputs are split into separate modules and then imported
@@ -146,7 +142,7 @@
                   ghcOptions = [ "-eventlog" ];
                 };
               "${defaultCompiler}-cuda" = infernoFor {
-                torchConfig.device = "cuda-11";
+                torchConfig.cudaSupport = true;
               };
 
             } // builtins.listToAttrs
@@ -223,7 +219,8 @@
           # Overlay for creating a project with `inferno-ml` as a dependency
           ml-project = nixpkgs.lib.composeManyExtensions [
             haskell-nix.overlays.combined
-            inputs.tokenizers.overlay
+            inputs.tokenizers.overlays.default
+            inputs.naersk.overlay
             (_:_: { inherit (inputs) hasktorch; })
             (import ./nix/overlays/compat.nix)
             (import ./nix/overlays/torch.nix)

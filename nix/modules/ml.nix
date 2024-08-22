@@ -4,8 +4,7 @@
   packages = {
     libtorch-ffi = {
       configureFlags = [
-        "--extra-lib-dirs=${pkgs.torch.out}/lib"
-        "--extra-include-dirs=${pkgs.torch.dev}/include"
+        "--extra-include-dirs=${lib.getDev pkgs.torch}/include/torch/csrc/api/include"
       ];
       flags = {
         cuda = cudaSupport;
@@ -18,12 +17,6 @@
         # https://github.com/hasktorch/hasktorch/blob/de3b709980a0d78d2284d91847c09f522830da61/nix/haskell.nix
         rocm = false;
       };
-    };
-
-    tokenizers = {
-      configureFlags = [
-        "--extra-lib-dirs=${pkgs.tokenizers-haskell}/lib"
-      ];
     };
   };
 
@@ -67,5 +60,6 @@
     "xhtml"
     "terminfo"
     "exceptions"
+    "system-cxx-std-lib"
   ];
 }
