@@ -219,9 +219,9 @@ $ ./result/bin/inferno
 One can also obtain a shell with profiling enabled:
 
 ```
-nix develop .#ghc924-prof
+nix develop .#ghc966-prof
 ```
 
-Or build packages and checks for the profiling configuration by putting `-ghc924-prof` at the end. For example, `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc924-prof`
+Or build packages and checks for the profiling configuration by putting `-ghc966-prof` at the end. For example, `nix build .#checks.x86_64-linux.inferno-core:test:inferno-tests-ghc966-prof`
 
 

@@ -9,12 +9,7 @@
       flags = {
         cuda = cudaSupport;
         gcc = !cudaSupport && pkgs.stdenv.hostPlatform.isDarwin;
-        # Flag for linking torch platform for AMD GPUs
-        #
-        # This is also hardcoded to `false` in Hasktorch's own haskell.nix
-        # configuration, so I'm not sure if it's even supported
-        # See:
-        # https://github.com/hasktorch/hasktorch/blob/de3b709980a0d78d2284d91847c09f522830da61/nix/haskell.nix
+        # Flag for linking torch platform for AMD GPUs. Not needed
         rocm = false;
       };
     };
