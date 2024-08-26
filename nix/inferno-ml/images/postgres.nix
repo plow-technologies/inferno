@@ -27,8 +27,10 @@
       ensureUsers = [
         {
           name = "inferno";
-          ensurePermissions = {
-            "DATABASE inferno" = "ALL PRIVILEGES";
+          ensureClauses = {
+            superuser = true;
+            createrole = true;
+            createdb = true;
           };
         }
       ];

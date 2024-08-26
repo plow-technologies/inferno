@@ -34,9 +34,11 @@
     openssh = {
       enable = true;
       # This is recommended to improve the `sshd` jail for `fail2ban`
-      logLevel = "VERBOSE";
-      permitRootLogin = lib.mkForce "no";
-      passwordAuthentication = false;
+      settings = {
+        LogLevel = "VERBOSE";
+        PermitRootLogin = lib.mkForce "no";
+        PasswordAuthentication = false;
+      };
     };
     fail2ban = {
       enable = true;
