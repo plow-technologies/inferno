@@ -61,7 +61,7 @@ initializeInferno ipid = do
           callBridge bi . Bridge.valuesBetweenC res pid t1
 
 -- | Call one of the bridge endpoints using the given 'BridgeInfo'
-callBridge :: NFData a => BridgeInfo -> ClientM a -> RemoteM a
+callBridge :: (NFData a) => BridgeInfo -> ClientM a -> RemoteM a
 callBridge bi c =
   either (throwM . ClientError) pure =<< liftIO . runClientM c =<< mkEnv
   where

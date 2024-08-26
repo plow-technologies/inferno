@@ -15,10 +15,6 @@ import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Client.Bridge (api)
 import Inferno.ML.Server.Module.Types (PID (PID))
-import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( BridgeAPI,
-    IValue (IDouble, IEmpty),
-  )
 import Lens.Micro.Platform
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
@@ -32,6 +28,10 @@ import Network.Wai.Handler.Warp
 import Network.Wai.Logger (withStdoutLogger)
 import Servant
 import UnliftIO.Exception (throwIO, try)
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( BridgeAPI,
+    IValue (IDouble, IEmpty),
+  )
 
 main :: IO ()
 main = do
@@ -84,7 +84,8 @@ server = valueAt :<|> latestValueAndTimeBefore :<|> valuesBetween
 valueAt :: Int64 -> PID -> Int -> DummyM IValue
 valueAt _ p t =
   view #values
-    <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
+    <&> maybe IEmpty IDouble
+    . preview (at p . _Just . at t . _Just)
 
 latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
 latestValueAndTimeBefore _ _ =

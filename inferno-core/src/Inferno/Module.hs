@@ -62,7 +62,7 @@ import Prettyprinter (Pretty)
 import Text.Megaparsec (SourcePos)
 
 combineTermEnvs ::
-  MonadThrow m =>
+  (MonadThrow m) =>
   Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) a)) ->
   TermEnv VCObjectHash c (ImplEnvM m c) a
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules

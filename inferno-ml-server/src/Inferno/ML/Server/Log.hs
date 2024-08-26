@@ -66,14 +66,14 @@ data StdStream a
 
 withRemoteTracer ::
   forall m a.
-  MonadUnliftIO m =>
+  (MonadUnliftIO m) =>
   (IOTracer RemoteTrace -> m a) ->
   m a
 withRemoteTracer f = withAsyncHandleIOTracers stdout stderr $
   \tso tse -> f $ mkRemoteTracer tso tse
   where
     withAsyncHandleIOTracers ::
-      MonadUnliftIO m =>
+      (MonadUnliftIO m) =>
       Handle ->
       Handle ->
       (IOTracer Text -> IOTracer Text -> m a) ->

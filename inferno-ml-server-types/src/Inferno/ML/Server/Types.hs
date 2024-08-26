@@ -504,7 +504,7 @@ instance
       unOid (Oid (CUInt x)) = x
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
+instance (Arbitrary c) => Arbitrary (ModelVersion uid gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
@@ -642,10 +642,10 @@ instance ToADTArbitrary ModelMetadata where
 -- multiple tags are allowed, separated by @-@
 data Version
   = Version
+      -- | List of digits for version string
       (NonEmpty Int)
-      -- ^ List of digits for version string
+      -- | Any tags
       [Text]
-      -- ^ Any tags
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
 
@@ -1103,22 +1103,22 @@ data SingleOrMany a
   deriving stock (Show, Eq, Generic, Functor)
   deriving anyclass (NFData, ToADTArbitrary)
 
-instance Arbitrary a => Arbitrary (SingleOrMany a) where
+instance (Arbitrary a) => Arbitrary (SingleOrMany a) where
   arbitrary = genericArbitrary
 
-instance FromJSON a => FromJSON (SingleOrMany a) where
+instance (FromJSON a) => FromJSON (SingleOrMany a) where
   parseJSON v =
     asum
       [ Single <$> parseJSON v,
         Many <$> parseJSON v
       ]
 
-instance ToJSON a => ToJSON (SingleOrMany a) where
+instance (ToJSON a) => ToJSON (SingleOrMany a) where
   toJSON = \case
     Single a -> toJSON a
     Many as -> toJSON as
 
-instance Ord a => Ord (SingleOrMany a) where
+instance (Ord a) => Ord (SingleOrMany a) where
   compare a =
     (a,) >>> \case
       (Single x, Single y) -> compare x y
@@ -1126,11 +1126,11 @@ instance Ord a => Ord (SingleOrMany a) where
       (Single _, Many _) -> LT
       (Many _, Single _) -> GT
 
-tshow :: Show a => a -> Text
+tshow :: (Show a) => a -> Text
 tshow = Text.pack . show
 
 maybeConversion ::
-  Typeable b => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
+  (Typeable b) => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
 maybeConversion f fld =
   maybe (returnError UnexpectedNull fld mempty) $
     maybe (returnError ConversionFailed fld mempty) pure

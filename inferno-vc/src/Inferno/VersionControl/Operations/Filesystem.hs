@@ -93,7 +93,7 @@ runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
 withEnv ::
   forall config a.
-  HasField "vcPath" config config FilePath FilePath =>
+  (HasField "vcPath" config config FilePath FilePath) =>
   config ->
   IOTracer Text ->
   (InfernoVCFilesystemEnv -> IO a) ->
@@ -355,7 +355,7 @@ instance
             deleteAutosavedVCObject h
       )
 
-getAllHeads :: VCStoreEnvM err m => m [VCObjectHash]
+getAllHeads :: (VCStoreEnvM err m) => m [VCObjectHash]
 getAllHeads = do
   VCStorePath storePath <- asks getTyped
   -- We don't need a lock here because this only lists the heads/ directory, it doesn't
@@ -414,7 +414,7 @@ withWrite lock = bracket_ (liftIO $ RWL.acquireWrite lock) (liftIO $ RWL.release
 withRead :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
 withRead lock = bracket_ (liftIO $ RWL.acquireRead lock) (liftIO $ RWL.releaseRead lock >>= either throwIO return)
 
-trace :: VCStoreLogM env m => VCServerTrace -> m ()
+trace :: (VCStoreLogM env m) => VCServerTrace -> m ()
 trace t = do
   tracer <- asks getTyped
   traceWith @IOTracer tracer t

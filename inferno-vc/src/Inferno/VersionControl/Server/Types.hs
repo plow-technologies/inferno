@@ -26,7 +26,7 @@ instance FromJSON ServerConfig where
     pure ServerConfig {serverHost, serverPort, vcPath}
 
 readServerConfig ::
-  FromJSON config =>
+  (FromJSON config) =>
   FilePath ->
   IO (Either String config)
 readServerConfig fp = do

@@ -217,7 +217,7 @@ enumConstructor =
     <?> "an enum constructor\nfor example: #true, #false"
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
-signedInteger :: Num a => Parser a
+signedInteger :: (Num a) => Parser a
 signedInteger = Lexer.signed (takeWhileP Nothing isHSpace $> ()) Lexer.decimal
 
 -- | 'signedInteger' parses a float/double with an optional sign (with no space)

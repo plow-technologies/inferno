@@ -25,12 +25,12 @@ data MlValue x
   | VModelName ModelName
   | VExtended x
 
-instance Eq x => Eq (MlValue x) where
+instance (Eq x) => Eq (MlValue x) where
   VTensor t1 == VTensor t2 = t1 == t2
   VExtended x == VExtended y = x == y
   _ == _ = False
 
-instance Pretty x => Pretty (MlValue x) where
+instance (Pretty x) => Pretty (MlValue x) where
   pretty = \case
     VTensor t -> align (pretty $ Text.pack $ show t)
     VModel m -> align (pretty $ Text.pack $ show m)
@@ -40,21 +40,21 @@ instance Pretty x => Pretty (MlValue x) where
 instance ToValue (MlValue x) m T.Tensor where
   toValue = VCustom . VTensor
 
-instance Pretty x => FromValue (MlValue x) m T.Tensor where
+instance (Pretty x) => FromValue (MlValue x) m T.Tensor where
   fromValue (VCustom (VTensor t)) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue (MlValue x) m T.ScriptModule where
   toValue = VCustom . VModel
 
-instance Pretty x => FromValue (MlValue x) m T.ScriptModule where
+instance (Pretty x) => FromValue (MlValue x) m T.ScriptModule where
   fromValue (VCustom (VModel t)) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue (MlValue x) m ModelName where
   toValue = VCustom . VModelName
 
-instance Pretty x => FromValue (MlValue x) m ModelName where
+instance (Pretty x) => FromValue (MlValue x) m ModelName where
   fromValue = \case
     VCustom (VModelName t) -> pure t
     v -> couldNotCast v

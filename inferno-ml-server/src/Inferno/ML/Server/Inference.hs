@@ -231,7 +231,9 @@ runInferenceParam ipid mres uuid =
 
                   closure :: Map VCObjectHash VCObject
                   closure =
-                    param ^. #param . #script
+                    param
+                      ^. #param
+                      . #script
                       & ( `Map.singleton` view #obj vcm
                         )
 
@@ -251,11 +253,11 @@ runInferenceParam ipid mres uuid =
                           exprsFrom ident xs =
                             [0 .. length xs - 1]
                               <&> Var () Nothing LocalScope
-                                . Expl
-                                . ExtIdent
-                                . Right
-                                . (ident <>)
-                                . tshow
+                              . Expl
+                              . ExtIdent
+                              . Right
+                              . (ident <>)
+                              . tshow
 
                       dummy :: ImplExpl
                       dummy = Expl . ExtIdent $ Right "dummy"
@@ -562,7 +564,7 @@ getAndCacheModels cache =
 -- Get a list of models by their access time, so that models that have not been
 -- used recently can be deleted. This will put the least-recently-used paths
 -- at the head of the list
-modelsByAccessTime :: forall m. MonadIO m => FilePath -> m [FilePath]
+modelsByAccessTime :: forall m. (MonadIO m) => FilePath -> m [FilePath]
 modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
   where
     compareAccessTime :: FilePath -> FilePath -> m Ordering

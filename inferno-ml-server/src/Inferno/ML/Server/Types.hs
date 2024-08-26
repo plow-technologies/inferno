@@ -73,17 +73,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( BridgeInfo,
-    EvaluationInfo,
-    InferenceParam,
-    InferenceParamWithModels,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.Types.Syntax (Ident)
 import Inferno.VersionControl.Types
   ( VCObject,
@@ -107,6 +96,17 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( BridgeInfo,
+    EvaluationInfo,
+    InferenceParam,
+    InferenceParamWithModels,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
@@ -165,7 +165,7 @@ instance FromJSON (EntityId a) where
 instance ToJSON (EntityId a) where
   toJSON = String . Text.pack . ('o' :) . entityIdToHex
 
-instance Typeable a => FromField (EntityId a) where
+instance (Typeable a) => FromField (EntityId a) where
   fromField f =
     maybe (returnError UnexpectedNull f mempty) $
       maybe (returnError ConversionFailed f mempty) (pure . entityIdFromInteger)
@@ -351,7 +351,7 @@ instance Exception RemoteError where
     OtherRemoteError e -> Text.unpack e
 
 data SomeInfernoError where
-  SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
+  SomeInfernoError :: forall a. (Show a) => a -> SomeInfernoError
 
 deriving stock instance Show SomeInfernoError
 
@@ -400,7 +400,7 @@ logError = logTrace . ErrorTrace
 -- FLAP!
 infixl 4 ??
 
-(??) :: Functor f => f (a -> b) -> a -> f b
+(??) :: (Functor f) => f (a -> b) -> a -> f b
 f ?? x = ($ x) <$> f
 
 type InferenceParam =

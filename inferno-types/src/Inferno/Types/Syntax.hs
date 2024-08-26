@@ -513,7 +513,7 @@ instance Substitutable TCScheme where
       s' = Subst $ foldr Map.delete s as
   ftv (ForallTC as tcs t) = (ftv t `Set.union` Set.unions (Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
 
-instance Substitutable a => Substitutable [a] where
+instance (Substitutable a) => Substitutable [a] where
   apply = map . apply
   ftv = foldr (Set.union . ftv) Set.empty
 
@@ -688,7 +688,7 @@ tListFromList = \case
 data IStr (f :: Bool) e where
   ISEmpty :: IStr 'True e
   ISStr :: Text -> IStr 'True e -> IStr 'False e
-  ISExpr :: Typeable f => e -> IStr f e -> IStr 'True e
+  ISExpr :: (Typeable f) => e -> IStr f e -> IStr 'True e
 
 instance (Typeable f, Data e) => Data (IStr f e) where
   gfoldl _ z ISEmpty = z ISEmpty
@@ -722,7 +722,7 @@ con_ISExpr = mkConstr ty_IStr "ISExpr" [] Data.Prefix
 ty_IStr :: Data.DataType
 ty_IStr = mkDataType "Inferno.Syntax.IStr" [con_ISEmpty, con_ISStr, con_ISExpr]
 
-deriving instance Show e => Show (IStr f e)
+deriving instance (Show e) => Show (IStr f e)
 
 deriving instance Functor (IStr f)
 
@@ -737,7 +737,7 @@ instance Traversable (IStr f) where
 
 data SomeIStr e = forall f. (Typeable f) => SomeIStr (IStr f e)
 
-instance Data e => Data (SomeIStr e) where
+instance (Data e) => Data (SomeIStr e) where
   gfoldl k z (SomeIStr xs) = z SomeIStr `k` xs
 
   gunfold _ _ _ =
@@ -759,9 +759,9 @@ con_SomeIStr = mkConstr ty_SomeIStr "SomeIStr" [] Data.Prefix
 ty_SomeIStr :: Data.DataType
 ty_SomeIStr = mkDataType "Inferno.Syntax.SomeIStr" [con_SomeIStr]
 
-deriving instance Show e => Show (SomeIStr e)
+deriving instance (Show e) => Show (SomeIStr e)
 
-instance Eq e => Eq (SomeIStr e) where
+instance (Eq e) => Eq (SomeIStr e) where
   (SomeIStr ISEmpty) == (SomeIStr ISEmpty) = True
   (SomeIStr (ISStr s1 xs)) == (SomeIStr (ISStr s2 ys)) =
     s1 == s2 && SomeIStr xs == SomeIStr ys
@@ -769,7 +769,7 @@ instance Eq e => Eq (SomeIStr e) where
     e1 == e2 && SomeIStr xs == SomeIStr ys
   _ == _ = False
 
-instance Ord e => Ord (SomeIStr e) where
+instance (Ord e) => Ord (SomeIStr e) where
   compare (SomeIStr ISEmpty) (SomeIStr ISEmpty) = EQ
   compare (SomeIStr ISEmpty) _ = LT
   compare _ (SomeIStr ISEmpty) = GT
@@ -802,10 +802,10 @@ fromEitherList = \case
   Right e : xs -> case fromEitherList xs of
     SomeIStr rest -> SomeIStr $ ISExpr e rest
 
-instance FromJSON e => FromJSON (SomeIStr e) where
+instance (FromJSON e) => FromJSON (SomeIStr e) where
   parseJSON = fmap fromEitherList . parseJSON
 
-instance ToJSON e => ToJSON (SomeIStr e) where
+instance (ToJSON e) => ToJSON (SomeIStr e) where
   toJSON = toJSON . toEitherList
 
 instance Traversable SomeIStr where
@@ -1407,7 +1407,7 @@ instance Pretty (Import a) where
     ICommentAfter e c -> pretty e <+> pretty c
     ICommentBelow e c -> pretty e <> line <> pretty c
 
-prettyContainer :: BlockUtils f => (t -> Doc ann1) -> (t -> f pos) -> Doc ann1 -> [t] -> (Doc ann1, Doc ann2)
+prettyContainer :: (BlockUtils f) => (t -> Doc ann1) -> (t -> f pos) -> Doc ann1 -> [t] -> (Doc ann1, Doc ann2)
 prettyContainer prettyElem trailingElem sepr =
   -- TODO endBracket?
   prettyElems True
@@ -1449,15 +1449,15 @@ instance Pretty (Pat hash a) where
             pretty f
               <+> "="
               <+> align (pretty e)
-                <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
+              <> (if hasTrailingComment e then hardline <> "}" else flatAlt " }" "}")
           (Ident f, e, _) : es ->
             (if not firstElement && hasLeadingComment e then line else mempty)
               <> pretty f
               <+> "="
               <+> align (pretty e)
-                <> (if hasTrailingComment e then hardline else line')
-                <> "; "
-                <> prettyRecord False es
+              <> (if hasTrailingComment e then hardline else line')
+              <> "; "
+              <> prettyRecord False es
     POne _ e -> "Some" <+> align (pretty e)
     PEmpty _ -> "None"
     PCommentAbove c e -> pretty c <> hardline <> pretty e
@@ -1581,26 +1581,26 @@ prettyPrec isBracketed prec expr =
           <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
           <+> (if hasLeadingComment e2 then line else mempty)
-            <> prettyOpAux (n + 1) e2
+          <> prettyOpAux (n + 1) e2
     Op e1 _ _ (n, LeftFix) ns (Ident op) e2 ->
       bracketWhen e2 (prec > n) $
         prettyOpAux n e1
           <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
           <+> (if hasLeadingComment e2 then line else mempty)
-            <> prettyOpAux (n + 1) e2
+          <> prettyOpAux (n + 1) e2
     Op e1 _ _ (n, RightFix) ns (Ident op) e2 ->
       bracketWhen e2 (prec > n) $
         prettyOpAux (n + 1) e1
           <> (if hasTrailingComment e1 then hardline else mempty)
           <+> prettyOp ns op
           <+> (if hasLeadingComment e2 then line else mempty)
-            <> prettyOpAux n e2
+          <> prettyOpAux n e2
     PreOp _ _ n ns (Ident op) e ->
       bracketWhen e (prec > n) $
         prettyOp ns op
           <+> (if hasLeadingComment e then line else mempty)
-            <> prettyOpAux (n + 1) e
+          <> prettyOpAux (n + 1) e
     Tuple _ TNil _ -> "()"
     Tuple _ xs _ ->
       group $ flatAlt "( " "(" <> xsPretty <> lastLine <> ")"
@@ -1743,7 +1743,7 @@ sigVarToExpr modNm = \case
 type OpsTable = IntMap.IntMap [(Fixity, Scoped ModuleName, Text)]
 
 class Dependencies f hash where
-  getDependencies :: Ord hash => f -> Set.Set hash
+  getDependencies :: (Ord hash) => f -> Set.Set hash
 
 instance Dependencies (Pat hash pos) hash where
   getDependencies = cata $ \case

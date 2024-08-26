@@ -24,7 +24,7 @@ location' = aux <$> location
 liftText :: Text -> Q Exp
 liftText txt = AppE (VarE 'Text.pack) <$> lift (Text.unpack txt)
 
-mkParseErrorStr :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> String
+mkParseErrorStr :: (ShowErrorComponent e) => (ParseError Text e, SourcePos) -> String
 mkParseErrorStr (err, SourcePos {..}) =
   "Error at line "
     <> show (unPos sourceLine)

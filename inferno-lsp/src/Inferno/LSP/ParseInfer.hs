@@ -83,7 +83,7 @@ warnDiagnostic s_line s_col e_line e_col source message =
       _relatedInformation = Nothing
     }
 
-parseErrorDiagnostic :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> Diagnostic
+parseErrorDiagnostic :: (ShowErrorComponent e) => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, SourcePos _ l c) =
   errorDiagnostic
     (unPos l)
@@ -707,6 +707,6 @@ getTypeMetadataText TypeMetadata {docs = tcsDocs, ty = ForallTC _ _ (ImplType _ 
             <> "enum"
             <+> pretty nm
             <+> align (sep $ "=" : punctuate' "|" (map (("#" <>) . pretty . unIdent) $ Set.toList cs))
-              <> hardline
-              <> "~~~"
+            <> hardline
+            <> "~~~"
       _ -> Just $ pretty (fromMaybe "" tcsDocs)
