@@ -15,10 +15,6 @@
     }
   ];
 
-  nixpkgs.overlays = [
-    (import ../../../overlays/nvidia/470-161.nix)
-  ];
-
   hardware.cuda = {
     enable = true;
     package = pkgs.linuxPackages.nvidia_x11;

@@ -2,7 +2,7 @@
 , inputs
 , system ? "x86_64-linux"
 , ...
-}:
+}@args:
 
 let
   inherit (inputs) nixos-generators;
@@ -10,17 +10,22 @@ let
   mkImage =
     { format # A `nixos-generators`-compatible image format
     , modules ? [ ] # Options for the deployment or other NixOS modules
+    , overlays ? [ ] #
     }:
     nixos-generators.nixosGenerate {
-      inherit pkgs format system modules;
+      inherit format system modules;
+      pkgs = args.pkgs.extend (
+        pkgs.lib.composeManyExtensions overlays
+      );
     };
 
   mkServerImage =
     { format
     , modules
+    , overlays ? [ ]
     }:
     mkImage {
-      inherit format;
+      inherit format overlays;
       modules = modules ++ [
         ./configuration.nix
         inputs.image-config.nixosModules.default
@@ -34,6 +39,9 @@ in
       # Big GPU EC2
       standard = mkServerImage {
         format = "amazon";
+        overlays = [
+          (import ../../overlays/nvidia/535-xx.nix)
+        ];
         modules = [
           {
             imports = [ ./common/gpu.nix ];
@@ -46,6 +54,9 @@ in
       # Smaller size (GPU) option for building locally, etc...
       small = mkServerImage {
         format = "amazon";
+        overlays = [
+          (import ../../overlays/nvidia/535-xx.nix)
+        ];
         modules = [
           {
             imports = [ ./common/gpu.nix ];

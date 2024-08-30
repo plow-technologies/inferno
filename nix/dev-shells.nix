@@ -50,7 +50,7 @@
             pkgs.mkShell {
               packages = [
                 (
-                  self.legacyPackages.${system}.stable.python3.withPackages (
+                  pkgs.python3.withPackages (
                     ps: with ps; [
                       pytorch-bin
                       torchvision-bin

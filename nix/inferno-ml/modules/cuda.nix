@@ -18,14 +18,12 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    nixpkgs.config.allowUnfree = true;
-
     # NOTE: This is needed even though we don't have a graphical interface!
     services.xserver.videoDrivers = [ "nvidia" ];
 
     environment = {
       sessionVariables.LD_LIBRARY_PATH = "/run/open-gl-driver/lib";
-      systemPackages = [ pkgs.cudaPackages_11_3.cudatoolkit ];
+      systemPackages = [ pkgs.cudaPackages_12_2.cudatoolkit ];
     };
 
     hardware = {
@@ -33,7 +31,7 @@ in
         inherit (cfg) package;
         nvidiaSettings = false;
       };
-      opengl = {
+      graphics = {
         enable = true;
         extraPackages = [ cfg.package ];
       };

@@ -36,10 +36,9 @@ let
               # These should always be the same as `torch`
               c10 = torch;
               torch_cpu = torch;
+              torch_cuda = torch;
               tokenizers_haskell = pkgs.tokenizersPackages.tokenizers-haskell;
               pkgconfig = pkgs.pkg-config;
-            } // lib.optionalAttrs cudaSupport {
-              torch_cuda = torch;
             }
           )
       );

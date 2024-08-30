@@ -15,7 +15,6 @@
     {
       legacyPackages = pkgs
         // inferno.versions.${defaultCompiler}
-        // { stable = inputs.nixpkgs.legacyPackages.${system}; }
         // {
         # Putting these in `legacyPackages` rather than `packages` for
         # better namespacing (i.e. everything can be under an `inferno-ml-server`

@@ -136,6 +136,7 @@
             # the `haskell.nix` project, for different GHC versions, with or
             # without certain features (e.g. profiling, CUDA support, etc...)
             versions = {
+              "${defaultCompiler}" = infernoFor { };
               "${defaultCompiler}-prof" =
                 infernoFor {
                   profiling = true;
@@ -144,19 +145,7 @@
               "${defaultCompiler}-cuda" = infernoFor {
                 torchConfig.cudaSupport = true;
               };
-
-            } // builtins.listToAttrs
-              (
-                # Just one default compiler version now
-                lib.lists.forEach ([ defaultCompiler ])
-                  (
-                    compiler: lib.attrsets.nameValuePair
-                      compiler
-                      # TODO Do we want to enable any `crossPlatforms` here?
-                      (infernoFor { inherit compiler; })
-                  )
-              );
-
+            };
           };
 
         in
@@ -183,8 +172,7 @@
               vscode-inferno-lsp-server;
           };
 
-          # NOTE
-          # This will generate a formatting check and can be reused in the
+          # NOTE This will generate a formatting check and can be reused in the
           # `formatter` output above. We can also use the `programs` attribute
           # to easily get all of the formatters in one place (e.g. in the
           # `devShells`)
