@@ -23,7 +23,7 @@ in
 
     environment = {
       sessionVariables.LD_LIBRARY_PATH = "/run/open-gl-driver/lib";
-      systemPackages = [ pkgs.cudaPackages_12_2.cudatoolkit ];
+      systemPackages = [ pkgs.cudaPackages_11_7.cudatoolkit ];
     };
 
     hardware = {

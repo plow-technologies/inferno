@@ -40,7 +40,7 @@ in
       standard = mkServerImage {
         format = "amazon";
         overlays = [
-          (import ../../overlays/nvidia/535-xx.nix)
+          (import ../../overlays/nvidia/driver.nix)
         ];
         modules = [
           {
@@ -55,7 +55,7 @@ in
       small = mkServerImage {
         format = "amazon";
         overlays = [
-          (import ../../overlays/nvidia/535-xx.nix)
+          (import ../../overlays/nvidia/driver.nix)
         ];
         modules = [
           {
