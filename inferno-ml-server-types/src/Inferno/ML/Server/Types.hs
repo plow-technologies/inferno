@@ -272,56 +272,41 @@ instance
 -- versions, e.g. model name and permissions. A second table, 'ModelVersion',
 -- contains the specific versions of each model (and the actual model contents),
 -- along with other metadata that may change between versions
-data Model uid gid = Model
-  { id :: Maybe (Id (Model uid gid)),
+data Model gid = Model
+  { id :: Maybe (Id (Model gid)),
     name :: Text,
-    -- | Permissions for reading or updating the model, keyed by the group ID
-    -- type
-    --
-    -- NOTE: This is stored as a @jsonb@ rather than as @hstore@. It could
-    -- currently be stored as an @hstore@, but later we might want to
-    -- use a more complex type that we could not easily convert to\/from
-    -- text (which is required to use @hstore@). So using @jsonb@ allows
-    -- for greater potential flexibility
-    permissions :: Map gid ModelPermissions,
+    -- | The group that owns this model
+    gid :: gid,
     -- | The time that this model was \"deleted\", if any. For active models,
     -- this will be @Nothing@
     terminated :: Maybe UTCTime
   }
   deriving stock (Show, Eq, Generic)
 
-instance NFData (Model uid gid) where
+instance NFData (Model gid) where
   rnf = rwhnf
 
 instance
   ( Typeable gid,
-    FromField uid,
     FromField gid,
-    FromJSONKey gid,
     Ord gid
   ) =>
-  FromRow (Model uid gid)
+  FromRow (Model gid)
   where
   -- NOTE: Order of fields must align exactly with DB schema
   fromRow =
     Model
       <$> field
       <*> field
-      <*> fmap getAeson field
+      <*> field
       <*> field
 
-instance
-  ( ToField uid,
-    ToField gid,
-    ToJSONKey gid
-  ) =>
-  ToRow (Model uid gid)
-  where
+instance ToField gid => ToRow (Model gid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow m =
     [ toField Default,
       m ^. the @"name" & toField,
-      m ^. the @"permissions" & Aeson & toField,
+      m ^. the @"gid" & toField,
       -- The `ToRow` instance is only for new rows, so we don't want
       -- to set the `terminated` field to anything by default
       --
@@ -332,18 +317,17 @@ instance
 
 {- ORMOLU_DISABLE -}
 instance
-  ( FromJSON uid,
-    FromJSONKey gid,
+  ( FromJSON gid,
     Ord gid
   ) =>
-  FromJSON (Model uid gid)
+  FromJSON (Model gid)
   where
   parseJSON = withObject "Model" $ \o ->
     Model
       -- If a new model is being created, its ID will not be present
       <$> o .:? "id"
       <*> (ensureNotNull =<< o .: "name")
-      <*> o .: "permissions"
+      <*> o .: "gid"
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
@@ -355,28 +339,17 @@ instance
           | otherwise = pure t
 {- ORMOLU_ENABLE -}
 
-instance
-  ( ToJSON uid,
-    ToJSONKey gid
-  ) =>
-  ToJSON (Model uid gid)
-  where
+instance ToJSON gid => ToJSON (Model gid) where
   toJSON m =
     object
       [ "id" .= view (the @"id") m,
         "name" .= view (the @"name") m,
-        "permissions" .= view (the @"permissions") m,
+        "gid" .= view (the @"gid") m,
         "terminated" .= view (the @"terminated") m
       ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance
-  ( Ord gid,
-    Arbitrary gid,
-    Arbitrary uid
-  ) =>
-  Arbitrary (Model uid gid)
-  where
+instance (Ord gid, Arbitrary gid) => Arbitrary (Model gid) where
   arbitrary =
     Model
       <$> arbitrary
@@ -385,10 +358,7 @@ instance
       <*> genMUtc
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance
-  (Arbitrary uid, Arbitrary gid, Ord gid) =>
-  ToADTArbitrary (Model uid gid)
-  where
+instance (Arbitrary gid, Ord gid) => ToADTArbitrary (Model gid) where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "Model"
       . ConstructorArbitraryPair "Model"
@@ -404,11 +374,11 @@ instance
 -- content, which will normally be an 'Oid' (Postgres large object). Other
 -- model metadata is contained here as well, e.g. the model card, as this
 -- might change between versions
-data ModelVersion uid gid c = ModelVersion
-  { id :: Maybe (Id (ModelVersion uid gid c)),
+data ModelVersion gid c = ModelVersion
+  { id :: Maybe (Id (ModelVersion gid c)),
     -- | Foreign key of the @model@ table, which contains invariant metadata
     -- related to the model, i.e. name, permissions, user
-    model :: Id (Model uid gid),
+    model :: Id (Model gid),
     description :: Text,
     card :: ModelCard,
     -- | The actual contents of version of the model. Normally this will be
@@ -424,12 +394,7 @@ data ModelVersion uid gid c = ModelVersion
   -- NOTE: This may require an orphan instance for the `c` type variable
   deriving anyclass (NFData)
 
-instance
-  ( FromField uid,
-    FromField gid
-  ) =>
-  FromRow (ModelVersion uid gid Oid)
-  where
+instance FromField gid => FromRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema. This instance
   -- could just be `anyclass` derived but it's probably better to be as
   -- explicit as possible
@@ -443,12 +408,7 @@ instance
       <*> field
       <*> field
 
-instance
-  ( ToField uid,
-    ToField gid
-  ) =>
-  ToRow (ModelVersion uid gid Oid)
-  where
+instance ToField gid => ToRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow mv =
     [ toField Default,
@@ -460,12 +420,7 @@ instance
     ]
 
 {- ORMOLU_DISABLE -}
-instance
-  ( FromJSON uid,
-    FromJSON gid
-  ) =>
-  FromJSON (ModelVersion uid gid Oid)
-  where
+instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       <$> o .:? "id"
@@ -479,12 +434,7 @@ instance
       <*> o .:? "terminated"
 {- ORMOLU_ENABLE -}
 
-instance
-  ( ToJSON uid,
-    ToJSON gid
-  ) =>
-  ToJSON (ModelVersion uid gid Oid)
-  where
+instance ToJSON gid => ToJSON (ModelVersion gid Oid) where
   toJSON mv =
     object
       [ "id" .= view (the @"id") mv,
@@ -499,7 +449,7 @@ instance
       unOid (Oid (CUInt x)) = x
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
+instance Arbitrary c => Arbitrary (ModelVersion gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
@@ -511,7 +461,7 @@ instance Arbitrary c => Arbitrary (ModelVersion uid gid c) where
       <*> genMUtc
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance (Arbitrary c) => ToADTArbitrary (ModelVersion uid gid c) where
+instance Arbitrary c => ToADTArbitrary (ModelVersion gid c) where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelVersion"
       . ConstructorArbitraryPair "ModelVersion"
@@ -520,30 +470,6 @@ instance (Arbitrary c) => ToADTArbitrary (ModelVersion uid gid c) where
   toADTArbitrary _ =
     ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
       <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
-
--- | Permissions for reading or writing a model
-data ModelPermissions
-  = -- | The model can be read e.g. for inference
-    ReadModel
-  | -- | The model can be updated e.g. during training
-    WriteModel
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (NFData, ToADTArbitrary)
-
-instance FromJSON ModelPermissions where
-  parseJSON = withText "ModelPermissions" $ \case
-    "read" -> pure ReadModel
-    "write" -> pure WriteModel
-    t -> fail $ unwords ["Invalid model permissions:", Text.unpack t]
-
-instance ToJSON ModelPermissions where
-  toJSON =
-    String . \case
-      ReadModel -> "read"
-      WriteModel -> "write"
-
-instance Arbitrary ModelPermissions where
-  arbitrary = genericArbitrary
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
@@ -736,7 +662,7 @@ data InferenceParam uid gid p s = InferenceParam
     -- | The time that this parameter was \"deleted\", if any. For active
     -- parameters, this will be @Nothing@
     terminated :: Maybe UTCTime,
-    user :: uid
+    uid :: uid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToJSON)
@@ -758,7 +684,7 @@ instance
       <*> o .:? "resolution" .!= 128
       -- We shouldn't require this field
       <*> o .:? "terminated"
-      <*> o .: "user"
+      <*> o .: "uid"
 {- ORMOLU_ENABLE -}
 
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
@@ -794,7 +720,7 @@ instance
       ip ^. the @"inputs" & Aeson & toField,
       ip ^. the @"resolution" & Aeson & toField,
       toField Default,
-      ip ^. the @"user" & toField
+      ip ^. the @"uid" & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -838,7 +764,7 @@ data InferenceParamWithModels uid gid p s = InferenceParamWithModels
     models ::
       Map
         Ident
-        ( Id (ModelVersion uid gid Oid),
+        ( Id (ModelVersion gid Oid),
           -- Name of parent model
           Text
         )

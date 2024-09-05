@@ -19,11 +19,7 @@ create extension lo;
 create table if not exists models
   ( id serial primary key
   , name text not null
-    -- Represented as a map from group IDs to model permissions (read or write),
-    -- serialized to JSON. This is a bit more flexible than using an `hstore` and
-    -- might allow us to include a more complex structure in the future more
-    -- easily
-  , permissions jsonb not null
+  , gid bigint not null
     -- See note above
   , terminated timestamptz
   );
@@ -75,7 +71,7 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , "user" bigint not null
+  , uid bigint not null
   );
 
 -- Execution info for inference evaluation
