@@ -20,6 +20,9 @@ create table if not exists models
   ( id serial primary key
   , name text not null
   , gid bigint not null
+  , visibility jsonb
+    -- May be missing, if there is no model version yet
+  , updated timestamptz
     -- See note above
   , terminated timestamptz
   );

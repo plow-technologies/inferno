@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
@@ -26,7 +27,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Char (chr)
 import Data.Data (Typeable)
-import Data.Generics.Product (HasType (typed), the)
+import Data.Generics.Product (HasType (typed))
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Hashable (Hashable)
 import qualified Data.IP
@@ -73,7 +74,7 @@ import Inferno.Types.VersionControl
     byteStringToVCObjectHash,
     vcObjectHashToByteString,
   )
-import Inferno.VersionControl.Types (VCMeta, VCObject)
+import Inferno.VersionControl.Types (VCMeta, VCObject, VCObjectVisibility)
 import Lens.Micro.Platform hiding ((.=))
 import Servant
   ( Capture,
@@ -184,9 +185,9 @@ instance FromRow (BridgeInfo uid gid p s) where
 
 instance ToRow (BridgeInfo uid gid p s) where
   toRow bi =
-    [ bi ^. the @"id" & toField,
-      bi ^. the @"host" & toField,
-      bi ^. the @"port" & toField
+    [ bi.id & toField,
+      bi.host & toField,
+      bi.port & toField
     ]
 
 -- | The ID of a database entity
@@ -242,8 +243,8 @@ instance ToField VCObjectHashRow where
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
-    [ s ^. the @"hash" & VCObjectHashRow & toField,
-      s ^. the @"obj" & Aeson & toField
+    [ s.hash & VCObjectHashRow & toField,
+      s.obj & Aeson & toField
     ]
 
 instance
@@ -277,6 +278,11 @@ data Model gid = Model
     name :: Text,
     -- | The group that owns this model
     gid :: gid,
+    -- | Analogous to visibility of @inferno-vc@ scripts
+    visibility :: VCObjectVisibility,
+    -- | The last time the model was updated (i.e. a new version was created),
+    -- if any
+    updated :: Maybe UTCTime,
     -- | The time that this model was \"deleted\", if any. For active models,
     -- this will be @Nothing@
     terminated :: Maybe UTCTime
@@ -299,19 +305,23 @@ instance
       <$> field
       <*> field
       <*> field
+      <*> fmap getAeson field
+      <*> field
       <*> field
 
 instance ToField gid => ToRow (Model gid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow m =
     [ toField Default,
-      m ^. the @"name" & toField,
-      m ^. the @"gid" & toField,
-      -- The `ToRow` instance is only for new rows, so we don't want
-      -- to set the `terminated` field to anything by default
+      m.name & toField,
+      m.gid & toField,
+      m.visibility & Aeson & toField,
+      -- The `ToRow` instance is only for new rows, so we don't want to set
+      -- the `updated` and `terminated` fields to anything by default
       --
-      -- The same applies to the other `toField Default`s for different
-      -- types below
+      -- The same rationale applies to the other `toField Default`s for
+      -- different types below
+      toField Default,
       toField Default
     ]
 
@@ -328,6 +338,8 @@ instance
       <$> o .:? "id"
       <*> (ensureNotNull =<< o .: "name")
       <*> o .: "gid"
+      <*> o .: "visibility"
+      <*> o .:? "updated"
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
@@ -342,10 +354,12 @@ instance
 instance ToJSON gid => ToJSON (Model gid) where
   toJSON m =
     object
-      [ "id" .= view (the @"id") m,
-        "name" .= view (the @"name") m,
-        "gid" .= view (the @"gid") m,
-        "terminated" .= view (the @"terminated") m
+      [ "id" .= m.id,
+        "name" .= m.name,
+        "gid" .= m.gid,
+        "visibility" .= m.visibility,
+        "updated" .= m.updated,
+        "terminated" .= m.terminated
       ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -355,6 +369,8 @@ instance (Ord gid, Arbitrary gid) => Arbitrary (Model gid) where
       <$> arbitrary
       <*> arbitrary
       <*> arbitrary
+      <*> arbitrary
+      <*> genMUtc
       <*> genMUtc
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
@@ -412,10 +428,10 @@ instance ToField gid => ToRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow mv =
     [ toField Default,
-      mv ^. the @"model" & toField,
-      mv ^. the @"card" & Aeson & toField,
-      mv ^. the @"contents" & toField,
-      mv ^. the @"version" & toField,
+      mv.model & toField,
+      mv.card & Aeson & toField,
+      mv.contents & toField,
+      mv.version & toField,
       toField Default
     ]
 
@@ -437,12 +453,12 @@ instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
 instance ToJSON gid => ToJSON (ModelVersion gid Oid) where
   toJSON mv =
     object
-      [ "id" .= view (the @"id") mv,
-        "model" .= view (the @"model") mv,
-        "contents" .= view (the @"contents" . to unOid) mv,
-        "version" .= view (the @"version") mv,
-        "card" .= view (the @"card") mv,
-        "terminated" .= view (the @"terminated") mv
+      [ "id" .= mv.id,
+        "model" .= mv.model,
+        "contents" .= unOid mv.contents,
+        "version" .= mv.version,
+        "card" .= mv.card,
+        "terminated" .= mv.terminated
       ]
     where
       unOid :: Oid -> Word32
@@ -716,11 +732,11 @@ instance
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ toField Default,
-      ip ^. the @"script" & VCObjectHashRow & toField,
-      ip ^. the @"inputs" & Aeson & toField,
-      ip ^. the @"resolution" & Aeson & toField,
+      ip.script & VCObjectHashRow & toField,
+      ip.inputs & Aeson & toField,
+      ip.resolution & Aeson & toField,
       toField Default,
-      ip ^. the @"uid" & toField
+      ip.uid & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -842,12 +858,12 @@ instance FromRow (EvaluationInfo uid gid p) where
 
 instance ToRow (EvaluationInfo uid gid p) where
   toRow ei =
-    [ ei ^. the @"id" & toField,
-      ei ^. the @"param" & toField,
-      ei ^. the @"start" & toField,
-      ei ^. the @"end" & toField,
-      ei ^. the @"allocated" & toField,
-      ei ^. the @"cpu" & toField
+    [ ei.id & toField,
+      ei.param & toField,
+      ei.start & toField,
+      ei.end & toField,
+      ei.allocated & toField,
+      ei.cpu & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
