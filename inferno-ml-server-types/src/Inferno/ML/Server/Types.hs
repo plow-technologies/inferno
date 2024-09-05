@@ -564,10 +564,6 @@ data ModelDescription = ModelDescription
     summary :: Text,
     -- | How the model is intended to be used
     uses :: Text,
-    -- | Applicable limitations, risks, biases, etc...
-    risks :: Text,
-    -- | Details on training data, speed\/size of training elements, etc...
-    training :: Text,
     evaluation :: Text
   }
   deriving stock (Show, Eq, Generic)
@@ -579,8 +575,6 @@ instance FromJSON ModelDescription where
     ModelDescription
       <$> o .: "summary"
       <*> o .:? "uses" .!= mempty
-      <*> o .:? "risks" .!= mempty
-      <*> o .:? "training" .!= mempty
       <*> o .:? "evaluation" .!= mempty
 {- ORMOLU_ENABLE -}
 
@@ -590,8 +584,8 @@ instance Arbitrary ModelDescription where
 -- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
   { categories :: Vector Int,
-    datasets :: Vector Text,
-    metrics :: Vector Text,
+    datasets :: Text,
+    metrics :: Text,
     baseModel :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
