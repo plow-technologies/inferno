@@ -490,7 +490,7 @@ instance Arbitrary c => ToADTArbitrary (ModelVersion gid c) where
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
   { -- | High-level, structured overview of model details and summary
-    description :: ModelDescription,
+    summary :: ModelSummary,
     metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
@@ -500,9 +500,10 @@ data ModelCard = ModelCard
 instance Arbitrary ModelCard where
   arbitrary = genericArbitrary
 
--- | Structured description of a model
-data ModelDescription = ModelDescription
-  { -- | General summary of model, cannot be empty
+-- | Structured summary of a model
+data ModelSummary = ModelSummary
+  { -- | General summary of model (longer than top-level @description@ field
+    -- of 'ModelVersion' type)
     summary :: Text,
     -- | How the model is intended to be used
     uses :: Text,
@@ -512,15 +513,15 @@ data ModelDescription = ModelDescription
   deriving anyclass (ToJSON, NFData, ToADTArbitrary)
 
 {- ORMOLU_DISABLE -}
-instance FromJSON ModelDescription where
-  parseJSON = withObject "ModelDescription" $ \o ->
-    ModelDescription
+instance FromJSON ModelSummary where
+  parseJSON = withObject "ModelSummary" $ \o ->
+    ModelSummary
       <$> o .: "summary"
       <*> o .:? "uses" .!= mempty
       <*> o .:? "evaluation" .!= mempty
 {- ORMOLU_ENABLE -}
 
-instance Arbitrary ModelDescription where
+instance Arbitrary ModelSummary where
   arbitrary = genericArbitrary
 
 -- | Metadata for the model, inspired by Hugging Face model card format

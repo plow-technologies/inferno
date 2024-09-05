@@ -25,11 +25,14 @@ create table if not exists models
   , updated timestamptz
     -- See note above
   , terminated timestamptz
+  , unique (name, gid)
   );
 
 create table if not exists mversions
   ( id serial primary key
   , model integer references models (id)
+    -- Short, high-level model description
+  , description text not null
     -- Model card (description and metadata) serialized as JSON
   , card jsonb not null
     -- The model contents are not stored directly because it might exceed

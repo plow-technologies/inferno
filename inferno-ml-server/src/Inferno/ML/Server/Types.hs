@@ -414,9 +414,9 @@ type BridgeInfo =
 
 type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
 
-type Model = Types.Model (EntityId UId) (EntityId GId)
+type Model = Types.Model (EntityId GId)
 
-type ModelVersion = Types.ModelVersion (EntityId UId) (EntityId GId) Oid
+type ModelVersion = Types.ModelVersion (EntityId GId) Oid
 
 type InferenceScript = Types.InferenceScript ScriptMetadata (EntityId GId)
 
