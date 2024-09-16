@@ -456,6 +456,7 @@ instance ToJSON gid => ToJSON (ModelVersion gid Oid) where
     object
       [ "id" .= mv.id,
         "model" .= mv.model,
+        "description" .= mv.description,
         "contents" .= unOid mv.contents,
         "version" .= mv.version,
         "card" .= mv.card,
