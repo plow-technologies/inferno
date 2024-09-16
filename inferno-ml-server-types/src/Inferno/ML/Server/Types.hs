@@ -429,6 +429,7 @@ instance ToField gid => ToRow (ModelVersion gid Oid) where
   toRow mv =
     [ toField Default,
       mv.model & toField,
+      mv.description & toField,
       mv.card & Aeson & toField,
       mv.contents & toField,
       mv.version & toField,
