@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -17,8 +18,8 @@ module Inferno.VersionControl.Server
   )
 where
 
-import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async (link, withAsync)
+import Control.Concurrent.Thread.Delay (delay)
 import Control.Exception (Exception)
 import Control.Lens (to, (^.))
 import Control.Monad (forM, forever)
@@ -179,7 +180,7 @@ runServerConfig middleware withEnv runOp serverConfig = do
             Right _ -> pure ()
     print ("running..." :: String)
     -- Cleanup stale autosave scripts in a separate thread every hour:
-    withLinkedAsync_ (forever $ threadDelay 3600000000 >> cleanup) $
+    withLinkedAsync_ (forever $ delay 3_600_000_000 >> cleanup) $
       -- And run the server:
       runSettings (setPort port $ setHost host settingsWithTimeout) $
         ungzipRequest $
