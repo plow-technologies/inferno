@@ -68,6 +68,7 @@ library
     , hspec
     , QuickCheck
     , stm
+    , unbounded-delays
 
   default-language: Haskell2010
   default-extensions:
