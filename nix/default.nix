@@ -86,8 +86,11 @@ pkgs.haskell-nix.cabalProject {
         );
       };
     };
-    buildInputs = [ config.treefmt.build.wrapper ]
-      ++ builtins.attrValues config.treefmt.build.programs;
+    buildInputs = [
+      pkgs.postgresql
+      config.treefmt.build.wrapper
+    ]
+    ++ builtins.attrValues config.treefmt.build.programs;
     shellHook =
       let
         setpath = lib.optionalString cudaSupport

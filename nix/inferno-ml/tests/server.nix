@@ -28,55 +28,40 @@ pkgs.nixosTest {
           text =
             let
               card = builtins.toJSON {
-                description.summary = "A model";
+                summary.summary = "A model";
                 metadata = { };
               };
-              # Note that the nested list is how Aeson will decode/encode
-              # a map, which is the Haskell value for this field
-              permissions = builtins.toJSON [
-                [ "o000000000000000000000001" "read" ]
-              ];
             in
             ''
               psql -U inferno -d inferno << EOF
               INSERT INTO models
                 ( name
-                , permissions
-                , "user"
+                , gid
+                , visibility
                 )
               VALUES
                 ( 'mnist'
-                , '${permissions}'::jsonb
-                , NULL
+                , 1::bigint
+                , '"VCObjectPublic"'::jsonb
                 );
 
               \lo_import ${./models/mnist.ts.pt}
               INSERT INTO mversions
                 ( model
+                , description
                 , card
                 , contents
                 , version
                 )
                 VALUES
                 ( 1
+                , 'My first model'
                 , '${card}'::jsonb
                 , :LASTOID
                 , 'v1'
                 );
               EOF
             '';
-        }
-      )
-      (
-        pkgs.writeShellApplication {
-          name = "insert-user";
-          runtimeInputs = [ pkgs.postgresql ];
-          text = ''
-            psql -U inferno -d inferno << EOF
-            INSERT INTO "users" (id, groups)
-            VALUES (0, '{1}');
-            EOF
-          '';
         }
       )
       (
@@ -214,7 +199,6 @@ pkgs.nixosTest {
     node.succeed(
       'psql -U inferno -d inferno -f ${../migrations/v1-create-tables.sql}'
     )
-    node.succeed('insert-user')
     node.succeed('insert-mnist-model')
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
 

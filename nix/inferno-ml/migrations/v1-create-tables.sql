@@ -16,30 +16,23 @@ create extension lo;
 -- caching models, etc... If the field is not null, then the entity has been
 -- "deleted" and cannot be used any longer
 
-create table if not exists users
-  ( -- Note: this is the bson object ID represented as an integer
-    id integer primary key
-    -- Also a list of bson object IDs. This determines model access (see below)
-  , groups integer[] not null
-  );
-
 create table if not exists models
   ( id serial primary key
   , name text not null
-    -- Represented as a map from group IDs to model permissions (read or write),
-    -- serialized to JSON. This is a bit more flexible than using an `hstore` and
-    -- might allow us to include a more complex structure in the future more
-    -- easily
-  , permissions jsonb not null
-  , "user" integer references users (id)
+  , gid bigint not null
+  , visibility jsonb
+    -- May be missing, if there is no model version yet
+  , updated timestamptz
     -- See note above
   , terminated timestamptz
-  , unique (name, "user")
+  , unique (name, gid)
   );
 
 create table if not exists mversions
   ( id serial primary key
   , model integer references models (id)
+    -- Short, high-level model description
+  , description text not null
     -- Model card (description and metadata) serialized as JSON
   , card jsonb not null
     -- The model contents are not stored directly because it might exceed
@@ -84,7 +77,7 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , "user" integer references users (id)
+  , uid bigint not null
   );
 
 -- Execution info for inference evaluation
