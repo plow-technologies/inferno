@@ -336,19 +336,13 @@ instance
     Model
       -- If a new model is being created, its ID will not be present
       <$> o .:? "id"
-      <*> (ensureNotNull =<< o .: "name")
+      <*> o .: "name"
       <*> o .: "gid"
       <*> o .: "visibility"
       <*> o .:? "updated"
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
-    where
-      ensureNotNull :: Text -> Parser Text
-      ensureNotNull
-        t
-          | Text.null t = fail "Field cannot be empty"
-          | otherwise = pure t
 {- ORMOLU_ENABLE -}
 
 instance ToJSON gid => ToJSON (Model gid) where
