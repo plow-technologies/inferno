@@ -161,7 +161,7 @@ instance FromJSON (EntityId a) where
       fmap entityIdFromInteger
         . either fail (pure . fst)
         . Text.Read.hexadecimal
-          -- Drop leading 'o'
+        -- Drop leading 'o'
         . Text.drop 1
 
 instance ToJSON (EntityId a) where
@@ -173,7 +173,7 @@ instance Typeable a => FromField (EntityId a) where
       maybe
         (returnError ConversionFailed f mempty)
         (pure . entityIdFromInteger . round)
-          -- `numeric` column
+        -- `numeric` column
         . readMaybe @Scientific
         . ByteString.Char8.unpack
 
