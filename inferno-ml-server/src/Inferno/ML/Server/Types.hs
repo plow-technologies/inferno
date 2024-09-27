@@ -48,6 +48,7 @@ import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Int (Int64)
 import Data.Map.Strict (Map)
+import Data.Scientific (Scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
@@ -107,7 +108,6 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
-import Data.Scientific (Scientific)
 
 type RemoteM = ReaderT Env IO
 
