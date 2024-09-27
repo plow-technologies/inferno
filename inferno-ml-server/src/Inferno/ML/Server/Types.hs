@@ -107,6 +107,7 @@ import UnliftIO (Async)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import Data.Scientific (Scientific)
 
 type RemoteM = ReaderT Env IO
 
@@ -160,6 +161,7 @@ instance FromJSON (EntityId a) where
       fmap entityIdFromInteger
         . either fail (pure . fst)
         . Text.Read.hexadecimal
+          -- Drop leading 'o'
         . Text.drop 1
 
 instance ToJSON (EntityId a) where
@@ -168,13 +170,16 @@ instance ToJSON (EntityId a) where
 instance Typeable a => FromField (EntityId a) where
   fromField f =
     maybe (returnError UnexpectedNull f mempty) $
-      maybe (returnError ConversionFailed f mempty) (pure . entityIdFromInteger)
-        . readMaybe @Integer
+      maybe
+        (returnError ConversionFailed f mempty)
+        (pure . entityIdFromInteger . round @_ @Integer)
+          -- `numeric` column
+        . readMaybe @Scientific
         . ByteString.Char8.unpack
 
 instance ToField (EntityId a) where
   toField o = toField $ case readHex @Integer (entityIdToHex o) of
-    (n, _) : _ -> n
+    (n, _) : _ -> fromInteger @Scientific n
     _ -> error "EntityId contained invalid fields"
 
 entityIdFromInteger :: Integer -> EntityId a
