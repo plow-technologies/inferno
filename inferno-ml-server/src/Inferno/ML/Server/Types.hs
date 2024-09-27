@@ -172,7 +172,7 @@ instance Typeable a => FromField (EntityId a) where
     maybe (returnError UnexpectedNull f mempty) $
       maybe
         (returnError ConversionFailed f mempty)
-        (pure . entityIdFromInteger . round @_ @Integer)
+        (pure . entityIdFromInteger . round)
           -- `numeric` column
         . readMaybe @Scientific
         . ByteString.Char8.unpack
