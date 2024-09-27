@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2023.9.27
+* Change entity DB representation to `numeric`
+
 ## 2023.7.2
 * Use new `loadModel` primitive and pass model names to script evaluator
 

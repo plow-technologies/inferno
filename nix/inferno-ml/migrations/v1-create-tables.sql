@@ -19,7 +19,7 @@ create extension lo;
 create table if not exists models
   ( id serial primary key
   , name text not null
-  , gid bigint not null
+  , gid numeric not null
   , visibility jsonb
     -- May be missing, if there is no model version yet
   , updated timestamptz
@@ -77,7 +77,7 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , uid bigint not null
+  , uid numeric not null
   );
 
 -- Execution info for inference evaluation
