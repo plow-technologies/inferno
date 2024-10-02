@@ -18,7 +18,7 @@ import Servant.Client.Streaming (ClientM, client)
 
 -- | Get the status of the server. @Nothing@ indicates that an inference job
 -- is being evaluated. @Just ()@ means the server is idle
-statusC :: ClientM (Maybe ())
+statusC :: ClientM ServerStatus
 
 -- | Run an inference parameter
 inferenceC ::

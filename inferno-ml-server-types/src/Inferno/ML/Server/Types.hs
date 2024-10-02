@@ -122,13 +122,8 @@ import Web.HttpApiData
 
 -- API type for `inferno-ml-server`
 type InfernoMlServerAPI uid gid p s t =
-  -- Check if the server is up and if any job is currently running:
-  --
-  --  * `Nothing` -> The server is evaluating a script
-  --  * `Just ()` -> The server is not doing anything and can be killed
-  --
-  -- This can be implemented using an `MVar ()`
-  "status" :> Get '[JSON] (Maybe ())
+  -- Check if the server is up and if any job is currently running
+  "status" :> Get '[JSON] ServerStatus
     -- Evaluate an inference script
     :<|> "inference"
       :> Capture "id" (Id (InferenceParam uid gid p s))
@@ -166,6 +161,12 @@ type BridgeAPI p t =
 -- @(1, [ (100, 5.0) .. (500, 2500.0) ]), (1, [ (501, 2501.0) .. (10000, 5000.0) ])@.
 -- This means the same output may appear more than once in the stream
 type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
+
+data ServerStatus
+  = Idle
+  | EvaluatingParam
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo uid gid p s = BridgeInfo

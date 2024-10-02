@@ -147,7 +147,7 @@ runInferenceParam ipid mres uuid =
       -- need to be updated to use an absolute path to a versioned model,
       -- e.g. `loadModel "~/inferno/.cache/..."`)
       withCurrentDirectory (view #path cache) $ do
-        logInfo $ EvaluatingScript ipid
+        logInfo $ EvaluatingParam ipid
         traverse_ linkVersionedModel
           =<< getAndCacheModels cache (view #models param)
         runEval interpreter param t obj

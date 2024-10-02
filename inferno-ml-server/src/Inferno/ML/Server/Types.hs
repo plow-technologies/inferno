@@ -375,7 +375,7 @@ data RemoteTrace
 data TraceInfo
   = StartingServer
   | RunningInference (Id InferenceParam) Int
-  | EvaluatingScript (Id InferenceParam)
+  | EvaluatingParam (Id InferenceParam)
   | CopyingModel (Id ModelVersion)
   | OtherInfo Text
   deriving stock (Show, Eq, Generic)
