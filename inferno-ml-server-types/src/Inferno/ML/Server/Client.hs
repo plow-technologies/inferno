@@ -1,27 +1,33 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
 
 module Inferno.ML.Server.Client
   ( statusC,
     inferenceC,
+    inferenceTestC,
     cancelC,
   )
 where
 
+import Data.Aeson (ToJSON)
 import Data.Int (Int64)
 import Data.Proxy (Proxy (Proxy))
 import Data.UUID (UUID)
 import Inferno.ML.Server.Types
-import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 
 -- | Get the status of the server. @Nothing@ indicates that an inference job
 -- is being evaluated. @Just ()@ means the server is idle
 statusC :: ClientM ServerStatus
+statusC = client $ Proxy @StatusAPI
+
+-- | Cancel the existing inference job, if it exists
+cancelC :: ClientM ()
+cancelC = client $ Proxy @CancelAPI
 
 -- | Run an inference parameter
 inferenceC ::
+  forall uid gid p s.
   -- | SQL identifier of the inference parameter to be run
   Id (InferenceParam uid gid p s) ->
   -- | Optional resolution for scripts that use e.g. @valueAt@; defaults to
@@ -38,11 +44,16 @@ inferenceC ::
   -- (not defined in this repository) to verify this before directing
   -- the writes to their final destination
   ClientM (WriteStream IO)
+inferenceC = client $ Proxy @(InferenceAPI uid gid p s)
 
--- | Cancel the existing inference job, if it exists
-cancelC :: ClientM ()
-statusC :<|> inferenceC :<|> cancelC =
-  client api
-
-api :: Proxy (InfernoMlServerAPI uid gid p s t)
-api = Proxy
+-- | Run an inference parameter
+inferenceTestC ::
+  forall uid gid p s.
+  ToJSON p =>
+  -- | SQL identifier of the inference parameter to be run
+  Id (InferenceParam uid gid p s) ->
+  Maybe Int64 ->
+  UUID ->
+  EvaluationEnv gid p ->
+  ClientM (WriteStream IO)
+inferenceTestC = client $ Proxy @(InferenceTestAPI uid gid p s)

@@ -479,7 +479,6 @@ type InfernoMlServerAPI =
     (EntityId GId)
     PID
     VCObjectHash
-    EpochTime
 
 -- Orphans
 

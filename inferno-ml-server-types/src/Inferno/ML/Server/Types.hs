@@ -84,6 +84,7 @@ import Servant
     Put,
     QueryParam,
     QueryParam',
+    ReqBody,
     Required,
     StreamPost,
     (:<|>),
@@ -121,16 +122,34 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI uid gid p s t =
+type InfernoMlServerAPI uid gid p s =
+  StatusAPI
+    -- Evaluate an inference script
+    :<|> InferenceAPI uid gid p s
+    :<|> InferenceTestAPI uid gid p s
+    :<|> CancelAPI
+
+type StatusAPI =
   -- Check if the server is up and if any job is currently running
   "status" :> Get '[JSON] ServerStatus
-    -- Evaluate an inference script
-    :<|> "inference"
-      :> Capture "id" (Id (InferenceParam uid gid p s))
-      :> QueryParam "res" Int64
-      :> QueryParam' '[Required] "uuid" UUID
-      :> StreamPost NewlineFraming JSON (WriteStream IO)
-    :<|> "inference" :> "cancel" :> Put '[JSON] ()
+
+type CancelAPI = "inference" :> "cancel" :> Put '[JSON] ()
+
+type InferenceAPI uid gid p s =
+  "inference"
+    :> Capture "id" (Id (InferenceParam uid gid p s))
+    :> QueryParam "res" Int64
+    :> QueryParam' '[Required] "uuid" UUID
+    :> StreamPost NewlineFraming JSON (WriteStream IO)
+
+type InferenceTestAPI uid gid p s =
+  -- Evaluate an inference script
+  "inference"
+    :> Capture "id" (Id (InferenceParam uid gid p s))
+    :> QueryParam "res" Int64
+    :> QueryParam' '[Required] "uuid" UUID
+    :> ReqBody '[JSON] (EvaluationEnv gid p)
+    :> StreamPost NewlineFraming JSON (WriteStream IO)
 
 -- A bridge to get or write data for use with Inferno scripts. This is implemented
 -- by a bridge server connected to a data source, not by `inferno-ml-server`
@@ -164,7 +183,7 @@ type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
 data ServerStatus
   = Idle
-  | EvaluatingParam
+  | EvaluatingScript
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
@@ -1037,6 +1056,22 @@ instance Ord a => Ord (SingleOrMany a) where
       (Many xs, Many ys) -> compare xs ys
       (Single _, Many _) -> LT
       (Many _, Single _) -> GT
+
+-- | An environment that can be used to override the @inferno-ml-server@ script
+-- evaluator. This allows for more interactive testing
+data EvaluationEnv gid p = EvaluationEnv
+  { script :: VCObjectHash,
+    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    models ::
+      Map
+        Ident
+        ( Id (ModelVersion gid Oid),
+          -- Name of parent model
+          Text
+        )
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show

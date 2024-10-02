@@ -124,7 +124,7 @@ api :: Proxy InfernoMlServerAPI
 api = Proxy
 
 server :: ServerT InfernoMlServerAPI RemoteM
-server = getStatus :<|> runInferenceParam :<|> cancelInference
+server = getStatus :<|> runInferenceParam :<|> undefined :<|> cancelInference
   where
     -- If the server is currently evaluating a script, the var will be taken,
     -- i.e. evaluate to `Nothing`, otherwise `Just ()`
