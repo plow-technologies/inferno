@@ -76,6 +76,7 @@ import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
   ( BridgeInfo,
+    EvaluationEnv,
     EvaluationInfo,
     InferenceParam,
     InferenceParamWithModels,
@@ -479,6 +480,8 @@ type InfernoMlServerAPI =
     (EntityId GId)
     PID
     VCObjectHash
+
+type EvaluationEnv = Types.EvaluationEnv (EntityId GId) PID
 
 -- Orphans
 

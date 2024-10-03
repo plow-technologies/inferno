@@ -1,13 +1,14 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LexicalNegation #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
+    testInferenceParam,
     getAndCacheModels,
     linkVersionedModel,
   )
@@ -43,6 +44,7 @@ import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Newtypes (getAeson)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime)
+import GHC.Generics (Generic)
 import Inferno.Core
   ( Interpreter (Interpreter, evalExpr, mkEnvFromClosure),
   )
@@ -110,6 +112,41 @@ runInferenceParam ::
   UUID ->
   RemoteM (WriteStream IO)
 runInferenceParam ipid mres uuid =
+  runInferenceParamWithEnv ipid uuid
+    =<< mkScriptEnv
+    =<< getParameterWithModels ipid
+  where
+    mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
+    mkScriptEnv pwm =
+      ScriptEnv param (view #models pwm) (view #inputs param)
+        <$> getVcObject script
+        <*> pure script
+        <*> pure mres
+        <*> liftIO nowCTime
+      where
+        param :: InferenceParam
+        param = pwm ^. #param
+
+        script :: VCObjectHash
+        script = param ^. #script
+
+        nowCTime :: IO CTime
+        nowCTime = fromIntegral @Int . round <$> getPOSIXTime
+
+testInferenceParam ::
+  Id InferenceParam ->
+  Maybe Int64 ->
+  UUID ->
+  EvaluationEnv ->
+  RemoteM (WriteStream IO)
+testInferenceParam = undefined
+
+runInferenceParamWithEnv ::
+  Id InferenceParam ->
+  UUID ->
+  ScriptEnv ->
+  RemoteM (WriteStream IO)
+runInferenceParamWithEnv ipid uuid senv =
   withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
     maybe (throwM (ScriptTimeout t)) pure
@@ -139,9 +176,7 @@ runInferenceParam ipid mres uuid =
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
       param <- getParameterWithModels ipid
-      obj <- param ^. #param . #script & getVcObject
       cache <- view $ #config . #cache
-      t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
       -- can find the models using relative paths (otherwise the AST would
       -- need to be updated to use an absolute path to a versioned model,
@@ -150,16 +185,13 @@ runInferenceParam ipid mres uuid =
         logInfo $ EvaluatingParam ipid
         traverse_ linkVersionedModel
           =<< getAndCacheModels cache (view #models param)
-        runEval interpreter param t obj
+        runEval interpreter
       where
         runEval ::
           Interpreter RemoteM BridgeMlValue ->
-          InferenceParamWithModels ->
-          CTime ->
-          VCMeta VCObject ->
           RemoteM (WriteStream IO)
-        runEval Interpreter {evalExpr, mkEnvFromClosure} param t vcm =
-          vcm ^. #obj & \case
+        runEval Interpreter {evalExpr, mkEnvFromClosure} =
+          senv ^. #obj . #obj & \case
             VCFunction {} -> do
               let -- Note that this both includes inputs (i.e. readable)
                   -- and outputs (i.e. writable, or readable/writable).
@@ -171,7 +203,7 @@ runInferenceParam ipid mres uuid =
                   -- and commits the output write object
                   pids :: [SingleOrMany PID]
                   pids =
-                    param ^.. #param . #inputs . to Map.toAscList . each . _2 . _1
+                    senv ^.. #inputs . to Map.toAscList . each . _2 . _1
 
                   -- These are all of the models selected for use with the
                   -- script. The ID of the actual model version is included,
@@ -190,7 +222,7 @@ runInferenceParam ipid mres uuid =
                   -- in the model cache (see `getAndCacheModels` below)
                   models :: [(Id ModelVersion, Text)]
                   models =
-                    param ^.. #models . to Map.toAscList . each . _2
+                    senv ^.. #models . to Map.toAscList . each . _2
 
                   mkIdentWith :: Text -> Int -> ExtIdent
                   mkIdentWith x = ExtIdent . Right . (x <>) . tshow
@@ -231,8 +263,8 @@ runInferenceParam ipid mres uuid =
 
                   closure :: Map VCObjectHash VCObject
                   closure =
-                    param ^. #param . #script
-                      & ( `Map.singleton` view #obj vcm
+                    senv ^. #script
+                      & ( `Map.singleton` view (#obj . #obj) senv
                         )
 
                   expr :: Expr (Maybe VCObjectHash) ()
@@ -241,7 +273,7 @@ runInferenceParam ipid mres uuid =
                       Var () mhash LocalScope dummy
                     where
                       mhash :: Maybe VCObjectHash
-                      mhash = param ^? #param . #script
+                      mhash = senv ^. #script & Just
 
                       -- See note above about inputs/outputs
                       args :: [Expr (Maybe a) ()]
@@ -287,15 +319,15 @@ runInferenceParam ipid mres uuid =
                 -- use that. Otherwise, use the resolution stored in the
                 -- parameter
                 resolution :: InverseResolution
-                resolution = mres ^. non res & toResolution
+                resolution = senv ^. #mres . non res & toResolution
                   where
                     res :: Int64
-                    res = param ^. #param . #resolution & fromIntegral
+                    res = senv ^. #param . #resolution & fromIntegral
 
                 implEnv :: Map ExtIdent (Value BridgeMlValue m)
                 implEnv =
                   Map.fromList
-                    [ (ExtIdent $ Right "now", VEpochTime t),
+                    [ (ExtIdent $ Right "now", VEpochTime $ view #ctime senv),
                       ( ExtIdent $ Right "resolution",
                         VCustom . VExtended $ VResolution resolution
                       )
@@ -305,7 +337,7 @@ runInferenceParam ipid mres uuid =
                 . InvalidScript
                 $ Text.unwords
                   [ "Script identified by VC hash",
-                    param ^. #param . #script & tshow,
+                    senv ^. #script & tshow,
                     "is not a function"
                   ]
 
@@ -569,3 +601,17 @@ modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
     compareAccessTime f1 f2 =
       getAccessTime f1 >>= \t1 ->
         compare t1 <$> getAccessTime f2
+
+-- Everything needed to evaluate an ML script. For the normal endpoint, all of
+-- these will be derived directly from the param. For the interactive test
+-- endpoint, these will be overridden
+data ScriptEnv = ScriptEnv
+  { param :: InferenceParam,
+    models :: Map Ident (Id ModelVersion, Text),
+    inputs :: Map Ident (SingleOrMany PID, ScriptInputType),
+    obj :: VCMeta VCObject,
+    script :: VCObjectHash,
+    mres :: Maybe Int64,
+    ctime :: CTime
+  }
+  deriving stock (Generic)
