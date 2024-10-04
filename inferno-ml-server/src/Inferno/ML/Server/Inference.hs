@@ -283,9 +283,8 @@ runInferenceParamWithEnv ipid uuid senv =
 
                   closure :: Map VCObjectHash VCObject
                   closure =
-                    senv ^. #script
-                      & ( `Map.singleton` view (#obj . #obj) senv
-                        )
+                    Map.singleton senv.script $
+                      view (#obj . #obj) senv
 
                   expr :: Expr (Maybe VCObjectHash) ()
                   expr =
@@ -354,7 +353,7 @@ runInferenceParamWithEnv ipid uuid senv =
                 . InvalidScript
                 $ Text.unwords
                   [ "Script identified by VC hash",
-                    senv ^. #script & tshow,
+                    tshow senv.script,
                     "is not a function"
                   ]
 
@@ -444,7 +443,7 @@ getVcObject vch =
   -- It's easier to `SELECT *` and then get the `obj` field, instead of
   -- `SELECT obj`, because the `FromRow` instance for `InferenceScript`
   -- deals with the JSON encoding of the `obj`
-  fmap (view #obj) . firstOrThrow (NoSuchScript vch)
+  fmap (.obj) . firstOrThrow (NoSuchScript vch)
     =<< queryStore @_ @InferenceScript q (Only vch)
   where
     -- The script hash is used as the primary key in the table
@@ -544,9 +543,9 @@ getAndCacheModels cache =
     copyAndCache model mversion =
       versioned <$ do
         unlessM (doesPathExist versioned) $ do
-          mversion ^. #id & (`whenJust` logInfo . CopyingModel)
+          whenJust mversion.id $ logInfo . CopyingModel
           bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
-            =<< getModelVersionSizeAndContents (view #contents mversion)
+            =<< getModelVersionSizeAndContents mversion.contents
       where
         -- Cache the model with its specific version, i.e.
         -- `<name>.ts.pt.<version>`, which will later be
@@ -606,7 +605,7 @@ getAndCacheModels cache =
                 =<< getCurrentDirectory
 
         maxSize :: Integer
-        maxSize = cache ^. #maxSize & fromIntegral
+        maxSize = fromIntegral cache.maxSize
 
 -- Get a list of models by their access time, so that models that have not been
 -- used recently can be deleted. This will put the least-recently-used paths
