@@ -105,7 +105,7 @@ saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
               RETURNING id
             )
             INSERT INTO mselections (script, model, ident)
-              SELECT id, 1::integer, 'mnist'
+              SELECT id, '00000006-0000-0000-0000-000000000000'::uuid, 'mnist'
             FROM ins
           |]
 

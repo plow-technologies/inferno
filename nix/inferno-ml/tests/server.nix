@@ -101,11 +101,11 @@ pkgs.nixosTest {
             in
             ''
               parse-and-save \
-                ${./scripts/ones.inferno} '${ids.ones}' '${ios.ones}' ${dbstr}
+                '${ids.ones}' ${./scripts/ones.inferno} '${ios.ones}' ${dbstr}
               parse-and-save \
-                ${./scripts/contrived.inferno} '${ids.contrived}' '${ios.contrived}' ${dbstr}
+                '${ids.contrived}' ${./scripts/contrived.inferno} '${ios.contrived}' ${dbstr}
               parse-and-save \
-                ${./scripts/mnist.inferno} '${ids.mnist}' '${ios.mnist}' ${dbstr}
+                '${ids.mnist}' ${./scripts/mnist.inferno} '${ios.mnist}' ${dbstr}
             '';
         }
       )
