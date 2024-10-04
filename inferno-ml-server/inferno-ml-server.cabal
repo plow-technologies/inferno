@@ -118,6 +118,7 @@ executable tests
     , mtl
     , plow-log
     , text
+    , uuid
     , unliftio
     , vector
 
@@ -184,4 +185,5 @@ executable parse-and-save
     , text
     , time
     , unliftio
+    , uuid
     , vector

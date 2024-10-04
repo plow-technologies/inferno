@@ -15,6 +15,7 @@ import Data.Foldable (toList, traverse_)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
+import qualified Data.UUID as UUID
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word8)
@@ -127,7 +128,7 @@ getWithContents env = flip runReaderT env $ do
     v : _ -> getModelVersionSizeAndContents $ view #contents v
 
 mnistV1 :: Id ModelVersion
-mnistV1 = Id 1
+mnistV1 = Id $ UUID.fromWords 6 0 0 0
 
 models :: Vector (Id ModelVersion)
 models = Vector.singleton mnistV1

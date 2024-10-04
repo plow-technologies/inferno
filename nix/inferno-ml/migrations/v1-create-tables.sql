@@ -30,7 +30,7 @@ create table if not exists models
 
 create table if not exists mversions
   ( id uuid primary key default gen_random_uuid()
-  , model integer references models (id)
+  , model uuid references models (id)
     -- Short, high-level model description
   , description text not null
     -- Model card (description and metadata) serialized as JSON
@@ -59,7 +59,7 @@ create table if not exists scripts
 -- between `scripts` and `mversions`)
 create table if not exists mselections
   ( script bytea not null references scripts (id)
-  , model integer not null references mversions (id)
+  , model uuid not null references mversions (id)
     -- Inferno identifier linked to this specific model version
   , ident text not null
   , unique (script, model)
@@ -83,7 +83,7 @@ create table if not exists params
 -- Execution info for inference evaluation
 create table if not exists evalinfo
   ( id uuid primary key
-  , param integer not null references params (id)
+  , param uuid not null references params (id)
     -- When inference evaluation began
   , started timestamptz not null
     -- When inference evaluation ended

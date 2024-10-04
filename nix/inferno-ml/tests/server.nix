@@ -1,5 +1,14 @@
 { pkgs, ... }:
 
+let
+  # Fixed UUIDs for parameters. The Haskell test executable will use these
+  # IDs as well
+  ids = {
+    ones = "00000001-0000-0000-0000-000000000000";
+    contrived = "00000002-0000-0000-0000-000000000000";
+    mnist = "00000003-0000-0000-0000-000000000000";
+  };
+in
 pkgs.nixosTest {
   name = "inferno-ml-server-test";
   nodes.node = { config, ... }: {
@@ -35,26 +44,30 @@ pkgs.nixosTest {
             ''
               psql -U inferno -d inferno << EOF
               INSERT INTO models
-                ( name
+                ( id
+                , name
                 , gid
                 , visibility
                 )
               VALUES
-                ( 'mnist'
+                ( '00000005-0000-0000-0000-000000000000'::uuid
+                , 'mnist'
                 , 1::bigint
                 , '"VCObjectPublic"'::jsonb
                 );
 
               \lo_import ${./models/mnist.ts.pt}
               INSERT INTO mversions
-                ( model
+                ( id
+                , model
                 , description
                 , card
                 , contents
                 , version
                 )
                 VALUES
-                ( 1
+                ( '00000006-0000-0000-0000-000000000000'::uuid
+                , '00000005-0000-0000-0000-000000000000'::uuid
                 , 'My first model'
                 , '${card}'::jsonb
                 , :LASTOID
@@ -87,9 +100,12 @@ pkgs.nixosTest {
                 };
             in
             ''
-              parse-and-save ${./scripts/ones.inferno} '${ios.ones}' ${dbstr}
-              parse-and-save ${./scripts/contrived.inferno} '${ios.contrived}' ${dbstr}
-              parse-and-save ${./scripts/mnist.inferno} '${ios.mnist}' ${dbstr}
+              parse-and-save \
+                ${./scripts/ones.inferno} '${ids.ones}' '${ios.ones}' ${dbstr}
+              parse-and-save \
+                ${./scripts/contrived.inferno} '${ids.contrived}' '${ios.contrived}' ${dbstr}
+              parse-and-save \
+                ${./scripts/mnist.inferno} '${ids.mnist}' '${ios.mnist}' ${dbstr}
             '';
         }
       )
@@ -206,12 +222,12 @@ pkgs.nixosTest {
     node.succeed('sudo -HE -u inferno run-db-test >&2')
 
     # `tests/scripts/ones.inferno`
-    runtest(1)
+    runtest('${ids.ones}')
 
     # `tests/scripts/contrived.inferno`
-    runtest(2)
+    runtest('${ids.contrived}')
 
     # `tests/scripts/mnist.inferno`
-    runtest(3)
+    runtest('${ids.mnist}')
   '';
 }
