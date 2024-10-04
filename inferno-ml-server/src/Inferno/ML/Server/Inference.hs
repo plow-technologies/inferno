@@ -1,10 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LexicalNegation #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
@@ -118,20 +121,10 @@ runInferenceParam ipid mres uuid =
   where
     mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
     mkScriptEnv pwm =
-      ScriptEnv param (view #models pwm) (view #inputs param)
-        <$> getVcObject script
-        <*> pure script
-        <*> pure mres
-        <*> liftIO nowCTime
-      where
-        param :: InferenceParam
-        param = pwm ^. #param
-
-        script :: VCObjectHash
-        script = param ^. #script
-
-        nowCTime :: IO CTime
-        nowCTime = fromIntegral @Int . round <$> getPOSIXTime
+      ScriptEnv pwm.param pwm.models pwm.param.inputs
+        <$> getVcObject pwm.param.script
+        ?? pwm.param.script
+        ?? mres
 
 testInferenceParam ::
   Id InferenceParam ->
@@ -139,7 +132,29 @@ testInferenceParam ::
   UUID ->
   EvaluationEnv ->
   RemoteM (WriteStream IO)
-testInferenceParam = undefined
+testInferenceParam ipid mres uuid eenv =
+  runInferenceParamWithEnv ipid uuid
+    =<< mkScriptEnv
+    -- Just need to get the param, we already have the model information
+    -- from the overrides
+    =<< getParam
+  where
+    -- Note that, unlike `runInferenceParam`, several of the items required
+    -- for script eval come from the `EvaluationEnv`
+    mkScriptEnv :: InferenceParam -> RemoteM ScriptEnv
+    mkScriptEnv param =
+      ScriptEnv param eenv.models eenv.inputs
+        <$> getVcObject eenv.script
+        ?? eenv.script
+        ?? mres
+
+    getParam :: RemoteM InferenceParam
+    getParam =
+      firstOrThrow (NoSuchParameter (wrappedTo ipid))
+        =<< queryStore q (Only ipid)
+      where
+        q :: Query
+        q = [sql| SELECT * FROM params WHERE id = ? |]
 
 runInferenceParamWithEnv ::
   Id InferenceParam ->
@@ -175,22 +190,23 @@ runInferenceParamWithEnv ipid uuid senv =
       -- will not have been initialized yet. After that, it will be reused
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
-      param <- getParameterWithModels ipid
       cache <- view $ #config . #cache
+      t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
       -- can find the models using relative paths (otherwise the AST would
       -- need to be updated to use an absolute path to a versioned model,
       -- e.g. `loadModel "~/inferno/.cache/..."`)
-      withCurrentDirectory (view #path cache) $ do
+      withCurrentDirectory cache.path $ do
         logInfo $ EvaluatingParam ipid
         traverse_ linkVersionedModel
-          =<< getAndCacheModels cache (view #models param)
-        runEval interpreter
+          =<< getAndCacheModels cache senv.models
+        runEval interpreter t
       where
         runEval ::
           Interpreter RemoteM BridgeMlValue ->
+          CTime ->
           RemoteM (WriteStream IO)
-        runEval Interpreter {evalExpr, mkEnvFromClosure} =
+        runEval Interpreter {evalExpr, mkEnvFromClosure} t =
           senv ^. #obj . #obj & \case
             VCFunction {} -> do
               let -- Note that this both includes inputs (i.e. readable)
@@ -270,11 +286,8 @@ runInferenceParamWithEnv ipid uuid senv =
                   expr :: Expr (Maybe VCObjectHash) ()
                   expr =
                     flip (foldl' App) args $
-                      Var () mhash LocalScope dummy
+                      Var () (Just senv.script) LocalScope dummy
                     where
-                      mhash :: Maybe VCObjectHash
-                      mhash = senv ^. #script & Just
-
                       -- See note above about inputs/outputs
                       args :: [Expr (Maybe a) ()]
                       args = exprsFrom "input$" pids <> exprsFrom "model$" models
@@ -327,7 +340,7 @@ runInferenceParamWithEnv ipid uuid senv =
                 implEnv :: Map ExtIdent (Value BridgeMlValue m)
                 implEnv =
                   Map.fromList
-                    [ (ExtIdent $ Right "now", VEpochTime $ view #ctime senv),
+                    [ (ExtIdent $ Right "now", VEpochTime t),
                       ( ExtIdent $ Right "resolution",
                         VCustom . VExtended $ VResolution resolution
                       )
@@ -445,14 +458,14 @@ linkVersionedModel withVersion = do
     withExt = dropExtensions withVersion <.> "ts" <.> "pt"
 
 getParameterWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
-getParameterWithModels iid =
+getParameterWithModels ipid =
   fmap
     ( uncurry InferenceParamWithModels
         . fmap (getAeson . fromOnly)
         . joinToTuple
     )
-    . firstOrThrow (NoSuchParameter (wrappedTo iid))
-    =<< queryStore q (Only iid)
+    . firstOrThrow (NoSuchParameter (wrappedTo ipid))
+    =<< queryStore q (Only ipid)
   where
     -- This query is somewhat complex in order to get all relevent information
     -- for creating the script evaluator's Inferno environment.
@@ -611,7 +624,6 @@ data ScriptEnv = ScriptEnv
     inputs :: Map Ident (SingleOrMany PID, ScriptInputType),
     obj :: VCMeta VCObject,
     script :: VCObjectHash,
-    mres :: Maybe Int64,
-    ctime :: CTime
+    mres :: Maybe Int64
   }
   deriving stock (Generic)
