@@ -126,6 +126,10 @@ runInferenceParam ipid mres uuid =
         ?? pwm.param.script
         ?? mres
 
+-- | Test an inference param. This requires a script object to be saved to
+-- the DB, but it is does not need to be linked to the parameter itself. It
+-- also allows for overriding models and inputs, which normally need to be
+-- fixed to the script or param, respectively
 testInferenceParam ::
   Id InferenceParam ->
   Maybe Int64 ->
@@ -150,7 +154,7 @@ testInferenceParam ipid mres uuid eenv =
 
     getParam :: RemoteM InferenceParam
     getParam =
-      firstOrThrow (NoSuchParameter (wrappedTo ipid))
+      firstOrThrow (NoSuchParameter ipid)
         =<< queryStore q (Only ipid)
       where
         q :: Query
@@ -464,7 +468,7 @@ getParameterWithModels ipid =
         . fmap (getAeson . fromOnly)
         . joinToTuple
     )
-    . firstOrThrow (NoSuchParameter (wrappedTo ipid))
+    . firstOrThrow (NoSuchParameter ipid)
     =<< queryStore q (Only ipid)
   where
     -- This query is somewhat complex in order to get all relevent information

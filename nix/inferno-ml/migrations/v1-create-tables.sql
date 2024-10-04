@@ -17,7 +17,7 @@ create extension lo;
 -- "deleted" and cannot be used any longer
 
 create table if not exists models
-  ( id serial primary key
+  ( id uuid primary key default gen_random_uuid()
   , name text not null
   , gid numeric not null
   , visibility jsonb
@@ -29,7 +29,7 @@ create table if not exists models
   );
 
 create table if not exists mversions
-  ( id serial primary key
+  ( id uuid primary key default gen_random_uuid()
   , model integer references models (id)
     -- Short, high-level model description
   , description text not null
@@ -66,7 +66,7 @@ create table if not exists mselections
   );
 
 create table if not exists params
-  ( id serial primary key
+  ( id uuid primary key default gen_random_uuid()
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
     -- Strictly speaking, this includes both inputs and outputs. The
@@ -97,7 +97,7 @@ create table if not exists evalinfo
 -- Stores information required to call the data bridge
 create table if not exists bridges
   ( -- Same ID as the referenced param
-    id integer not null references params (id)
+    id uuid not null references params (id)
     -- Host of the bridge server
   , ip inet not null
   , port integer check (port > 0)

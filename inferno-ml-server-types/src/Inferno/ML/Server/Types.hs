@@ -28,7 +28,7 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Char (chr)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed))
-import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
+import Data.Generics.Wrapped (wrappedTo)
 import Data.Hashable (Hashable)
 import qualified Data.IP
 import Data.Int (Int64)
@@ -95,7 +95,6 @@ import System.Posix (EpochTime)
 import Test.QuickCheck
   ( Arbitrary (arbitrary),
     Gen,
-    Positive (getPositive),
     choose,
     chooseInt,
     listOf,
@@ -211,7 +210,7 @@ instance ToRow (BridgeInfo uid gid p s) where
     ]
 
 -- | The ID of a database entity
-newtype Id a = Id Int64
+newtype Id a = Id UUID
   deriving stock (Show, Generic)
   deriving newtype
     ( Eq,
@@ -224,12 +223,10 @@ newtype Id a = Id Int64
       FromJSONKey,
       ToJSONKey,
       ToHttpApiData,
-      FromHttpApiData
+      FromHttpApiData,
+      Arbitrary
     )
   deriving anyclass (NFData, ToADTArbitrary)
-
-instance Arbitrary (Id a) where
-  arbitrary = wrappedFrom . getPositive <$> arbitrary
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
@@ -332,7 +329,10 @@ instance
 instance ToField gid => ToRow (Model gid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow m =
-    [ toField Default,
+    [ -- Normally the ID will be missing for new rows, in that case the default
+      -- will be used (a random UUID). But in other cases it is useful to set
+      -- the ID explicitly (e.g. for testing)
+      m.id & maybe (toField Default) toField,
       m.name & toField,
       m.gid & toField,
       m.visibility & Aeson & toField,
@@ -441,7 +441,7 @@ instance FromField gid => FromRow (ModelVersion gid Oid) where
 instance ToField gid => ToRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow mv =
-    [ toField Default,
+    [ mv.id & maybe (toField Default) toField,
       mv.model & toField,
       mv.description & toField,
       mv.card & Aeson & toField,
@@ -748,7 +748,7 @@ instance
   where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
-    [ toField Default,
+    [ ip.id & maybe (toField Default) toField,
       ip.script & VCObjectHashRow & toField,
       ip.inputs & Aeson & toField,
       ip.resolution & Aeson & toField,

@@ -46,7 +46,6 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
-import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Scientific (Scientific)
 import Data.Text (Text)
@@ -301,9 +300,9 @@ data RemoteError
   | -- | Either the requested model version does not exist, or the
     -- parent model row corresponding to the model version does not
     -- exist
-    NoSuchModel Int64
+    NoSuchModel (Either (Id Model) (Id ModelVersion))
   | NoSuchScript VCObjectHash
-  | NoSuchParameter Int64
+  | NoSuchParameter (Id InferenceParam)
   | InvalidScript Text
   | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
@@ -317,10 +316,16 @@ data RemoteError
 instance Exception RemoteError where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
-    NoSuchModel m ->
+    NoSuchModel (Left m) ->
       unwords
         [ "Model:",
           "'" <> show m <> "'",
+          "does not exist in the store"
+        ]
+    NoSuchModel (Right mv) ->
+      unwords
+        [ "Model version:",
+          "'" <> show mv <> "'",
           "does not exist in the store"
         ]
     NoSuchScript vch ->
