@@ -787,13 +787,7 @@ instance
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p s = InferenceParamWithModels
   { param :: InferenceParam gid p s,
-    models ::
-      Map
-        Ident
-        ( Id (ModelVersion gid Oid),
-          -- Name of parent model
-          Text
-        )
+    models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -1055,13 +1049,7 @@ instance Ord a => Ord (SingleOrMany a) where
 data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash,
     inputs :: Map Ident (SingleOrMany p, ScriptInputType),
-    models ::
-      Map
-        Ident
-        ( Id (ModelVersion gid Oid),
-          -- Name of parent model
-          Text
-        )
+    models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)

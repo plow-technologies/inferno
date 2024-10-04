@@ -25,7 +25,6 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value (Value (..))
 import Prettyprinter (Pretty)
-import System.FilePath ((<.>))
 import Torch
 import qualified Torch.DType as TD
 import Torch.Functional
@@ -143,7 +142,7 @@ loadModelFun = VFun $ \case
       =<< liftIO (try @_ @SomeException loadModel)
     where
       loadModel :: IO ScriptModule
-      loadModel = TS.loadScript TS.WithoutRequiredGrad $ mn <.> "ts.pt"
+      loadModel = TS.loadScript TS.WithoutRequiredGrad mn
   _ -> throwM $ RuntimeError "Expected a modelName"
 
 forwardFun :: ScriptModule -> [Tensor] -> [Tensor]

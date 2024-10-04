@@ -13,7 +13,6 @@ module Inferno.ML.Server.Inference
   ( runInferenceParam,
     testInferenceParam,
     getAndCacheModels,
-    linkVersionedModel,
   )
 where
 
@@ -24,6 +23,7 @@ import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifoldable (bitraverse_)
+import Data.Bifunctor (bimap)
 import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl', traverse_)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
@@ -36,7 +36,7 @@ import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
 import Data.UUID (UUID)
-import Data.Vector (Vector)
+import qualified Data.UUID as UUID
 import qualified Data.Vector as Vector
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
@@ -75,20 +75,18 @@ import Inferno.VersionControl.Types
   )
 import Lens.Micro.Platform
 import System.CPUTime (getCPUTime)
-import System.FilePath (dropExtensions, (<.>))
+import System.FilePath ((<.>))
 import System.Mem (getAllocationCounter, setAllocationCounter)
 import System.Posix.Types (EpochTime)
 import UnliftIO (withRunInIO)
 import UnliftIO.Async (wait, withAsync)
 import UnliftIO.Directory
-  ( createFileLink,
-    doesPathExist,
+  ( doesPathExist,
     getAccessTime,
     getCurrentDirectory,
     getFileSize,
     listDirectory,
     removeFile,
-    removePathForcibly,
     withCurrentDirectory,
   )
 import UnliftIO.Exception
@@ -202,8 +200,7 @@ runInferenceParamWithEnv ipid uuid senv =
       -- e.g. `loadModel "~/inferno/.cache/..."`)
       withCurrentDirectory cache.path $ do
         logInfo $ EvaluatingParam ipid
-        traverse_ linkVersionedModel
-          =<< getAndCacheModels cache senv.models
+        getAndCacheModels cache $ senv.models
         runEval interpreter t
       where
         runEval ::
@@ -225,24 +222,11 @@ runInferenceParamWithEnv ipid uuid senv =
                   pids =
                     senv ^.. #inputs . to Map.toAscList . each . _2 . _1
 
-                  -- These are all of the models selected for use with the
-                  -- script. The ID of the actual model version is included,
-                  -- along with the name of the parent model. The latter is
-                  -- required to generate the correct call to Hasktorch's
-                  -- `loadScript`, indirectly via the `ML.loadModel` primitve
-                  --
-                  -- For example, given a parent model name of `"mnist"` and
-                  -- a binding of `model0` (which is provided to the script),
-                  -- `ML.loadModel model0` will ultimately produce
-                  -- `Torch.Script.loadScript "mnist.ts.pt"`; note that the
-                  -- correct model name and extension is handled for the user;
-                  -- furthermore, the script evaluator caches the model _version_
-                  -- based on the ID and links it to the name of the parent
-                  -- model, so that the `"mnist.ts.pt"` is an existing path
-                  -- in the model cache (see `getAndCacheModels` below)
-                  models :: [(Id ModelVersion, Text)]
-                  models =
-                    senv ^.. #models . to Map.toAscList . each . _2
+                  -- List of model versions, which are used to evaluate
+                  -- `loadModel` primitive (eventually calling Hasktorch to
+                  -- load the script module)
+                  models :: [Id ModelVersion]
+                  models = senv ^.. #models . to Map.toAscList . each . _2
 
                   mkIdentWith :: Text -> Int -> ExtIdent
                   mkIdentWith x = ExtIdent . Right . (x <>) . tshow
@@ -250,8 +234,8 @@ runInferenceParamWithEnv ipid uuid senv =
                   toSeries :: PID -> Value BridgeMlValue m
                   toSeries = VCustom . VExtended . VSeries
 
-                  toModelName :: FilePath -> Value BridgeMlValue m
-                  toModelName = VCustom . VModelName . wrappedFrom
+                  toModelPath :: Id ModelVersion -> Value BridgeMlValue m
+                  toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
 
                   argsFrom ::
                     [a] ->
@@ -276,15 +260,11 @@ runInferenceParamWithEnv ipid uuid senv =
 
                       modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
                       modelArgs =
-                        argsFrom models $ \(i, (_, name)) ->
-                          ( mkIdentWith "model$" i,
-                            toModelName $ Text.unpack name
-                          )
+                        argsFrom models $
+                          bimap (mkIdentWith "model$") toModelPath
 
                   closure :: Map VCObjectHash VCObject
-                  closure =
-                    Map.singleton senv.script $
-                      view (#obj . #obj) senv
+                  closure = senv ^. #obj . #obj & Map.singleton senv.script
 
                   expr :: Expr (Maybe VCObjectHash) ()
                   expr =
@@ -358,7 +338,7 @@ runInferenceParamWithEnv ipid uuid senv =
                   ]
 
     -- Convert the script timeout from seconds (for ease of configuration) to
-    -- milliseconds, for use with `timeout`
+    -- milliseconds, for use with `timeout`; then execute the action
     withTimeoutMillis :: (Int -> RemoteM b) -> RemoteM b
     withTimeoutMillis =
       (view (#config . #timeout) >>=)
@@ -450,16 +430,6 @@ getVcObject vch =
     q :: Query
     q = [sql| SELECT * FROM scripts WHERE id = ? |]
 
--- Link the versioned versioned to the model, e.g. `<name>.<version>` to just
--- `<name>.ts.pt`, so it can be loaded by Hasktorch
-linkVersionedModel :: FilePath -> RemoteM ()
-linkVersionedModel withVersion = do
-  whenM (doesPathExist withExt) $ removePathForcibly withExt
-  createFileLink withVersion withExt
-  where
-    withExt :: FilePath
-    withExt = dropExtensions withVersion <.> "ts" <.> "pt"
-
 getParameterWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
 getParameterWithModels ipid =
   fmap
@@ -474,47 +444,33 @@ getParameterWithModels ipid =
     -- for creating the script evaluator's Inferno environment.
     --
     -- For each row in the `mselections` table linked to the param's script,
-    -- it selects the model version and the parent model. To create the
-    -- `Map Ident (Id ModelVersion, Text)` that is used in `ParamWithModels`,
-    -- it generates a JSONB object. For example, given the following rows from
-    -- `mselections`:
+    -- it selects the model version. To create the `Map Ident (Id ModelVersion)`
+    -- that is used in `ParamWithModels`, it generates a JSONB object. For
+    -- example, given the following rows from `mselections`:
     --
     --     ```
-    --     | script          | model    | ident      |
-    --     -                 -          -            -
-    --     | \x123abc...     | 1        | 'model0'   |
-    --     | \x123abc...     | 2        | 'model1'   |
+    --     | script          | id              | ident      |
+    --     -                 -                 -            -
+    --     | \x123abc...     | 00000-0000...   | 'model0'   |
+    --     | \x123abc...     | 00001-0000...   | 'model1'   |
     --     ```
     --
     -- the query will create the following JSONB object:
     --
     --     ```
     --     {
-    --        "model0": [1, "my-model"],
-    --        "model1": [2, "my-other-model"]
+    --        "model0": "00000-0000...",
+    --        "model1": "00001-0000..."
     --     }
     --     ```
-    -- where the second element of each tuple value is the name of the parent
-    -- model
-    --
-    -- `jsonb_object_agg` is used in order to convert the row of results
-    -- into a single JSONB object
-    --
-    -- Note that `jsonb_build_array` is used with the model version ID and
-    -- parent model name to create a two-element array, because this is the
-    -- tuple encoding expected by Aeson, and the `FromJSON` instance is
-    -- reused in order to parse the `InferenceParamWithModels`
     q :: Query
     q =
       [sql|
-        SELECT
-          P.*,
-          jsonb_object_agg(MS.ident, jsonb_build_array(MS.model, M.name)) models
+        SELECT P.*, jsonb_object_agg(MS.ident, MS.model) mversions
         FROM params P
           INNER JOIN scripts S ON P.script = S.id
           INNER JOIN mselections MS ON MS.script = S.id
           INNER JOIN mversions MV ON MV.id = MS.model
-          INNER JOIN models M ON MV.model = M.id
         WHERE P.id = ?
           AND P.terminated IS NULL
         GROUP BY
@@ -532,29 +488,25 @@ getParameterWithModels ipid =
 -- NOTE: This action assumes that the current working directory is the model
 -- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModels ::
-  ModelCache -> Map Ident (Id ModelVersion, Text) -> RemoteM (Vector FilePath)
+  ModelCache -> Map Ident (Id ModelVersion) -> RemoteM ()
 getAndCacheModels cache =
-  traverse (uncurry copyAndCache)
+  traverse_ (uncurry copyAndCache)
     <=< getModelsAndVersions
       . Vector.fromList
-      . toListOf (each . _1)
+      . toListOf each
   where
-    copyAndCache :: Model -> ModelVersion -> RemoteM FilePath
-    copyAndCache model mversion =
-      versioned <$ do
-        unlessM (doesPathExist versioned) $ do
+    copyAndCache :: Model -> ModelVersion -> RemoteM ()
+    copyAndCache _ mversion =
+      mkPath >>= \path ->
+        unlessM (doesPathExist path) $ do
           whenJust mversion.id $ logInfo . CopyingModel
-          bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic versioned)
+          bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic path)
             =<< getModelVersionSizeAndContents mversion.contents
       where
-        -- Cache the model with its specific version, i.e.
-        -- `<name>.ts.pt.<version>`, which will later be
-        -- symlinked to `<name>.ts.pt`
-        versioned :: FilePath
-        versioned = model ^. #name . unpacked & (<.> v)
-          where
-            v :: FilePath
-            v = mversion ^. #version . to showVersion . unpacked
+        mkPath :: RemoteM FilePath
+        mkPath =
+          maybe (throwM (OtherRemoteError "todo")) (pure . mkModelPath) $
+            mversion.id
 
     -- Checks that the configured cache size will not be exceeded by
     -- caching the new model. If it will, least-recently-used models
@@ -618,12 +570,18 @@ modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
       getAccessTime f1 >>= \t1 ->
         compare t1 <$> getAccessTime f2
 
+-- There should only be one way to generate a filepath from a model version, so
+-- that the path pointing to the contents is always unambiguous. This uses its
+-- UUID to do so
+mkModelPath :: Id ModelVersion -> FilePath
+mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
+
 -- Everything needed to evaluate an ML script. For the normal endpoint, all of
 -- these will be derived directly from the param. For the interactive test
 -- endpoint, these will be overridden
 data ScriptEnv = ScriptEnv
   { param :: InferenceParam,
-    models :: Map Ident (Id ModelVersion, Text),
+    models :: Map Ident (Id ModelVersion),
     inputs :: Map Ident (SingleOrMany PID, ScriptInputType),
     obj :: VCMeta VCObject,
     script :: VCObjectHash,

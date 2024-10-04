@@ -447,9 +447,7 @@ pattern InferenceParam iid s ios res mt gid =
   Types.InferenceParam iid s ios res mt gid
 
 pattern InferenceParamWithModels ::
-  InferenceParam ->
-  Map Ident (Id ModelVersion, Text) ->
-  InferenceParamWithModels
+  InferenceParam -> Map Ident (Id ModelVersion) -> InferenceParamWithModels
 pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo

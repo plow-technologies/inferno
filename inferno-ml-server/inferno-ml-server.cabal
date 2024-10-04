@@ -110,6 +110,7 @@ executable tests
     , base
     , bytestring
     , containers
+    , filepath
     , generic-lens
     , hspec
     , inferno-ml-server
@@ -118,8 +119,8 @@ executable tests
     , mtl
     , plow-log
     , text
-    , uuid
     , unliftio
+    , uuid
     , vector
 
 executable test-client
