@@ -50,8 +50,8 @@ main =
 verifyWrites :: UUID -> WriteStream IO -> IO ()
 verifyWrites ipid c = do
   expected <- getExpected
-  -- Note that there is only one chunk per PID in the output stream, so we
-  -- don't need to concatenate the results by PID. We can just sink it into
+  -- Note that there are only one or two chunks per PID in the output stream, so
+  -- we don't need to concatenate the results by PID. We can just sink it into
   -- a list directly
   result <- runConduit $ c .| sinkList
   unless (result == expected) . throwString . unwords $

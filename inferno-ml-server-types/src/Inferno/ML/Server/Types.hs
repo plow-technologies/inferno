@@ -74,7 +74,11 @@ import Inferno.Types.VersionControl
     byteStringToVCObjectHash,
     vcObjectHashToByteString,
   )
-import Inferno.VersionControl.Types (VCMeta, VCObject, VCObjectVisibility)
+import Inferno.VersionControl.Types
+  ( VCMeta,
+    VCObject,
+    VCObjectVisibility,
+  )
 import Lens.Micro.Platform hiding ((.=))
 import Servant
   ( Capture,
@@ -121,11 +125,11 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI uid gid p s =
+type InfernoMlServerAPI gid p s =
   StatusAPI
     -- Evaluate an inference script
-    :<|> InferenceAPI uid gid p s
-    :<|> InferenceTestAPI uid gid p s
+    :<|> InferenceAPI gid p s
+    :<|> InferenceTestAPI gid p s
     :<|> CancelAPI
 
 type StatusAPI =
@@ -134,17 +138,17 @@ type StatusAPI =
 
 type CancelAPI = "inference" :> "cancel" :> Put '[JSON] ()
 
-type InferenceAPI uid gid p s =
+type InferenceAPI gid p s =
   "inference"
-    :> Capture "id" (Id (InferenceParam uid gid p s))
+    :> Capture "id" (Id (InferenceParam gid p s))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> StreamPost NewlineFraming JSON (WriteStream IO)
 
-type InferenceTestAPI uid gid p s =
+type InferenceTestAPI gid p s =
   -- Evaluate an inference script
   "inference"
-    :> Capture "id" (Id (InferenceParam uid gid p s))
+    :> Capture "id" (Id (InferenceParam gid p s))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> ReqBody '[JSON] (EvaluationEnv gid p)
@@ -187,22 +191,22 @@ data ServerStatus
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
-data BridgeInfo uid gid p s = BridgeInfo
-  { id :: Id (InferenceParam uid gid p s),
+data BridgeInfo gid p s = BridgeInfo
+  { id :: Id (InferenceParam gid p s),
     host :: IPv4,
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
 
-instance FromRow (BridgeInfo uid gid p s) where
+instance FromRow (BridgeInfo gid p s) where
   fromRow =
     BridgeInfo
       <$> field
       <*> field
       <*> fmap (fromIntegral @Int64) field
 
-instance ToRow (BridgeInfo uid gid p s) where
+instance ToRow (BridgeInfo gid p s) where
   toRow bi =
     [ bi.id & toField,
       bi.host & toField,
@@ -669,8 +673,8 @@ showVersion (Version ns ts) =
 
 -- | Row of the inference parameter table, parameterized by the user, group, and
 -- script type
-data InferenceParam uid gid p s = InferenceParam
-  { id :: Maybe (Id (InferenceParam uid gid p s)),
+data InferenceParam gid p s = InferenceParam
+  { id :: Maybe (Id (InferenceParam gid p s)),
     -- | The script of the parameter
     --
     -- For new parameters, this will be textual or some other identifier
@@ -695,18 +699,13 @@ data InferenceParam uid gid p s = InferenceParam
     -- | The time that this parameter was \"deleted\", if any. For active
     -- parameters, this will be @Nothing@
     terminated :: Maybe UTCTime,
-    uid :: uid
+    gid :: gid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToJSON)
 
 {- ORMOLU_DISABLE -}
-instance
-  ( FromJSON s,
-    FromJSON p,
-    FromJSON uid
-  ) =>
-  FromJSON (InferenceParam uid gid p s)
+instance (FromJSON s, FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p s)
   where
   parseJSON = withObject "InferenceParam" $ \o ->
     InferenceParam
@@ -717,19 +716,18 @@ instance
       <*> o .:? "resolution" .!= 128
       -- We shouldn't require this field
       <*> o .:? "terminated"
-      <*> o .: "uid"
+      <*> o .: "gid"
 {- ORMOLU_ENABLE -}
 
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
 -- should not be possible to store a new param with a raw script)
 instance
   ( FromJSON p,
-    Typeable p,
-    FromField uid,
+    FromField gid,
     Typeable gid,
-    Typeable uid
+    Typeable p
   ) =>
-  FromRow (InferenceParam uid gid p VCObjectHash)
+  FromRow (InferenceParam gid p VCObjectHash)
   where
   fromRow =
     InferenceParam
@@ -740,12 +738,7 @@ instance
       <*> field
       <*> field
 
-instance
-  ( ToJSON p,
-    ToField uid
-  ) =>
-  ToRow (InferenceParam uid gid p VCObjectHash)
-  where
+instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p VCObjectHash) where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ ip.id & maybe (toField Default) toField,
@@ -753,16 +746,16 @@ instance
       ip.inputs & Aeson & toField,
       ip.resolution & Aeson & toField,
       toField Default,
-      ip.uid & toField
+      ip.gid & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
 instance
-  ( Arbitrary s,
+  ( Arbitrary gid,
     Arbitrary p,
-    Arbitrary uid
+    Arbitrary s
   ) =>
-  Arbitrary (InferenceParam uid gid p s)
+  Arbitrary (InferenceParam gid p s)
   where
   arbitrary =
     InferenceParam
@@ -775,11 +768,11 @@ instance
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
 instance
-  ( Arbitrary s,
+  ( Arbitrary gid,
     Arbitrary p,
-    Arbitrary uid
+    Arbitrary s
   ) =>
-  ToADTArbitrary (InferenceParam uid gid p s)
+  ToADTArbitrary (InferenceParam gid p s)
   where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
@@ -792,8 +785,8 @@ instance
 
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
-data InferenceParamWithModels uid gid p s = InferenceParamWithModels
-  { param :: InferenceParam uid gid p s,
+data InferenceParamWithModels gid p s = InferenceParamWithModels
+  { param :: InferenceParam gid p s,
     models ::
       Map
         Ident
@@ -841,11 +834,11 @@ instance Arbitrary ScriptInputType where
 -- @inferno-ml-server@ after script evaluation completes and can be queried
 -- later by using the same job identifier that was provided to the @/inference@
 -- route
-data EvaluationInfo uid gid p = EvaluationInfo
+data EvaluationInfo gid p = EvaluationInfo
   { -- | Note that this is the job identifier provided to the inference
     -- evaluation route, and is also the primary key of the database table
     id :: UUID,
-    param :: Id (InferenceParam uid gid p VCObjectHash),
+    param :: Id (InferenceParam gid p VCObjectHash),
     -- | When inference evaluation started
     start :: UTCTime,
     -- | When inference evaluation ended
@@ -863,7 +856,7 @@ data EvaluationInfo uid gid p = EvaluationInfo
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-instance FromRow (EvaluationInfo uid gid p) where
+instance FromRow (EvaluationInfo gid p) where
   fromRow =
     EvaluationInfo
       <$> field
@@ -873,7 +866,7 @@ instance FromRow (EvaluationInfo uid gid p) where
       <*> fmap (fromIntegral @Int64) field
       <*> fmap (fromIntegral @Int64) field
 
-instance ToRow (EvaluationInfo uid gid p) where
+instance ToRow (EvaluationInfo gid p) where
   toRow ei =
     [ ei.id & toField,
       ei.param & toField,
@@ -884,7 +877,7 @@ instance ToRow (EvaluationInfo uid gid p) where
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance Arbitrary (EvaluationInfo uid gid p) where
+instance Arbitrary (EvaluationInfo gid p) where
   arbitrary =
     EvaluationInfo
       <$> arbitrary

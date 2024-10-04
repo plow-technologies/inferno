@@ -77,7 +77,7 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , uid numeric not null
+  , gid numeric not null
   );
 
 -- Execution info for inference evaluation

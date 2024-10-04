@@ -297,9 +297,8 @@ newtype InferenceOptions = InferenceOptions
 
 data RemoteError
   = CacheSizeExceeded
-  | -- | Either the requested model version does not exist, or the
-    -- parent model row corresponding to the model version does not
-    -- exist
+  | -- | Either parent model row corresponding to the model version, or the
+    -- the requested model version itself, does not exist
     NoSuchModel (Either (Id Model) (Id ModelVersion))
   | NoSuchScript VCObjectHash
   | NoSuchParameter (Id InferenceParam)
@@ -415,15 +414,15 @@ infixl 4 ??
 f ?? x = ($ x) <$> f
 
 type InferenceParam =
-  Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InferenceParam (EntityId GId) PID VCObjectHash
 
 type InferenceParamWithModels =
-  Types.InferenceParamWithModels (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InferenceParamWithModels (EntityId GId) PID VCObjectHash
 
 type BridgeInfo =
-  Types.BridgeInfo (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.BridgeInfo (EntityId GId) PID VCObjectHash
 
-type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
+type EvaluationInfo = Types.EvaluationInfo (EntityId GId) PID
 
 type Model = Types.Model (EntityId GId)
 
@@ -442,10 +441,10 @@ pattern InferenceParam ::
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
-  EntityId UId ->
+  EntityId GId ->
   InferenceParam
-pattern InferenceParam iid s ios res mt uid =
-  Types.InferenceParam iid s ios res mt uid
+pattern InferenceParam iid s ios res mt gid =
+  Types.InferenceParam iid s ios res mt gid
 
 pattern InferenceParamWithModels ::
   InferenceParam ->
@@ -480,11 +479,7 @@ pattern EvaluationInfo ::
 pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
 type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI
-    (EntityId UId)
-    (EntityId GId)
-    PID
-    VCObjectHash
+  Types.InfernoMlServerAPI (EntityId GId) PID VCObjectHash
 
 type EvaluationEnv = Types.EvaluationEnv (EntityId GId) PID
 
@@ -499,6 +494,8 @@ instance ToField VCObjectHash where
 deriving newtype instance ToHttpApiData EpochTime
 
 deriving newtype instance FromHttpApiData EpochTime
+
+-- Etc
 
 joinToTuple :: (a :. b) -> (a, b)
 joinToTuple (a :. b) = (a, b)

@@ -134,7 +134,7 @@ saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
                   , inputs
                   , resolution
                   , terminated
-                  , uid
+                  , gid
                   )
                 VALUES (?, ?, ?, ?, ?, ?)
               |]
