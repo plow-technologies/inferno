@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.9.1
+* `Ord`/`VCHashUpdate` instances for `ScriptInputType`
+
 ## 0.9.0
 * Add `Arbitrary`/`ToADTArbitrary` instances for most types
 * Simplify `ModelMetadata`
