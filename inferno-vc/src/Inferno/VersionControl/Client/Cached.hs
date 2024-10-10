@@ -79,7 +79,7 @@ data CachedVCClientError
 
 initVCCachedClient :: FilePath -> IO VCCacheEnv
 initVCCachedClient cachePath = do
-  createDirectoryIfMissing True $ cachePath </> "deps"
+  createDirectoryIfMissing True cachePath
   cacheInFlight <- newTVarIO mempty
   pure VCCacheEnv {cachePath, cacheInFlight}
 
@@ -106,12 +106,12 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
   env@VCCacheEnv {cachePath} <- asks getTyped
   deps <-
     withInFlight env [objHash] $
-      liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
+      liftIO (doesFileExist $ cachePath </> show objHash) >>= \case
         False -> do
           deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
           liftIO
             $ atomicWriteFile
-              (cachePath </> "deps" </> show objHash)
+              (cachePath </> show objHash)
             $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
           pure deps
         True -> fetchVCObjectClosureHashes objHash
@@ -149,7 +149,7 @@ fetchVCObjectClosureHashes ::
   m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
   VCCacheEnv {cachePath} <- asks getTyped
-  let fp = cachePath </> "deps" </> show h
+  let fp = cachePath </> show h
   readVCObjectHashTxt fp
 
 readVCObjectHashTxt ::

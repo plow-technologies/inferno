@@ -1,6 +1,9 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.8.0 -- 2024-10-10
+* Improve cache-hit ratio
+
 ## 0.3.7.1 -- 2024-09-23
 * Fix overflowing threadDelay on armv7l
 
