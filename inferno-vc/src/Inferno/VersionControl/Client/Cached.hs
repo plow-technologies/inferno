@@ -27,7 +27,7 @@ import Data.Aeson (FromJSON, ToJSON, eitherDecodeStrict, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.Either (partitionEithers)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
@@ -112,14 +112,14 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
           liftIO
             $ atomicWriteFile
               (cachePath </> "deps" </> show objHash)
-            $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
+            $ BL.unlines [BL.fromStrict (vcObjectHashToByteString h) | h <- deps]
           pure deps
         True -> fetchVCObjectClosureHashes objHash
   withInFlight env deps $ do
     (nonLocalHashes, localHashes) <-
       partitionEithers
         <$> forM
-          (objHash : deps)
+          deps
           ( \depHash -> do
               liftIO (doesFileExist $ cachePath </> show depHash) >>= \case
                 True -> pure $ Right depHash
