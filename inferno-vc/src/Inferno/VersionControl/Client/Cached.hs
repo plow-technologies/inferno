@@ -27,7 +27,7 @@ import Data.Aeson (FromJSON, ToJSON, eitherDecodeStrict, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
-import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Lazy as BL
 import Data.Either (partitionEithers)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
@@ -36,7 +36,6 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
 import qualified Inferno.VersionControl.Client as VCClient
-import Inferno.VersionControl.Log (VCCacheTrace (..))
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Server (VCServerError)
 import Inferno.VersionControl.Types
@@ -45,7 +44,6 @@ import Inferno.VersionControl.Types
     VCObjectHash (..),
     vcObjectHashToByteString,
   )
-import Plow.Logging (IOTracer (..), traceWith)
 import Servant.Client (ClientEnv, ClientError)
 import Servant.Typed.Error (TypedClientM, runTypedClientM)
 import System.AtomicWrite.Writer.LazyByteString (atomicWriteFile)
@@ -54,8 +52,7 @@ import System.FilePath.Posix ((</>))
 
 data VCCacheEnv = VCCacheEnv
   { cachePath :: FilePath,
-    cacheInFlight :: TVar (Set.Set VCObjectHash),
-    tracer :: IOTracer VCCacheTrace
+    cacheInFlight :: TVar (Set.Set VCObjectHash)
   }
   deriving (Generic)
 
@@ -80,11 +77,11 @@ data CachedVCClientError
   | LocalVCStoreError VCStoreError
   deriving (Show, Generic)
 
-initVCCachedClient :: FilePath -> IOTracer VCCacheTrace -> IO VCCacheEnv
-initVCCachedClient cachePath tracer = do
+initVCCachedClient :: FilePath -> IO VCCacheEnv
+initVCCachedClient cachePath = do
   createDirectoryIfMissing True $ cachePath </> "deps"
   cacheInFlight <- newTVarIO mempty
-  pure VCCacheEnv {cachePath, cacheInFlight, tracer}
+  pure VCCacheEnv {cachePath, cacheInFlight}
 
 fetchVCObjectClosure ::
   ( MonadError err m,
@@ -106,30 +103,27 @@ fetchVCObjectClosure ::
   VCObjectHash ->
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
-  env@VCCacheEnv {cachePath, tracer} <- asks getTyped
+  env@VCCacheEnv {cachePath} <- asks getTyped
   deps <-
     withInFlight env [objHash] $
       liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
         False -> do
-          traceWith tracer $ VCCacheDepsMiss objHash
           deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
-          liftIO $
-            atomicWriteFile (cachePath </> "deps" </> show objHash) $
-              BL.unlines $
-                map (BL.fromStrict . vcObjectHashToByteString) deps
+          liftIO
+            $ atomicWriteFile
+              (cachePath </> "deps" </> show objHash)
+            $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
           pure deps
-        True -> do
-          traceWith tracer $ VCCacheDepsHit objHash
-          fetchVCObjectClosureHashes objHash
+        True -> fetchVCObjectClosureHashes objHash
   withInFlight env deps $ do
     (nonLocalHashes, localHashes) <-
       partitionEithers
         <$> forM
-          deps
+          (objHash : deps)
           ( \depHash -> do
               liftIO (doesFileExist $ cachePath </> show depHash) >>= \case
-                True -> Right depHash <$ traceWith tracer (VCCacheHit depHash)
-                False -> Left depHash <$ traceWith tracer (VCCacheMiss depHash)
+                True -> pure $ Right depHash
+                False -> pure $ Left depHash
           )
     localObjs <-
       Map.fromList
@@ -168,11 +162,8 @@ readVCObjectHashTxt ::
 readVCObjectHashTxt fp = do
   deps <- filter (not . B.null) . Char8.lines <$> liftIO (B.readFile fp)
   forM deps $ \dep -> do
-    decoded <-
-      either (const $ throwing _Typed $ InvalidHash $ Char8.unpack dep) pure $
-        Base64.decode dep
-    maybe (throwing _Typed $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $
-      digestFromByteString decoded
+    decoded <- either (const $ throwing _Typed $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
+    maybe (throwing _Typed $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
 
 fetchVCObjectUnsafe ::
   ( MonadReader r m,
@@ -187,8 +178,7 @@ fetchVCObjectUnsafe ::
 fetchVCObjectUnsafe h = do
   VCCacheEnv {cachePath} <- asks getTyped
   let fp = cachePath </> show h
-  either (throwing _Typed . CouldNotDecodeObject h) pure
-    =<< liftIO (eitherDecodeStrict <$> Char8.readFile fp)
+  either (throwing _Typed . CouldNotDecodeObject h) pure =<< liftIO (eitherDecodeStrict <$> Char8.readFile fp)
 
 liftServantClient ::
   ( MonadError e m,
