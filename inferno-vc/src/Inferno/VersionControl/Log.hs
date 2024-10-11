@@ -1,11 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Inferno.VersionControl.Log (
-  VCServerTrace(..), VCCacheTrace(..),
-  vcServerTraceToText, vcCacheTraceToText
-  ) where
+module Inferno.VersionControl.Log
+  ( VCServerTrace (..),
+    VCCacheTrace (..),
+    vcServerTraceToText,
+    vcCacheTraceToText,
+  )
+where
 
-import Data.Text (Text, pack, intercalate)
+import Data.Text (Text, intercalate, pack)
 import Inferno.VersionControl.Operations.Error (VCStoreError, vcStoreErrorToString)
 import Inferno.VersionControl.Types (VCObjectHash)
 

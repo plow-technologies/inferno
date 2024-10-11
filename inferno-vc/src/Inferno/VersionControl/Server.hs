@@ -107,10 +107,14 @@ vcServer toHandler tracer =
     :<|> toHandler . Ops.fetchFunctionsForGroups
     :<|> toHandler . Ops.fetchVCObject
     :<|> toHandler . Ops.fetchVCObjectHistory
-    :<|> (\objs -> traceWith tracer (VCFetchObjects objs)
-          >> toHandler (fetchVCObjects objs))
-    :<|> (\obj -> traceWith tracer (VCFetchObjectClosureHashes obj)
-          >> toHandler (Ops.fetchVCObjectClosureHashes obj))
+    :<|> ( \objs ->
+             traceWith tracer (VCFetchObjects objs)
+               >> toHandler (fetchVCObjects objs)
+         )
+    :<|> ( \obj ->
+             traceWith tracer (VCFetchObjectClosureHashes obj)
+               >> toHandler (Ops.fetchVCObjectClosureHashes obj)
+         )
     :<|> toHandler . pushFunctionH
     :<|> toHandler . Ops.deleteAutosavedVCObject
     :<|> toHandler . Ops.deleteVCObjects

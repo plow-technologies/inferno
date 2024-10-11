@@ -16,7 +16,6 @@ import Control.Concurrent.STM
     retry,
     writeTVar,
   )
-import Inferno.VersionControl.Log (VCCacheTrace(..))
 import Control.Monad (forM, forM_)
 import Control.Monad.Catch (MonadMask, bracket_)
 import Control.Monad.Error.Lens (throwing)
@@ -37,6 +36,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
 import qualified Inferno.VersionControl.Client as VCClient
+import Inferno.VersionControl.Log (VCCacheTrace (..))
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Server (VCServerError)
 import Inferno.VersionControl.Types
@@ -52,18 +52,17 @@ import System.AtomicWrite.Writer.LazyByteString (atomicWriteFile)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath.Posix ((</>))
 
-
 data VCCacheEnv = VCCacheEnv
-  { cachePath :: FilePath
-  , cacheInFlight :: TVar (Set.Set VCObjectHash)
-  , tracer :: IOTracer VCCacheTrace
+  { cachePath :: FilePath,
+    cacheInFlight :: TVar (Set.Set VCObjectHash),
+    tracer :: IOTracer VCCacheTrace
   }
   deriving (Generic)
 
 -- | Makes sure only one thread at a time fetches the closure for certain
 -- VCObjectHashes
 withInFlight :: (MonadMask m, MonadIO m) => VCCacheEnv -> [VCObjectHash] -> m a -> m a
-withInFlight VCCacheEnv{cacheInFlight} hashes = bracket_ acquire release
+withInFlight VCCacheEnv {cacheInFlight} hashes = bracket_ acquire release
   where
     acquire = liftIO $ atomically $ do
       inFlight <- readTVar cacheInFlight
@@ -85,29 +84,29 @@ initVCCachedClient :: FilePath -> IOTracer VCCacheTrace -> IO VCCacheEnv
 initVCCachedClient cachePath tracer = do
   createDirectoryIfMissing True $ cachePath </> "deps"
   cacheInFlight <- newTVarIO mempty
-  pure VCCacheEnv{cachePath, cacheInFlight, tracer}
+  pure VCCacheEnv {cachePath, cacheInFlight, tracer}
 
 fetchVCObjectClosure ::
-  ( MonadError err m
-  , HasType VCCacheEnv env
-  , HasType ClientEnv env
-  , AsType VCServerError err
-  , AsType ClientError err
-  , AsType VCStoreError err
-  , MonadReader env m
-  , MonadIO m
-  , MonadMask m
-  , FromJSON a
-  , FromJSON g
-  , ToJSON a
-  , ToJSON g
+  ( MonadError err m,
+    HasType VCCacheEnv env,
+    HasType ClientEnv env,
+    AsType VCServerError err,
+    AsType ClientError err,
+    AsType VCStoreError err,
+    MonadReader env m,
+    MonadIO m,
+    MonadMask m,
+    FromJSON a,
+    FromJSON g,
+    ToJSON a,
+    ToJSON g
   ) =>
   ([VCObjectHash] -> VCClient.ClientMWithVCStoreError (Map.Map VCObjectHash (VCMeta a g VCObject))) ->
   (VCObjectHash -> VCClient.ClientMWithVCStoreError [VCObjectHash]) ->
   VCObjectHash ->
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
-  env@VCCacheEnv{cachePath, tracer} <- asks getTyped
+  env@VCCacheEnv {cachePath, tracer} <- asks getTyped
   deps <-
     withInFlight env [objHash] $
       liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
@@ -146,23 +145,23 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
     pure $ localObjs `Map.union` nonLocalObjs
 
 fetchVCObjectClosureHashes ::
-  ( MonadError err m
-  , MonadIO m
-  , MonadReader env m
-  , AsType VCStoreError err
-  , HasType VCCacheEnv env
+  ( MonadError err m,
+    MonadIO m,
+    MonadReader env m,
+    AsType VCStoreError err,
+    HasType VCCacheEnv env
   ) =>
   VCObjectHash ->
   m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
-  VCCacheEnv{cachePath} <- asks getTyped
+  VCCacheEnv {cachePath} <- asks getTyped
   let fp = cachePath </> "deps" </> show h
   readVCObjectHashTxt fp
 
 readVCObjectHashTxt ::
-  ( MonadError err m
-  , AsType VCStoreError err
-  , MonadIO m
+  ( MonadError err m,
+    AsType VCStoreError err,
+    MonadIO m
   ) =>
   FilePath ->
   m [VCObjectHash]
@@ -176,28 +175,28 @@ readVCObjectHashTxt fp = do
       digestFromByteString decoded
 
 fetchVCObjectUnsafe ::
-  ( MonadReader r m
-  , HasType VCCacheEnv r
-  , MonadError e m
-  , AsType VCStoreError e
-  , MonadIO m
-  , FromJSON b
+  ( MonadReader r m,
+    HasType VCCacheEnv r,
+    MonadError e m,
+    AsType VCStoreError e,
+    MonadIO m,
+    FromJSON b
   ) =>
   VCObjectHash ->
   m b
 fetchVCObjectUnsafe h = do
-  VCCacheEnv{cachePath} <- asks getTyped
+  VCCacheEnv {cachePath} <- asks getTyped
   let fp = cachePath </> show h
   either (throwing _Typed . CouldNotDecodeObject h) pure
     =<< liftIO (eitherDecodeStrict <$> Char8.readFile fp)
 
 liftServantClient ::
-  ( MonadError e m
-  , MonadIO m
-  , MonadReader s m
-  , HasType ClientEnv s
-  , AsType a e
-  , AsType ClientError e
+  ( MonadError e m,
+    MonadIO m,
+    MonadReader s m,
+    HasType ClientEnv s,
+    AsType a e,
+    AsType ClientError e
   ) =>
   TypedClientM a b ->
   m b
