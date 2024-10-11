@@ -341,7 +341,7 @@ instance
   fetchVCObjectClosureHashes h = do
     VCStorePath storePath <- asks getTyped
     let fp = storePath </> "deps" </> show h
-    (h:) <$> readVCObjectHashTxt fp
+    (h :) <$> readVCObjectHashTxt fp
 
   deleteAutosavedVCObjectsOlderThan t = do
     -- We know that all autosaves must be heads:
