@@ -45,7 +45,7 @@ data VCCacheTrace
 
 vcCacheTraceToText :: VCCacheTrace -> Text
 vcCacheTraceToText = \case
-  VCCacheHit h -> "✅ VC Cache hit " <> pack (show h)
-  VCCacheMiss h -> "❌ VC Cache miss " <> pack (show h)
-  VCCacheDepsHit h -> "✅ VC Cache deps hit " <> pack (show h)
-  VCCacheDepsMiss h -> "❌ VC Cache deps miss " <> pack (show h)
+  VCCacheHit h -> "VC Cache hit " <> pack (show h)
+  VCCacheMiss h -> "VC Cache miss " <> pack (show h)
+  VCCacheDepsHit h -> "VC Cache deps hit " <> pack (show h)
+  VCCacheDepsMiss h -> "VC Cache deps miss " <> pack (show h)
