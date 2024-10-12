@@ -82,7 +82,7 @@ data CachedVCClientError
 
 initVCCachedClient :: FilePath -> IOTracer VCCacheTrace -> IO VCCacheEnv
 initVCCachedClient cachePath tracer = do
-  createDirectoryIfMissing True $ cachePath </> "deps"
+  createDirectoryIfMissing True $ cachePath </> "deps-v2"
   cacheInFlight <- newTVarIO mempty
   pure VCCacheEnv {cachePath, cacheInFlight, tracer}
 
@@ -109,12 +109,12 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
   env@VCCacheEnv {cachePath, tracer} <- asks getTyped
   deps <-
     withInFlight env [objHash] $
-      liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
+      liftIO (doesFileExist $ cachePath </> "deps-v2" </> show objHash) >>= \case
         False -> do
           traceWith tracer $ VCCacheDepsMiss objHash
           deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
           liftIO $
-            atomicWriteFile (cachePath </> "deps" </> show objHash) $
+            atomicWriteFile (cachePath </> "deps-v2" </> show objHash) $
               BL.unlines $
                 map (BL.fromStrict . vcObjectHashToByteString) deps
           pure deps
@@ -155,7 +155,7 @@ fetchVCObjectClosureHashes ::
   m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
   VCCacheEnv {cachePath} <- asks getTyped
-  let fp = cachePath </> "deps" </> show h
+  let fp = cachePath </> "deps-v2" </> show h
   readVCObjectHashTxt fp
 
 readVCObjectHashTxt ::
