@@ -143,9 +143,9 @@ vcServerSpec url = do
       metas <- runOperation vcClientEnv (fetchFunctionsForGroups (Set.singleton g))
       map obj metas `shouldBe` [h4]
 
-      -- The closure of h4 should be empty as it has no dependencies:
+      -- The closure of h4 should only contain h4 as it has no dependencies:
       metas' <- runOperation vcClientEnv (fetchVCObjectClosureHashes h4)
-      metas' `shouldBe` []
+      metas' `shouldBe` [h4]
 
       -- After cloning h4 to h5, fetchFunctionsForGroups should return h4 and h5:
       o5 <- createObjForGroup g VCObjectPublic $ CloneOf h4
