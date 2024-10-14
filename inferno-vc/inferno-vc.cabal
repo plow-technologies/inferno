@@ -69,6 +69,7 @@ library
     , QuickCheck
     , stm
     , unbounded-delays
+    , random-shuffle
 
   default-language: Haskell2010
   default-extensions:
