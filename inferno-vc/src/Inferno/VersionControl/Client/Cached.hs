@@ -27,7 +27,8 @@ import Data.Aeson (FromJSON, ToJSON, eitherDecodeStrict, encode)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
-import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Lazy as BL
+import Data.Either (partitionEithers)
 import Data.Generics.Product (HasType, getTyped)
 import Data.Generics.Sum (AsType (..))
 import Data.List (foldl')
@@ -35,7 +36,6 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
 import qualified Inferno.VersionControl.Client as VCClient
-import Inferno.VersionControl.Log (VCCacheTrace (..))
 import Inferno.VersionControl.Operations.Error (VCStoreError (..))
 import Inferno.VersionControl.Server (VCServerError)
 import Inferno.VersionControl.Types
@@ -44,36 +44,32 @@ import Inferno.VersionControl.Types
     VCObjectHash (..),
     vcObjectHashToByteString,
   )
-import Plow.Logging (IOTracer (..), traceWith)
 import Servant.Client (ClientEnv, ClientError)
 import Servant.Typed.Error (TypedClientM, runTypedClientM)
 import System.AtomicWrite.Writer.LazyByteString (atomicWriteFile)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath.Posix ((</>))
-import System.Random.Shuffle (shuffleM)
 
 data VCCacheEnv = VCCacheEnv
   { cachePath :: FilePath,
-    cacheObjInFlight :: TVar (Set.Set VCObjectHash),
-    cacheDepInFlight :: TVar (Set.Set VCObjectHash),
-    tracer :: IOTracer VCCacheTrace
+    cacheInFlight :: TVar (Set.Set VCObjectHash)
   }
   deriving (Generic)
 
 -- | Makes sure only one thread at a time fetches the closure for certain
 -- VCObjectHashes
-withInFlight :: (MonadMask m, MonadIO m) => TVar (Set.Set VCObjectHash) -> [VCObjectHash] -> m a -> m a
-withInFlight hashSetRef hashes = bracket_ acquire release
+withInFlight :: (MonadMask m, MonadIO m) => VCCacheEnv -> [VCObjectHash] -> m a -> m a
+withInFlight VCCacheEnv {cacheInFlight} hashes = bracket_ acquire release
   where
     acquire = liftIO $ atomically $ do
-      inFlight <- readTVar hashSetRef
+      inFlight <- readTVar cacheInFlight
       if any (`Set.member` inFlight) hashes
         then retry
         else do
-          writeTVar hashSetRef $! foldl' (flip Set.insert) inFlight hashes
+          writeTVar cacheInFlight $! foldl' (flip Set.insert) inFlight hashes
     release = liftIO $ atomically $ do
-      inFlight <- readTVar hashSetRef
-      writeTVar hashSetRef $! foldl' (flip Set.delete) inFlight hashes
+      inFlight <- readTVar cacheInFlight
+      writeTVar cacheInFlight $! foldl' (flip Set.delete) inFlight hashes
 
 data CachedVCClientError
   = ClientVCStoreError VCServerError
@@ -81,12 +77,11 @@ data CachedVCClientError
   | LocalVCStoreError VCStoreError
   deriving (Show, Generic)
 
-initVCCachedClient :: FilePath -> IOTracer VCCacheTrace -> IO VCCacheEnv
-initVCCachedClient cachePath tracer = do
-  createDirectoryIfMissing True $ cachePath </> "deps-v2"
-  cacheObjInFlight <- newTVarIO mempty
-  cacheDepInFlight <- newTVarIO mempty
-  pure VCCacheEnv {cachePath, cacheObjInFlight, cacheDepInFlight, tracer}
+initVCCachedClient :: FilePath -> IO VCCacheEnv
+initVCCachedClient cachePath = do
+  createDirectoryIfMissing True $ cachePath </> "deps"
+  cacheInFlight <- newTVarIO mempty
+  pure VCCacheEnv {cachePath, cacheInFlight}
 
 fetchVCObjectClosure ::
   ( MonadError err m,
@@ -108,36 +103,40 @@ fetchVCObjectClosure ::
   VCObjectHash ->
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
-  VCCacheEnv {cachePath, cacheObjInFlight, cacheDepInFlight, tracer} <- asks getTyped
+  env@VCCacheEnv {cachePath} <- asks getTyped
   deps <-
-    withInFlight cacheDepInFlight [objHash] $
-      liftIO (doesFileExist $ cachePath </> "deps-v2" </> show objHash) >>= \case
+    withInFlight env [objHash] $
+      liftIO (doesFileExist $ cachePath </> "deps" </> show objHash) >>= \case
         False -> do
-          traceWith tracer $ VCCacheDepsMiss objHash
           deps <- liftServantClient $ remoteFetchVCObjectClosureHashes objHash
-          liftIO $
-            atomicWriteFile (cachePath </> "deps-v2" </> show objHash) $
-              BL.unlines $
-                map (BL.fromStrict . vcObjectHashToByteString) deps
+          liftIO
+            $ atomicWriteFile
+              (cachePath </> "deps" </> show objHash)
+            $ BL.concat [BL.fromStrict (vcObjectHashToByteString h) <> "\n" | h <- deps]
           pure deps
-        True -> do
-          traceWith tracer $ VCCacheDepsHit objHash
-          fetchVCObjectClosureHashes objHash
-  -- shuffle deps to improve concurrent performance
-  shuffledDeps <- liftIO $ shuffleM deps
-  fmap mconcat $
-    forM shuffledDeps $ \depHash ->
-      withInFlight cacheObjInFlight [depHash] $
-        liftIO (doesFileExist $ cachePath </> show depHash) >>= \case
-          True -> do
-            traceWith tracer (VCCacheHit depHash)
-            Map.singleton depHash <$> fetchVCObjectUnsafe depHash
-          False -> do
-            traceWith tracer (VCCacheMiss depHash)
-            objs <- liftServantClient $ fetchVCObjects [depHash]
-            forM_ (Map.toList objs) $ \(h, o) ->
-              liftIO $ atomicWriteFile (cachePath </> show h) $ encode o
-            pure objs
+        True -> fetchVCObjectClosureHashes objHash
+  withInFlight env deps $ do
+    (nonLocalHashes, localHashes) <-
+      partitionEithers
+        <$> forM
+          (objHash : deps)
+          ( \depHash -> do
+              liftIO (doesFileExist $ cachePath </> show depHash) >>= \case
+                True -> pure $ Right depHash
+                False -> pure $ Left depHash
+          )
+    localObjs <-
+      Map.fromList
+        <$> forM
+          localHashes
+          ( \h ->
+              (h,) <$> fetchVCObjectUnsafe h
+          )
+
+    nonLocalObjs <- liftServantClient $ fetchVCObjects nonLocalHashes
+    forM_ (Map.toList nonLocalObjs) $ \(h, o) ->
+      liftIO $ atomicWriteFile (cachePath </> show h) $ encode o
+    pure $ localObjs `Map.union` nonLocalObjs
 
 fetchVCObjectClosureHashes ::
   ( MonadError err m,
@@ -150,7 +149,7 @@ fetchVCObjectClosureHashes ::
   m [VCObjectHash]
 fetchVCObjectClosureHashes h = do
   VCCacheEnv {cachePath} <- asks getTyped
-  let fp = cachePath </> "deps-v2" </> show h
+  let fp = cachePath </> "deps" </> show h
   readVCObjectHashTxt fp
 
 readVCObjectHashTxt ::
@@ -163,11 +162,8 @@ readVCObjectHashTxt ::
 readVCObjectHashTxt fp = do
   deps <- filter (not . B.null) . Char8.lines <$> liftIO (B.readFile fp)
   forM deps $ \dep -> do
-    decoded <-
-      either (const $ throwing _Typed $ InvalidHash $ Char8.unpack dep) pure $
-        Base64.decode dep
-    maybe (throwing _Typed $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $
-      digestFromByteString decoded
+    decoded <- either (const $ throwing _Typed $ InvalidHash $ Char8.unpack dep) pure $ Base64.decode dep
+    maybe (throwing _Typed $ InvalidHash $ Char8.unpack dep) (pure . VCObjectHash) $ digestFromByteString decoded
 
 fetchVCObjectUnsafe ::
   ( MonadReader r m,
@@ -182,8 +178,7 @@ fetchVCObjectUnsafe ::
 fetchVCObjectUnsafe h = do
   VCCacheEnv {cachePath} <- asks getTyped
   let fp = cachePath </> show h
-  either (throwing _Typed . CouldNotDecodeObject h) pure
-    =<< liftIO (eitherDecodeStrict <$> Char8.readFile fp)
+  either (throwing _Typed . CouldNotDecodeObject h) pure =<< liftIO (eitherDecodeStrict <$> Char8.readFile fp)
 
 liftServantClient ::
   ( MonadError e m,
