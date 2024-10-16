@@ -37,7 +37,7 @@ import Data.Time.Clock.POSIX (getPOSIXTime)
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (Expr)
 import Inferno.Types.Type (TCScheme)
-import Inferno.VersionControl.Log (VCServerTrace (ThrownVCOtherError, ThrownVCStoreError), vcServerTraceToText)
+import Inferno.VersionControl.Log (VCServerTrace (..), vcServerTraceToText)
 import qualified Inferno.VersionControl.Operations as Ops
 import qualified Inferno.VersionControl.Operations.Error as Ops
 import Inferno.VersionControl.Server.Types (readServerConfig)
@@ -100,14 +100,21 @@ vcServer ::
     Ord (Ops.Group m)
   ) =>
   (forall x. m x -> Handler (Union (WithError VCServerError x))) ->
+  IOTracer VCServerTrace ->
   Server (VersionControlAPI (Ops.Author m) (Ops.Group m))
-vcServer toHandler =
+vcServer toHandler tracer =
   toHandler . fetchFunctionH
     :<|> toHandler . Ops.fetchFunctionsForGroups
     :<|> toHandler . Ops.fetchVCObject
     :<|> toHandler . Ops.fetchVCObjectHistory
-    :<|> toHandler . fetchVCObjects
-    :<|> toHandler . Ops.fetchVCObjectClosureHashes
+    :<|> ( \objs ->
+             traceWith tracer (VCFetchObjects objs)
+               >> toHandler (fetchVCObjects objs)
+         )
+    :<|> ( \obj ->
+             traceWith tracer (VCFetchObjectClosureHashes obj)
+               >> toHandler (Ops.fetchVCObjectClosureHashes obj)
+         )
     :<|> toHandler . pushFunctionH
     :<|> toHandler . Ops.deleteAutosavedVCObject
     :<|> toHandler . Ops.deleteVCObjects
@@ -187,7 +194,7 @@ runServerConfig middleware withEnv runOp serverConfig = do
           gzip def $
             middleware env $
               serve (Proxy :: Proxy (VersionControlAPI a g)) $
-                vcServer (liftIO . liftTypedError . flip runOp env)
+                vcServer (liftIO . liftTypedError . flip runOp env) serverTracer
 
 withLinkedAsync_ :: IO a -> IO b -> IO b
 withLinkedAsync_ f g = withAsync f $ \h -> link h >> g
