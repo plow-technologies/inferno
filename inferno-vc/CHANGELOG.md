@@ -1,6 +1,13 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.8.0 -- 2024-10-16
+* Added logging to cached client to see hits and misses
+* Added logging to server to see what scriptIds are being used to request
+  fetchObjects and fetchObjectClosureHashes
+* Made locks on cache more granular and only fetch a single upstream object per
+  request
+
 ## 0.3.7.1 -- 2024-09-23
 * Fix overflowing threadDelay on armv7l
 
