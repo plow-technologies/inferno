@@ -124,12 +124,18 @@ api :: Proxy InfernoMlServerAPI
 api = Proxy
 
 server :: ServerT InfernoMlServerAPI RemoteM
-server = getStatus :<|> runInferenceParam :<|> cancelInference
+server =
+  getStatus
+    :<|> runInferenceParam
+    :<|> testInferenceParam
+    :<|> cancelInference
   where
-    -- If the server is currently evaluating a script, this will return `Nothing`,
-    -- otherwise `Just ()`
-    getStatus :: RemoteM (Maybe ())
-    getStatus = tryReadMVar =<< view #lock
+    -- If the server is currently evaluating a script, the var will be taken,
+    -- i.e. evaluate to `Nothing`, otherwise `Just ()`
+    getStatus :: RemoteM ServerStatus
+    getStatus =
+      fmap (maybe EvaluatingScript (const Idle)) $
+        tryReadMVar =<< view #lock
 
     -- When an inference request is run, the server will store the `Async` in
     -- the `job` `MVar`. Canceling the request throws to the `Async` thread

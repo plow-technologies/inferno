@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE NoFieldSelectors #-}
+
 -- These test items do not run a full `inferno-ml-server` instance and only
 -- check that a limited subset of server operations work as intended (e.g. model
 -- fetching and caching). For full server tests, see `tests/server.nix`.
@@ -12,31 +15,24 @@ import Data.Aeson (eitherDecodeFileStrict)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Foldable (toList, traverse_)
+import Data.Generics.Wrapped (wrappedTo)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Text (Text)
+import qualified Data.UUID as UUID
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word8)
 import Inferno.ML.Server (runInEnv)
-import Inferno.ML.Server.Inference
-  ( getAndCacheModels,
-    linkVersionedModel,
-  )
+import Inferno.ML.Server.Inference (getAndCacheModels)
 import Inferno.ML.Server.Inference.Model
   ( getModelVersionSizeAndContents,
     getModelsAndVersions,
   )
 import Inferno.ML.Server.Types
-  ( Config,
-    Env,
-    Id (Id),
-    ModelVersion,
-    showVersion,
-  )
 import Inferno.Types.Syntax (Ident)
 import Lens.Micro.Platform
 import Plow.Logging.Message (LogLevel (LevelWarn))
+import System.FilePath ((<.>))
 import Test.Hspec (Spec)
 import qualified Test.Hspec as Hspec
 import UnliftIO (throwString)
@@ -68,22 +64,21 @@ mkCacheSpec :: Env -> Spec
 mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
   Hspec.it "caches a model" . cdCache $ do
     cacheModel
-    dir <- env ^. #config . #cache . #path & listDirectory
-    dir `Hspec.shouldMatchList` ["mnist.v1", "mnist.ts.pt"]
-    contents <- ByteString.readFile "mnist.ts.pt"
+    dir <- listDirectory env.config.cache.path
+    dir `Hspec.shouldMatchList` [mnistV1Path]
+    contents <- ByteString.readFile mnistV1Path
     ByteString.length contents `Hspec.shouldBe` mnistV1Size
     getZipMagic contents `Hspec.shouldBe` zipMagic
 
   Hspec.it "doesn't re-cache" . cdCache $ do
-    atime1 <- cacheModel *> getModificationTime "mnist.ts.pt"
-    atime2 <- cacheModel *> getModificationTime "mnist.ts.pt"
+    atime1 <- cacheModel *> getModificationTime mnistV1Path
+    atime2 <- cacheModel *> getModificationTime mnistV1Path
     atime2 `Hspec.shouldBe` atime1
   where
     cacheModel :: IO ()
     cacheModel =
       void . flip runReaderT env $
-        traverse_ linkVersionedModel
-          =<< (`getAndCacheModels` modelsWithIdents)
+        (`getAndCacheModels` modelsWithIdents)
           =<< view (#config . #cache)
 
     clearCache :: IO ()
@@ -94,19 +89,19 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
           =<< getCurrentDirectory
 
     cdCache :: IO a -> IO a
-    cdCache = env ^. #config . #cache . #path & withCurrentDirectory
+    cdCache = withCurrentDirectory env.config.cache.path
 
-modelsWithIdents :: Map Ident (Id ModelVersion, Text)
-modelsWithIdents = Map.singleton "dummy" (mnistV1, "mnist")
+modelsWithIdents :: Map Ident (Id ModelVersion)
+modelsWithIdents = Map.singleton "dummy" mnistV1
 
 mkDbSpec :: Env -> Spec
 mkDbSpec env = Hspec.describe "Database" $ do
   Hspec.it "gets a model" $ do
-    runReaderT (getModelsAndVersions models) env >>= \case
+    runReaderT (getModelsAndVersions modelVersions) env >>= \case
       v
         | Just (model, mversion) <- v ^? _head -> do
-            view #name model `Hspec.shouldBe` "mnist"
-            view (#version . to showVersion) mversion `Hspec.shouldBe` "v1"
+            model.name `Hspec.shouldBe` "mnist"
+            showVersion mversion.version `Hspec.shouldBe` "v1"
         | otherwise -> Hspec.expectationFailure "No models were retrieved"
 
   Hspec.it "gets model size and contents" $ do
@@ -122,15 +117,18 @@ mkDbSpec env = Hspec.describe "Database" $ do
 
 getWithContents :: Env -> IO (Integer, ByteString)
 getWithContents env = flip runReaderT env $ do
-  (getModelsAndVersions models >>=) . (. fmap snd . toList) $ \case
+  (getModelsAndVersions modelVersions >>=) . (. fmap snd . toList) $ \case
     [] -> throwString "No model was retrieved"
-    v : _ -> getModelVersionSizeAndContents $ view #contents v
+    v : _ -> getModelVersionSizeAndContents v.contents
 
 mnistV1 :: Id ModelVersion
-mnistV1 = Id 1
+mnistV1 = Id $ UUID.fromWords 6 0 0 0
 
-models :: Vector (Id ModelVersion)
-models = Vector.singleton mnistV1
+mnistV1Path :: FilePath
+mnistV1Path = UUID.toString (wrappedTo mnistV1) <.> "ts" <.> "pt"
+
+modelVersions :: Vector (Id ModelVersion)
+modelVersions = Vector.singleton mnistV1
 
 mnistV1Size :: Int
 mnistV1Size = 4808991

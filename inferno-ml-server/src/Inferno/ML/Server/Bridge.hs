@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 
 module Inferno.ML.Server.Bridge
@@ -69,9 +70,4 @@ callBridge bi c =
     mkEnv = asks $ (`mkClientEnv` url) . view #manager
       where
         url :: BaseUrl
-        url =
-          BaseUrl
-            Http
-            (view (#host . to show) bi)
-            (view (#port . to fromIntegral) bi)
-            mempty
+        url = BaseUrl Http (show bi.host) (fromIntegral bi.port) mempty

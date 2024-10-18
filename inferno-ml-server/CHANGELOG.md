@@ -1,5 +1,10 @@
 # Revision History for `inferno-ml-server`
 
+## 2023.10.18
+* Add new testing route
+* Some improvements to model caching
+* Make `/status` not awful and confusing
+
 ## 2023.9.27
 * Change entity DB representation to `numeric`
 

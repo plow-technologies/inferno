@@ -46,7 +46,6 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
-import Data.Int (Int64)
 import Data.Map.Strict (Map)
 import Data.Scientific (Scientific)
 import Data.Text (Text)
@@ -76,6 +75,7 @@ import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
   ( BridgeInfo,
+    EvaluationEnv,
     EvaluationInfo,
     InferenceParam,
     InferenceParamWithModels,
@@ -297,12 +297,11 @@ newtype InferenceOptions = InferenceOptions
 
 data RemoteError
   = CacheSizeExceeded
-  | -- | Either the requested model version does not exist, or the
-    -- parent model row corresponding to the model version does not
-    -- exist
-    NoSuchModel Int64
+  | -- | Either parent model row corresponding to the model version, or the
+    -- the requested model version itself, does not exist
+    NoSuchModel (Either (Id Model) (Id ModelVersion))
   | NoSuchScript VCObjectHash
-  | NoSuchParameter Int64
+  | NoSuchParameter (Id InferenceParam)
   | InvalidScript Text
   | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
@@ -316,10 +315,16 @@ data RemoteError
 instance Exception RemoteError where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
-    NoSuchModel m ->
+    NoSuchModel (Left m) ->
       unwords
         [ "Model:",
           "'" <> show m <> "'",
+          "does not exist in the store"
+        ]
+    NoSuchModel (Right mv) ->
+      unwords
+        [ "Model version:",
+          "'" <> show mv <> "'",
           "does not exist in the store"
         ]
     NoSuchScript vch ->
@@ -375,7 +380,7 @@ data RemoteTrace
 data TraceInfo
   = StartingServer
   | RunningInference (Id InferenceParam) Int
-  | EvaluatingScript (Id InferenceParam)
+  | EvaluatingParam (Id InferenceParam)
   | CopyingModel (Id ModelVersion)
   | OtherInfo Text
   deriving stock (Show, Eq, Generic)
@@ -409,15 +414,15 @@ infixl 4 ??
 f ?? x = ($ x) <$> f
 
 type InferenceParam =
-  Types.InferenceParam (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InferenceParam (EntityId GId) PID VCObjectHash
 
 type InferenceParamWithModels =
-  Types.InferenceParamWithModels (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.InferenceParamWithModels (EntityId GId) PID VCObjectHash
 
 type BridgeInfo =
-  Types.BridgeInfo (EntityId UId) (EntityId GId) PID VCObjectHash
+  Types.BridgeInfo (EntityId GId) PID VCObjectHash
 
-type EvaluationInfo = Types.EvaluationInfo (EntityId UId) (EntityId GId) PID
+type EvaluationInfo = Types.EvaluationInfo (EntityId GId) PID
 
 type Model = Types.Model (EntityId GId)
 
@@ -436,15 +441,13 @@ pattern InferenceParam ::
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Word64 ->
   Maybe UTCTime ->
-  EntityId UId ->
+  EntityId GId ->
   InferenceParam
-pattern InferenceParam iid s ios res mt uid =
-  Types.InferenceParam iid s ios res mt uid
+pattern InferenceParam iid s ios res mt gid =
+  Types.InferenceParam iid s ios res mt gid
 
 pattern InferenceParamWithModels ::
-  InferenceParam ->
-  Map Ident (Id ModelVersion, Text) ->
-  InferenceParamWithModels
+  InferenceParam -> Map Ident (Id ModelVersion) -> InferenceParamWithModels
 pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo
@@ -474,12 +477,9 @@ pattern EvaluationInfo ::
 pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
 type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI
-    (EntityId UId)
-    (EntityId GId)
-    PID
-    VCObjectHash
-    EpochTime
+  Types.InfernoMlServerAPI (EntityId GId) PID VCObjectHash
+
+type EvaluationEnv = Types.EvaluationEnv (EntityId GId) PID
 
 -- Orphans
 
@@ -492,6 +492,8 @@ instance ToField VCObjectHash where
 deriving newtype instance ToHttpApiData EpochTime
 
 deriving newtype instance FromHttpApiData EpochTime
+
+-- Etc
 
 joinToTuple :: (a :. b) -> (a, b)
 joinToTuple (a :. b) = (a, b)

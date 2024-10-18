@@ -29,7 +29,7 @@ traceRemote = \case
           tshow $ t `div` 1000000,
           "(seconds)"
         ]
-    EvaluatingScript s ->
+    EvaluatingParam s ->
       Text.unwords
         [ "Evaluating inferno script for parameter:",
           tshow s
