@@ -73,6 +73,7 @@ import Inferno.Utils.Prettyprinter (renderPretty)
 import Inferno.VersionControl.Types
   ( VCObject (VCFunction),
   )
+import qualified Inferno.VersionControl.Types
 import Lens.Micro.Platform
 import System.CPUTime (getCPUTime)
 import System.FilePath ((<.>))
@@ -208,7 +209,7 @@ runInferenceParamWithEnv ipid uuid senv =
           CTime ->
           RemoteM (WriteStream IO)
         runEval Interpreter {evalExpr, mkEnvFromClosure} t =
-          senv ^. #obj . #obj & \case
+          case senv.obj.obj of
             VCFunction {} -> do
               let -- Note that this both includes inputs (i.e. readable)
                   -- and outputs (i.e. writable, or readable/writable).
@@ -264,7 +265,7 @@ runInferenceParamWithEnv ipid uuid senv =
                           bimap (mkIdentWith "model$") toModelPath
 
                   closure :: Map VCObjectHash VCObject
-                  closure = senv ^. #obj . #obj & Map.singleton senv.script
+                  closure = Map.singleton senv.script senv.obj.obj
 
                   expr :: Expr (Maybe VCObjectHash) ()
                   expr =
@@ -315,10 +316,9 @@ runInferenceParamWithEnv ipid uuid senv =
                 -- use that. Otherwise, use the resolution stored in the
                 -- parameter
                 resolution :: InverseResolution
-                resolution = senv ^. #mres . non res & toResolution
-                  where
-                    res :: Int64
-                    res = senv ^. #param . #resolution & fromIntegral
+                resolution =
+                  senv ^. #mres . non (fromIntegral senv.param.resolution)
+                    & toResolution
 
                 implEnv :: Map ExtIdent (Value BridgeMlValue m)
                 implEnv =
