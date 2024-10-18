@@ -70,7 +70,9 @@ import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
-  ( VCObjectHash,
+  ( VCHashUpdate,
+    VCHashUpdateViaShow (VCHashUpdateViaShow),
+    VCObjectHash,
     byteStringToVCObjectHash,
     vcObjectHashToByteString,
   )
@@ -806,8 +808,9 @@ data ScriptInputType
     -- the same script identifier to point to the same PID with both
     -- types of access enabled
     ReadableWritable
-  deriving stock (Show, Eq, Generic)
+  deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
+  deriving (VCHashUpdate) via (VCHashUpdateViaShow ScriptInputType)
 
 instance FromJSON ScriptInputType where
   parseJSON = withText "ScriptInputType" $ \case
