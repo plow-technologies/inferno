@@ -140,6 +140,7 @@ type CancelAPI = "inference" :> "cancel" :> Put '[JSON] ()
 
 type InferenceAPI gid p s =
   "inference"
+    :> "run"
     :> Capture "id" (Id (InferenceParam gid p s))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
@@ -148,6 +149,7 @@ type InferenceAPI gid p s =
 type InferenceTestAPI gid p s =
   -- Evaluate an inference script
   "inference"
+    :> "test"
     :> Capture "id" (Id (InferenceParam gid p s))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
