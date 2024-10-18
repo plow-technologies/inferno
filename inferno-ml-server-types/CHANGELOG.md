@@ -1,6 +1,10 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.10.0
+* Change `Id` to `UUID`
+* Add new testing endpoint to override models, script, etc...
+
 ## 0.9.1
 * `Ord`/`VCHashUpdate` instances for `ScriptInputType`
 

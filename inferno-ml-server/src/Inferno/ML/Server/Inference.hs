@@ -505,7 +505,9 @@ getAndCacheModels cache =
       where
         mkPath :: RemoteM FilePath
         mkPath =
-          maybe (throwM (OtherRemoteError "todo")) (pure . mkModelPath) $
+          maybe
+            (throwM (OtherRemoteError "Missing model version ID"))
+            (pure . mkModelPath)
             mversion.id
 
     -- Checks that the configured cache size will not be exceeded by
