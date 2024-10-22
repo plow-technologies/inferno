@@ -22,14 +22,13 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text.IO as Text.IO
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import qualified Data.UUID as UUID
 import Database.PostgreSQL.Simple
   ( Connection,
-    Only (fromOnly),
     Query,
     close,
     connectPostgreSQL,
     execute,
-    query,
     withTransaction,
   )
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -52,7 +51,6 @@ import Inferno.VersionControl.Types
     VCObjectPred (Init),
     VCObjectVisibility (VCObjectPublic),
   )
-import Lens.Micro.Platform
 import System.Environment (getArgs)
 import System.Exit (die)
 import UnliftIO.Exception (bracket, throwString)
@@ -60,32 +58,36 @@ import UnliftIO.Exception (bracket, throwString)
 main :: IO ()
 main =
   getArgs >>= \case
-    scriptp : pstr : conns : _ ->
-      either throwString (parseAndSave scriptp (Char8.pack conns))
-        . eitherDecode
-        $ Lazy.Char8.pack pstr
-    _ -> die "Usage ./parse <SCRIPT-PATH> <PID-MAP-JSON> <DB-STR>"
+    ustr : scriptp : pstr : conns : _ -> do
+      pids <- either throwString pure $ eitherDecode (Lazy.Char8.pack pstr)
+      ipid <-
+        maybe (throwString "Invalid inference param Id") pure $
+          UUID.fromString ustr
+      parseAndSave (Id ipid) scriptp (Char8.pack conns) pids
+    _ -> die "Usage ./parse <UUID> <SCRIPT-PATH> <PID-MAP-JSON> <DB-STR>"
 
 parseAndSave ::
+  Id InferenceParam ->
   FilePath ->
   ByteString ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   IO ()
-parseAndSave p conns inputs = do
+parseAndSave ipid p conns inputs = do
   t <- Text.IO.readFile p
   now <- fromIntegral @Int . round <$> getPOSIXTime
   ast <-
     either (throwString . displayException) pure . (`parse` t)
       =<< mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
-  bracket (connectPostgreSQL conns) close (saveScriptAndParam ast now inputs)
+  bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now inputs)
 
 saveScriptAndParam ::
+  Id InferenceParam ->
   (Expr (Pinned VCObjectHash) (), TCScheme) ->
   CTime ->
   Map Ident (SingleOrMany PID, ScriptInputType) ->
   Connection ->
   IO ()
-saveScriptAndParam x now inputs conn = insertScript *> insertParam
+saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
   where
     insertScript :: IO ()
     insertScript =
@@ -103,22 +105,20 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
               RETURNING id
             )
             INSERT INTO mselections (script, model, ident)
-              SELECT id, 1::integer, 'mnist'
+              SELECT id, '00000006-0000-0000-0000-000000000000'::uuid, 'mnist'
             FROM ins
           |]
 
     insertParam :: IO ()
-    insertParam =
-      maybe (throwString "Can't get param ID") (saveBridgeInfo . fromOnly)
-        . preview _head
-        =<< saveParam
+    insertParam = saveParam *> saveBridgeInfo
       where
-        saveParam :: IO [Only (Id InferenceParam)]
+        saveParam :: IO ()
         saveParam =
-          withTransaction conn
-            . query conn q
+          void
+            . withTransaction conn
+            . execute conn q
             . InferenceParam
-              Nothing
+              (Just ipid)
               hash
               inputs
               128
@@ -129,12 +129,18 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
             q =
               [sql|
                 INSERT INTO params
+                  ( id
+                  , script
+                  , inputs
+                  , resolution
+                  , terminated
+                  , gid
+                  )
                 VALUES (?, ?, ?, ?, ?, ?)
-                RETURNING id
               |]
 
-        saveBridgeInfo :: Id InferenceParam -> IO ()
-        saveBridgeInfo ipid =
+        saveBridgeInfo :: IO ()
+        saveBridgeInfo =
           void
             . withTransaction conn
             . execute conn q
@@ -161,7 +167,8 @@ saveScriptAndParam x now inputs conn = insertScript *> insertParam
           MLInferenceScript
             . InferenceOptions
             . Map.singleton "mnist"
-            $ Id 1
+            . Id
+            $ UUID.fromWords 6 0 0 0
 
     uid :: EntityId UId
     uid = entityIdFromInteger 0

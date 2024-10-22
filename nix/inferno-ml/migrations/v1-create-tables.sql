@@ -17,7 +17,7 @@ create extension lo;
 -- "deleted" and cannot be used any longer
 
 create table if not exists models
-  ( id serial primary key
+  ( id uuid primary key default gen_random_uuid()
   , name text not null
   , gid numeric not null
   , visibility jsonb
@@ -29,8 +29,8 @@ create table if not exists models
   );
 
 create table if not exists mversions
-  ( id serial primary key
-  , model integer references models (id)
+  ( id uuid primary key default gen_random_uuid()
+  , model uuid references models (id)
     -- Short, high-level model description
   , description text not null
     -- Model card (description and metadata) serialized as JSON
@@ -59,14 +59,14 @@ create table if not exists scripts
 -- between `scripts` and `mversions`)
 create table if not exists mselections
   ( script bytea not null references scripts (id)
-  , model integer not null references mversions (id)
+  , model uuid not null references mversions (id)
     -- Inferno identifier linked to this specific model version
   , ident text not null
   , unique (script, model)
   );
 
 create table if not exists params
-  ( id serial primary key
+  ( id uuid primary key default gen_random_uuid()
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
     -- Strictly speaking, this includes both inputs and outputs. The
@@ -77,13 +77,13 @@ create table if not exists params
   , resolution integer not null
     -- See note above
   , terminated timestamptz
-  , uid numeric not null
+  , gid numeric not null
   );
 
 -- Execution info for inference evaluation
 create table if not exists evalinfo
   ( id uuid primary key
-  , param integer not null references params (id)
+  , param uuid not null references params (id)
     -- When inference evaluation began
   , started timestamptz not null
     -- When inference evaluation ended
@@ -97,7 +97,7 @@ create table if not exists evalinfo
 -- Stores information required to call the data bridge
 create table if not exists bridges
   ( -- Same ID as the referenced param
-    id integer not null references params (id)
+    id uuid not null references params (id)
     -- Host of the bridge server
   , ip inet not null
   , port integer check (port > 0)

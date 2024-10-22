@@ -9,8 +9,9 @@ module Client (main) where
 import Conduit
 import Control.Monad (unless)
 import Data.Coerce (coerce)
-import Data.Int (Int64)
 import qualified Data.Map as Map
+import Data.UUID (UUID)
+import qualified Data.UUID as UUID
 import Inferno.ML.Server.Client (inferenceC)
 import Inferno.ML.Server.Types
   ( IValue (IDouble),
@@ -46,11 +47,11 @@ main =
     _ -> die "Usage: test-client <inference-parameter-id>"
 
 -- Check that the returned write stream matches the expected value
-verifyWrites :: Int64 -> WriteStream IO -> IO ()
+verifyWrites :: UUID -> WriteStream IO -> IO ()
 verifyWrites ipid c = do
   expected <- getExpected
-  -- Note that there is only one chunk per PID in the output stream, so we
-  -- don't need to concatenate the results by PID. We can just sink it into
+  -- Note that there are only one or two chunks per PID in the output stream, so
+  -- we don't need to concatenate the results by PID. We can just sink it into
   -- a list directly
   result <- runConduit $ c .| sinkList
   unless (result == expected) . throwString . unwords $
@@ -64,17 +65,18 @@ verifyWrites ipid c = do
   where
     getExpected :: IO [(Int, [(EpochTime, IValue)])]
     getExpected =
-      maybe (throwString "Missing PID") pure . Map.lookup ipid $
-        Map.fromList
-          [ ( 1,
+      maybe (throwString "Missing output PID for parameter") pure
+        . Map.lookup ipid
+        $ Map.fromList
+          [ ( UUID.fromWords 1 0 0 0,
               [ (1, [(151, IDouble 2.5), (251, IDouble 3.5)])
               ]
             ),
-            ( 2,
+            ( UUID.fromWords 2 0 0 0,
               [ (2, [(300, IDouble 25.0)])
               ]
             ),
-            ( 3,
+            ( UUID.fromWords 3 0 0 0,
               [ (3, [(100, IDouble 7.0)]),
                 (4, [(100, IDouble 8.0)])
               ]
