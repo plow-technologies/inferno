@@ -92,7 +92,7 @@ pkgs.nixosTest {
                 builtins.mapAttrs (_: builtins.toJSON) {
                   ones = {
                     inputs.input0 = 1;
-                    inputs.output0 = 1;
+                    outputs.output0 = 1;
                   };
                   contrived = {
                     inputs.input0 = 2;

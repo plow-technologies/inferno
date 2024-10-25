@@ -120,7 +120,7 @@ runInferenceParam ipid mres uuid =
   where
     mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
     mkScriptEnv pwm =
-      ScriptEnv pwm.param pwm.models pwm.param.inputs undefined
+      ScriptEnv pwm.param pwm.models pwm.param.inputs pwm.param.outputs
         <$> getVcObject pwm.param.script
         ?? pwm.param.script
         ?? mres
@@ -146,7 +146,7 @@ testInferenceParam ipid mres uuid eenv =
     -- for script eval come from the `EvaluationEnv`
     mkScriptEnv :: InferenceParam -> RemoteM ScriptEnv
     mkScriptEnv param =
-      ScriptEnv param eenv.models eenv.inputs undefined
+      ScriptEnv param eenv.models eenv.inputs eenv.outputs
         <$> getVcObject eenv.script
         ?? eenv.script
         ?? mres

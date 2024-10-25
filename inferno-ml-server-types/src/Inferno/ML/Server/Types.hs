@@ -742,6 +742,7 @@ instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p VCObjectHash) wh
     [ ip.id & maybe (toField Default) toField,
       ip.script & VCObjectHashRow & toField,
       ip.inputs & Aeson & toField,
+      ip.outputs & Aeson & toField,
       ip.resolution & Aeson & toField,
       toField Default,
       ip.gid & toField
