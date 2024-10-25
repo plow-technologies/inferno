@@ -70,9 +70,7 @@ import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
-  ( VCHashUpdate,
-    VCHashUpdateViaShow (VCHashUpdateViaShow),
-    VCObjectHash,
+  ( VCObjectHash,
     byteStringToVCObjectHash,
     vcObjectHashToByteString,
   )
@@ -791,40 +789,6 @@ data InferenceParamWithModels gid p s = InferenceParamWithModels
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
-
--- | Controls input interaction within a script, i.e. ability to read from
--- and\/or write to this input. Although the term \"input\" is used, those with
--- writes enabled can also be described as \"outputs\"
-data ScriptInputType
-  = -- | Script input can be read, but not written
-    Readable
-  | -- | Script input can be written, i.e. can be used in array of
-    -- write objects returned from script evaluation
-    Writable
-  | -- | Script input can be both read from and written to; this allows
-    -- the same script identifier to point to the same PID with both
-    -- types of access enabled
-    ReadableWritable
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData, ToADTArbitrary)
-  deriving (VCHashUpdate) via (VCHashUpdateViaShow ScriptInputType)
-
-instance FromJSON ScriptInputType where
-  parseJSON = withText "ScriptInputType" $ \case
-    "r" -> pure Readable
-    "w" -> pure Writable
-    "rw" -> pure ReadableWritable
-    s -> fail $ "Invalid script input type: " <> Text.unpack s
-
-instance ToJSON ScriptInputType where
-  toJSON =
-    String . \case
-      Readable -> "r"
-      Writable -> "w"
-      ReadableWritable -> "rw"
-
-instance Arbitrary ScriptInputType where
-  arbitrary = genericArbitrary
 
 -- | Information about execution time and resource usage. This is saved by
 -- @inferno-ml-server@ after script evaluation completes and can be queried

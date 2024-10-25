@@ -90,12 +90,21 @@ pkgs.nixosTest {
               dbstr = "host='127.0.0.1' dbname='inferno' user='inferno' password=''";
               ios =
                 builtins.mapAttrs (_: builtins.toJSON) {
-                  ones = { input0 = [ 1 "rw" ]; };
-                  contrived = { input0 = [ 2 "rw" ]; };
+                  ones = {
+                    inputs.input0 = 1;
+                    inputs.output0 = 1;
+                  };
+                  contrived = {
+                    inputs.input0 = 2;
+                    outputs.output0 = 2;
+                  };
                   # This test uses two outputs
                   mnist = {
-                    input0 = [ 3 "rw" ];
-                    input1 = [ 4 "w" ];
+                    inputs.input0 = 3;
+                    outputs = {
+                      output0 = 3;
+                      output1 = 4;
+                    };
                   };
                 };
             in
