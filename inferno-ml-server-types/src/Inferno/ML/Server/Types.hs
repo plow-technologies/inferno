@@ -687,17 +687,11 @@ data InferenceParam gid p s = InferenceParam
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
     script :: s,
-    -- | This is called @inputs@ but is also used for script outputs as
-    -- well. The access (input or output) is controlled by the 'ScriptInputType'.
-    -- For example, if this field is set to @[("input0", Single (p, Readable))]@,
-    -- the script will only have a single read-only input and will not be able to
-    -- write anywhere (note that we should disallow this scenario, as script
-    -- evaluation would not work properly)
-    --
-    -- Mapping the input\/output to the Inferno identifier helps ensure that
+    -- | Mapping the input\/output to the Inferno identifier helps ensure that
     -- Inferno identifiers are always pointing to the correct input\/output;
     -- otherwise we would need to rely on the order of the original identifiers
-    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    inputs :: Map Ident (SingleOrMany p),
+    outputs :: Map Ident (SingleOrMany p),
     -- | Resolution, passed to bridge routes
     resolution :: Word64,
     -- | The time that this parameter was \"deleted\", if any. For active
@@ -717,6 +711,7 @@ instance (FromJSON s, FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid 
       <$> o .: "id"
       <*> o .: "script"
       <*> o .: "inputs"
+      <*> o .: "outputs"
       <*> o .:? "resolution" .!= 128
       -- We shouldn't require this field
       <*> o .:? "terminated"
@@ -737,6 +732,7 @@ instance
     InferenceParam
       <$> field
       <*> fmap wrappedTo (field @VCObjectHashRow)
+      <*> fmap getAeson field
       <*> fmap getAeson field
       <*> fmap fromIntegral (field @Int64)
       <*> field
@@ -764,6 +760,7 @@ instance
   arbitrary =
     InferenceParam
       <$> arbitrary
+      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
@@ -1053,7 +1050,8 @@ instance Ord a => Ord (SingleOrMany a) where
 -- evaluator. This allows for more interactive testing
 data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash,
-    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    inputs :: Map Ident (SingleOrMany p),
+    outputs :: Map Ident (SingleOrMany p),
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)

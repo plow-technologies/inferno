@@ -69,10 +69,11 @@ create table if not exists params
   ( id uuid primary key default gen_random_uuid()
     -- Script hash from `inferno-vc`
   , script bytea not null references scripts (id)
-    -- Strictly speaking, this includes both inputs and outputs. The
-    -- corresponding Haskell type contains `(p, ScriptInputType)`, with
-    -- the second element determining readability and writability
+    -- Inputs and outputs are a `Map Ident (SingleOrMany p)` on the Haskell
+    -- side. Stored as JSONB for convenience (e.g. Postgres subarrays must all
+    -- be the same length, making `SingleOrMany` harder to represent)
   , inputs jsonb not null
+  , outputs jsonb not null
     -- Resolution passed to script evaluator
   , resolution integer not null
     -- See note above

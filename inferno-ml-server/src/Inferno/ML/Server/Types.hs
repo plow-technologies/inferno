@@ -438,13 +438,14 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Map Ident (SingleOrMany PID, ScriptInputType) ->
+  Map Ident (SingleOrMany PID) ->
+  Map Ident (SingleOrMany PID) ->
   Word64 ->
   Maybe UTCTime ->
   EntityId GId ->
   InferenceParam
-pattern InferenceParam iid s ios res mt gid =
-  Types.InferenceParam iid s ios res mt gid
+pattern InferenceParam iid s is os res mt gid =
+  Types.InferenceParam iid s is os res mt gid
 
 pattern InferenceParamWithModels ::
   InferenceParam -> Map Ident (Id ModelVersion) -> InferenceParamWithModels

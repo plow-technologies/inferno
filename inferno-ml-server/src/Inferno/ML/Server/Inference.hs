@@ -120,7 +120,7 @@ runInferenceParam ipid mres uuid =
   where
     mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
     mkScriptEnv pwm =
-      ScriptEnv pwm.param pwm.models pwm.param.inputs
+      ScriptEnv pwm.param pwm.models pwm.param.inputs undefined
         <$> getVcObject pwm.param.script
         ?? pwm.param.script
         ?? mres
@@ -146,7 +146,7 @@ testInferenceParam ipid mres uuid eenv =
     -- for script eval come from the `EvaluationEnv`
     mkScriptEnv :: InferenceParam -> RemoteM ScriptEnv
     mkScriptEnv param =
-      ScriptEnv param eenv.models eenv.inputs
+      ScriptEnv param eenv.models eenv.inputs undefined
         <$> getVcObject eenv.script
         ?? eenv.script
         ?? mres
@@ -220,8 +220,11 @@ runInferenceParamWithEnv ipid uuid senv =
                   -- runtime that runs as a script evaluation engine
                   -- and commits the output write object
                   pids :: [SingleOrMany PID]
-                  pids =
-                    senv ^.. #inputs . to Map.toAscList . each . _2 . _1
+                  pids = is <> os
+                    where
+                      is, os :: [SingleOrMany PID]
+                      is = senv ^.. #inputs . to Map.toAscList . each . _2
+                      os = senv ^.. #outputs . to Map.toAscList . each . _2
 
                   -- List of model versions, which are used to evaluate
                   -- `loadModel` primitive (eventually calling Hasktorch to
@@ -584,7 +587,8 @@ mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
 data ScriptEnv = ScriptEnv
   { param :: InferenceParam,
     models :: Map Ident (Id ModelVersion),
-    inputs :: Map Ident (SingleOrMany PID, ScriptInputType),
+    inputs :: Map Ident (SingleOrMany PID),
+    outputs :: Map Ident (SingleOrMany PID),
     obj :: VCMeta VCObject,
     script :: VCObjectHash,
     mres :: Maybe Int64
