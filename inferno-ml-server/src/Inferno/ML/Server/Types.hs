@@ -413,14 +413,11 @@ infixl 4 ??
 (??) :: Functor f => f (a -> b) -> a -> f b
 f ?? x = ($ x) <$> f
 
-type InferenceParam =
-  Types.InferenceParam (EntityId GId) PID VCObjectHash
+type InferenceParam = Types.InferenceParam (EntityId GId) PID
 
-type InferenceParamWithModels =
-  Types.InferenceParamWithModels (EntityId GId) PID VCObjectHash
+type InferenceParamWithModels = Types.InferenceParamWithModels (EntityId GId) PID
 
-type BridgeInfo =
-  Types.BridgeInfo (EntityId GId) PID VCObjectHash
+type BridgeInfo = Types.BridgeInfo (EntityId GId) PID
 
 type EvaluationInfo = Types.EvaluationInfo (EntityId GId) PID
 
@@ -477,8 +474,7 @@ pattern EvaluationInfo ::
   EvaluationInfo
 pattern EvaluationInfo u i s e m c = Types.EvaluationInfo u i s e m c
 
-type InfernoMlServerAPI =
-  Types.InfernoMlServerAPI (EntityId GId) PID VCObjectHash
+type InfernoMlServerAPI = Types.InfernoMlServerAPI (EntityId GId) PID
 
 type EvaluationEnv = Types.EvaluationEnv (EntityId GId) PID
 

@@ -27,9 +27,9 @@ cancelC = client $ Proxy @CancelAPI
 
 -- | Run an inference parameter
 inferenceC ::
-  forall gid p s.
+  forall gid p .
   -- | SQL identifier of the inference parameter to be run
-  Id (InferenceParam gid p s) ->
+  Id (InferenceParam gid p ) ->
   -- | Optional resolution for scripts that use e.g. @valueAt@; defaults to
   -- the param\'s stored resolution if not provided. This lets users override
   -- the resolution on an ad-hoc basis without needing to alter the stored
@@ -44,16 +44,16 @@ inferenceC ::
   -- (not defined in this repository) to verify this before directing
   -- the writes to their final destination
   ClientM (WriteStream IO)
-inferenceC = client $ Proxy @(InferenceAPI gid p s)
+inferenceC = client $ Proxy @(InferenceAPI gid p)
 
 -- | Run an inference parameter
 inferenceTestC ::
-  forall gid p s.
+  forall gid p .
   ToJSON p =>
   -- | SQL identifier of the inference parameter to be run
-  Id (InferenceParam gid p s) ->
+  Id (InferenceParam gid p ) ->
   Maybe Int64 ->
   UUID ->
   EvaluationEnv gid p ->
   ClientM (WriteStream IO)
-inferenceTestC = client $ Proxy @(InferenceTestAPI gid p s)
+inferenceTestC = client $ Proxy @(InferenceTestAPI gid p)

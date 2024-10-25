@@ -125,11 +125,11 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI gid p s =
+type InfernoMlServerAPI gid p =
   StatusAPI
     -- Evaluate an inference script
-    :<|> InferenceAPI gid p s
-    :<|> InferenceTestAPI gid p s
+    :<|> InferenceAPI gid p
+    :<|> InferenceTestAPI gid p
     :<|> CancelAPI
 
 type StatusAPI =
@@ -138,19 +138,19 @@ type StatusAPI =
 
 type CancelAPI = "inference" :> "cancel" :> Put '[JSON] ()
 
-type InferenceAPI gid p s =
+type InferenceAPI gid p =
   "inference"
     :> "run"
-    :> Capture "id" (Id (InferenceParam gid p s))
+    :> Capture "id" (Id (InferenceParam gid p))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> StreamPost NewlineFraming JSON (WriteStream IO)
 
-type InferenceTestAPI gid p s =
+type InferenceTestAPI gid p =
   -- Evaluate an inference script
   "inference"
     :> "test"
-    :> Capture "id" (Id (InferenceParam gid p s))
+    :> Capture "id" (Id (InferenceParam gid p))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> ReqBody '[JSON] (EvaluationEnv gid p)
@@ -193,22 +193,22 @@ data ServerStatus
   deriving anyclass (FromJSON, ToJSON)
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
-data BridgeInfo gid p s = BridgeInfo
-  { id :: Id (InferenceParam gid p s),
+data BridgeInfo gid p = BridgeInfo
+  { id :: Id (InferenceParam gid p),
     host :: IPv4,
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
 
-instance FromRow (BridgeInfo gid p s) where
+instance FromRow (BridgeInfo gid p) where
   fromRow =
     BridgeInfo
       <$> field
       <*> field
       <*> fmap (fromIntegral @Int64) field
 
-instance ToRow (BridgeInfo gid p s) where
+instance ToRow (BridgeInfo gid p) where
   toRow bi =
     [ bi.id & toField,
       bi.host & toField,
@@ -675,8 +675,8 @@ showVersion (Version ns ts) =
 
 -- | Row of the inference parameter table, parameterized by the user, group, and
 -- script type
-data InferenceParam gid p s = InferenceParam
-  { id :: Maybe (Id (InferenceParam gid p s)),
+data InferenceParam gid p = InferenceParam
+  { id :: Maybe (Id (InferenceParam gid p)),
     -- | The script of the parameter
     --
     -- For new parameters, this will be textual or some other identifier
@@ -684,7 +684,7 @@ data InferenceParam gid p s = InferenceParam
     --
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
-    script :: s,
+    script :: VCObjectHash,
     -- | Mapping the input\/output to the Inferno identifier helps ensure that
     -- Inferno identifiers are always pointing to the correct input\/output;
     -- otherwise we would need to rely on the order of the original identifiers
@@ -701,7 +701,7 @@ data InferenceParam gid p s = InferenceParam
   deriving anyclass (NFData, ToJSON)
 
 {- ORMOLU_DISABLE -}
-instance (FromJSON s, FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p s)
+instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
   where
   parseJSON = withObject "InferenceParam" $ \o ->
     InferenceParam
@@ -724,7 +724,7 @@ instance
     Typeable gid,
     Typeable p
   ) =>
-  FromRow (InferenceParam gid p VCObjectHash)
+  FromRow (InferenceParam gid p)
   where
   fromRow =
     InferenceParam
@@ -736,7 +736,7 @@ instance
       <*> field
       <*> field
 
-instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p VCObjectHash) where
+instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p) where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ ip.id & maybe (toField Default) toField,
@@ -749,12 +749,7 @@ instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p VCObjectHash) wh
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance
-  ( Arbitrary gid,
-    Arbitrary p,
-    Arbitrary s
-  ) =>
-  Arbitrary (InferenceParam gid p s)
+instance (Arbitrary gid, Arbitrary p) => Arbitrary (InferenceParam gid p)
   where
   arbitrary =
     InferenceParam
@@ -767,12 +762,7 @@ instance
       <*> arbitrary
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance
-  ( Arbitrary gid,
-    Arbitrary p,
-    Arbitrary s
-  ) =>
-  ToADTArbitrary (InferenceParam gid p s)
+instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p)
   where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
@@ -785,8 +775,8 @@ instance
 
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
-data InferenceParamWithModels gid p s = InferenceParamWithModels
-  { param :: InferenceParam gid p s,
+data InferenceParamWithModels gid p = InferenceParamWithModels
+  { param :: InferenceParam gid p,
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
@@ -799,7 +789,7 @@ data EvaluationInfo gid p = EvaluationInfo
   { -- | Note that this is the job identifier provided to the inference
     -- evaluation route, and is also the primary key of the database table
     id :: UUID,
-    param :: Id (InferenceParam gid p VCObjectHash),
+    param :: Id (InferenceParam gid p),
     -- | When inference evaluation started
     start :: UTCTime,
     -- | When inference evaluation ended
