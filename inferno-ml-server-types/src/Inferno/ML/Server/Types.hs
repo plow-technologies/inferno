@@ -752,8 +752,7 @@ instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p) where
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance (Arbitrary gid, Arbitrary p) => Arbitrary (InferenceParam gid p)
-  where
+instance (Arbitrary gid, Arbitrary p) => Arbitrary (InferenceParam gid p) where
   arbitrary =
     InferenceParam
       <$> arbitrary
@@ -765,8 +764,7 @@ instance (Arbitrary gid, Arbitrary p) => Arbitrary (InferenceParam gid p)
       <*> arbitrary
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p)
-  where
+instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
       . ConstructorArbitraryPair "InferenceParam"
