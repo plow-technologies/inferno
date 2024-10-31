@@ -190,7 +190,10 @@ data ServerStatus
   = Idle
   | EvaluatingScript
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary, NFData)
+
+instance Arbitrary ServerStatus where
+  arbitrary = genericArbitrary
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo gid p = BridgeInfo
@@ -1010,7 +1013,10 @@ data EvaluationEnv gid p = EvaluationEnv
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
+
+instance Arbitrary p => Arbitrary (EvaluationEnv gid p) where
+  arbitrary = genericArbitrary
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
