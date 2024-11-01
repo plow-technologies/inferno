@@ -1,4 +1,7 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -13,7 +16,7 @@ module ParseAndSave (main) where
 import Control.Category ((>>>))
 import Control.Exception (Exception (displayException))
 import Control.Monad (void)
-import Data.Aeson (eitherDecode)
+import Data.Aeson (FromJSON, eitherDecode)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
 import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8
@@ -33,6 +36,7 @@ import Database.PostgreSQL.Simple
   )
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime)
+import GHC.Generics (Generic)
 import Inferno.Core
   ( Interpreter (Interpreter, parseAndInfer),
     mkInferno,
@@ -70,24 +74,24 @@ parseAndSave ::
   Id InferenceParam ->
   FilePath ->
   ByteString ->
-  Map Ident (SingleOrMany PID, ScriptInputType) ->
+  InputsOutputs ->
   IO ()
-parseAndSave ipid p conns inputs = do
+parseAndSave ipid p conns ios = do
   t <- Text.IO.readFile p
   now <- fromIntegral @Int . round <$> getPOSIXTime
   ast <-
     either (throwString . displayException) pure . (`parse` t)
       =<< mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
-  bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now inputs)
+  bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now ios)
 
 saveScriptAndParam ::
   Id InferenceParam ->
   (Expr (Pinned VCObjectHash) (), TCScheme) ->
   CTime ->
-  Map Ident (SingleOrMany PID, ScriptInputType) ->
+  InputsOutputs ->
   Connection ->
   IO ()
-saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
+saveScriptAndParam ipid x now ios conn = insertScript *> insertParam
   where
     insertScript :: IO ()
     insertScript =
@@ -120,7 +124,8 @@ saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
             . InferenceParam
               (Just ipid)
               hash
-              inputs
+              ios.inputs
+              ios.outputs
               128
               Nothing
             $ entityIdFromInteger 0
@@ -132,11 +137,12 @@ saveScriptAndParam ipid x now inputs conn = insertScript *> insertParam
                   ( id
                   , script
                   , inputs
+                  , outputs
                   , resolution
                   , terminated
                   , gid
                   )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
               |]
 
         saveBridgeInfo :: IO ()
@@ -193,3 +199,10 @@ funs = BridgeFuns notSupported notSupported notSupported notSupported
   where
     notSupported :: a
     notSupported = error "Not supported"
+
+data InputsOutputs = InputsOutputs
+  { inputs :: Map Ident (SingleOrMany PID),
+    outputs :: Map Ident (SingleOrMany PID)
+  }
+  deriving stock (Generic)
+  deriving anyclass (FromJSON)

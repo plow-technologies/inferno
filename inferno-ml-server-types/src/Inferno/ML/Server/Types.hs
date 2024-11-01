@@ -70,9 +70,7 @@ import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
-  ( VCHashUpdate,
-    VCHashUpdateViaShow (VCHashUpdateViaShow),
-    VCObjectHash,
+  ( VCObjectHash,
     byteStringToVCObjectHash,
     vcObjectHashToByteString,
   )
@@ -127,11 +125,11 @@ import Web.HttpApiData
   )
 
 -- API type for `inferno-ml-server`
-type InfernoMlServerAPI gid p s =
+type InfernoMlServerAPI gid p =
   StatusAPI
     -- Evaluate an inference script
-    :<|> InferenceAPI gid p s
-    :<|> InferenceTestAPI gid p s
+    :<|> InferenceAPI gid p
+    :<|> InferenceTestAPI gid p
     :<|> CancelAPI
 
 type StatusAPI =
@@ -140,19 +138,19 @@ type StatusAPI =
 
 type CancelAPI = "inference" :> "cancel" :> Put '[JSON] ()
 
-type InferenceAPI gid p s =
+type InferenceAPI gid p =
   "inference"
     :> "run"
-    :> Capture "id" (Id (InferenceParam gid p s))
+    :> Capture "id" (Id (InferenceParam gid p))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> StreamPost NewlineFraming JSON (WriteStream IO)
 
-type InferenceTestAPI gid p s =
+type InferenceTestAPI gid p =
   -- Evaluate an inference script
   "inference"
     :> "test"
-    :> Capture "id" (Id (InferenceParam gid p s))
+    :> Capture "id" (Id (InferenceParam gid p))
     :> QueryParam "res" Int64
     :> QueryParam' '[Required] "uuid" UUID
     :> ReqBody '[JSON] (EvaluationEnv gid p)
@@ -192,25 +190,28 @@ data ServerStatus
   = Idle
   | EvaluatingScript
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary, NFData)
+
+instance Arbitrary ServerStatus where
+  arbitrary = genericArbitrary
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
-data BridgeInfo gid p s = BridgeInfo
-  { id :: Id (InferenceParam gid p s),
+data BridgeInfo gid p = BridgeInfo
+  { id :: Id (InferenceParam gid p),
     host :: IPv4,
     port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
 
-instance FromRow (BridgeInfo gid p s) where
+instance FromRow (BridgeInfo gid p) where
   fromRow =
     BridgeInfo
       <$> field
       <*> field
       <*> fmap (fromIntegral @Int64) field
 
-instance ToRow (BridgeInfo gid p s) where
+instance ToRow (BridgeInfo gid p) where
   toRow bi =
     [ bi.id & toField,
       bi.host & toField,
@@ -677,8 +678,8 @@ showVersion (Version ns ts) =
 
 -- | Row of the inference parameter table, parameterized by the user, group, and
 -- script type
-data InferenceParam gid p s = InferenceParam
-  { id :: Maybe (Id (InferenceParam gid p s)),
+data InferenceParam gid p = InferenceParam
+  { id :: Maybe (Id (InferenceParam gid p)),
     -- | The script of the parameter
     --
     -- For new parameters, this will be textual or some other identifier
@@ -686,18 +687,12 @@ data InferenceParam gid p s = InferenceParam
     --
     -- For existing inference params, this is the foreign key for the specific
     -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
-    script :: s,
-    -- | This is called @inputs@ but is also used for script outputs as
-    -- well. The access (input or output) is controlled by the 'ScriptInputType'.
-    -- For example, if this field is set to @[("input0", Single (p, Readable))]@,
-    -- the script will only have a single read-only input and will not be able to
-    -- write anywhere (note that we should disallow this scenario, as script
-    -- evaluation would not work properly)
-    --
-    -- Mapping the input\/output to the Inferno identifier helps ensure that
+    script :: VCObjectHash,
+    -- | Mapping the input\/output to the Inferno identifier helps ensure that
     -- Inferno identifiers are always pointing to the correct input\/output;
     -- otherwise we would need to rely on the order of the original identifiers
-    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    inputs :: Map Ident (SingleOrMany p),
+    outputs :: Map Ident (SingleOrMany p),
     -- | Resolution, passed to bridge routes
     resolution :: Word64,
     -- | The time that this parameter was \"deleted\", if any. For active
@@ -709,7 +704,7 @@ data InferenceParam gid p s = InferenceParam
   deriving anyclass (NFData, ToJSON)
 
 {- ORMOLU_DISABLE -}
-instance (FromJSON s, FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p s)
+instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
   where
   parseJSON = withObject "InferenceParam" $ \o ->
     InferenceParam
@@ -717,6 +712,7 @@ instance (FromJSON s, FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid 
       <$> o .: "id"
       <*> o .: "script"
       <*> o .: "inputs"
+      <*> o .: "outputs"
       <*> o .:? "resolution" .!= 128
       -- We shouldn't require this field
       <*> o .:? "terminated"
@@ -731,39 +727,36 @@ instance
     Typeable gid,
     Typeable p
   ) =>
-  FromRow (InferenceParam gid p VCObjectHash)
+  FromRow (InferenceParam gid p)
   where
   fromRow =
     InferenceParam
       <$> field
       <*> fmap wrappedTo (field @VCObjectHashRow)
       <*> fmap getAeson field
+      <*> fmap getAeson field
       <*> fmap fromIntegral (field @Int64)
       <*> field
       <*> field
 
-instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p VCObjectHash) where
+instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p) where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ ip.id & maybe (toField Default) toField,
       ip.script & VCObjectHashRow & toField,
       ip.inputs & Aeson & toField,
+      ip.outputs & Aeson & toField,
       ip.resolution & Aeson & toField,
       toField Default,
       ip.gid & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance
-  ( Arbitrary gid,
-    Arbitrary p,
-    Arbitrary s
-  ) =>
-  Arbitrary (InferenceParam gid p s)
-  where
+instance (Arbitrary gid, Arbitrary p) => Arbitrary (InferenceParam gid p) where
   arbitrary =
     InferenceParam
       <$> arbitrary
+      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
@@ -771,13 +764,7 @@ instance
       <*> arbitrary
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance
-  ( Arbitrary gid,
-    Arbitrary p,
-    Arbitrary s
-  ) =>
-  ToADTArbitrary (InferenceParam gid p s)
-  where
+instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "InferenceParam"
       . ConstructorArbitraryPair "InferenceParam"
@@ -789,45 +776,11 @@ instance
 
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
-data InferenceParamWithModels gid p s = InferenceParamWithModels
-  { param :: InferenceParam gid p s,
+data InferenceParamWithModels gid p = InferenceParamWithModels
+  { param :: InferenceParam gid p,
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
-
--- | Controls input interaction within a script, i.e. ability to read from
--- and\/or write to this input. Although the term \"input\" is used, those with
--- writes enabled can also be described as \"outputs\"
-data ScriptInputType
-  = -- | Script input can be read, but not written
-    Readable
-  | -- | Script input can be written, i.e. can be used in array of
-    -- write objects returned from script evaluation
-    Writable
-  | -- | Script input can be both read from and written to; this allows
-    -- the same script identifier to point to the same PID with both
-    -- types of access enabled
-    ReadableWritable
-  deriving stock (Show, Eq, Ord, Generic)
-  deriving anyclass (NFData, ToADTArbitrary)
-  deriving (VCHashUpdate) via (VCHashUpdateViaShow ScriptInputType)
-
-instance FromJSON ScriptInputType where
-  parseJSON = withText "ScriptInputType" $ \case
-    "r" -> pure Readable
-    "w" -> pure Writable
-    "rw" -> pure ReadableWritable
-    s -> fail $ "Invalid script input type: " <> Text.unpack s
-
-instance ToJSON ScriptInputType where
-  toJSON =
-    String . \case
-      Readable -> "r"
-      Writable -> "w"
-      ReadableWritable -> "rw"
-
-instance Arbitrary ScriptInputType where
-  arbitrary = genericArbitrary
 
 -- | Information about execution time and resource usage. This is saved by
 -- @inferno-ml-server@ after script evaluation completes and can be queried
@@ -837,7 +790,7 @@ data EvaluationInfo gid p = EvaluationInfo
   { -- | Note that this is the job identifier provided to the inference
     -- evaluation route, and is also the primary key of the database table
     id :: UUID,
-    param :: Id (InferenceParam gid p VCObjectHash),
+    param :: Id (InferenceParam gid p),
     -- | When inference evaluation started
     start :: UTCTime,
     -- | When inference evaluation ended
@@ -1053,11 +1006,15 @@ instance Ord a => Ord (SingleOrMany a) where
 -- evaluator. This allows for more interactive testing
 data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash,
-    inputs :: Map Ident (SingleOrMany p, ScriptInputType),
+    inputs :: Map Ident (SingleOrMany p),
+    outputs :: Map Ident (SingleOrMany p),
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
+
+instance Arbitrary p => Arbitrary (EvaluationEnv gid p) where
+  arbitrary = genericArbitrary
 
 tshow :: Show a => a -> Text
 tshow = Text.pack . show
