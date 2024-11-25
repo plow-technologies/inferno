@@ -306,6 +306,9 @@ data Model gid = Model
     gid :: gid,
     -- | Analogous to visibility of @inferno-vc@ scripts
     visibility :: VCObjectVisibility,
+    -- | When the model was created; if left empty, this will be generated
+    -- automatically when the model is saved
+    created :: Maybe UTCTime,
     -- | The last time the model was updated (i.e. a new version was created),
     -- if any
     updated :: Maybe UTCTime,
@@ -334,6 +337,7 @@ instance
       <*> fmap getAeson field
       <*> field
       <*> field
+      <*> field
 
 instance ToField gid => ToRow (Model gid) where
   -- NOTE: Order of fields must align exactly with DB schema
@@ -345,6 +349,7 @@ instance ToField gid => ToRow (Model gid) where
       m.name & toField,
       m.gid & toField,
       m.visibility & Aeson & toField,
+      m.created & maybe (toField Default) toField,
       -- The `ToRow` instance is only for new rows, so we don't want to set
       -- the `updated` and `terminated` fields to anything by default
       --
@@ -368,6 +373,7 @@ instance
       <*> o .: "name"
       <*> o .: "gid"
       <*> o .: "visibility"
+      <*> o .:? "created"
       <*> o .:? "updated"
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
@@ -381,6 +387,7 @@ instance ToJSON gid => ToJSON (Model gid) where
         "name" .= m.name,
         "gid" .= m.gid,
         "visibility" .= m.visibility,
+        "created" .= m.created,
         "updated" .= m.updated,
         "terminated" .= m.terminated
       ]
@@ -393,6 +400,7 @@ instance (Ord gid, Arbitrary gid) => Arbitrary (Model gid) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
+      <*> genMUtc
       <*> genMUtc
       <*> genMUtc
 
@@ -425,6 +433,9 @@ data ModelVersion gid c = ModelVersion
     -- the PSQL large object table
     contents :: c,
     version :: Version,
+    -- | When the model version was created; if left empty, this will be generated
+    -- automatically when the model version is saved
+    created :: Maybe UTCTime,
     -- | The time that this model version was \"deleted\", if any. For active
     -- models versions, this will be @Nothing@
     terminated :: Maybe UTCTime
@@ -446,6 +457,7 @@ instance FromField gid => FromRow (ModelVersion gid Oid) where
       <*> field
       <*> field
       <*> field
+      <*> field
 
 instance ToField gid => ToRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema
@@ -456,6 +468,7 @@ instance ToField gid => ToRow (ModelVersion gid Oid) where
       mv.card & Aeson & toField,
       mv.contents & toField,
       mv.version & toField,
+      mv.created & maybe (toField Default) toField,
       toField Default
     ]
 
@@ -469,6 +482,8 @@ instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
       <*> o .: "version"
+      -- Will be absent when saving new model version
+      <*> o .:? "created"
       -- If a new model version is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
@@ -483,6 +498,7 @@ instance ToJSON gid => ToJSON (ModelVersion gid Oid) where
         "contents" .= unOid mv.contents,
         "version" .= mv.version,
         "card" .= mv.card,
+        "created" .= mv.created,
         "terminated" .= mv.terminated
       ]
     where
@@ -499,6 +515,7 @@ instance Arbitrary c => Arbitrary (ModelVersion gid c) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
+      <*> genMUtc
       <*> genMUtc
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
