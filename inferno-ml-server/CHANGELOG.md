@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2023.11.26
+* Add creation date to models and versions
+
 ## 2023.10.18
 * Add new testing route
 * Some improvements to model caching

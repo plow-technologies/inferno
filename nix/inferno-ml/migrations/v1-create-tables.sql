@@ -21,6 +21,7 @@ create table if not exists models
   , name text not null
   , gid numeric not null
   , visibility jsonb
+  , created timestamptz default now()
     -- May be missing, if there is no model version yet
   , updated timestamptz
     -- See note above
@@ -42,6 +43,7 @@ create table if not exists mversions
     -- the contents
   , contents oid not null
   , version text not null
+  , created timestamptz default now()
     -- See note above
   , terminated timestamptz
   , unique (version, model)
