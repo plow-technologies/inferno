@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.12.0
+* Add creation date to models and versions
+
 ## 0.11.0
 * Split parameter inputs and outputs
 
