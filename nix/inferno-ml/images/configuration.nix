@@ -36,7 +36,7 @@
       # This is recommended to improve the `sshd` jail for `fail2ban`
       logLevel = "VERBOSE";
       permitRootLogin = lib.mkForce "no";
-      passwordAuthentication = false;
+      passwordAuthentication = true;
     };
     fail2ban = {
       enable = true;

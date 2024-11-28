@@ -433,14 +433,17 @@
     },
     "image-config": {
       "locked": {
-        "lastModified": 1,
+        "lastModified": 1732769243,
         "narHash": "sha256-uJRyYf74KnIVkNCrw4zJzxVe9K5QKYHElT2eJDnJZj0=",
-        "path": "./nix/inferno-ml/dummy",
-        "type": "path"
+        "owner": "ngua",
+        "repo": "dummy-flake",
+        "rev": "4f2e3c5adc9ec62761c76379002bb1ffb9277ad0",
+        "type": "github"
       },
       "original": {
-        "path": "./nix/inferno-ml/dummy",
-        "type": "path"
+        "owner": "ngua",
+        "repo": "dummy-flake",
+        "type": "github"
       }
     },
     "iserv-proxy": {

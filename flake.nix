@@ -41,7 +41,7 @@
     # The input must define `nixosModules.default`. Optionally, it can also
     # define a `nixosModules.postgresql`, which will be applied to the Postgres
     # images
-    image-config.url = "path:./nix/inferno-ml/dummy";
+    image-config.url = "github:ngua/dummy-flake";
 
     # Needed for the `hasktorch` integration
     hasktorch = {
