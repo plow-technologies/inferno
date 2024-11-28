@@ -7,6 +7,26 @@
 }:
 
 {
+  users = {
+    mutableUsers = false;
+    users = {
+      root.hashedPassword = "$6$J2iElsQLNXAFRbN2$tUpEFkA67wmOlfk8n83RM.HQVczDPg"
+        + "xvs1LfIbT5RSSyqQjWtm02AE5o0Go8N/8DyXn6iwA7Exp4fR6mIMAkV1";
+      inferno = {
+        isNormalUser = true;
+        uid = 1000;
+        hashedPassword = "$6$YPgnb2aUazkaiCiH$jc6Vk8LQbfQjIwFZlhzFqGfU5N3NWjOrO"
+          + "e07XY3iekVxcM0SSF3sBQgBq.A2BiYIjHtJiKE2sbPP4No/hz6/I0";
+        extraGroups = [ "wheel" ];
+      };
+    };
+
+    groups.inferno = {
+      name = "inferno";
+      gid = 1000;
+    };
+  };
+
   services.inferno-ml-server = {
     enable = true;
     configuration = {
