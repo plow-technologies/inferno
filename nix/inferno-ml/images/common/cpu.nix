@@ -40,7 +40,7 @@
         database = "inferno";
         user = "inferno";
         port = 5432;
-        host = "18.139.253.163";
+        host = "172.31.29.26";
         password = "";
       };
     };
