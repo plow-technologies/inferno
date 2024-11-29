@@ -24,6 +24,7 @@ where
 import Control.Applicative (Alternative ((<|>)), asum, (<**>))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
@@ -109,7 +110,8 @@ import Plow.Logging.Message
 import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
-import UnliftIO (Async)
+import UnliftIO (Async, MonadUnliftIO)
+import UnliftIO.Exception (bracket)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
@@ -513,3 +515,10 @@ newConnectionPool ci = Pool.newPool $ Pool.defaultPoolConfig (connect ci) close 
 #else
 newConnectionPool ci = Pool.newPool $ Pool.PoolConfig (connect ci) close 60 10
 #endif
+
+withConnectionPool ::
+  forall m a. MonadUnliftIO m => ConnectInfo -> (Pool Connection -> m a) -> m a
+withConnectionPool = flip bracket destroyPool . liftIO . newConnectionPool
+  where
+    destroyPool :: Pool Connection -> m ()
+    destroyPool = liftIO . Pool.destroyAllResources

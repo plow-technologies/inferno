@@ -76,15 +76,16 @@ main = runServer =<< mkOptions
             & setLogger logger
 
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
-runInEnv cfg f = withRemoteTracer $ \tracer -> do
-  traceWith tracer $ InfoTrace StartingServer
-  f
-    =<< Env cfg tracer
-      <$> newConnectionPool cfg.store
-      <*> newMVar ()
-      <*> newEmptyMVar
-      <*> newManager defaultManagerSettings
-      <*> newIORef Nothing
+runInEnv cfg f =
+  withConnectionPool cfg.store $ \pool ->
+    withRemoteTracer $ \tracer -> do
+      traceWith tracer $ InfoTrace StartingServer
+      f
+        =<< Env cfg tracer pool
+          <$> newMVar ()
+          <*> newEmptyMVar
+          <*> newManager defaultManagerSettings
+          <*> newIORef Nothing
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
