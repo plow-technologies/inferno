@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -47,7 +48,8 @@ import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Map.Strict (Map)
-import Data.Pool (Pool, defaultPoolConfig, newPool)
+import Data.Pool (Pool)
+import qualified Data.Pool as Pool
 import Data.Scientific (Scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -506,4 +508,8 @@ traceLevel = \case
 
 -- | Create the connection pool for the DB
 newConnectionPool :: ConnectInfo -> IO (Pool Connection)
-newConnectionPool ci = newPool $ defaultPoolConfig (connect ci) close 60 10
+#if MIN_VERSION_resource_pool(0,4,0)
+newConnectionPool ci = Pool.newPool $ Pool.defaultPoolConfig (connect ci) close 60 10
+#else
+newConnectionPool ci = Pool.newPool $ Pool.PoolConfig (connect ci) close 60 10
+#endif
