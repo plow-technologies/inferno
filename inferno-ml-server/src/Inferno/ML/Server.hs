@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server
@@ -14,7 +15,6 @@ import Control.Monad.Except (ExceptT (ExceptT))
 import Control.Monad.Reader (ReaderT (runReaderT))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
-import Database.PostgreSQL.Simple (withConnect)
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
@@ -72,19 +72,19 @@ main = runServer =<< mkOptions
         mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
           defaultSettings
-            & setPort (view #port cfg & fromIntegral)
+            & setPort (fromIntegral cfg.port)
             & setLogger logger
 
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f = withRemoteTracer $ \tracer -> do
   traceWith tracer $ InfoTrace StartingServer
-  withConnect (view #store cfg) $ \conn ->
-    f
-      =<< Env cfg conn tracer
-        <$> newMVar ()
-        <*> newEmptyMVar
-        <*> newManager defaultManagerSettings
-        <*> newIORef Nothing
+  f
+    =<< Env cfg tracer
+      <$> newConnectionPool cfg.store
+      <*> newMVar ()
+      <*> newEmptyMVar
+      <*> newManager defaultManagerSettings
+      <*> newIORef Nothing
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server

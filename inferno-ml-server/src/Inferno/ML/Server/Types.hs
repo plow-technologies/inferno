@@ -47,6 +47,7 @@ import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Map.Strict (Map)
+import Data.Pool (Pool, defaultPoolConfig, newPool)
 import Data.Scientific (Scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -59,6 +60,8 @@ import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
     ResultError (ConversionFailed, UnexpectedNull),
+    close,
+    connect,
     (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
@@ -113,8 +116,8 @@ type RemoteM = ReaderT Env IO
 
 data Env = Env
   { config :: Config,
-    store :: Connection,
     tracer :: IOTracer RemoteTrace,
+    store :: Pool Connection,
     -- Lock for starting inference evaluation
     lock :: MVar (),
     -- The current inference evaluation job, if any
@@ -500,3 +503,7 @@ traceLevel = \case
   InfoTrace {} -> LevelInfo
   WarnTrace {} -> LevelWarn
   ErrorTrace {} -> LevelError
+
+-- | Create the connection pool for the DB
+newConnectionPool :: ConnectInfo -> IO (Pool Connection)
+newConnectionPool ci = newPool $ defaultPoolConfig (connect ci) close 60 10

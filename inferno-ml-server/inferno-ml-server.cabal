@@ -78,6 +78,7 @@ library
     , plow-log-async
     , postgresql-simple
     , prettyprinter
+    , resource-pool
     , scientific
     , servant-client
     , servant-server

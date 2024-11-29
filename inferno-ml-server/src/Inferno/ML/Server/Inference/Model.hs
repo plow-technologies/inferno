@@ -29,8 +29,8 @@ import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
   ( firstOrThrow,
     queryStore,
+    withConns,
   )
-import Lens.Micro.Platform
 import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Exception (bracket)
 
@@ -62,7 +62,7 @@ getModelsAndVersions =
 -- with the number of bytes
 getModelVersionSizeAndContents :: Oid -> RemoteM (Integer, ByteString)
 getModelVersionSizeAndContents m =
-  view #store >>= \conn -> withRunInIO $ \r ->
+  withConns $ \conn -> withRunInIO $ \r ->
     withTransaction conn . r $ do
       size <- getModelVersionSize m
       bs <-
