@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -23,6 +24,7 @@ where
 import Control.Applicative (Alternative ((<|>)), asum, (<**>))
 import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
@@ -47,6 +49,8 @@ import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Map.Strict (Map)
+import Data.Pool (Pool)
+import qualified Data.Pool as Pool
 import Data.Scientific (Scientific)
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -59,6 +63,8 @@ import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
     ResultError (ConversionFailed, UnexpectedNull),
+    close,
+    connect,
     (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
@@ -104,7 +110,8 @@ import Plow.Logging.Message
 import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
-import UnliftIO (Async)
+import UnliftIO (Async, MonadUnliftIO)
+import UnliftIO.Exception (bracket)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
@@ -113,8 +120,8 @@ type RemoteM = ReaderT Env IO
 
 data Env = Env
   { config :: Config,
-    store :: Connection,
     tracer :: IOTracer RemoteTrace,
+    store :: Pool Connection,
     -- Lock for starting inference evaluation
     lock :: MVar (),
     -- The current inference evaluation job, if any
@@ -500,3 +507,18 @@ traceLevel = \case
   InfoTrace {} -> LevelInfo
   WarnTrace {} -> LevelWarn
   ErrorTrace {} -> LevelError
+
+-- | Create the connection pool for the DB
+newConnectionPool :: ConnectInfo -> IO (Pool Connection)
+#if MIN_VERSION_resource_pool(0,4,0)
+newConnectionPool ci = Pool.newPool $ Pool.defaultPoolConfig (connect ci) close 60 10
+#else
+newConnectionPool ci = Pool.newPool $ Pool.PoolConfig (connect ci) close 60 10
+#endif
+
+withConnectionPool ::
+  forall m a. MonadUnliftIO m => ConnectInfo -> (Pool Connection -> m a) -> m a
+withConnectionPool = flip bracket destroyPool . liftIO . newConnectionPool
+  where
+    destroyPool :: Pool Connection -> m ()
+    destroyPool = liftIO . Pool.destroyAllResources
