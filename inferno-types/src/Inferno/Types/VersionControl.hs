@@ -210,11 +210,14 @@ instance VCHashUpdate VCObjectHash where
 deriving instance VCHashUpdate ImplExpl
 
 deriving via (VCHashUpdateViaShow Int64) instance VCHashUpdate Int64
-deriving via (VCHashUpdateViaShow Int32) instance VCHashUpdate Int32
-deriving via (VCHashUpdateViaShow Double) instance VCHashUpdate Double
-deriving via (VCHashUpdateViaShow Word64) instance VCHashUpdate Word64
-deriving via (VCHashUpdateViaShow Word32) instance VCHashUpdate Word32
 
+deriving via (VCHashUpdateViaShow Int32) instance VCHashUpdate Int32
+
+deriving via (VCHashUpdateViaShow Double) instance VCHashUpdate Double
+
+deriving via (VCHashUpdateViaShow Word64) instance VCHashUpdate Word64
+
+deriving via (VCHashUpdateViaShow Word32) instance VCHashUpdate Word32
 
 deriving instance VCHashUpdate Lit
 
