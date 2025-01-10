@@ -14,7 +14,6 @@ import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashIni
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
 import Data.ByteArray (ByteArrayAccess, convert)
-import Data.ByteArray.Pack (fill, putStorable)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
@@ -210,25 +209,12 @@ instance VCHashUpdate VCObjectHash where
 
 deriving instance VCHashUpdate ImplExpl
 
-instance VCHashUpdate Int64 where
-  (&<) =
-    hashUpdateVia (\i64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i64) $ putStorable i64)
+deriving via (VCHashUpdateViaShow Int64) instance VCHashUpdate Int64
+deriving via (VCHashUpdateViaShow Int32) instance VCHashUpdate Int32
+deriving via (VCHashUpdateViaShow Double) instance VCHashUpdate Double
+deriving via (VCHashUpdateViaShow Word64) instance VCHashUpdate Word64
+deriving via (VCHashUpdateViaShow Word32) instance VCHashUpdate Word32
 
-instance VCHashUpdate Int32 where
-  (&<) =
-    hashUpdateVia (\i32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i32) $ putStorable i32)
-
-instance VCHashUpdate Double where
-  (&<) =
-    hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ fill (sizeOf d) $ putStorable d)
-
-instance VCHashUpdate Word32 where
-  (&<) =
-    hashUpdateVia (\w32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w32) $ putStorable w32)
-
-instance VCHashUpdate Word64 where
-  (&<) =
-    hashUpdateVia (\w64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w64) $ putStorable w64)
 
 deriving instance VCHashUpdate Lit
 
