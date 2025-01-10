@@ -164,13 +164,13 @@ instance VCHashUpdate a => VCHashUpdate (NonEmpty.NonEmpty a) where
   ctxt &< xs = ctxt &< NonEmpty.toList xs
 
 instance VCHashUpdate a => VCHashUpdate (Set.Set a) where
-  ctxt &< xs = ctxt &< Set.toList xs
+  ctxt &< xs = ctxt &< Set.toAscList xs
 
 instance (VCHashUpdate k, VCHashUpdate a) => VCHashUpdate (Map.Map k a) where
-  ctxt &< m = ctxt &< Map.toList m
+  ctxt &< m = ctxt &< Map.toAscList m
 
 instance VCHashUpdate a => VCHashUpdate (IntMap.IntMap a) where
-  ctxt &< m = ctxt &< IntMap.toList m
+  ctxt &< m = ctxt &< IntMap.toAscList m
 
 class GenericVCHashUpdate f where
   genHashUpdate :: Context SHA256 -> f p -> Context SHA256
