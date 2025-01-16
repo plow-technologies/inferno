@@ -38,7 +38,7 @@ in
           {
             imports = [ ./common/gpu.nix ];
             # The big one
-            amazonImage.sizeMB = 107374;
+            amazonImage.sizeMB = 53687;
           }
         ];
       };
@@ -63,7 +63,7 @@ in
           {
             imports = [ ./common/cpu.nix ];
             # The big one
-            amazonImage.sizeMB = 107374;
+            amazonImage.sizeMB = 53687;
           }
         ];
       };
