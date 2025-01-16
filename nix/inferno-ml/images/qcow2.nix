@@ -10,7 +10,7 @@
       # Ten minute timeout
       timeout = 600;
       cache = {
-        path = "/home/inferno/.cache/inferno-ml-server/models";
+        path = "/home/inferno/.cache/models";
         max-size = 10 * 1073741824;
       };
       # NOTE This can be overridden, unless you plan on running the VM and
