@@ -151,13 +151,13 @@ pkgs.nixosTest {
     };
 
     systemd = {
-      user.services.inferno-ml-server = {
-        # Silences logs
-        serviceConfig.StandardOutput = pkgs.lib.mkForce "null";
-        serviceConfig.StandardError = pkgs.lib.mkForce "null";
-      };
-
       services = {
+        inferno-ml-server = {
+          # Silences logs
+          serviceConfig.StandardOutput = pkgs.lib.mkForce "null";
+          serviceConfig.StandardError = pkgs.lib.mkForce "null";
+        };
+
         dummy-bridge = {
           description = "Run dummy bridge server";
           wantedBy = [ "default.target" ];
@@ -177,12 +177,6 @@ pkgs.nixosTest {
     };
     # See https://github.com/NixOS/nixpkgs/issues/183629
     system.activationScripts = {
-      enableLingering = ''
-        rm -rf /var/lib/systemd/linger
-        mkdir -p /var/lib/systemd/linger
-        touch /var/lib/systemd/linger/inferno
-      '';
-
       setupDummyDir = ''
         mkdir /tmp/dummy
         chmod a+rwx /tmp/dummy
@@ -225,9 +219,11 @@ pkgs.nixosTest {
       'psql -U inferno -d inferno -f ${../migrations/v1-create-tables.sql}'
     )
     node.succeed('insert-mnist-model')
+    node.wait_for_unit("inferno-ml-server.service")
+    node.succeed('curl --fail localhost:8080/status')
+
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
 
-    node.systemctl("start inferno-ml-server.service", user="inferno")
     node.succeed('sudo -HE -u inferno run-db-test >&2')
 
     # `tests/scripts/ones.inferno`

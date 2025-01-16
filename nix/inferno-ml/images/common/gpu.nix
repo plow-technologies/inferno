@@ -29,7 +29,7 @@
     configuration = {
       port = 8080;
       cache = {
-        path = "/home/inferno/.cache/inferno-ml-server/models";
+        path = "/home/inferno/.cache/models";
         max-size = 10 * 1073741824;
       };
       # NOTE This should be overridden for real deployments

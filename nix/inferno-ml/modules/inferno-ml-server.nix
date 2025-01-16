@@ -144,7 +144,13 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
-        systemd.user.services.inferno-ml-server = {
+        # FIXME Ideally we should have a system user to run this. However,
+        # we are doing some urgent testing and that would require more work.
+        # We will fix having this run as `inferno` once we finalize the image
+        # config
+        #
+        # See https://github.com/plow-technologies/inferno/issues/151
+        systemd.services.inferno-ml-server = {
           description = "Start `inferno-ml-server` server";
           wantedBy = [ "default.target" ];
           after = [ "network-online.target" ];
@@ -153,6 +159,11 @@ in
             ExecStart = "${cfg.package}/bin/inferno-ml-server --config ${configFile}";
             Restart = "always";
             RestartSec = 5;
+            User = "inferno";
+            Group = "inferno";
+            PrivateTmp = "yes";
+            ProtectDevices = "yes";
+            NoNewPrivileges = "yes";
           };
         };
 
@@ -171,10 +182,6 @@ in
                 mkdir -p ${path}
                 chown -R ${cfg.user}:${cfg.group} ${path}
                 chmod u+rwx ${path}
-
-                mkdir -p /home/${cfg.user}/.cache/bridge
-                chown -R ${cfg.user}:${cfg.group} /home/${cfg.user}/.cache/bridge
-                chmod u+rwx /home/${cfg.user}/.cache/bridge
               '';
         };
       }
