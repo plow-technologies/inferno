@@ -144,6 +144,12 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
+        # FIXME Ideally we should have a system user to run this. However,
+        # we are doing some urgent testing and that would require more work.
+        # We will fix having this run as `inferno` once we finalize the image
+        # config
+        #
+        # See https://github.com/plow-technologies/inferno/issues/151
         systemd.services.inferno-ml-server = {
           description = "Start `inferno-ml-server` server";
           wantedBy = [ "default.target" ];
