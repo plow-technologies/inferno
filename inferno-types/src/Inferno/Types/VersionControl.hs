@@ -221,15 +221,16 @@ instance VCHashUpdate Int64 where
 instance VCHashUpdate Int32 where
   (&<) = hashUpdateViaBinary Binary.putInt32le
 
-instance VCHashUpdate Double where
 #if defined(arm_HOST_ARCH)
+instance VCHashUpdate Double where
   (&<) = hashUpdateViaBinary (Binary.putWord64le . swapMantissaExp . castDoubleToWord64)
           where
             swapMantissaExp w64 =
               let l = w64 .&. 0x00000000FFFFFFFF 
-                  h = (w64 `unsafeShiftR` 4) .&. 0x00000000FFFFFFFF 
-              in (l `unsafeShiftL` 4) .|. h
+                  h = (w64 `unsafeShiftR` 32) .&. 0x00000000FFFFFFFF 
+              in (l `unsafeShiftL` 32) .|. h
 #else
+instance VCHashUpdate Double where
   (&<) = hashUpdateViaBinary (Binary.putWord64le . castDoubleToWord64)
 #endif
 
