@@ -15,8 +15,8 @@ import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
 import qualified Data.Binary.Put as Binary
 import Data.ByteArray (ByteArrayAccess, convert)
-import Data.ByteArray.Pack (fill, putBytes)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import Data.Data (Data)
@@ -230,7 +230,7 @@ hashUpdateViaBinary ::
   Context SHA256 ->
   t ->
   Context SHA256
-hashUpdateViaBinary p = hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ let b = Char8.toStrict (Binary.runPut (p d)) in fill (Char8.length b) (putBytes b))
+hashUpdateViaBinary p = hashUpdateVia (BS.toStrict . Binary.runPut . p)
 
 deriving instance VCHashUpdate Lit
 
