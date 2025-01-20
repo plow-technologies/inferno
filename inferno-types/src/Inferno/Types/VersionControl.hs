@@ -231,7 +231,7 @@ hashUpdateViaBinary ::
   Context SHA256 ->
   t ->
   Context SHA256
-hashUpdateViaBinary p = hashUpdateVia (\d -> let b = Char8.toStrict (Binary.runPut (p d)) in first error $ fill @ByteString (Char8.length b) (putBytes b))
+hashUpdateViaBinary p = hashUpdateVia (\d -> let b = Char8.toStrict (Binary.runPut (p d)) in first error $ fill @_ @ByteString (Char8.length b) (putBytes b))
 
 deriving instance VCHashUpdate Lit
 
