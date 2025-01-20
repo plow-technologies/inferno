@@ -13,8 +13,9 @@ import Control.DeepSeq (NFData)
 import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashInit, hashUpdate)
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
+import qualified Data.Binary.Put as Binary
 import Data.ByteArray (ByteArrayAccess, convert)
-import Data.ByteArray.Pack (fill, putStorable)
+import Data.ByteArray.Pack (fill, putBytes)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
@@ -38,7 +39,6 @@ import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Data.Word (Word32, Word64)
 import Foreign.C.Types (CTime (..))
-import Foreign.Storable (sizeOf)
 import GHC.Generics (C1, Constructor, D1, Generic, K1 (..), M1 (..), Rec1 (..), Rep, S1, U1, conName, from, (:*:) (..), (:+:) (..))
 import Inferno.Types.Syntax
   ( Comment (..),
@@ -108,13 +108,13 @@ class VCHashUpdate obj where
   default (&<) :: (Generic obj, GenericVCHashUpdate (Rep obj)) => Context SHA256 -> obj -> Context SHA256
   ctxt &< o = genHashUpdate ctxt $ from o
 
-hashUpdateVia :: ByteArrayAccess ba => (obj -> ba) -> Context SHA256 -> obj -> Context SHA256
+hashUpdateVia :: (ByteArrayAccess ba) => (obj -> ba) -> Context SHA256 -> obj -> Context SHA256
 hashUpdateVia toBAA ctxt obj = ctxt `hashUpdate` toBAA obj
 {-# INLINE hashUpdateVia #-}
 
 newtype VCHashUpdateViaShow a = VCHashUpdateViaShow {unVCHashUpdateViaShow :: a}
 
-instance Show a => VCHashUpdate (VCHashUpdateViaShow a) where
+instance (Show a) => VCHashUpdate (VCHashUpdateViaShow a) where
   (&<) = hashUpdateVia $ Char8.pack . show . unVCHashUpdateViaShow
 
 deriving via (VCHashUpdateViaShow ()) instance VCHashUpdate ()
@@ -130,7 +130,7 @@ deriving via (VCHashUpdateViaShow Fixity) instance VCHashUpdate Fixity
 instance VCHashUpdate CTime where
   ctxt &< (CTime t) = ctxt &< ("CTime" :: ByteString) &< t
 
-instance VCHashUpdate a => VCHashUpdate (Maybe a) where
+instance (VCHashUpdate a) => VCHashUpdate (Maybe a) where
   ctxt &< Nothing = ctxt
   ctxt &< (Just o) = ctxt &< o
 
@@ -152,7 +152,7 @@ instance VCHashUpdate ByteString where
 instance VCHashUpdate Text where
   ctxt &< t = ctxt `hashUpdate` encodeUtf8 t
 
-instance VCHashUpdate a => VCHashUpdate [a] where
+instance (VCHashUpdate a) => VCHashUpdate [a] where
   ctxt &< [] = ctxt &< ("[]" :: ByteString)
   ctxt &< (o : os) = ctxt &< (":" :: ByteString) &< o &< os
 
@@ -160,16 +160,16 @@ instance VCHashUpdate ExtIdent where
   ctxt &< (ExtIdent (Left a)) = ctxt &< ("var$" :: ByteString) &< a
   ctxt &< (ExtIdent (Right b)) = ctxt &< ("reg$" :: ByteString) &< b
 
-instance VCHashUpdate a => VCHashUpdate (NonEmpty.NonEmpty a) where
+instance (VCHashUpdate a) => VCHashUpdate (NonEmpty.NonEmpty a) where
   ctxt &< xs = ctxt &< NonEmpty.toList xs
 
-instance VCHashUpdate a => VCHashUpdate (Set.Set a) where
+instance (VCHashUpdate a) => VCHashUpdate (Set.Set a) where
   ctxt &< xs = ctxt &< Set.toList xs
 
 instance (VCHashUpdate k, VCHashUpdate a) => VCHashUpdate (Map.Map k a) where
   ctxt &< m = ctxt &< Map.toList m
 
-instance VCHashUpdate a => VCHashUpdate (IntMap.IntMap a) where
+instance (VCHashUpdate a) => VCHashUpdate (IntMap.IntMap a) where
   ctxt &< m = ctxt &< IntMap.toList m
 
 class GenericVCHashUpdate f where
@@ -178,16 +178,16 @@ class GenericVCHashUpdate f where
 instance GenericVCHashUpdate U1 where
   genHashUpdate ctxt _ = ctxt
 
-instance VCHashUpdate a => GenericVCHashUpdate (K1 i a) where
+instance (VCHashUpdate a) => GenericVCHashUpdate (K1 i a) where
   genHashUpdate ctxt (K1 x) = ctxt &< x
 
-instance GenericVCHashUpdate f => GenericVCHashUpdate (D1 c f) where
+instance (GenericVCHashUpdate f) => GenericVCHashUpdate (D1 c f) where
   genHashUpdate ctxt (M1 x) = genHashUpdate ctxt x
 
 instance (Constructor c, GenericVCHashUpdate f) => GenericVCHashUpdate (C1 c f) where
   genHashUpdate ctxt x@(M1 y) = ctxt &< Char8.pack (conName x) `genHashUpdate` y
 
-instance GenericVCHashUpdate f => GenericVCHashUpdate (S1 c f) where
+instance (GenericVCHashUpdate f) => GenericVCHashUpdate (S1 c f) where
   genHashUpdate ctxt (M1 x) = genHashUpdate ctxt x
 
 instance (GenericVCHashUpdate a, GenericVCHashUpdate b) => GenericVCHashUpdate (a :+: b) where
@@ -198,7 +198,7 @@ instance (GenericVCHashUpdate a, GenericVCHashUpdate b) => GenericVCHashUpdate (
 instance (GenericVCHashUpdate a, GenericVCHashUpdate b) => GenericVCHashUpdate (a :*: b) where
   genHashUpdate ctxt (a :*: b) = ctxt `genHashUpdate` a `genHashUpdate` b
 
-instance GenericVCHashUpdate f => GenericVCHashUpdate (Rec1 f) where
+instance (GenericVCHashUpdate f) => GenericVCHashUpdate (Rec1 f) where
   genHashUpdate ctxt (Rec1 a) = genHashUpdate ctxt a
 
 deriving newtype instance VCHashUpdate Ident
@@ -211,46 +211,48 @@ instance VCHashUpdate VCObjectHash where
 deriving instance VCHashUpdate ImplExpl
 
 instance VCHashUpdate Int64 where
-  (&<) =
-    hashUpdateVia (\i64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i64) $ putStorable i64)
+  (&<) = hashUpdateViaBinary Binary.putInt64le
 
 instance VCHashUpdate Int32 where
-  (&<) =
-    hashUpdateVia (\i32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf i32) $ putStorable i32)
+  (&<) = hashUpdateViaBinary Binary.putInt32le
 
 instance VCHashUpdate Double where
-  (&<) =
-    hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ fill (sizeOf d) $ putStorable d)
+  (&<) = hashUpdateViaBinary Binary.putDoublele
 
 instance VCHashUpdate Word32 where
-  (&<) =
-    hashUpdateVia (\w32 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w32) $ putStorable w32)
+  (&<) = hashUpdateViaBinary Binary.putWord32le
 
 instance VCHashUpdate Word64 where
-  (&<) =
-    hashUpdateVia (\w64 -> either error (id :: ByteString -> ByteString) $ fill (sizeOf w64) $ putStorable w64)
+  (&<) = hashUpdateViaBinary Binary.putWord64le
+
+hashUpdateViaBinary ::
+  (t -> Binary.Put) ->
+  Context SHA256 ->
+  t ->
+  Context SHA256
+hashUpdateViaBinary p = hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ let b = Char8.toStrict (Binary.runPut (p d)) in fill (Char8.length b) (putBytes b))
 
 deriving instance VCHashUpdate Lit
 
-instance VCHashUpdate e => VCHashUpdate (SomeIStr e) where
+instance (VCHashUpdate e) => VCHashUpdate (SomeIStr e) where
   ctxt &< (SomeIStr istr) = ctxt &< istr
 
-instance VCHashUpdate e => VCHashUpdate (IStr f e) where
+instance (VCHashUpdate e) => VCHashUpdate (IStr f e) where
   ctxt &< istr = case istr of
     ISEmpty -> ctxt &< ("ISEmpty" :: ByteString)
     ISStr s is -> ctxt &< ("ISStr" :: ByteString) &< s &< is
     ISExpr e is -> ctxt &< ("ISExpr" :: ByteString) &< e &< is
 
-deriving instance VCHashUpdate a => VCHashUpdate (Comment a)
+deriving instance (VCHashUpdate a) => VCHashUpdate (Comment a)
 
-instance VCHashUpdate a => VCHashUpdate (TList a) where
+instance (VCHashUpdate a) => VCHashUpdate (TList a) where
   ctxt &< ts = ctxt &< tListToList ts
 
-deriving instance VCHashUpdate a => VCHashUpdate (Import a)
+deriving instance (VCHashUpdate a) => VCHashUpdate (Import a)
 
 deriving instance (VCHashUpdate hash, VCHashUpdate a) => VCHashUpdate (Pat hash a)
 
-deriving instance VCHashUpdate a => VCHashUpdate (Scoped a)
+deriving instance (VCHashUpdate a) => VCHashUpdate (Scoped a)
 
 deriving instance (VCHashUpdate hash, VCHashUpdate a) => VCHashUpdate (Expr hash a)
 
@@ -264,7 +266,7 @@ deriving instance VCHashUpdate InfernoType
 
 deriving instance VCHashUpdate TypeClass
 
-deriving instance VCHashUpdate ty => VCHashUpdate (TypeMetadata ty)
+deriving instance (VCHashUpdate ty) => VCHashUpdate (TypeMetadata ty)
 
 deriving instance VCHashUpdate ImplType
 
@@ -297,7 +299,7 @@ byteStringToVCObjectHash bs =
       result = runGet get bs
    in either (const Nothing) Just result
 
-vcHash :: VCHashUpdate obj => obj -> VCObjectHash
+vcHash :: (VCHashUpdate obj) => obj -> VCObjectHash
 vcHash o = VCObjectHash $ hashFinalize $ hashInit &< o
 
 instance FromHttpApiData VCObjectHash where
