@@ -13,6 +13,7 @@ import Control.DeepSeq (NFData)
 import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashInit, hashUpdate)
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
+import Data.Bifunctor (first)
 import qualified Data.Binary.Put as Binary
 import Data.ByteArray (ByteArrayAccess, convert)
 import Data.ByteArray.Pack (fill, putBytes)
@@ -164,13 +165,13 @@ instance (VCHashUpdate a) => VCHashUpdate (NonEmpty.NonEmpty a) where
   ctxt &< xs = ctxt &< NonEmpty.toList xs
 
 instance (VCHashUpdate a) => VCHashUpdate (Set.Set a) where
-  ctxt &< xs = ctxt &< Set.toList xs
+  ctxt &< xs = ctxt &< Set.toAscList xs
 
 instance (VCHashUpdate k, VCHashUpdate a) => VCHashUpdate (Map.Map k a) where
-  ctxt &< m = ctxt &< Map.toList m
+  ctxt &< m = ctxt &< Map.toAscList m
 
 instance (VCHashUpdate a) => VCHashUpdate (IntMap.IntMap a) where
-  ctxt &< m = ctxt &< IntMap.toList m
+  ctxt &< m = ctxt &< IntMap.toAscList m
 
 class GenericVCHashUpdate f where
   genHashUpdate :: Context SHA256 -> f p -> Context SHA256
@@ -230,7 +231,7 @@ hashUpdateViaBinary ::
   Context SHA256 ->
   t ->
   Context SHA256
-hashUpdateViaBinary p = hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ let b = Char8.toStrict (Binary.runPut (p d)) in fill (Char8.length b) (putBytes b))
+hashUpdateViaBinary p = hashUpdateVia (\d -> let b = Char8.toStrict (Binary.runPut (p d)) in first error $ fill @ByteString (Char8.length b) (putBytes b))
 
 deriving instance VCHashUpdate Lit
 
