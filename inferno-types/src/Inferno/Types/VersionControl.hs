@@ -13,7 +13,6 @@ import Control.DeepSeq (NFData)
 import Crypto.Hash (Context, Digest, digestFromByteString, hashFinalize, hashInit, hashUpdate)
 import Crypto.Hash.Algorithms (SHA256)
 import Data.Aeson (FromJSON (..), FromJSONKey, ToJSON (..), ToJSONKey, withText)
-import Data.Bifunctor (first)
 import qualified Data.Binary.Put as Binary
 import Data.ByteArray (ByteArrayAccess, convert)
 import Data.ByteArray.Pack (fill, putBytes)
@@ -231,7 +230,7 @@ hashUpdateViaBinary ::
   Context SHA256 ->
   t ->
   Context SHA256
-hashUpdateViaBinary p = hashUpdateVia (\d -> let b = Char8.toStrict (Binary.runPut (p d)) in first error $ fill @_ @ByteString (Char8.length b) (putBytes b))
+hashUpdateViaBinary p = hashUpdateVia (\d -> either error (id :: ByteString -> ByteString) $ let b = Char8.toStrict (Binary.runPut (p d)) in fill (Char8.length b) (putBytes b))
 
 deriving instance VCHashUpdate Lit
 
