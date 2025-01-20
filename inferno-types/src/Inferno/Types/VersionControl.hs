@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingVia #-}
@@ -22,9 +21,6 @@ import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Char8 as Char8
 import Data.Data (Data)
 import GHC.Float (castDoubleToWord64)
-#if defined(arm_HOST_ARCH)
-import Data.Bits
-#endif
 import Data.Hashable (Hashable (hashWithSalt))
 import Data.Int (Int32, Int64)
 import qualified Data.IntMap as IntMap
@@ -221,18 +217,7 @@ instance VCHashUpdate Int64 where
 instance VCHashUpdate Int32 where
   (&<) = hashUpdateViaBinary Binary.putInt32le
 
-#if defined(arm_HOST_ARCH)
-instance VCHashUpdate Double where
-  (&<) = hashUpdateViaBinary (Binary.putWord64le . swapMantissaExp . castDoubleToWord64)
-          where
-            swapMantissaExp w64 =
-              let l = w64 .&. 0x00000000FFFFFFFF 
-                  h = (w64 `unsafeShiftR` 32) .&. 0x00000000FFFFFFFF 
-              in (l `unsafeShiftL` 32) .|. h
-#else
-instance VCHashUpdate Double where
-  (&<) = hashUpdateViaBinary (Binary.putWord64le . castDoubleToWord64)
-#endif
+deriving via (VCHashUpdateViaShow Double) instance VCHashUpdate Double
 
 instance VCHashUpdate Word32 where
   (&<) = hashUpdateViaBinary Binary.putWord32le
