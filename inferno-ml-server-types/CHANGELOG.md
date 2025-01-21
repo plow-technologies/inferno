@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.12.1
+* Add some convenience type synonyms
+
 ## 0.12.0
 * Add creation date to models and versions
 
