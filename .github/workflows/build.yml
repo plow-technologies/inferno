@@ -44,7 +44,6 @@ jobs:
         with:
           name: inferno
           authToken: "${{ secrets.CACHIX_TOKEN }}"
-      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       # Build inferno and run all tests
       - run: |
