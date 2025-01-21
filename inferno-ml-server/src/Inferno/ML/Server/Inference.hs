@@ -116,7 +116,7 @@ runInferenceParam ::
 runInferenceParam ipid mres uuid =
   runInferenceParamWithEnv ipid uuid
     =<< mkScriptEnv
-    =<< getParameterWithModels ipid
+    =<< getInferenceParamWithModels ipid
   where
     mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
     mkScriptEnv pwm =
@@ -140,24 +140,40 @@ testInferenceParam ipid mres uuid eenv =
     =<< mkScriptEnv
     -- Just need to get the param, we already have the model information
     -- from the overrides
-    =<< getParam
+    =<< getInferenceParamWithModels ipid
   where
     -- Note that, unlike `runInferenceParam`, several of the items required
-    -- for script eval come from the `EvaluationEnv`
-    mkScriptEnv :: InferenceParam -> RemoteM ScriptEnv
-    mkScriptEnv param =
-      ScriptEnv param eenv.models eenv.inputs eenv.outputs
+    -- for script eval MAY come from the `EvaluationEnv` if they have been
+    -- overridden. See the bindings for `inputs`, `outputs`, and `models` below
+    -- for an explanation
+    mkScriptEnv :: InferenceParamWithModels -> RemoteM ScriptEnv
+    mkScriptEnv pwm =
+      ScriptEnv pwm.param models inputs outputs
         <$> getVcObject eenv.script
         ?? eenv.script
         ?? mres
+        where
+          -- If the `inputs` have not been specified in the evaluation env, i.e.
+          -- the inputs are not being overridden, use the ones that are linked
+          -- directly to the param
+          inputs :: Inputs PID
+          inputs
+            | null eenv.inputs = pwm.param.inputs
+            | otherwise = eenv.inputs
 
-    getParam :: RemoteM InferenceParam
-    getParam =
-      firstOrThrow (NoSuchParameter ipid)
-        =<< queryStore q (Only ipid)
-      where
-        q :: Query
-        q = [sql| SELECT * FROM params WHERE id = ? |]
+          -- Likewise, if the `outputs` have not been overridden, use the ones
+          -- that are linked directly to the param
+          outputs :: Outputs PID
+          outputs
+            | null eenv.outputs = pwm.param.outputs
+            | otherwise = eenv.outputs
+
+          -- Likewise, if the `models` have not been overridden, use the ones
+          -- that are linked directly to the param via its inference script
+          models :: Models (Id ModelVersion)
+          models
+            | null eenv.models = pwm.models
+            | otherwise = eenv.models
 
 runInferenceParamWithEnv ::
   Id InferenceParam ->
@@ -433,8 +449,8 @@ getVcObject vch =
     q :: Query
     q = [sql| SELECT * FROM scripts WHERE id = ? |]
 
-getParameterWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
-getParameterWithModels ipid =
+getInferenceParamWithModels :: Id InferenceParam -> RemoteM InferenceParamWithModels
+getInferenceParamWithModels ipid =
   fmap
     ( uncurry InferenceParamWithModels
         . fmap (getAeson . fromOnly)
@@ -586,9 +602,9 @@ mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
 -- endpoint, these will be overridden
 data ScriptEnv = ScriptEnv
   { param :: InferenceParam,
-    models :: Map Ident (Id ModelVersion),
-    inputs :: Map Ident (SingleOrMany PID),
-    outputs :: Map Ident (SingleOrMany PID),
+    models :: Models (Id ModelVersion),
+    inputs :: Inputs PID,
+    outputs :: Outputs PID,
     obj :: VCMeta VCObject,
     script :: VCObjectHash,
     mres :: Maybe Int64

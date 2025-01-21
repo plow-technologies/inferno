@@ -442,8 +442,8 @@ pattern InferenceScript h o = Types.InferenceScript h o
 pattern InferenceParam ::
   Maybe (Id InferenceParam) ->
   VCObjectHash ->
-  Map Ident (SingleOrMany PID) ->
-  Map Ident (SingleOrMany PID) ->
+  Inputs PID ->
+  Outputs PID ->
   Word64 ->
   Maybe UTCTime ->
   EntityId GId ->

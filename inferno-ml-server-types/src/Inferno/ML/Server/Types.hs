@@ -186,6 +186,18 @@ type BridgeAPI p t =
 -- This means the same output may appear more than once in the stream
 type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
 
+-- | Convenience synonym for the consumed 'WriteStream'
+type Writes p = Map p [(Double, EpochTime)]
+
+-- | Just a convenience synonym for cleaning up type signatures
+type Inputs p = Map Ident (SingleOrMany p)
+
+-- | Same as 'Inputs' above
+type Outputs p = Map Ident (SingleOrMany p)
+
+-- | Same as 'Inputs', 'Outputs'
+type Models a = Map Ident a
+
 data ServerStatus
   = Idle
   | EvaluatingScript
@@ -708,8 +720,8 @@ data InferenceParam gid p = InferenceParam
     -- | Mapping the input\/output to the Inferno identifier helps ensure that
     -- Inferno identifiers are always pointing to the correct input\/output;
     -- otherwise we would need to rely on the order of the original identifiers
-    inputs :: Map Ident (SingleOrMany p),
-    outputs :: Map Ident (SingleOrMany p),
+    inputs :: Inputs p,
+    outputs :: Outputs p,
     -- | Resolution, passed to bridge routes
     resolution :: Word64,
     -- | The time that this parameter was \"deleted\", if any. For active
@@ -1023,8 +1035,8 @@ instance Ord a => Ord (SingleOrMany a) where
 -- evaluator. This allows for more interactive testing
 data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash,
-    inputs :: Map Ident (SingleOrMany p),
-    outputs :: Map Ident (SingleOrMany p),
+    inputs :: Inputs p,
+    outputs :: Inputs p,
     models :: Map Ident (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
