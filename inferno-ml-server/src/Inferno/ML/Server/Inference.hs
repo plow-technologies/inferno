@@ -152,28 +152,28 @@ testInferenceParam ipid mres uuid eenv =
         <$> getVcObject eenv.script
         ?? eenv.script
         ?? mres
-        where
-          -- If the `inputs` have not been specified in the evaluation env, i.e.
-          -- the inputs are not being overridden, use the ones that are linked
-          -- directly to the param
-          inputs :: Inputs PID
-          inputs
-            | null eenv.inputs = pwm.param.inputs
-            | otherwise = eenv.inputs
+      where
+        -- If the `inputs` have not been specified in the evaluation env, i.e.
+        -- the inputs are not being overridden, use the ones that are linked
+        -- directly to the param
+        inputs :: Inputs PID
+        inputs
+          | null eenv.inputs = pwm.param.inputs
+          | otherwise = eenv.inputs
 
-          -- Likewise, if the `outputs` have not been overridden, use the ones
-          -- that are linked directly to the param
-          outputs :: Outputs PID
-          outputs
-            | null eenv.outputs = pwm.param.outputs
-            | otherwise = eenv.outputs
+        -- Likewise, if the `outputs` have not been overridden, use the ones
+        -- that are linked directly to the param
+        outputs :: Outputs PID
+        outputs
+          | null eenv.outputs = pwm.param.outputs
+          | otherwise = eenv.outputs
 
-          -- Likewise, if the `models` have not been overridden, use the ones
-          -- that are linked directly to the param via its inference script
-          models :: Models (Id ModelVersion)
-          models
-            | null eenv.models = pwm.models
-            | otherwise = eenv.models
+        -- Likewise, if the `models` have not been overridden, use the ones
+        -- that are linked directly to the param via its inference script
+        models :: Models (Id ModelVersion)
+        models
+          | null eenv.models = pwm.models
+          | otherwise = eenv.models
 
 runInferenceParamWithEnv ::
   Id InferenceParam ->
