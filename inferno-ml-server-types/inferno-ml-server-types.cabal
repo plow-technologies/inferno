@@ -1,6 +1,6 @@
 cabal-version: 2.4
 name:          inferno-ml-server-types
-version:       0.12.1
+version:       0.12.0
 synopsis:      Types for Inferno ML server
 description:   Types for Inferno ML server
 homepage:      https://github.com/plow-technologies/inferno.git#readme
