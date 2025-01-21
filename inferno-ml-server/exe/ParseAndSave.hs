@@ -201,8 +201,8 @@ funs = BridgeFuns notSupported notSupported notSupported notSupported
     notSupported = error "Not supported"
 
 data InputsOutputs = InputsOutputs
-  { inputs :: Map Ident (SingleOrMany PID),
-    outputs :: Map Ident (SingleOrMany PID)
+  { inputs :: Inputs PID,
+    outputs :: Outputs PID
   }
   deriving stock (Generic)
   deriving anyclass (FromJSON)

@@ -48,7 +48,6 @@ import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
-import Data.Map.Strict (Map)
 import Data.Pool (Pool)
 import qualified Data.Pool as Pool
 import Data.Scientific (Scientific)
@@ -91,7 +90,6 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
     ModelVersion,
   )
 import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
-import Inferno.Types.Syntax (Ident)
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -297,7 +295,7 @@ instance FromJSON ScriptType where
         _ -> pure OtherScript
 
 newtype InferenceOptions = InferenceOptions
-  { models :: Map Ident (Id ModelVersion)
+  { models :: Models (Id ModelVersion)
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -452,7 +450,7 @@ pattern InferenceParam iid s is os res mt gid =
   Types.InferenceParam iid s is os res mt gid
 
 pattern InferenceParamWithModels ::
-  InferenceParam -> Map Ident (Id ModelVersion) -> InferenceParamWithModels
+  InferenceParam -> Models (Id ModelVersion) -> InferenceParamWithModels
 pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo

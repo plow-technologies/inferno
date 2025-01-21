@@ -807,7 +807,7 @@ instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) w
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p = InferenceParamWithModels
   { param :: InferenceParam gid p,
-    models :: Map Ident (Id (ModelVersion gid Oid))
+    models :: Models (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -1037,7 +1037,7 @@ data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash,
     inputs :: Inputs p,
     outputs :: Inputs p,
-    models :: Map Ident (Id (ModelVersion gid Oid))
+    models :: Models (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)

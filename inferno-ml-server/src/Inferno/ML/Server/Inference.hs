@@ -59,7 +59,6 @@ import Inferno.ML.Types.Value (MlValue (VExtended, VModelName))
 import Inferno.Types.Syntax
   ( Expr (App, Var),
     ExtIdent (ExtIdent),
-    Ident,
     ImplExpl (Expl),
     Scoped (LocalScope),
   )
@@ -506,8 +505,7 @@ getInferenceParamWithModels ipid =
 --
 -- NOTE: This action assumes that the current working directory is the model
 -- cache! It can be run using e.g. 'withCurrentDirectory'
-getAndCacheModels ::
-  ModelCache -> Map Ident (Id ModelVersion) -> RemoteM ()
+getAndCacheModels :: ModelCache -> Models (Id ModelVersion) -> RemoteM ()
 getAndCacheModels cache =
   traverse_ (uncurry copyAndCache)
     <=< getModelsAndVersions
