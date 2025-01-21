@@ -91,7 +91,7 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
     cdCache :: IO a -> IO a
     cdCache = withCurrentDirectory env.config.cache.path
 
-modelsWithIdents :: Map Ident (Id ModelVersion)
+modelsWithIdents :: Models (Id ModelVersion)
 modelsWithIdents = Map.singleton "dummy" mnistV1
 
 mkDbSpec :: Env -> Spec
