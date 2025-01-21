@@ -1,6 +1,10 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.6.1 -- 2025-1-21
+* Change VCUpdateHash @CTime so it produces the same output in both 32bit and
+  64bit architectures
+
 ## 0.4.6.0 -- 2024-07-25
 * mtl 2.3 compatibility
 
