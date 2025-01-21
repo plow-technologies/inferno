@@ -128,7 +128,7 @@ deriving via (VCHashUpdateViaShow InfixFixity) instance VCHashUpdate InfixFixity
 deriving via (VCHashUpdateViaShow Fixity) instance VCHashUpdate Fixity
 
 instance VCHashUpdate CTime where
-  ctxt &< (CTime t) = ctxt &< ("CTime" :: ByteString) &< t
+  ctxt &< (CTime t) = ctxt &< ("CTime" :: ByteString) &< (fromIntegral @_ @Int64 t)
 
 instance VCHashUpdate a => VCHashUpdate (Maybe a) where
   ctxt &< Nothing = ctxt
