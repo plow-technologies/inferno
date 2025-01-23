@@ -481,14 +481,23 @@ getInferenceParamWithModels ipid =
     --        "model1": "00001-0000..."
     --     }
     --     ```
+    --
+    -- If a script has no model attached, a default empty JSON object is
+    -- returned
     q :: Query
     q =
       [sql|
-        SELECT P.*, jsonb_object_agg(MS.ident, MS.model) mversions
+        SELECT
+          P.*,
+          coalesce
+            ( jsonb_object_agg(MS.ident, MS.model)
+                FILTER (WHERE MS.ident IS NOT NULL)
+            , '{}'::jsonb
+            ) mversions
         FROM params P
-          INNER JOIN scripts S ON P.script = S.id
-          INNER JOIN mselections MS ON MS.script = S.id
-          INNER JOIN mversions MV ON MV.id = MS.model
+          LEFT OUTER JOIN scripts S ON P.script = S.id
+          LEFT OUTER JOIN mselections MS ON MS.script = S.id
+          LEFT OUTER JOIN mversions MV ON MV.id = MS.model
         WHERE P.id = ?
           AND P.terminated IS NULL
         GROUP BY
