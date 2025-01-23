@@ -98,26 +98,8 @@ pkgs.haskell-nix.cabalProject {
           ${setpath}
           export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
         '';
-        # This inserts the `import` stanza into a `cabal.project.local`, removing
-        # the need to include the stanza in the actual `cabal.project` (which
-        # doesn't work with haskell.nix, see above) and also allowing us to use
-        # an absolute path to the extra configuration (meaning that `cabal` will
-        # work when invoked from anywhere in the repository)
-        cabalHook = ''
-          top=$(git rev-parse --show-toplevel)
-          path=$top/cabal.project.local
-          if [[ ! -f $path ]]; then
-              cat <<EOF >$path
-          if impl(ghc >= 9)
-            import: $top/nix/ghc9.cabal.project
-          EOF
-          else
-              echo 'Refusing to overwrite cabal.project.local'
-          fi
-        '';
       in
       ''
-        ${cabalHook}
         ${lib.optionalString (hasktorchSupport && pkgs.stdenv.isLinux) torchHook}
       '';
   };
