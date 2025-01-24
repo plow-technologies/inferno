@@ -151,11 +151,13 @@
 
             } // builtins.listToAttrs
               (
+                # NOTE It's a bit silly to a `forEach` for a list with a single
+                # element, but we might want to add more compiler versions back
+                # in the future, so I'm keeping it as a list of compiler versions
+                # for now
                 lib.lists.forEach
                   (
                     [ defaultCompiler ]
-                      # only GHC 8.10.7 or newer is supported on M1 Macs
-                      ++ lib.optional (pkgs.system != "aarch64-darwin") "ghc884"
                   )
                   (
                     compiler: lib.attrsets.nameValuePair
