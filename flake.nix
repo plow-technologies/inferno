@@ -88,6 +88,8 @@
         ./nix/apps.nix
         ./nix/packages.nix
         ./nix/checks.nix
+        # Currently used only for Inferno ML image configurations
+        ./nix/nixos-modules.nix
       ];
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:

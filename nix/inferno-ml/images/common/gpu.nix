@@ -1,9 +1,7 @@
 # Common GPU configuration for `inferno-ml-server` images. Once we add more
 # GPU options, we will probably need to specify different drivers for different
 # image types/sizes
-{ config
-, lib
-, pkgs
+{ pkgs
 , ...
 }:
 
