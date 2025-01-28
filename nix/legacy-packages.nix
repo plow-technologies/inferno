@@ -37,7 +37,7 @@
 
         # Also putting this here for better namespacing
         images = import ./inferno-ml/images {
-          inherit pkgs inputs system;
+          inherit self pkgs inputs system;
         };
       };
     };

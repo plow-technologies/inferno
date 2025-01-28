@@ -1,4 +1,5 @@
-{ pkgs
+{ self
+, pkgs
 , inputs
 , system ? "x86_64-linux"
 , ...
@@ -22,7 +23,7 @@ let
     mkImage {
       inherit format;
       modules = modules ++ [
-        ./configuration.nix
+        self.nixosModules.image-common
         inputs.image-config.nixosModules.default
       ];
     };
@@ -36,7 +37,7 @@ in
         format = "amazon";
         modules = [
           {
-            imports = [ ./common/gpu.nix ];
+            imports = [ self.nixosModules.image-gpu ];
             # The big one
             amazonImage.sizeMB = 53687;
           }
@@ -48,7 +49,7 @@ in
         format = "amazon";
         modules = [
           {
-            imports = [ ./common/gpu.nix ];
+            imports = [ self.nixosModules.image-gpu ];
             amazonImage.sizeMB = 12188;
           }
         ];
@@ -61,7 +62,7 @@ in
         format = "amazon";
         modules = [
           {
-            imports = [ ./common/cpu.nix ];
+            imports = [ self.nixosModules.image-cpu ];
             # The big one
             amazonImage.sizeMB = 53687;
           }
@@ -73,7 +74,7 @@ in
         format = "amazon";
         modules = [
           {
-            imports = [ ./common/cpu.nix ];
+            imports = [ self.nixosModules.image-cpu ];
             amazonImage.sizeMB = 12188;
           }
         ];
@@ -89,7 +90,7 @@ in
     format = "azure";
     modules = [
       {
-        imports = [ ./common/gpu.nix ];
+        imports = [ self.nixosModules.image-gpu ];
         virtualisation.azureImage.diskSize = 12188;
       }
     ];
@@ -98,7 +99,7 @@ in
   # Useful for running a local `inferno-ml-server` instance
   qcow2 = mkServerImage {
     format = "qcow";
-    modules = [ ./qcow2.nix ];
+    modules = [ self.nixosModules.image-qcow2 ];
   };
 
   # Postgres images. These are only for testing, etc... It's not necessary to
