@@ -1,10 +1,6 @@
 # Common CPU configuration for `inferno-ml-server` images. This can be used
 # for local testing (see ../qcow2.nix) or for deploying a CPU-only image
-{ config
-, lib
-, pkgs
-, ...
-}:
+{ ... }:
 
 {
   services.inferno-ml-server = {

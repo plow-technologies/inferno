@@ -34,11 +34,6 @@
             parse-and-save = cpu.components.exes.parse-and-save;
             dummy-bridge = cpu.components.exes.dummy-bridge;
           };
-
-        # Also putting this here for better namespacing
-        images = import ./inferno-ml/images {
-          inherit pkgs inputs system;
-        };
       };
     };
 }

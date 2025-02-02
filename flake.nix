@@ -29,20 +29,6 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
-    # For building `inferno-ml-server` images
-    nixos-generators = {
-      url = "github:nix-community/nixos-generators";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-    # To build the images for `inferno-ml-server` (see `nix/inferno-ml-server/images/`),
-    # this input can be overridden ad hoc or using `follows` to provide extra NixOS
-    # configurations to the images
-    #
-    # The input must define `nixosModules.default`. Optionally, it can also
-    # define a `nixosModules.postgresql`, which will be applied to the Postgres
-    # images
-    image-config.url = "path:./nix/inferno-ml/dummy";
-
     # Needed for the `hasktorch` integration
     hasktorch = {
       url = "github:hasktorch/hasktorch";
@@ -88,6 +74,8 @@
         ./nix/apps.nix
         ./nix/packages.nix
         ./nix/checks.nix
+        # Currently used only for Inferno ML image configurations
+        ./nix/nixos-modules.nix
       ];
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:
