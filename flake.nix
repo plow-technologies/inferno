@@ -18,12 +18,12 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-    stable.follows = "haskell-nix/nixpkgs-2411";
+    stable.follows = "haskell-nix/nixpkgs-2405";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
     # preferable over nixpkgs' Haskell support
-    haskell-nix.url = "github:input-output-hk/haskell.nix";
+    haskell-nix.url = "github:input-output-hk/haskell.nix/1397170d29a6740b0582dbc1834c2591de827134";
     npm-buildpackage.url = "github:serokell/nix-npm-buildpackage";
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -193,7 +193,8 @@
               # disabled everywhere (i.e. just omit it from `treefmt.config`).
               #
               # See https://github.com/plow-technologies/inferno/issues/10
-              // lib.optionalAttrs (system != "aarch64-darwin")
+              # // lib.optionalAttrs (system != "aarch64-darwin")
+              // lib.optionalAttrs false
               {
                 ormolu = {
                   enable = true;
@@ -204,7 +205,7 @@
                       # compiler versions)
                       o = pkgs.haskell-nix.hackage-package {
                         name = "fourmolu";
-                        version = "0.18.0.0";
+                        version = "0.17.0.0";
                         compiler-nix-name = defaultCompiler;
                         configureArgs = "--disable-benchmarks --disable-tests";
                       };
