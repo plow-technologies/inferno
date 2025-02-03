@@ -2,6 +2,7 @@
 { profiling
 , ghcOptions
 , pkgs
+, lib
 , ...
 }:
 
@@ -27,5 +28,7 @@
     ghc.components.library.doHaddock = false;
     # Broken
     temporary.components.library.doHaddock = false;
+    postgresql-libpq-configure.components.library.libs =
+      lib.mkForce [ pkgs.postgresql ];
   };
 }

@@ -39,6 +39,8 @@
     tokenizers = {
       url = "github:hasktorch/tokenizers/";
     };
+    # Needed to build `tokenizers` packages
+    naersk.url = "github:nix-community/naersk";
   };
 
   # NOTE: The flake outputs are split into separate modules and then imported
@@ -236,6 +238,7 @@
           # Overlay for creating a project with `inferno-ml` as a dependency
           ml-project = nixpkgs.lib.composeManyExtensions [
             haskell-nix.overlays.combined
+            inputs.naersk.overlay
             inputs.tokenizers.overlays.default
             (_:_: { inherit (inputs) hasktorch; })
             (import ./nix/overlays/compat.nix)

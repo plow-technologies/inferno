@@ -5,10 +5,9 @@ packages:
   ./inferno-types
   ./inferno-lsp
   ./inferno-vc
-  -- TODO upgrade Re-enable
   ./inferno-ml
-  -- ./inferno-ml-server-types
-  -- ./inferno-ml-server
+  ./inferno-ml-server-types
+  ./inferno-ml-server
 
 allow-newer: all
 
@@ -77,8 +76,11 @@ source-repository-package
     tag: 54221f58b28c9f36db9bac437231e6142c8cca3a
     --sha256: sha256-cDthJ+XJ7J8l0SFpPRnvFt2yC4ufD6efz5GES5xMtzQ=
 
--- package libtorch-ffi
---     ghc-options: -j +RTS -A128m -n2m -RTS
+package libtorch-ffi
+    ghc-options: -j +RTS -A128m -n2m -RTS
 
--- package hasktorch
---     ghc-options: -j +RTS -A128m -n2m -RTS
+package hasktorch
+    ghc-options: -j +RTS -A128m -n2m -RTS
+
+package bson
+  flags: -_old-network

@@ -34,6 +34,8 @@ let
               # These should always be the same as `torch`
               c10 = torch;
               torch_cpu = torch;
+              # Weird naming problem with `tokenizers` own overlay
+              tokenizers_haskell = pkgs.tokenizersPackages.tokenizers-haskell;
             } // lib.optionalAttrs cudaSupport {
               torch_cuda = torch;
             }
