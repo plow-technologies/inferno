@@ -37,7 +37,7 @@
       flake = false;
     };
     tokenizers = {
-      url = "github:hasktorch/tokenizers/flakes";
+      url = "github:hasktorch/tokenizers/";
     };
   };
 
@@ -134,7 +134,9 @@
                   ghcOptions = [ "-eventlog" ];
                 };
               "${defaultCompiler}-cuda" = infernoFor {
-                torchConfig.device = "cuda-118";
+                # NOTE NVIDIA doesn't seem to have drivers for CUDA 11.8
+                # and V100 GPUs ???
+                torchConfig.device = "cuda-117";
               };
 
             } // builtins.listToAttrs
@@ -234,7 +236,7 @@
           # Overlay for creating a project with `inferno-ml` as a dependency
           ml-project = nixpkgs.lib.composeManyExtensions [
             haskell-nix.overlays.combined
-            inputs.tokenizers.overlay
+            inputs.tokenizers.overlays.default
             (_:_: { inherit (inputs) hasktorch; })
             (import ./nix/overlays/compat.nix)
             (import ./nix/overlays/torch.nix)

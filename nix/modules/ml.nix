@@ -6,7 +6,7 @@
     libtorch-ffi = {
       configureFlags = [
         "--extra-lib-dirs=${pkgs.torch.out}/lib"
-        "--extra-include-dirs=${lib.getDev pkgs.torch.dev}/include"
+        "--extra-include-dirs=${lib.getDev pkgs.torch.dev}/include/torch/csrc/api/include"
       ];
       flags = {
         cuda = cudaSupport;

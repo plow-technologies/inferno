@@ -6,7 +6,7 @@ packages:
   ./inferno-lsp
   ./inferno-vc
   -- TODO upgrade Re-enable
-  -- ./inferno-ml
+  ./inferno-ml
   -- ./inferno-ml-server-types
   -- ./inferno-ml-server
 
