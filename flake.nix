@@ -18,7 +18,7 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-    stable.follows = "haskell-nix/nixpkgs-2205";
+    stable.follows = "haskell-nix/nixpkgs-2411";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
@@ -80,7 +80,7 @@
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:
         let
-          defaultCompiler = "ghc925";
+          defaultCompiler = "ghc96";
 
           # This should be parameterized by the `pkgs` used to build the project. We
           # want users who get packages from our `overlays.default` to be able to
