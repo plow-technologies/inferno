@@ -167,7 +167,16 @@
               # Some of the ML/Python dependencies have unfree licenses. They
               # would be unbuildable without this setting
               config = haskell-nix.config // { allowUnfree = true; };
-              overlays = [ self.overlays.combined ];
+              overlays = [
+                self.overlays.combined
+                (
+                  _: prev: {
+                    # Required for `term-rewriting` package (Hasktorch dep),
+                    # for some reason
+                    pkgconfig = prev.pkg-config;
+                  }
+                )
+              ];
             };
           };
 

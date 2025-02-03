@@ -10,10 +10,8 @@
 
 let
   inherit (args.pkgs) lib;
-  # Some things, notably the Hasktorch integration, will not work if the compiler
-  # version is older than GHC 9.2.4
-  isAtLeastGhc924 = builtins.compareVersions compiler "ghc924" != -1;
-  hasktorchSupport = isAtLeastGhc924 && args.pkgs.stdenv.isx86_64;
+  # Only builds on x86-64
+  hasktorchSupport = args.pkgs.stdenv.isx86_64;
   cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
