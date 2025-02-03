@@ -8,13 +8,12 @@ let
       assert lib.assertOneOf "device" device
         [
           "cpu"
-          "cuda-10"
-          "cuda-11"
+          "cuda-117"
+          "cuda-118"
         ];
       assert device == "cpu" -> !cudaSupport;
-      final.callPackage "${final.hasktorch}/nix/libtorch.nix" {
-        inherit device cudaSupport;
-      };
+
+      prev.libtorch-bin.override { inherit cudaSupport; };
 
   # Adding `makeOverridable` will allow us to propagate options
   # from the top level (e.g. a specific `infernoFor` build) to
