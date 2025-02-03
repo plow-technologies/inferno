@@ -80,7 +80,7 @@
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:
         let
-          defaultCompiler = "ghc96";
+          defaultCompiler = "ghc910";
 
           # This should be parameterized by the `pkgs` used to build the project. We
           # want users who get packages from our `overlays.default` to be able to
@@ -166,7 +166,7 @@
               inherit system;
               # Some of the ML/Python dependencies have unfree licenses. They
               # would be unbuildable without this setting
-              config.allowUnfree = true;
+              config = haskell-nix.config // { allowUnfree = true; };
               overlays = [ self.overlays.combined ];
             };
           };
@@ -203,13 +203,13 @@
                       # from interfering with the build plan (incl. incompatible
                       # compiler versions)
                       o = pkgs.haskell-nix.hackage-package {
-                        name = "ormolu";
-                        version = "0.5.0.1";
+                        name = "fourmolu";
+                        version = "0.18.0.0";
                         compiler-nix-name = defaultCompiler;
                         configureArgs = "--disable-benchmarks --disable-tests";
                       };
                     in
-                    o.getComponent "exe:ormolu";
+                    o.getComponent "exe:fourmolu";
                   ghcOpts = [ "TypeApplications" ];
                 };
               };
