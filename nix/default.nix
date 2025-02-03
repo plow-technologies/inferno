@@ -2,7 +2,7 @@
 , config
 , ghcOptions ? [ ]
 , profiling ? false
-  # Must be of the form: { device = <cpu|cuda-10|cuda-11>; }
+  # Must be of the form: { device = <cpu|cuda-117|cuda-118>; }
 , torchConfig ? { }
 , inputs
 , ...

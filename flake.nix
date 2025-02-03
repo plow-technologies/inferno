@@ -134,7 +134,7 @@
                   ghcOptions = [ "-eventlog" ];
                 };
               "${defaultCompiler}-cuda" = infernoFor {
-                torchConfig.device = "cuda-11";
+                torchConfig.device = "cuda-118";
               };
 
             } // builtins.listToAttrs
@@ -188,32 +188,26 @@
           # `devShells`)
           treefmt.config = {
             projectRootFile = "flake.nix";
-            programs = { nixpkgs-fmt.enable = true; }
-              # FIXME Ormolu segfaults on `aarch64-darwin` so it should be
-              # disabled everywhere (i.e. just omit it from `treefmt.config`).
-              #
-              # See https://github.com/plow-technologies/inferno/issues/10
-              # // lib.optionalAttrs (system != "aarch64-darwin")
-              // lib.optionalAttrs false
-              {
-                ormolu = {
-                  enable = true;
-                  package =
-                    let
-                      # Using `hackage-package` will prevent building `ormolu`
-                      # from interfering with the build plan (incl. incompatible
-                      # compiler versions)
-                      o = pkgs.haskell-nix.hackage-package {
-                        name = "fourmolu";
-                        version = "0.17.0.0";
-                        compiler-nix-name = defaultCompiler;
-                        configureArgs = "--disable-benchmarks --disable-tests";
-                      };
-                    in
-                    o.getComponent "exe:fourmolu";
-                  ghcOpts = [ "TypeApplications" ];
-                };
+            programs = {
+              nixpkgs-fmt.enable = true;
+              ormolu = {
+                enable = true;
+                package =
+                  let
+                    # Using `hackage-package` will prevent building `ormolu`
+                    # from interfering with the build plan (incl. incompatible
+                    # compiler versions)
+                    o = pkgs.haskell-nix.hackage-package {
+                      name = "fourmolu";
+                      version = "0.16.2.0";
+                      compiler-nix-name = defaultCompiler;
+                      configureArgs = "--disable-benchmarks --disable-tests";
+                    };
+                  in
+                  o.getComponent "exe:fourmolu";
+                ghcOpts = [ "TypeApplications" ];
               };
+            };
           };
         };
 
