@@ -14,7 +14,7 @@
   ];
 
   nixpkgs.overlays = [
-    (import ../../../overlays/nvidia/470-161.nix)
+    (import ../../../overlays/nvidia/v100.nix)
   ];
 
   hardware.cuda = {

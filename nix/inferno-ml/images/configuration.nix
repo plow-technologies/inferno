@@ -5,6 +5,8 @@
     ../modules/inferno-ml-server.nix
   ];
 
+  boot.kernelPackages = pkgs.linuxPackages_5_4;
+
   nix = {
     extraOptions = ''
       experimental-features = nix-command flakes recursive-nix impure-derivations ca-derivations

@@ -243,9 +243,6 @@
             (_:_: { inherit (inputs) hasktorch; })
             (import ./nix/overlays/compat.nix)
             (import ./nix/overlays/torch.nix)
-            # TODO upgrade Remove this -- only needed for images; and
-            # fix name
-            (import nix/overlays/nvidia/470-161.nix)
           ];
 
           combined = nixpkgs.lib.composeManyExtensions [
