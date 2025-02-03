@@ -1,7 +1,6 @@
 # General options for both GHC 8.x and 9.x
 { profiling
 , ghcOptions
-, config
 , pkgs
 , ...
 }:
