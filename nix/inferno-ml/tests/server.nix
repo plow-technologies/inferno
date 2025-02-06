@@ -14,7 +14,7 @@ pkgs.nixosTest {
   nodes.node = { config, ... }: {
     imports = [
       ../images/configuration.nix
-      ../images/qcow2.nix
+      ../images/common/qcow2.nix
     ];
 
     environment.systemPackages = [
@@ -138,9 +138,7 @@ pkgs.nixosTest {
       ensureUsers = [
         {
           name = "inferno";
-          ensurePermissions = {
-            "DATABASE inferno" = "ALL PRIVILEGES";
-          };
+          ensureClauses.superuser = true;
         }
       ];
       authentication = pkgs.lib.mkForce ''
