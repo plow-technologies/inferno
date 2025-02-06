@@ -173,7 +173,7 @@ in
         # and group. This could also be done in the systemd service definition, but
         # then we'd need to always use relative paths
         system.activationScripts = {
-          mkInfernoMlRemoteDirs =
+          mkInfernoMlCacheDir =
             let
               inherit (configuration.cache) path;
             in
