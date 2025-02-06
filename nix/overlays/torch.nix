@@ -10,7 +10,7 @@ let
       assert system == "x86_64-linux";
       # While we could support CUDA 11.8, we can't get NVIDIA drivers for it
       # apparently (for V100 GPUs)
-      assert lib.assertOneOf "device" device [ "cpu" "cuda-117" ];
+      assert lib.assertOneOf "device" device [ "cpu" "cuda-118" ];
       assert device == "cpu" -> !cudaSupport;
 
       (
@@ -38,8 +38,8 @@ let
                     arch = "cpu";
                     hash = "sha256-dKAk6UusK2eQIcP0oMXh9cnufMpy5Ph4SGPkIPPV6ds=";
                   };
-                  cuda-117 = getTorch {
-                    arch = "cu117";
+                  cuda-118 = getTorch {
+                    arch = "cu118";
                     hash = "sha256-0000000000000000000000000000000000000000000=";
                   };
                 }.${device} or (throw "Invalid device");

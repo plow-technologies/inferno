@@ -138,7 +138,7 @@
               "${defaultCompiler}-cuda" = infernoFor {
                 # NOTE NVIDIA doesn't seem to have drivers for CUDA 11.8
                 # and V100 GPUs ???
-                torchConfig.device = "cuda-117";
+                torchConfig.device = "cuda-118";
               };
 
             } // builtins.listToAttrs
