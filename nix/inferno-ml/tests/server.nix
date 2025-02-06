@@ -218,7 +218,7 @@ pkgs.nixosTest {
     )
     node.succeed('insert-mnist-model')
     node.wait_for_unit("inferno-ml-server.service")
-    node.succeed('curl --fail localhost:8080/status')
+    node.wait_until_succeeds('curl --fail localhost:8080/status', timeout=30)
 
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
 
