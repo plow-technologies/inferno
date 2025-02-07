@@ -16,7 +16,6 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.Foldable (toList, traverse_)
 import Data.Generics.Wrapped (wrappedTo)
-import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import qualified Data.UUID as UUID
 import Data.Vector (Vector)
@@ -29,7 +28,6 @@ import Inferno.ML.Server.Inference.Model
     getModelsAndVersions,
   )
 import Inferno.ML.Server.Types
-import Inferno.Types.Syntax (Ident)
 import Lens.Micro.Platform
 import Plow.Logging.Message (LogLevel (LevelWarn))
 import System.FilePath ((<.>))
