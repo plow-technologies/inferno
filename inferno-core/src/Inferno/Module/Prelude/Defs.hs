@@ -20,7 +20,7 @@ import Data.Bits
     (.&.),
     (.|.),
   )
-import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
+import Data.Foldable (foldrM, maximumBy, minimumBy)
 import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.List.Extra ((!?))

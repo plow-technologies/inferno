@@ -24,7 +24,6 @@ module Inferno.Infer.Env
   )
 where
 
-import Data.Foldable (Foldable (foldl'))
 import Data.List (nub)
 import qualified Data.Map as Map
 import qualified Data.Set as Set

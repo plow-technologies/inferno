@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               inferno-lsp
-version:            0.2.6.0
+version:            0.2.7.0
 synopsis:           LSP for Inferno
 description:
   A language server protocol implementation for the Inferno language
