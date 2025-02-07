@@ -49,20 +49,19 @@
 
       # Inferno's VSCode packages
       vscode = {
-        syntax-highlighting =
-          pkgs.buildNpmPackage {
-            src = ../vscode-inferno-syntax-highlighting;
-            npmBuild = ''
-              npm run build-tm
-              npm run package
-              npm run build-monarch
-            '';
-            installPhase = ''
-              mkdir $out
-              cp *.vsix $out
-              cp syntaxes/inferno.monarch.json $out
-            '';
-          };
+        syntax-highlighting = pkgs.buildNpmPackage {
+          src = ../vscode-inferno-syntax-highlighting;
+          npmBuild = ''
+            npm run build-tm
+            npm run package
+            npm run build-monarch
+          '';
+          installPhase = ''
+            mkdir $out
+            cp *.vsix $out
+            cp syntaxes/inferno.monarch.json $out
+          '';
+        };
         lsp-server = pkgs.buildNpmPackage {
           src = ../vscode-inferno-lsp-server;
           npmBuild = ''
