@@ -12,8 +12,7 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       description = lib.mdDoc "The NVIDIA driver to use";
-      # NOTE: This is also the default for `hardware.nvidia.package`
-      default = config.boot.kernelPackages.nvidiaPackages.stable;
+      default = pkgs.linuxPackages_5_4.nvidia_x11;
     };
   };
 
