@@ -32,6 +32,7 @@ in
       nvidia = {
         inherit (cfg) package;
         nvidiaSettings = false;
+        open = false;
       };
       opengl = {
         enable = true;
