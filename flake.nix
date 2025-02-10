@@ -248,6 +248,8 @@
           combined = nixpkgs.lib.composeManyExtensions [
             self.overlays.ml-project
             inputs.npm-buildpackage.overlays.default
+            # FIXME upgrade: Remove after testing
+            (import ./nix/overlays/nvidia/v100.nix)
             (
               _: prev: {
                 inherit (self.legacyPackages.${prev.system}.hsPkgs)

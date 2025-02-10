@@ -12,17 +12,23 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       description = lib.mdDoc "The NVIDIA driver to use";
-      default = pkgs.linuxPackages_5_4.nvidia_x11;
+      default = config.boot.kernelPackages.nvidiaPackages.stable;
     };
   };
 
   config = lib.mkIf cfg.enable {
+    boot.blacklistedKernelModules = [
+      "nouveau"
+      "nvidiafb"
+    ];
+
     # NOTE: This is needed even though we don't have a graphical interface!
     services.xserver.videoDrivers = [ "nvidia" ];
 
     environment = {
       sessionVariables.LD_LIBRARY_PATH = "/run/open-gl-driver/lib";
-      systemPackages = [ pkgs.cudaPackages_11_8.cudatoolkit ];
+      # TODO Do we even need this? Libtorch ships with its own CUDA stuff
+      # systemPackages = [ pkgs.cudaPackages_11_8.cudatoolkit ];
     };
 
     hardware = {
