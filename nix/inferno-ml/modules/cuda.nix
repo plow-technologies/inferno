@@ -18,8 +18,6 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    nixpkgs.config.allowUnfree = true;
-
     # NOTE: This is needed even though we don't have a graphical interface!
     services.xserver.videoDrivers = [ "nvidia" ];
 
