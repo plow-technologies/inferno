@@ -1,9 +1,6 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.11.6.0 -- 2025-02-07
-* GHC 9.10 upgrade
-
 ## 0.11.6.0 -- 2024-07-25
 * mtl 2.3 compatibility
 

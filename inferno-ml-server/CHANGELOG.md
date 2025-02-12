@@ -1,9 +1,6 @@
 # Revision History for `inferno-ml-server`
 
-## 2025.2.7
-* GHC 10 upgrade
-
-## 2024.12.21
+## 2025.12.21
 * Always make sure relevant items are set in evaluation environment (testing route)
 
 ## 2024.11.29

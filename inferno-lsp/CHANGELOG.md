@@ -1,9 +1,6 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.11.6.0 -- 2025-02-07
-* GHC 9.10 upgrade
-
 ## 0.2.6.0 -- 2024-04-26
 * Add warning when vars defined but unused
 
