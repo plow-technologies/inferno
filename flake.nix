@@ -248,8 +248,11 @@
           combined = nixpkgs.lib.composeManyExtensions [
             self.overlays.ml-project
             inputs.npm-buildpackage.overlays.default
-            # FIXME upgrade: Remove after testing
-            (import ./nix/overlays/nvidia/v100.nix)
+            # NOTE To test building the NVIDIA drivers, uncomment this
+            # and `nix build .#linuxPackages.nvidia_x11`; it's not included
+            # by default because it's not really needed in the combined
+            # overlay
+            # (import ./nix/overlays/nvidia/v100.nix)
             (
               _: prev: {
                 inherit (self.legacyPackages.${prev.system}.hsPkgs)
