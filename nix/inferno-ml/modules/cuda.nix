@@ -27,8 +27,6 @@ in
 
     environment = {
       sessionVariables.LD_LIBRARY_PATH = "/run/open-gl-driver/lib";
-      # TODO Do we even need this? Libtorch ships with its own CUDA stuff
-      # systemPackages = [ pkgs.cudaPackages_11_8.cudatoolkit ];
     };
 
     hardware = {

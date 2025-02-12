@@ -207,7 +207,7 @@
                 enable = true;
                 package =
                   let
-                    # Using `hackage-package` will prevent building `ormolu`
+                    # Using `hackage-package` will prevent building `fourmolu`
                     # from interfering with the build plan (incl. incompatible
                     # compiler versions)
                     o = pkgs.haskell-nix.hackage-package {
