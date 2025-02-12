@@ -36,7 +36,7 @@
           inferno-ml-cpu = packages.${inferno-ml};
           inferno-ml-lsp-server = flakes."${defaultCompiler}".packages.${inferno-ml-lsp};
           # TODO upgrade Re-enable
-          # inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
+          inferno-ml-cuda = flakes."${defaultCompiler}-cuda".packages.${inferno-ml};
           vscode-inferno = pkgs.runCommand "vscode-inferno"
             { }
             ''
