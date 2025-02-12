@@ -18,12 +18,12 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-    stable.follows = "haskell-nix/nixpkgs-2205";
+    stable.follows = "haskell-nix/nixpkgs-2405";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
     # preferable over nixpkgs' Haskell support
-    haskell-nix.url = "github:input-output-hk/haskell.nix";
+    haskell-nix.url = "github:input-output-hk/haskell.nix/1397170d29a6740b0582dbc1834c2591de827134";
     npm-buildpackage.url = "github:serokell/nix-npm-buildpackage";
     flake-compat = {
       url = "github:edolstra/flake-compat";
@@ -37,8 +37,10 @@
       flake = false;
     };
     tokenizers = {
-      url = "github:hasktorch/tokenizers/flakes";
+      url = "github:hasktorch/tokenizers/";
     };
+    # Needed to build `tokenizers` packages
+    naersk.url = "github:nix-community/naersk";
   };
 
   # NOTE: The flake outputs are split into separate modules and then imported
@@ -80,7 +82,7 @@
       # Outputs that are enumerated by system
       perSystem = { config, pkgs, lib, system, inferno, ... }:
         let
-          defaultCompiler = "ghc925";
+          defaultCompiler = "ghc910";
 
           # This should be parameterized by the `pkgs` used to build the project. We
           # want users who get packages from our `overlays.default` to be able to
@@ -134,7 +136,9 @@
                   ghcOptions = [ "-eventlog" ];
                 };
               "${defaultCompiler}-cuda" = infernoFor {
-                torchConfig.device = "cuda-11";
+                # NOTE NVIDIA doesn't seem to have drivers for CUDA 11.8
+                # and V100 GPUs ???
+                torchConfig.device = "cuda-118";
               };
 
             } // builtins.listToAttrs
@@ -166,8 +170,17 @@
               inherit system;
               # Some of the ML/Python dependencies have unfree licenses. They
               # would be unbuildable without this setting
-              config.allowUnfree = true;
-              overlays = [ self.overlays.combined ];
+              config = haskell-nix.config // { allowUnfree = true; };
+              overlays = [
+                self.overlays.combined
+                (
+                  _: prev: {
+                    # Required for `term-rewriting` package (Hasktorch dep),
+                    # for some reason
+                    pkgconfig = prev.pkg-config;
+                  }
+                )
+              ];
             };
           };
 
@@ -188,31 +201,26 @@
           # `devShells`)
           treefmt.config = {
             projectRootFile = "flake.nix";
-            programs = { nixpkgs-fmt.enable = true; }
-              # FIXME Ormolu segfaults on `aarch64-darwin` so it should be
-              # disabled everywhere (i.e. just omit it from `treefmt.config`).
-              #
-              # See https://github.com/plow-technologies/inferno/issues/10
-              // lib.optionalAttrs (system != "aarch64-darwin")
-              {
-                ormolu = {
-                  enable = true;
-                  package =
-                    let
-                      # Using `hackage-package` will prevent building `ormolu`
-                      # from interfering with the build plan (incl. incompatible
-                      # compiler versions)
-                      o = pkgs.haskell-nix.hackage-package {
-                        name = "ormolu";
-                        version = "0.5.0.1";
-                        compiler-nix-name = defaultCompiler;
-                        configureArgs = "--disable-benchmarks --disable-tests";
-                      };
-                    in
-                    o.getComponent "exe:ormolu";
-                  ghcOpts = [ "TypeApplications" ];
-                };
+            programs = {
+              nixpkgs-fmt.enable = true;
+              ormolu = {
+                enable = true;
+                package =
+                  let
+                    # Using `hackage-package` will prevent building `fourmolu`
+                    # from interfering with the build plan (incl. incompatible
+                    # compiler versions)
+                    o = pkgs.haskell-nix.hackage-package {
+                      name = "fourmolu";
+                      version = "0.16.2.0";
+                      compiler-nix-name = defaultCompiler;
+                      configureArgs = "--disable-benchmarks --disable-tests";
+                    };
+                  in
+                  o.getComponent "exe:fourmolu";
+                ghcOpts = [ "TypeApplications" ];
               };
+            };
           };
         };
 
@@ -230,7 +238,8 @@
           # Overlay for creating a project with `inferno-ml` as a dependency
           ml-project = nixpkgs.lib.composeManyExtensions [
             haskell-nix.overlays.combined
-            inputs.tokenizers.overlay
+            inputs.naersk.overlay
+            inputs.tokenizers.overlays.default
             (_:_: { inherit (inputs) hasktorch; })
             (import ./nix/overlays/compat.nix)
             (import ./nix/overlays/torch.nix)
@@ -239,6 +248,11 @@
           combined = nixpkgs.lib.composeManyExtensions [
             self.overlays.ml-project
             inputs.npm-buildpackage.overlays.default
+            # NOTE To test building the NVIDIA drivers, uncomment this
+            # and `nix build .#linuxPackages.nvidia_x11`; it's not included
+            # by default because it's not really needed in the combined
+            # overlay
+            # (import ./nix/overlays/nvidia/v100.nix)
             (
               _: prev: {
                 inherit (self.legacyPackages.${prev.system}.hsPkgs)

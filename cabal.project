@@ -1,3 +1,5 @@
+index-state: 2025-01-05T00:00:00Z
+
 packages:
   ./inferno-core
   ./inferno-types
@@ -6,6 +8,12 @@ packages:
   ./inferno-ml
   ./inferno-ml-server-types
   ./inferno-ml-server
+
+allow-newer: all
+
+constraints:
+    lsp < 1.7
+  , lsp-types < 1.7
 
 source-repository-package
     type: git
@@ -22,45 +30,57 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/hasktorch/hasktorch.git
-    tag: 4b5242b5a4507c92e1c53a35e0c3e6eb46a07a72
-    --sha256: QZJ+N0ftT7WjOC9PEOsMSJxtDf/Wwt1ZRqCyBGJY84U=
+    tag: 51894a2abd95d50af147997b76b473edc15385b1
+    --sha256: sha256-o9y/sa26q27Jgu9ozntYdl7ZQdTOxxuDN5hqmBy+ecE=
     subdir:
       libtorch-ffi
       libtorch-ffi-helper
       hasktorch
 
+-- All of the deps below are for Hasktorch
+
 source-repository-package
     type: git
     location: https://github.com/hasktorch/tokenizers
-    tag: 9d25f0ba303193e97f8b22b9c93cbc84725886c3
-    --sha256: 03nm9kd1j6v5ygxiyc86gbr4sjzj4l9xibmpccyws49vwzf02p2k
+    tag: addbd197fa71eb0bf875424d015ad9d732f42eed
     subdir: bindings/haskell/tokenizers-haskell
+    --sha256: sha256-nH5ufnpYutre27UOg8YHCFP7xDCEpLxRKcDCJP+Z0G4=
 
 source-repository-package
     type: git
     location: https://github.com/hasktorch/typelevel-rewrite-rules
-    --sha256: 0nfs6qyrhc2hxskdnlhsr6rrqdqa1kw5a18d2fiybiygxy75z140
-    tag: 4176e10d4de2d1310506c0fcf6a74956d81d59b6
+    tag: 1f181c3073df201cec45e121f07610b0bfbb6ecd
+    --sha256: sha256-CbauA2leHYtdCT0tiDeRCNfJddc/5x9sPz+stmHVR5Q=
 
 source-repository-package
     type: git
     location: https://github.com/hasktorch/type-errors-pretty
-    --sha256: 0sdw3ga7gbffyywpyx7xn8ghdw9gzsy4l68cas41hwfbkrwxwdg6
     tag: 32d7abec6a21c42a5f960d7f4133d604e8be79ec
+    --sha256: sha256-5jXeeZ7LcRiIVgwZSrz+L/EGH7L9dH+5986td9QbvGk=
 
 source-repository-package
     type: git
-    location: https://github.com/fpco/inline-c
-    --sha256: tT/LqUCrVC++N5Mu3eKpK0uXweLg+Qlil5yS9gp1CIE=
-    tag: ef87fbae38ed9f646b912f94606d895d0582f1b4
-    subdir: inline-c
-    subdir: inline-c-cpp
+    location: https://github.com/hasktorch/streaming-cassava
+    tag: 1ecc4742beae22a2fe32e445a54d1990b6200249
+    --sha256: sha256-w7tTol/VwZewJ9J9EWZRpLOiMZ5M0LzfLK3qC06MMiY=
 
--- TODO
--- `hasktorch` configures these automatically as well in their
--- haskell.nix setup
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/indexed-extras
+    tag: 7a0c4e918578e7620a46d4f0546fbdaec933ede0
+    --sha256: sha256-SS6yZEKOZ5aRgPW7xMtojNDr0TjZ+3QHCgf/o9umG84=
+
+source-repository-package
+    type: git
+    location: https://github.com/hasktorch/term-rewriting
+    tag: 54221f58b28c9f36db9bac437231e6142c8cca3a
+    --sha256: sha256-cDthJ+XJ7J8l0SFpPRnvFt2yC4ufD6efz5GES5xMtzQ=
+
 package libtorch-ffi
     ghc-options: -j +RTS -A128m -n2m -RTS
 
 package hasktorch
     ghc-options: -j +RTS -A128m -n2m -RTS
+
+package bson
+  flags: -_old-network

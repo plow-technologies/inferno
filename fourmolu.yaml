@@ -1,0 +1,4 @@
+indentation: 2
+import-export-style: trailing
+haddock-style: single-line
+indent-wheres: true

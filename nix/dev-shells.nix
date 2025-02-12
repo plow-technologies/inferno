@@ -47,10 +47,19 @@
           vscode-inferno-syntax-highlighting = mkNodeDevShell
             "vscode-inferno-syntax-highlighting";
           pytorch =
+            let
+              # NOTE Shadowed `pkgs` here, we want to use the stable
+              # branch for the Python packages. Unfortunately we need to
+              # `import` to set `config.allowUnfree`
+              pkgs = import inputs.stable {
+                inherit system;
+                config.allowUnfree = true;
+              };
+            in
             pkgs.mkShell {
               packages = [
                 (
-                  self.legacyPackages.${system}.stable.python3.withPackages (
+                  pkgs.python3.withPackages (
                     ps: with ps; [
                       pytorch-bin
                       torchvision-bin

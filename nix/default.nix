@@ -1,8 +1,8 @@
-{ compiler ? "ghc925"
+{ compiler ? "ghc910"
 , config
 , ghcOptions ? [ ]
 , profiling ? false
-  # Must be of the form: { device = <cpu|cuda-10|cuda-11>; }
+  # Must be of the form: { device = <cpu|cuda-118>; }
 , torchConfig ? { }
 , inputs
 , ...
@@ -10,10 +10,8 @@
 
 let
   inherit (args.pkgs) lib;
-  # Some things, notably the Hasktorch integration, will not work if the compiler
-  # version is older than GHC 9.2.4
-  isAtLeastGhc924 = builtins.compareVersions compiler "ghc924" != -1;
-  hasktorchSupport = isAtLeastGhc924 && args.pkgs.stdenv.isx86_64;
+  # Only builds on x86-64
+  hasktorchSupport = args.pkgs.stdenv.isx86_64;
   cudaSupport = torchConfig ? device && torchConfig.device != "cpu";
   # This will let us specify `libtorch`-related options at the top level (i.e.
   # in the flake outputs) and override `libtorch`
@@ -36,6 +34,8 @@ let
               # These should always be the same as `torch`
               c10 = torch;
               torch_cpu = torch;
+              # Weird naming problem with `tokenizers` own overlay
+              tokenizers_haskell = pkgs.tokenizersPackages.tokenizers-haskell;
             } // lib.optionalAttrs cudaSupport {
               torch_cuda = torch;
             }
@@ -55,23 +55,7 @@ pkgs.haskell-nix.cabalProject {
     withHoogle = false;
     tools = {
       cabal = { };
-      # We can't have HLS for both compiler versions
-    } // lib.optionalAttrs isAtLeastGhc924 {
-      haskell-language-server = {
-        # This is broken and we don't need it as a plugin
-        configureArgs = "-f-stylishHaskell";
-        version = "1.9.0.0";
-        # It seems that HLS from our hackage.nix has some issues. Rather than
-        # upgrading hackage.nix, we can just override the source
-        src = pkgs.lib.mkForce (
-          pkgs.fetchFromGitHub {
-            owner = "haskell";
-            repo = "haskell-language-server";
-            rev = "2598fcec399835a3ac83e76e8b3451f1dd9a86a1";
-            sha256 = "sha256-5ylyv4reSVCz2xCrNVsHF3MfcuSbju8cKUbQmZa04ns=";
-          }
-        );
-      };
+      haskell-language-server = {};
     };
     buildInputs = [
       pkgs.postgresql

@@ -1,8 +1,8 @@
 # General options for both GHC 8.x and 9.x
 { profiling
 , ghcOptions
-, config
 , pkgs
+, lib
 , ...
 }:
 
@@ -28,5 +28,7 @@
     ghc.components.library.doHaddock = false;
     # Broken
     temporary.components.library.doHaddock = false;
+    postgresql-libpq-configure.components.library.libs =
+      lib.mkForce [ pkgs.postgresql ];
   };
 }

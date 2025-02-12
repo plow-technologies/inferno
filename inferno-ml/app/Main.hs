@@ -14,13 +14,15 @@ import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-  file <- head <$> getArgs
-  src <- Text.readFile file
-  Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
-    mkInferno @_ @(MlValue ()) mlPrelude customTypes
-  case parseAndInferTypeReps src of
-    Left err -> print err
-    Right ast ->
-      evalExpr defaultEnv Map.empty ast >>= \case
+  getArgs >>= \case
+    file : _ -> do
+      src <- Text.readFile file
+      Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
+        mkInferno @_ @(MlValue ()) mlPrelude customTypes
+      case parseAndInferTypeReps src of
         Left err -> print err
-        Right res -> showPretty res
+        Right ast ->
+          evalExpr defaultEnv Map.empty ast >>= \case
+            Left err -> print err
+            Right res -> showPretty res
+    _ -> error "Usage: inferno-ml-exe FILE"

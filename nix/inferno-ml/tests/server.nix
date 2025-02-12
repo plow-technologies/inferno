@@ -14,7 +14,7 @@ pkgs.nixosTest {
   nodes.node = { config, ... }: {
     imports = [
       ../images/configuration.nix
-      ../images/qcow2.nix
+      ../images/common/qcow2.nix
     ];
 
     environment.systemPackages = [
@@ -138,9 +138,7 @@ pkgs.nixosTest {
       ensureUsers = [
         {
           name = "inferno";
-          ensurePermissions = {
-            "DATABASE inferno" = "ALL PRIVILEGES";
-          };
+          ensureClauses.superuser = true;
         }
       ];
       authentication = pkgs.lib.mkForce ''
@@ -220,7 +218,7 @@ pkgs.nixosTest {
     )
     node.succeed('insert-mnist-model')
     node.wait_for_unit("inferno-ml-server.service")
-    node.succeed('curl --fail localhost:8080/status')
+    node.wait_until_succeeds('curl --fail localhost:8080/status', timeout=30)
 
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
 
