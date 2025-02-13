@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               inferno-ml-server
-version:            2024.12.21
+version:            2025.2.13
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
 homepage:           https://github.com/plow-technologies/inferno.git#readme

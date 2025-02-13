@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.2.13
+* Fourmolu
+
 ## 2024.12.21
 * Always make sure relevant items are set in evaluation environment (testing route)
 

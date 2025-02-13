@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.1 -- 2025-02-13
+* Fourmolu
+
 ## 0.11.6.0 -- 2024-07-25
 * mtl 2.3 compatibility
 

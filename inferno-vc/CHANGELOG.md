@@ -1,6 +1,9 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.8.1 -- 2025-02-13
+* Fourmolu
+
 ## 0.3.8.0 -- 2024-10-16
 * Added logging to cached client to see hits and misses
 * Added logging to server to see what scriptIds are being used to request
