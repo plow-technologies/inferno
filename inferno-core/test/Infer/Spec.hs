@@ -39,15 +39,15 @@ inferTests = describe "infer" $
   do
     let simpleType t = ForallTC [] Set.empty (ImplType Map.empty t)
 
-    let tv i = TVar (TV {unTV = i})
-    let makeTCs name params = TypeClass {className = name, params = params}
+    let tv i = TVar (TV{unTV = i})
+    let makeTCs name params = TypeClass{className = name, params = params}
     let addTC = makeTCs "addition"
     let mulTC = makeTCs "multiplication"
     let negTC = makeTCs "negate"
     let numTC = makeTCs "numeric"
     let ordTC = makeTCs "order"
     let repTC = makeTCs "rep"
-    let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV {unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
+    let makeType numTypeVars typeClassList t = ForallTC (map (\i -> TV{unTV = i}) [0 .. numTypeVars]) (Set.fromList typeClassList) (ImplType mempty t)
 
     inferno <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
     let shouldInferTypeFor str t =
@@ -65,14 +65,14 @@ inferTests = describe "infer" $
               Right _ -> expectationFailure "Should fail to infer a type"
 
     shouldInferTypeFor "3" $
-      makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
+      makeType 0 [numTC [tv 0], repTC [tv 0]] (TVar $ TV{unTV = 0})
     shouldInferTypeFor "-3" $
-      makeType 0 [negTC [tv 0], numTC [tv 0], repTC [tv 0]] (TVar $ TV {unTV = 0})
+      makeType 0 [negTC [tv 0], numTC [tv 0], repTC [tv 0]] (TVar $ TV{unTV = 0})
     shouldInferTypeFor "3+4" $
       makeType
         2
         [addTC [tv 1, tv 2, tv 0], numTC [tv 1], numTC [tv 2], repTC [tv 1, tv 2]]
-        (TVar $ TV {unTV = 0})
+        (TVar $ TV{unTV = 0})
     shouldInferTypeFor "3.0" $ simpleType typeDouble
     shouldInferTypeFor "-3.14" $ simpleType typeDouble
     shouldInferTypeFor "3.0-2" $ simpleType typeDouble
@@ -86,37 +86,37 @@ inferTests = describe "infer" $
       makeType
         2
         [mulTC [tv 0, tv 2, tv 1], numTC [tv 2], repTC [tv 2]]
-        (TArr (TVar (TV {unTV = 0})) (TVar (TV {unTV = 1})))
+        (TArr (TVar (TV{unTV = 0})) (TVar (TV{unTV = 1})))
     shouldInferTypeFor "fun x -> x * 2.0" $
       makeType
         0
         [mulTC [tv 0, typeDouble, typeDouble]]
-        (TArr (TVar (TV {unTV = 0})) typeDouble)
+        (TArr (TVar (TV{unTV = 0})) typeDouble)
     shouldInferTypeFor "(fun x -> x * 2) 3.0" $ simpleType typeDouble
     shouldInferTypeFor "(fun x -> x < 2)" $
       makeType
         0
         [numTC [tv 0], ordTC [tv 0], repTC [tv 0]]
-        (TArr (TVar (TV {unTV = 0})) typeBool)
+        (TArr (TVar (TV{unTV = 0})) typeBool)
     shouldInferTypeFor "fun x -> x" $
-      ForallTC [TV {unTV = 0}] Set.empty (ImplType Map.empty (TArr (TVar (TV {unTV = 0})) (TVar (TV {unTV = 0}))))
+      ForallTC [TV{unTV = 0}] Set.empty (ImplType Map.empty (TArr (TVar (TV{unTV = 0})) (TVar (TV{unTV = 0}))))
     shouldInferTypeFor "?x + 2" $
       ForallTC
-        [TV {unTV = 0}, TV {unTV = 1}, TV {unTV = 2}]
+        [TV{unTV = 0}, TV{unTV = 1}, TV{unTV = 2}]
         (Set.fromList [addTC [tv 1, tv 2, tv 0], numTC [tv 2], repTC [tv 2]])
-        (ImplType (Map.fromList [(ExtIdent $ Right "x", TVar (TV {unTV = 1}))]) (TVar (TV {unTV = 0})))
+        (ImplType (Map.fromList [(ExtIdent $ Right "x", TVar (TV{unTV = 1}))]) (TVar (TV{unTV = 0})))
     shouldInferTypeFor "?x == 2" $
       ForallTC
-        [TV {unTV = 0}]
+        [TV{unTV = 0}]
         (Set.fromList [numTC [tv 0], repTC [tv 0]])
-        (ImplType (Map.fromList [(ExtIdent $ Right "x", TVar (TV {unTV = 0}))]) typeBool)
+        (ImplType (Map.fromList [(ExtIdent $ Right "x", TVar (TV{unTV = 0}))]) typeBool)
     shouldInferTypeFor "let ?x = 3.14 in ?x + 2" $ simpleType typeDouble
     shouldInferTypeFor "let x = 3.14 in x + 2" $ simpleType typeDouble
     shouldInferTypeFor "if #true then Some 2 else None" $
       makeType
         0
         [numTC [tv 0], repTC [tv 0]]
-        (TOptional (TVar (TV {unTV = 0})))
+        (TOptional (TVar (TV{unTV = 0})))
     shouldInferTypeFor "2 > 3.0" $ simpleType typeBool
     shouldInferTypeFor "2 == 3.0" $ simpleType typeBool
     -- equality is defined for all types, however comparing function types will always yield #false
@@ -154,7 +154,7 @@ inferTests = describe "infer" $
     -- Record polymorphism
     shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in f {age = 2; ht = 3}"
     shouldInferTypeFor "let f = fun r -> truncateTo 2 r.ht + truncateTo 2 r.wt in f" $
-      makeType 0 [] (TArr (TRecord (Map.fromList [(Ident {unIdent = "ht"}, typeDouble), (Ident {unIdent = "wt"}, typeDouble)]) (RowVar (TV {unTV = 0}))) typeDouble)
+      makeType 0 [] (TArr (TRecord (Map.fromList [(Ident{unIdent = "ht"}, typeDouble), (Ident{unIdent = "wt"}, typeDouble)]) (RowVar (TV{unTV = 0}))) typeDouble)
     shouldFailToInferTypeFor "let f = fun r -> if #true then r else {age = 1.1} in fun r -> let x = r.ht + r.age + 1.1 in f r"
     shouldFailToInferTypeFor "let f = fun r -> r.age in let x = f {age = 21.1} in let y = f {age = \"t\"} in 1"
     shouldFailToInferTypeFor "let f = fun r -> truncateTo 2 r.age in f {age = \"t\"}"
@@ -197,44 +197,44 @@ inferTests = describe "infer" $
     describe "exhaustiveness checker" $
       do
         let boolsPattern =
-              [ cEnum f_hash "false",
-                cEnum t_hash "true",
-                cEnum f_hash "false"
+              [ cEnum f_hash "false"
+              , cEnum t_hash "true"
+              , cEnum f_hash "false"
               ]
         shouldBeExhaustive boolsPattern
         shouldBeRedundant boolsPattern
 
         let numsPattern =
-              [ cInf (2.3 :: Double),
-                cInf (1.2 :: Double),
-                cInf (3.4 :: Double),
-                cInf (4.0 :: Double),
-                W
+              [ cInf (2.3 :: Double)
+              , cInf (1.2 :: Double)
+              , cInf (3.4 :: Double)
+              , cInf (4.0 :: Double)
+              , W
               ]
         shouldBeExhaustive numsPattern
         shouldBeUseful numsPattern
         shouldBeInexhaustive $ init numsPattern
 
         let optionalPattern =
-              [ cOne W,
-                cOne $ cEnum f_hash "false",
-                cEmpty
+              [ cOne W
+              , cOne $ cEnum f_hash "false"
+              , cEmpty
               ]
         shouldBeExhaustive optionalPattern
         shouldBeRedundant optionalPattern
 
         let complexPattern =
-              [ cTuple [cOne (cInf (3 :: Int)), cEnum t_hash "true", cInf (5.0 :: Double)],
-                cTuple [cOne W, cEnum t_hash "true", cInf (5.0 :: Double)],
-                cTuple [cOne W, cEnum f_hash "false", W],
-                cTuple [cEmpty, cEnum t_hash "true", cInf (5.0 :: Double)],
-                cTuple [cEmpty, cEnum f_hash "false", cInf (5.0 :: Double)]
+              [ cTuple [cOne (cInf (3 :: Int)), cEnum t_hash "true", cInf (5.0 :: Double)]
+              , cTuple [cOne W, cEnum t_hash "true", cInf (5.0 :: Double)]
+              , cTuple [cOne W, cEnum f_hash "false", W]
+              , cTuple [cEmpty, cEnum t_hash "true", cInf (5.0 :: Double)]
+              , cTuple [cEmpty, cEnum f_hash "false", cInf (5.0 :: Double)]
               ]
         shouldBeInexhaustive complexPattern
         shouldBeUseful complexPattern
 
     describe "inferTypeReps" $ do
-      Interpreter {typeClasses} <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
+      Interpreter{typeClasses} <- runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO ()))
 
       let typeRepsShouldBe fnTy inTys outTy reps = do
             let tcs = either error id $ parseTCScheme fnTy
@@ -348,8 +348,8 @@ inferTests = describe "infer" $
 
     enum_sigs =
       Map.fromList
-        [ (t_hash, Set.fromList [(t_hash, "true"), (f_hash, "false")]),
-          (f_hash, Set.fromList [(t_hash, "true"), (f_hash, "false")])
+        [ (t_hash, Set.fromList [(t_hash, "true"), (f_hash, "false")])
+        , (f_hash, Set.fromList [(t_hash, "true"), (f_hash, "false")])
         ]
 
     printPatts ps = intercalate "\n      " $ map show ps

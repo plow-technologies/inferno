@@ -24,17 +24,17 @@ main =
           FSOps.withEnv
           (FSOps.runInfernoVCFilesystemM @Int @Int)
           ServerConfig
-            { serverHost = "127.0.0.1",
-              serverPort = 13077,
-              vcPath = vcPath
+            { serverHost = "127.0.0.1"
+            , serverPort = 13077
+            , vcPath = vcPath
             }
     putStrLn "  Done."
 
     hspec $
       vcServerSpec @Int @Int
         BaseUrl
-          { baseUrlScheme = Http,
-            baseUrlHost = "127.0.0.1",
-            baseUrlPort = 13077,
-            baseUrlPath = []
+          { baseUrlScheme = Http
+          , baseUrlHost = "127.0.0.1"
+          , baseUrlPort = 13077
+          , baseUrlPath = []
           }

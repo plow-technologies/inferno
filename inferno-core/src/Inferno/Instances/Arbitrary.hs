@@ -106,9 +106,9 @@ baseOpsTable :: OpsTable
 baseOpsTable = Prelude.baseOpsTable @IO @() $ Prelude.builtinModules @IO @()
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Module
-deriving instance Arbitrary objs => ToADTArbitrary (Module.Module objs)
+deriving instance (Arbitrary objs) => ToADTArbitrary (Module.Module objs)
 
-deriving via (GenericArbitrary (Module.Module objs)) instance Arbitrary objs => Arbitrary (Module.Module objs)
+deriving via (GenericArbitrary (Module.Module objs)) instance (Arbitrary objs) => Arbitrary (Module.Module objs)
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.Syntax
 deriving instance ToADTArbitrary TV
@@ -126,15 +126,15 @@ instance Arbitrary BaseType where
         -- : (TCustom . Text.unpack <$> arbitraryName)
         : map
           pure
-          [ TInt,
-            TDouble,
-            TWord16,
-            TWord32,
-            TWord64,
-            TText,
-            TTime,
-            TTimeDiff,
-            TResolution
+          [ TInt
+          , TDouble
+          , TWord16
+          , TWord32
+          , TWord64
+          , TText
+          , TTime
+          , TTimeDiff
+          , TResolution
           ]
 
 deriving instance ToADTArbitrary RestOfRecord
@@ -158,8 +158,8 @@ instance Arbitrary InfernoType where
       arbitraryTTuple = do
         let arbitrarySmaller = scale (`div` 3) arbitraryType
         oneof
-          [ pure $ TTuple TNil,
-            TTuple <$> (TCons <$> arbitrarySmaller <*> arbitrarySmaller <*> listOf arbitrarySmaller)
+          [ pure $ TTuple TNil
+          , TTuple <$> (TCons <$> arbitrarySmaller <*> arbitrarySmaller <*> listOf arbitrarySmaller)
           ]
 
       arbitraryBase = TBase <$> arbitrary
@@ -177,12 +177,12 @@ instance Arbitrary InfernoType where
             oneof [arbitraryVar, arbitraryBase]
           _n ->
             oneof
-              [ arbitraryVar,
-                arbitraryBase,
-                arbitraryArr,
-                arbitraryTTuple,
-                arbitraryRecord,
-                arbitraryRest
+              [ arbitraryVar
+              , arbitraryBase
+              , arbitraryArr
+              , arbitraryTTuple
+              , arbitraryRecord
+              , arbitraryRest
               ]
 
 -- | An arbitrary valid variable name
@@ -234,15 +234,15 @@ deriving instance ToADTArbitrary Fixity
 
 deriving via (GenericArbitrary Fixity) instance Arbitrary Fixity
 
-instance Arbitrary pos => Arbitrary (Comment pos) where
+instance (Arbitrary pos) => Arbitrary (Comment pos) where
   shrink = shrinkNothing
   arbitrary =
     oneof
       [ LineComment
           <$> arbitrary
           <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` Text.all (\c -> c /= '\n' && c /= '\r')
-          <*> arbitrary,
-        BlockComment
+          <*> arbitrary
+      , BlockComment
           <$> arbitrary
           <*> (Text.pack . getPrintableString <$> arbitrary) `suchThat` Text.all (/= '*') -- prevent having a '*/'
           <*> arbitrary
@@ -253,32 +253,32 @@ deriving instance ToADTArbitrary Lit
 instance Arbitrary Lit where
   arbitrary =
     oneof
-      [ LInt <$> arbitrary,
-        LDouble <$> arbitrary,
-        LText . Text.pack . getPrintableString <$> arbitrary,
-        LHex <$> arbitrary
+      [ LInt <$> arbitrary
+      , LDouble <$> arbitrary
+      , LText . Text.pack . getPrintableString <$> arbitrary
+      , LHex <$> arbitrary
       ]
 
-deriving instance Arbitrary a => ToADTArbitrary (TList a)
+deriving instance (Arbitrary a) => ToADTArbitrary (TList a)
 
-instance Arbitrary a => Arbitrary (TList a) where
+instance (Arbitrary a) => Arbitrary (TList a) where
   arbitrary =
     oneof
-      [ pure TNil,
-        TCons <$> arbitrary <*> arbitrary <*> listOf arbitrary
+      [ pure TNil
+      , TCons <$> arbitrary <*> arbitrary <*> listOf arbitrary
       ]
 
-instance Arbitrary a => Arbitrary (SomeIStr a) where
+instance (Arbitrary a) => Arbitrary (SomeIStr a) where
   arbitrary = sized $ \n -> do
     k <- choose (0, n)
     oneof [SomeIStr <$> goT k, SomeIStr <$> goF k]
     where
-      goT :: Arbitrary a => Int -> Gen (IStr 'True a)
+      goT :: (Arbitrary a) => Int -> Gen (IStr 'True a)
       goT = \case
         0 -> pure ISEmpty
         n -> oneof [ISExpr <$> arbitrary <*> goT (n - 1), ISExpr <$> arbitrary <*> goF (n - 1)]
 
-      goF :: Arbitrary a => Int -> Gen (IStr 'False a)
+      goF :: (Arbitrary a) => Int -> Gen (IStr 'False a)
       goF = \case
         0 -> ISStr <$> arbitrary <*> pure ISEmpty
         n -> ISStr <$> arbitrary <*> goT (n - 1)
@@ -293,7 +293,7 @@ instance Arbitrary a => Arbitrary (SomeIStr a) where
           SomeIStr (ISStr _ _) -> xs'
           SomeIStr r@(ISExpr _ _) -> SomeIStr $ ISStr s r
           SomeIStr r@ISEmpty -> SomeIStr $ ISStr s r
-        | xs' <- shrink (SomeIStr xs)
+      | xs' <- shrink (SomeIStr xs)
       ]
   shrink (SomeIStr (ISExpr e xs)) =
     [SomeIStr xs]
@@ -306,18 +306,18 @@ instance Arbitrary a => Arbitrary (SomeIStr a) where
 --   Perhaps the best way would be to use a size bound on the recursive constructors like "ICommentAbove"
 -- deriving instance Arbitrary pos => ToADTArbitrary (Import pos)
 -- deriving via (GenericArbitrary (Import pos)) instance Arbitrary pos => Arbitrary (Import pos)
-instance Arbitrary pos => Arbitrary (Import pos) where
+instance (Arbitrary pos) => Arbitrary (Import pos) where
   shrink = shrinkNothing
   arbitrary =
     oneof
-      [ IVar <$> arbitrary <*> arbitrary,
-        IOpVar <$> arbitrary <*> arbitrary,
-        IEnum <$> arbitrary <*> arbitrary <*> arbitrary
+      [ IVar <$> arbitrary <*> arbitrary
+      , IOpVar <$> arbitrary <*> arbitrary
+      , IEnum <$> arbitrary <*> arbitrary <*> arbitrary
       ]
 
-deriving instance Arbitrary a => ToADTArbitrary (Scoped a)
+deriving instance (Arbitrary a) => ToADTArbitrary (Scoped a)
 
-deriving via (GenericArbitrary (Scoped a)) instance Arbitrary a => Arbitrary (Scoped a)
+deriving via (GenericArbitrary (Scoped a)) instance (Arbitrary a) => Arbitrary (Scoped a)
 
 -- NOTE: this instance doesn't generate all Exprs, it only generates some valid ones
 -- This is because the parser tests use this. However, golden tests in theory should
@@ -334,8 +334,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitraryVar :: (Arbitrary hash, Arbitrary pos) => Gen (Expr hash pos)
       arbitraryVar =
         oneof
-          [ Var <$> arbitrary <*> arbitrary <*> pure LocalScope <*> arbitraryImplExpl,
-            OpVar
+          [ Var <$> arbitrary <*> arbitrary <*> pure LocalScope <*> arbitraryImplExpl
+          , OpVar
               <$> arbitrary
               <*> arbitrary
               <*> pure LocalScope
@@ -369,7 +369,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
           <*> arbitrarySized (n `div` 3)
         where
           -- Don't generate implicit vars. Sorry, there must be a nicer way to do this
-          arbitraryLamVars :: Arbitrary pos => Gen (NonEmpty (pos, Maybe ExtIdent))
+          arbitraryLamVars :: (Arbitrary pos) => Gen (NonEmpty (pos, Maybe ExtIdent))
           arbitraryLamVars = arbitrary `suchThat` all (isSomeRight . snd)
           isSomeRight (Just (ExtIdent (Right _))) = True
           isSomeRight _ = False
@@ -409,8 +409,8 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
             0 -> pure ISEmpty
             m ->
               oneof
-                [ ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goT (m - 1),
-                  ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goF (m - 1)
+                [ ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goT (m - 1)
+                , ISExpr <$> ((,,) <$> arbitrary <*> arbitrarySized (n `div` 3) <*> arbitrary) <*> goF (m - 1)
                 ]
 
           goF :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (IStr 'False (pos, Expr hash pos, pos))
@@ -496,7 +496,7 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
                         <*> arbitrarySized (n `div` (3 * k))
                         <*> arbitrary
                         <*> arbitrary
-                      | _ <- [1 .. k]
+                    | _ <- [1 .. k]
                     ]
               )
           <*> arbitrary
@@ -529,43 +529,43 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Expr hash pos) where
       arbitrarySized :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Expr hash pos)
       arbitrarySized 0 =
         oneof
-          [ arbitraryVar,
-            arbitraryEnum,
-            arbitraryLit,
-            Empty <$> arbitrary
+          [ arbitraryVar
+          , arbitraryEnum
+          , arbitraryLit
+          , Empty <$> arbitrary
           ]
       arbitrarySized n =
         oneof
-          [ arbitraryVar,
-            arbitraryEnum,
-            arbitraryLit,
-            arbitraryApp n,
-            arbitraryLam n,
-            arbitraryLet n,
-            arbitraryLetAnnot n,
-            arbitraryIString n,
-            arbitraryIf n,
-            arbitraryOp n,
-            arbitraryPreOp n,
-            Array
+          [ arbitraryVar
+          , arbitraryEnum
+          , arbitraryLit
+          , arbitraryApp n
+          , arbitraryLam n
+          , arbitraryLet n
+          , arbitraryLetAnnot n
+          , arbitraryIString n
+          , arbitraryIf n
+          , arbitraryOp n
+          , arbitraryPreOp n
+          , Array
               <$> arbitrary
               <*> ( do
                       k <- choose (0, n)
                       sequence [(,Nothing) <$> arbitrarySized (n `div` 3) | _ <- [1 .. k]]
                   )
-              <*> arbitrary,
-            arbitraryArrayComp n,
-            arbitraryRecord n,
-            RecordField <$> arbitrary <*> arbitrary <*> arbitrary,
-            One <$> arbitrary <*> arbitrarySized (n `div` 3),
-            Empty <$> arbitrary,
-            arbitraryAssert n,
-            arbitraryCase n,
-            One <$> arbitrary <*> arbitrarySized (n `div` 3),
-            arbitraryBracketed n,
-            CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3),
-            CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary,
-            CommentBelow <$> arbitrarySized (n `div` 3) <*> arbitrary
+              <*> arbitrary
+          , arbitraryArrayComp n
+          , arbitraryRecord n
+          , RecordField <$> arbitrary <*> arbitrary <*> arbitrary
+          , One <$> arbitrary <*> arbitrarySized (n `div` 3)
+          , Empty <$> arbitrary
+          , arbitraryAssert n
+          , arbitraryCase n
+          , One <$> arbitrary <*> arbitrarySized (n `div` 3)
+          , arbitraryBracketed n
+          , CommentAbove <$> arbitrary <*> arbitrarySized (n `div` 3)
+          , CommentAfter <$> arbitrarySized (n `div` 3) <*> arbitrary
+          , CommentBelow <$> arbitrarySized (n `div` 3) <*> arbitrary
           ]
 
 instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Pat hash pos) where
@@ -575,24 +575,24 @@ instance (Arbitrary hash, Arbitrary pos) => Arbitrary (Pat hash pos) where
 arbitrarySizedPat :: (Arbitrary hash, Arbitrary pos) => Int -> Gen (Pat hash pos)
 arbitrarySizedPat n =
   oneof
-    [ PVar <$> arbitrary <*> pure Nothing,
-      PVar <$> arbitrary <*> (Just <$> arbitrary),
-      PEnum <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary,
-      PLit <$> arbitrary <*> arbitrary,
-      POne <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
-      PEmpty <$> arbitrary,
-      PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3),
-      PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary,
-      (\p1 ts p2 -> PTuple p1 (tListFromList ts) p2)
+    [ PVar <$> arbitrary <*> pure Nothing
+    , PVar <$> arbitrary <*> (Just <$> arbitrary)
+    , PEnum <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
+    , PLit <$> arbitrary <*> arbitrary
+    , POne <$> arbitrary <*> arbitrarySizedPat (n `div` 3)
+    , PEmpty <$> arbitrary
+    , PCommentAbove <$> arbitrary <*> arbitrarySizedPat (n `div` 3)
+    , PCommentAfter <$> arbitrarySizedPat (n `div` 3) <*> arbitrary
+    , PCommentBelow <$> arbitrarySizedPat (n `div` 3) <*> arbitrary
+    , (\p1 ts p2 -> PTuple p1 (tListFromList ts) p2)
         <$> arbitrary
         <*> ( do
                 k <- choose (0, n)
                 sequence [(,Nothing) <$> arbitrarySizedPat (n `div` 3) | _ <- [1 .. k]]
             )
           `suchThat` (\xs -> length xs /= 1)
-        <*> arbitrary,
-      PRecord
+        <*> arbitrary
+    , PRecord
         <$> arbitrary
         <*> ( do
                 k <- choose (0, n)
@@ -631,11 +631,11 @@ deriving instance ToADTArbitrary Type.Namespace
 instance Arbitrary Type.Namespace where
   arbitrary =
     oneof
-      [ Type.FunNamespace <$> arbitrary,
-        Type.OpNamespace <$> arbitrary,
-        Type.EnumNamespace <$> arbitrary,
-        Type.ModuleNamespace <$> arbitrary,
-        Type.TypeNamespace <$> arbitrary
+      [ Type.FunNamespace <$> arbitrary
+      , Type.OpNamespace <$> arbitrary
+      , Type.EnumNamespace <$> arbitrary
+      , Type.ModuleNamespace <$> arbitrary
+      , Type.TypeNamespace <$> arbitrary
       ]
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.Types.VersionControl
@@ -647,9 +647,9 @@ deriving instance ToADTArbitrary VersionControl.VCObjectHash
 instance Arbitrary VersionControl.VCObjectHash where
   arbitrary = VersionControl.VCObjectHash . hash . Char8.pack <$> arbitrary
 
-deriving instance Arbitrary a => ToADTArbitrary (VersionControl.Pinned a)
+deriving instance (Arbitrary a) => ToADTArbitrary (VersionControl.Pinned a)
 
-deriving via (GenericArbitrary (VersionControl.Pinned a)) instance Arbitrary a => Arbitrary (VersionControl.Pinned a)
+deriving via (GenericArbitrary (VersionControl.Pinned a)) instance (Arbitrary a) => Arbitrary (VersionControl.Pinned a)
 
 -- | Arbitrary and ToADTArbitrary instances for Inferno.VersionControl.Types
 deriving instance ToADTArbitrary VersionControl.VCObject
@@ -669,11 +669,11 @@ instance Arbitrary VersionControl.VCIncompatReason where
 instance Arbitrary VersionControl.VCObjectPred where
   arbitrary =
     oneof
-      [ pure VersionControl.Init,
-        VersionControl.CompatibleWithPred <$> arbitrary,
-        VersionControl.IncompatibleWithPred <$> arbitrary <*> arbitrary,
-        VersionControl.MarkedBreakingWithPred <$> arbitrary,
-        VersionControl.CloneOf <$> arbitrary
+      [ pure VersionControl.Init
+      , VersionControl.CompatibleWithPred <$> arbitrary
+      , VersionControl.IncompatibleWithPred <$> arbitrary <*> arbitrary
+      , VersionControl.MarkedBreakingWithPred <$> arbitrary
+      , VersionControl.CloneOf <$> arbitrary
       ]
 
 deriving instance ToADTArbitrary VersionControl.VCObjectPred

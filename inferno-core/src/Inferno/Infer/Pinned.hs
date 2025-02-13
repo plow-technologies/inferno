@@ -55,7 +55,7 @@ insertBuiltinModule =
     . insertHardcodedModule "Builtin" (Map.map Builtin builtinTysToHash)
   where
     builtinTysToHash :: Map Namespace VCObjectHash
-    Module {moduleObjects = (builtinTysToHash, _, _)} = builtinModule
+    Module{moduleObjects = (builtinTysToHash, _, _)} = builtinModule
 
 openModule ::
   ModuleName ->

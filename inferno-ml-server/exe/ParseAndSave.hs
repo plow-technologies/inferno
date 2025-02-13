@@ -187,7 +187,7 @@ parse ::
   Either
     SomeInfernoError
     (Expr (Pinned VCObjectHash) (), TCScheme)
-parse Interpreter {parseAndInfer} =
+parse Interpreter{parseAndInfer} =
   parseAndInfer >>> \case
     Left e -> Left $ SomeInfernoError e
     Right (x, t, _, _) -> Right (void x, t)
@@ -200,8 +200,8 @@ funs = BridgeFuns notSupported notSupported notSupported notSupported
     notSupported = error "Not supported"
 
 data InputsOutputs = InputsOutputs
-  { inputs :: Inputs PID,
-    outputs :: Outputs PID
+  { inputs :: Inputs PID
+  , outputs :: Outputs PID
   }
   deriving stock (Generic)
   deriving anyclass (FromJSON)

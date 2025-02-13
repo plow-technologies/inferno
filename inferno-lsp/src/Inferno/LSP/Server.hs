@@ -97,12 +97,12 @@ runInfernoLspServerWith tracer clientIn clientOut prelude customTypes getIdents 
 
   let serverDefinition =
         ServerDefinition
-          { defaultConfig = (),
-            onConfigurationChange = \old _v -> Right old,
-            doInitialize = \env _ -> forkIO (reactor tracer rin) >> pure (Right env),
-            staticHandlers = lspHandlers @c interpreter rin,
-            interpretHandler = \env -> Iso (flip runReaderT infernoEnv . runLspT env) liftIO,
-            options = lspOptions
+          { defaultConfig = ()
+          , onConfigurationChange = \old _v -> Right old
+          , doInitialize = \env _ -> forkIO (reactor tracer rin) >> pure (Right env)
+          , staticHandlers = lspHandlers @c interpreter rin
+          , interpretHandler = \env -> Iso (flip runReaderT infernoEnv . runLspT env) liftIO
+          , options = lspOptions
           }
 
   let serverTracer = traceWith tracer . T.pack . show
@@ -111,8 +111,8 @@ runInfernoLspServerWith tracer clientIn clientOut prelude customTypes getIdents 
   pure i
   where
     handlers =
-      [ E.Handler ioExcept,
-        E.Handler someExcept
+      [ E.Handler ioExcept
+      , E.Handler someExcept
       ]
     ioExcept (e :: E.IOException) = traceWith tracer (T.pack (show e)) >> return 1
     someExcept (e :: E.SomeException) = traceWith tracer (T.pack (show e)) >> return 1
@@ -142,18 +142,18 @@ runInfernoLspServer prelude customTypes = do
 syncOptions :: J.TextDocumentSyncOptions
 syncOptions =
   J.TextDocumentSyncOptions
-    { J._openClose = Just True,
-      J._change = Just J.TdSyncIncremental,
-      J._willSave = Just False,
-      J._willSaveWaitUntil = Just False,
-      J._save = Just $ J.InR $ J.SaveOptions $ Just False
+    { J._openClose = Just True
+    , J._change = Just J.TdSyncIncremental
+    , J._willSave = Just False
+    , J._willSaveWaitUntil = Just False
+    , J._save = Just $ J.InR $ J.SaveOptions $ Just False
     }
 
 lspOptions :: Options
 lspOptions =
   defaultOptions
-    { textDocumentSync = Just syncOptions,
-      executeCommandCommands = Nothing
+    { textDocumentSync = Just syncOptions
+    , executeCommandCommands = Nothing
     }
 
 -- ---------------------------------------------------------------------
@@ -166,15 +166,15 @@ lspOptions =
 type ParsedResult = Either [J.Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [J.Diagnostic], [(J.Range, J.MarkupContent)])
 
 data InfernoEnv = InfernoEnv
-  { hovers :: TVar (Map (J.NormalizedUri, J.Int32) [(J.Range, J.MarkupContent)]),
-    tracer :: IOTracer T.Text,
-    getIdents :: IO [Maybe Ident],
-    -- | Action to run before start parsing
-    beforeParse :: (UUID, UTCTime) -> IO (),
-    -- | Action to run after parsing is done
-    afterParse :: (UUID, UTCTime) -> ParsedResult -> IO ParsedResult,
-    -- | If you don't care about the input type use (const $ Right ())
-    validateInput :: InfernoType -> Either T.Text ()
+  { hovers :: TVar (Map (J.NormalizedUri, J.Int32) [(J.Range, J.MarkupContent)])
+  , tracer :: IOTracer T.Text
+  , getIdents :: IO [Maybe Ident]
+  , beforeParse :: (UUID, UTCTime) -> IO ()
+  -- ^ Action to run before start parsing
+  , afterParse :: (UUID, UTCTime) -> ParsedResult -> IO ParsedResult
+  -- ^ Action to run after parsing is done
+  , validateInput :: InfernoType -> Either T.Text ()
+  -- ^ If you don't care about the input type use (const $ Right ())
   }
 
 type InfernoLspM = LspT () (ReaderT InfernoEnv IO)
@@ -200,7 +200,7 @@ getInfernoEnv = LspT $ ReaderT $ const ask
 trace :: String -> InfernoLspM ()
 trace s = LspT $
   ReaderT $ \_ -> do
-    InfernoEnv {tracer} <- ask
+    InfernoEnv{tracer} <- ask
     traceWith tracer (T.pack s)
 
 sendDiagnostics :: J.NormalizedUri -> J.TextDocumentVersion -> [J.Diagnostic] -> InfernoLspM ()
@@ -249,12 +249,12 @@ lspHandlers interpreter rin = mapHandlers goReq goNot (handle @c interpreter)
 
 -- | Where the actual logic resides for handling requests and notifications.
 handle :: forall c. (Pretty c, Eq c) => Interpreter IO c -> Handlers InfernoLspM
-handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
+handle interpreter@(Interpreter{nameToTypeMap, typeClasses}) =
   -- Note: at some point we should handle CancelReqest and cancel a previous parseAndInfer if a new one superceeds it. E.g.:
   -- https://github.com/haskell/haskell-language-server/blob/baf2fecfa1384dd18e869a837ee2768d9bce18bd/ghcide/src/Development/IDE/LSP/LanguageServer.hs#L266
   mconcat
     [ notificationHandler J.STextDocumentDidOpen $ \msg -> do
-        InfernoEnv {hovers = hoversTV, getIdents, beforeParse, afterParse, validateInput} <- getInfernoEnv
+        InfernoEnv{hovers = hoversTV, getIdents, beforeParse, afterParse, validateInput} <- getInfernoEnv
         let doc_uri = msg ^. J.params . J.textDocument . J.uri . to J.toNormalizedUri
             doc_txt = msg ^. J.params . J.textDocument . J.text
         idents <- liftIO getIdents
@@ -273,9 +273,9 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
           getVirtualFile doc_uri >>= \case
             Just (VirtualFile doc_version _ _) -> pure doc_version
             Nothing -> pure 0 -- Maybe a good default?
-        liftIO $ atomically $ modifyTVar hoversTV $ \hoversMap -> Map.insert (doc_uri, doc_version) hovers hoversMap,
-      notificationHandler J.STextDocumentDidChange $ \msg -> do
-        InfernoEnv {hovers = hoversTV, getIdents, beforeParse, afterParse, validateInput} <- getInfernoEnv
+        liftIO $ atomically $ modifyTVar hoversTV $ \hoversMap -> Map.insert (doc_uri, doc_version) hovers hoversMap
+    , notificationHandler J.STextDocumentDidChange $ \msg -> do
+        InfernoEnv{hovers = hoversTV, getIdents, beforeParse, afterParse, validateInput} <- getInfernoEnv
         let doc_uri =
               msg
                 ^. J.params
@@ -299,9 +299,9 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
                   pure hovers
             trace $ "Setting hovers: " ++ show hovers
             liftIO $ atomically $ modifyTVar hoversTV $ \hoversMap -> Map.insert (doc_uri, doc_version) hovers hoversMap
-          Nothing -> pure (),
-      requestHandler J.STextDocumentCompletion $ \req responder -> do
-        InfernoEnv {getIdents} <- getInfernoEnv
+          Nothing -> pure ()
+    , requestHandler J.STextDocumentCompletion $ \req responder -> do
+        InfernoEnv{getIdents} <- getInfernoEnv
         let doc_uri = req ^. J.params . J.textDocument . J.uri . to J.toNormalizedUri
             pos = req ^. J.params . J.position
 
@@ -324,9 +324,9 @@ handle interpreter@(Interpreter {nameToTypeMap, typeClasses}) =
         trace $ "Ident completions: " <> show identCompletions
         trace $ "Found completions: " <> show (map fst completions)
 
-        responder $ Right $ J.InL $ J.List allCompletions,
-      requestHandler J.STextDocumentHover $ \req responder -> do
-        InfernoEnv {hovers = hoversTV} <- getInfernoEnv
+        responder $ Right $ J.InL $ J.List allCompletions
+    , requestHandler J.STextDocumentHover $ \req responder -> do
+        InfernoEnv{hovers = hoversTV} <- getInfernoEnv
         trace "Processing a textDocument/hover request"
         let J.Position l c = req ^. J.params . J.position
             doc_uri =

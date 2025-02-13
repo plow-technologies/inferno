@@ -17,7 +17,7 @@ main = do
   getArgs >>= \case
     file : _ -> do
       src <- Text.readFile file
-      Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
+      Interpreter{evalExpr, defaultEnv, parseAndInferTypeReps} <-
         mkInferno @_ @(MlValue ()) mlPrelude customTypes
       case parseAndInferTypeReps src of
         Left err -> print err

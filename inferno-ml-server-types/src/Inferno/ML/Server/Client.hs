@@ -49,7 +49,7 @@ inferenceC = client $ Proxy @(InferenceAPI gid p)
 -- | Run an inference parameter
 inferenceTestC ::
   forall gid p.
-  ToJSON p =>
+  (ToJSON p) =>
   -- | SQL identifier of the inference parameter to be run
   Id (InferenceParam gid p) ->
   Maybe Int64 ->

@@ -76,7 +76,7 @@ normalizeExpr = ana $ \case
   Case p1 e_case p2 patExprs p3 -> project $ Case p1 (normalizeExpr e_case) p2 (fmap (\(p4, p, p5, e) -> (p4, normalizePat p, p5, normalizeExpr e)) patExprs) p3
   x -> project x
 
-(<?>) :: Testable p => p -> Text -> Property
+(<?>) :: (Testable p) => p -> Text -> Property
 (<?>) = flip (counterexample . unpack)
 
 infixl 2 <?>

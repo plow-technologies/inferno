@@ -62,7 +62,7 @@ import Prettyprinter (Pretty)
 import Text.Megaparsec (SourcePos)
 
 combineTermEnvs ::
-  MonadThrow m =>
+  (MonadThrow m) =>
   Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) a)) ->
   TermEnv VCObjectHash c (ImplEnvM m c) a
 combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mempty $ Map.elems modules
@@ -79,14 +79,14 @@ buildPinnedQQModules modules =
           let newMod =
                 buildModule alreadyPinnedModulesMap alreadyBuiltModules sigs $
                   Module
-                    { moduleName = moduleNm,
-                      moduleOpsTable = opsTable,
-                      moduleTypeClasses = mempty,
-                      moduleObjects = (Map.singleton (ModuleNamespace moduleNm) $ vcHash $ BuiltinModuleHash moduleNm, mempty, pure mempty)
+                    { moduleName = moduleNm
+                    , moduleOpsTable = opsTable
+                    , moduleTypeClasses = mempty
+                    , moduleObjects = (Map.singleton (ModuleNamespace moduleNm) $ vcHash $ BuiltinModuleHash moduleNm, mempty, pure mempty)
                     }
            in -- then insert it into the temporary module pin map as well as the final module map
-              ( Pinned.insertHardcodedModule moduleNm (Map.map Builtin $ pinnedModuleNameToHash newMod) alreadyPinnedModulesMap,
-                Map.insert moduleNm newMod alreadyBuiltModules
+              ( Pinned.insertHardcodedModule moduleNm (Map.map Builtin $ pinnedModuleNameToHash newMod) alreadyPinnedModulesMap
+              , Map.insert moduleNm newMod alreadyBuiltModules
               )
       )
       mempty
@@ -100,7 +100,7 @@ buildPinnedQQModules modules =
       PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ()) ->
       PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ())
     buildModule _ _ [] m = m
-    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature {..} : xs) m@Module {moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
+    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature{..} : xs) m@Module{moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       let sigVarToNamespace = \case
             SigVar n -> FunNamespace $ Ident n
             SigOpVar n -> OpNamespace $ Ident n
@@ -133,50 +133,50 @@ buildPinnedQQModules modules =
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m
               { moduleObjects =
-                  ( Map.insert ns hsh nsMap,
-                    Map.insert
+                  ( Map.insert ns hsh nsMap
+                  , Map.insert
                       hsh
                       TypeMetadata
-                        { identExpr = sigVarToExpr (Scope moduleName) name,
-                          docs = documentation,
-                          ty = sig
+                        { identExpr = sigVarToExpr (Scope moduleName) name
+                        , docs = documentation
+                        , ty = sig
                         }
-                      tyMap,
-                    mTrmEnv'
+                      tyMap
+                  , mTrmEnv'
                   )
               }
-    buildModule alreadyPinnedModulesMap alreadyBuiltModules (TypeClassInstance tCl : xs) m@Module {moduleTypeClasses = tCls} =
-      buildModule alreadyPinnedModulesMap alreadyBuiltModules xs m {moduleTypeClasses = Set.insert tCl tCls}
-    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Export modNm : xs) Module {moduleName, moduleOpsTable = opsTable, moduleTypeClasses = tyCls, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
+    buildModule alreadyPinnedModulesMap alreadyBuiltModules (TypeClassInstance tCl : xs) m@Module{moduleTypeClasses = tCls} =
+      buildModule alreadyPinnedModulesMap alreadyBuiltModules xs m{moduleTypeClasses = Set.insert tCl tCls}
+    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Export modNm : xs) Module{moduleName, moduleOpsTable = opsTable, moduleTypeClasses = tyCls, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       case Map.lookup modNm alreadyBuiltModules of
         Nothing -> error $ "buildModule: Module " <> show modNm <> " does not exist."
-        Just Module {moduleOpsTable = opsTable', moduleTypeClasses = tyCls', moduleObjects = (nsMap', tyMap', mTrmEnv')} ->
+        Just Module{moduleOpsTable = opsTable', moduleTypeClasses = tyCls', moduleObjects = (nsMap', tyMap', mTrmEnv')} ->
           buildModule
             alreadyPinnedModulesMap
             alreadyBuiltModules
             xs
             Module
-              { moduleName,
-                moduleOpsTable = IntMap.unionWith (<>) opsTable opsTable',
-                moduleTypeClasses = tyCls <> tyCls',
-                moduleObjects = (nsMap <> nsMap', tyMap <> tyMap', mTrmEnv >>= \x -> mTrmEnv' >>= \y -> pure $ x <> y)
+              { moduleName
+              , moduleOpsTable = IntMap.unionWith (<>) opsTable opsTable'
+              , moduleTypeClasses = tyCls <> tyCls'
+              , moduleObjects = (nsMap <> nsMap', tyMap <> tyMap', mTrmEnv >>= \x -> mTrmEnv' >>= \y -> pure $ x <> y)
               }
-    buildModule alreadyPinnedModulesMap alreadyBuiltModules (EnumDef doc nm cs : xs) m@Module {moduleObjects = (nsMap, tyMap, mTrmEnv)} =
+    buildModule alreadyPinnedModulesMap alreadyBuiltModules (EnumDef doc nm cs : xs) m@Module{moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       let enumTy = ForallTC [] Set.empty $ ImplType Map.empty $ TBase $ TEnum nm $ Set.fromList cs
           hsh = vcHash $ BuiltinEnumHash enumTy
           nms = TypeNamespace (Ident nm) : [EnumNamespace c | c <- cs]
        in buildModule alreadyPinnedModulesMap alreadyBuiltModules xs $
             m
               { moduleObjects =
-                  ( Map.fromList [(n, hsh) | n <- nms] `Map.union` nsMap,
-                    Map.insert
+                  ( Map.fromList [(n, hsh) | n <- nms] `Map.union` nsMap
+                  , Map.insert
                       hsh
                       TypeMetadata
-                        { identExpr = Var () () LocalScope (Expl $ ExtIdent $ Right "_"),
-                          docs = doc,
-                          ty = enumTy
+                        { identExpr = Var () () LocalScope (Expl $ ExtIdent $ Right "_")
+                        , docs = doc
+                        , ty = enumTy
                         }
-                      tyMap,
-                    mTrmEnv
+                      tyMap
+                  , mTrmEnv
                   )
               }

@@ -23,28 +23,28 @@ traceRemote = \case
     StartingServer -> "Starting `inferno-ml-server`"
     RunningInference ipid t ->
       Text.unwords
-        [ "Running inference param:",
-          tshow ipid <> ",",
-          "with timeout:",
-          tshow $ t `div` 1000000,
-          "(seconds)"
+        [ "Running inference param:"
+        , tshow ipid <> ","
+        , "with timeout:"
+        , tshow $ t `div` 1000000
+        , "(seconds)"
         ]
     EvaluatingParam s ->
       Text.unwords
-        [ "Evaluating inferno script for parameter:",
-          tshow s
+        [ "Evaluating inferno script for parameter:"
+        , tshow s
         ]
     CopyingModel m ->
       Text.unwords
-        [ "Copying model to cache:",
-          tshow m
+        [ "Copying model to cache:"
+        , tshow m
         ]
     OtherInfo t -> t
   WarnTrace w -> warn $ case w of
     CancelingInference i ->
       Text.unwords
-        [ "Canceling inference job for param:",
-          tshow i
+        [ "Canceling inference job for param:"
+        , tshow i
         ]
     OtherWarn t -> t
   ErrorTrace e -> err . Text.pack $ displayException e
@@ -66,14 +66,14 @@ data StdStream a
 
 withRemoteTracer ::
   forall m a.
-  MonadUnliftIO m =>
+  (MonadUnliftIO m) =>
   (IOTracer RemoteTrace -> m a) ->
   m a
 withRemoteTracer f = withAsyncHandleIOTracers stdout stderr $
   \tso tse -> f $ mkRemoteTracer tso tse
   where
     withAsyncHandleIOTracers ::
-      MonadUnliftIO m =>
+      (MonadUnliftIO m) =>
       Handle ->
       Handle ->
       (IOTracer Text -> IOTracer Text -> m a) ->

@@ -180,7 +180,7 @@ foldrFun =
 traceFun :: (Monad m, Pretty c) => (Value c m)
 traceFun = VFun $ \msg -> trace ("TRACE: " <> unpack (renderPretty msg)) $ return idFun
 
-idFun :: Monad m => (Value c m)
+idFun :: (Monad m) => (Value c m)
 idFun = VFun $ \x -> return x
 
 eqFun :: (Monad m, Eq c) => (Value c m)
@@ -430,7 +430,7 @@ dropWhileFun =
         VEnum h "false" | h == enumBoolHash -> pure xs
         _ -> throwM $ RuntimeError "dropWhile: expecting predicate to return a bool"
 
-singletonFun :: Monad m => (Value c m)
+singletonFun :: (Monad m) => (Value c m)
 singletonFun = VFun $ \v -> return $ VArray [v]
 
 -- The following functions use Int and not Int64, but that should be fine
@@ -475,7 +475,7 @@ toWord16Fun = either fromBool (either id (either (fromIntegral . (.&.) 0xFFFF) (
 fromWordFun :: Either4 Bool Word16 Word32 Word64 -> Int64
 fromWordFun = either fromBool (either fromIntegral (either fromIntegral fromIntegral))
 
-zeroFun :: MonadThrow m => (Value c m)
+zeroFun :: (MonadThrow m) => (Value c m)
 zeroFun = VFun $ \case
   VTypeRep (TBase TInt) -> return $ VInt 0
   VTypeRep (TBase TDouble) -> return $ VDouble 0

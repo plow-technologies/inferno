@@ -23,10 +23,10 @@ common common
 
   default-language:   Haskell2010
   default-extensions:
-    NoFieldSelectors
     DerivingStrategies
     LambdaCase
     NamedFieldPuns
+    NoFieldSelectors
     OverloadedLabels
     OverloadedStrings
     TupleSections

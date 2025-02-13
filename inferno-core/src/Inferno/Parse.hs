@@ -217,7 +217,7 @@ enumConstructor =
     <?> "an enum constructor\nfor example: #true, #false"
 
 -- | 'signedInteger' parses an integer with an optional sign (with no space)
-signedInteger :: Num a => Parser a
+signedInteger :: (Num a) => Parser a
 signedInteger = Lexer.signed (takeWhileP Nothing isHSpace $> ()) Lexer.decimal
 
 -- | 'signedInteger' parses a float/double with an optional sign (with no space)
@@ -882,12 +882,14 @@ typeParser :: TyParser InfernoType
 typeParser =
   makeExprParser
     typeParserBase
-    [ [ Prefix (TArray <$ rword "array" <* rword "of"),
-        Prefix (TSeries <$ rword "series" <* rword "of"),
-        Prefix (TOptional <$ rword "option" <* rword "of")
-      ],
-      [ InfixR (TArr <$ symbol "->"),
-        InfixR (TArr <$ symbol "→")
+    [
+      [ Prefix (TArray <$ rword "array" <* rword "of")
+      , Prefix (TSeries <$ rword "series" <* rword "of")
+      , Prefix (TOptional <$ rword "option" <* rword "of")
+      ]
+    ,
+      [ InfixR (TArr <$ symbol "->")
+      , InfixR (TArr <$ symbol "→")
       ]
     ]
 
@@ -953,9 +955,9 @@ doc = do
 
 data TopLevelDefn def
   = Signature
-      { documentation :: Maybe Text,
-        name :: SigVar,
-        def :: def
+      { documentation :: Maybe Text
+      , name :: SigVar
+      , def :: def
       }
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass

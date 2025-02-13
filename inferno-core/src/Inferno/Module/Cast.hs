@@ -39,7 +39,7 @@ class ToValue c m a where
 
 -- | Class of types that can be converted from script values, allowing IO in the process.
 class FromValue c m a where
-  fromValue :: MonadThrow m => Value c m -> m a
+  fromValue :: (MonadThrow m) => Value c m -> m a
 
 -- | Haskell types that can be casted to mask script types.
 class Kind0 a where
@@ -73,7 +73,7 @@ instance ToValue c m Bool where
   toValue True = VEnum enumBoolHash "true"
   toValue False = VEnum enumBoolHash "false"
 
-instance Pretty c => FromValue c m Bool where
+instance (Pretty c) => FromValue c m Bool where
   fromValue (VEnum hash ident) =
     if hash == enumBoolHash
       then
@@ -86,7 +86,7 @@ instance Pretty c => FromValue c m Bool where
 instance ToValue c m Double where
   toValue = VDouble
 
-instance Pretty c => FromValue c m Double where
+instance (Pretty c) => FromValue c m Double where
   fromValue (VDouble x) = pure x
   -- fromValue (VInt x) = pure $ fromIntegral x
   fromValue v = couldNotCast v
@@ -94,7 +94,7 @@ instance Pretty c => FromValue c m Double where
 instance ToValue c m Int64 where
   toValue = VInt
 
-instance Pretty c => FromValue c m Int64 where
+instance (Pretty c) => FromValue c m Int64 where
   fromValue (VInt x) = pure x
   fromValue v = couldNotCast v
 
@@ -111,49 +111,49 @@ instance (Pretty c) => FromValue c m Int where
 instance ToValue c m Integer where
   toValue = VInt . fromInteger
 
-instance Pretty c => FromValue c m Integer where
+instance (Pretty c) => FromValue c m Integer where
   fromValue (VInt x) = pure $ fromIntegral x
   fromValue v = couldNotCast v
 
 instance ToValue c m Word16 where
   toValue = VWord16
 
-instance Pretty c => FromValue c m Word16 where
+instance (Pretty c) => FromValue c m Word16 where
   fromValue (VWord16 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m Word32 where
   toValue = VWord32
 
-instance Pretty c => FromValue c m Word32 where
+instance (Pretty c) => FromValue c m Word32 where
   fromValue (VWord32 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m Word64 where
   toValue = VWord64
 
-instance Pretty c => FromValue c m Word64 where
+instance (Pretty c) => FromValue c m Word64 where
   fromValue (VWord64 w) = pure w
   fromValue v = couldNotCast v
 
 instance ToValue c m () where
   toValue _ = VTuple []
 
-instance Pretty c => FromValue c m () where
+instance (Pretty c) => FromValue c m () where
   fromValue (VTuple []) = pure ()
   fromValue v = couldNotCast v
 
 instance ToValue c m CTime where
   toValue = VEpochTime
 
-instance Pretty c => FromValue c m CTime where
+instance (Pretty c) => FromValue c m CTime where
   fromValue (VEpochTime t) = pure t
   fromValue v = couldNotCast v
 
 instance ToValue c m Text where
   toValue = VText
 
-instance Pretty c => FromValue c m Text where
+instance (Pretty c) => FromValue c m Text where
   fromValue (VText t) = pure t
   fromValue v = couldNotCast v
 
@@ -235,10 +235,10 @@ instance (MonadThrow m, FromValue c (ImplEnvM m c) a1, ToValue c (ImplEnvM m c) 
         Nothing -> throwM $ NotFoundInImplicitEnv i
 
 -- | In this instance, the 'IO' in the type is ignored.
-instance Kind0 a => Kind0 (IO a) where
+instance (Kind0 a) => Kind0 (IO a) where
   toType _ = toType (Proxy :: Proxy a)
 
-instance ToValue c m a => ToValue c m (Maybe a) where
+instance (ToValue c m a) => ToValue c m (Maybe a) where
   toValue (Just x) = VOne $ toValue x
   toValue _ = VEmpty
 
@@ -247,14 +247,14 @@ instance (Typeable a, FromValue c m a, Pretty c) => FromValue c m (Maybe a) wher
   fromValue (VOne v) = Just <$> fromValue v
   fromValue v = couldNotCast v
 
-instance Kind0 a => Kind0 (Maybe a) where
+instance (Kind0 a) => Kind0 (Maybe a) where
   toType _ = TOptional (toType (Proxy :: Proxy a))
 
 instance (ToValue c m a, ToValue c m b) => ToValue c m (Either a b) where
   toValue (Left x) = toValue x
   toValue (Right x) = toValue x
 
-instance ToValue c m a => ToValue c m [a] where
+instance (ToValue c m a) => ToValue c m [a] where
   toValue xs = VArray $ map toValue xs
 
 instance (Typeable a, FromValue c m a, Pretty c) => FromValue c m [a] where

@@ -49,7 +49,7 @@ showVCObjectType = \case
 
 instance Dependencies VCObject VCObjectHash where
   getDependencies = \case
-    VCModule Module {moduleObjects = os} -> Set.fromList $ Map.elems os
+    VCModule Module{moduleObjects = os} -> Set.fromList $ Map.elems os
     VCFunction expr _ -> Set.fromList $ mapMaybe pinnedUnderVCToMaybe (Set.toList $ getDependencies expr)
     VCTestFunction expr -> Set.fromList $ mapMaybe pinnedUnderVCToMaybe (Set.toList $ getDependencies expr)
     VCEnum _ _ -> mempty
@@ -90,14 +90,14 @@ data VCObjectPred
 
 -- the owner information and commit messages will be added in further revisions with other metadata as needed
 data VCMeta author group o = VCMeta
-  { timestamp :: CTime,
-    author :: author,
-    group :: group,
-    name :: Text,
-    description :: Text,
-    pred :: VCObjectPred,
-    -- commitMessage :: VCCommitMessage,
-    visibility :: VCObjectVisibility,
-    obj :: o
+  { timestamp :: CTime
+  , author :: author
+  , group :: group
+  , name :: Text
+  , description :: Text
+  , pred :: VCObjectPred
+  , -- commitMessage :: VCCommitMessage,
+    visibility :: VCObjectVisibility
+  , obj :: o
   }
   deriving (Show, Eq, Functor, Generic, ToJSON, FromJSON, VCHashUpdate)

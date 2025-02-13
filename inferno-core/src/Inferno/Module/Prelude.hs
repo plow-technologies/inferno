@@ -134,11 +134,11 @@ type ModuleMap m c = Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (I
 
 baseOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> OpsTable
 baseOpsTable moduleMap =
-  let Module {moduleOpsTable = ops, moduleName = modNm} = moduleMap Map.! "Base"
+  let Module{moduleOpsTable = ops, moduleName = modNm} = moduleMap Map.! "Base"
    in IntMap.unionWith (<>) ops (IntMap.map (\xs -> [(fix, Scope modNm, op) | (fix, _, op) <- xs]) ops)
 
 builtinModulesOpsTable :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map ModuleName OpsTable
-builtinModulesOpsTable = Map.map (\Module {moduleOpsTable} -> moduleOpsTable)
+builtinModulesOpsTable = Map.map (\Module{moduleOpsTable} -> moduleOpsTable)
 
 builtinModulesPinMap :: forall m c. (MonadThrow m, Pretty c, Eq c) => ModuleMap m c -> Map.Map (Scoped ModuleName) (Map.Map Namespace (Pinned VCObjectHash))
 builtinModulesPinMap moduleMap =

@@ -106,7 +106,7 @@ instance (Pretty c) => Pretty (Value c m) where
         prettyField (Ident f, v) = pretty f <> "=" <+> pretty v
     VOne v -> "Some" <+> align (pretty v)
     VEmpty -> "None"
-    VFun {} -> "<<function>>"
+    VFun{} -> "<<function>>"
     VEpochTime t -> pretty $ show t <> "s"
     VTypeRep t -> "@" <> pretty t
     VCustom c -> pretty c

@@ -29,46 +29,49 @@ import Inferno.Types.VersionControl (VCObjectHash, vcHash)
 builtinModule :: PinnedModule ()
 builtinModule =
   Module
-    { moduleName = "Builtin",
-      moduleOpsTable = mempty,
-      moduleObjects = (name2Hash, hash2ty, ()),
-      moduleTypeClasses =
+    { moduleName = "Builtin"
+    , moduleOpsTable = mempty
+    , moduleObjects = (name2Hash, hash2ty, ())
+    , moduleTypeClasses =
         Set.fromList
-          [ TypeClass "numeric" [typeInt],
-            TypeClass "numeric" [typeDouble]
+          [ TypeClass "numeric" [typeInt]
+          , TypeClass "numeric" [typeDouble]
           ]
     }
   where
     name2Hash =
       Map.fromList
-        [ (ModuleNamespace "Builtin", vcHash $ BuiltinModuleHash "Builtin"),
-          (TypeNamespace "bool", enumBoolHash),
-          (EnumNamespace "true", enumBoolHash),
-          (EnumNamespace "false", enumBoolHash),
-          (FunNamespace "None", emptyHash),
-          (FunNamespace "Some", oneHash)
+        [ (ModuleNamespace "Builtin", vcHash $ BuiltinModuleHash "Builtin")
+        , (TypeNamespace "bool", enumBoolHash)
+        , (EnumNamespace "true", enumBoolHash)
+        , (EnumNamespace "false", enumBoolHash)
+        , (FunNamespace "None", emptyHash)
+        , (FunNamespace "Some", oneHash)
         ]
     hash2ty =
       Map.fromList
-        [ ( enumBoolHash,
-            TypeMetadata
-              { identExpr = Var () () LocalScope (Expl $ ExtIdent $ Right "_"),
-                ty = ForallTC [] Set.empty $ ImplType Map.empty typeBool,
-                docs = Just "Boolean type"
+        [
+          ( enumBoolHash
+          , TypeMetadata
+              { identExpr = Var () () LocalScope (Expl $ ExtIdent $ Right "_")
+              , ty = ForallTC [] Set.empty $ ImplType Map.empty typeBool
+              , docs = Just "Boolean type"
               }
-          ),
-          ( emptyHash,
-            TypeMetadata
-              { identExpr = Empty (),
-                ty = emptyTy,
-                docs = optionMetaText
+          )
+        ,
+          ( emptyHash
+          , TypeMetadata
+              { identExpr = Empty ()
+              , ty = emptyTy
+              , docs = optionMetaText
               }
-          ),
-          ( oneHash,
-            TypeMetadata
-              { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right "Some",
-                ty = oneTy,
-                docs = optionMetaText
+          )
+        ,
+          ( oneHash
+          , TypeMetadata
+              { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right "Some"
+              , ty = oneTy
+              , docs = optionMetaText
               }
           )
         ]

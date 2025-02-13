@@ -94,10 +94,10 @@ type VersionControlAPI a g =
     :<|> "delete" :> "scripts" :> Capture "hash" VCObjectHash :> DeleteThrowingVCStoreError '[JSON] ()
 
 vcServer ::
-  ( VCHashUpdate (Ops.Author m),
-    VCHashUpdate (Ops.Group m),
-    Ops.InfernoVCOperations VCServerError m,
-    Ord (Ops.Group m)
+  ( VCHashUpdate (Ops.Author m)
+  , VCHashUpdate (Ops.Group m)
+  , Ops.InfernoVCOperations VCServerError m
+  , Ord (Ops.Group m)
   ) =>
   (forall x. m x -> Handler (Union (WithError VCServerError x))) ->
   IOTracer VCServerTrace ->
@@ -108,40 +108,40 @@ vcServer toHandler tracer =
     :<|> toHandler . Ops.fetchVCObject
     :<|> toHandler . Ops.fetchVCObjectHistory
     :<|> ( \objs ->
-             traceWith tracer (VCFetchObjects objs)
-               >> toHandler (fetchVCObjects objs)
+            traceWith tracer (VCFetchObjects objs)
+              >> toHandler (fetchVCObjects objs)
          )
     :<|> ( \obj ->
-             traceWith tracer (VCFetchObjectClosureHashes obj)
-               >> toHandler (Ops.fetchVCObjectClosureHashes obj)
+            traceWith tracer (VCFetchObjectClosureHashes obj)
+              >> toHandler (Ops.fetchVCObjectClosureHashes obj)
          )
     :<|> toHandler . pushFunctionH
     :<|> toHandler . Ops.deleteAutosavedVCObject
     :<|> toHandler . Ops.deleteVCObjects
   where
     fetchFunctionH h = do
-      om@VCMeta {obj} <- Ops.fetchVCObject h
+      om@VCMeta{obj} <- Ops.fetchVCObject h
       case obj of
-        VCFunction f t -> pure om {obj = (f, t)}
+        VCFunction f t -> pure om{obj = (f, t)}
         _ -> throwError $ VCServerError $ Ops.UnexpectedObjectType h $ showVCObjectType obj
 
-    pushFunctionH meta@VCMeta {obj = (f, t)} = Ops.storeVCObject meta {obj = VCFunction f t}
+    pushFunctionH meta@VCMeta{obj = (f, t)} = Ops.storeVCObject meta{obj = VCFunction f t}
 
     fetchVCObjects hs =
       Map.fromList <$> forM hs (\h -> (h,) <$> Ops.fetchVCObject h)
 
 runServer ::
   forall m env config.
-  ( HasField "serverHost" config config T.Text T.Text,
-    HasField "serverPort" config config Int Int,
-    VCHashUpdate (Ops.Author m),
-    VCHashUpdate (Ops.Group m),
-    FromJSON config,
-    FromJSON (Ops.Author m),
-    FromJSON (Ops.Group m),
-    ToJSON (Ops.Author m),
-    ToJSON (Ops.Group m),
-    Ops.InfernoVCOperations VCServerError m
+  ( HasField "serverHost" config config T.Text T.Text
+  , HasField "serverPort" config config Int Int
+  , VCHashUpdate (Ops.Author m)
+  , VCHashUpdate (Ops.Group m)
+  , FromJSON config
+  , FromJSON (Ops.Author m)
+  , FromJSON (Ops.Group m)
+  , ToJSON (Ops.Author m)
+  , ToJSON (Ops.Group m)
+  , Ops.InfernoVCOperations VCServerError m
   ) =>
   (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
   (forall x. m x -> env -> ExceptT VCServerError IO x) ->
@@ -153,15 +153,15 @@ runServer withEnv runOp = do
 
 runServerConfig ::
   forall m env config.
-  ( HasField "serverHost" config config T.Text T.Text,
-    HasField "serverPort" config config Int Int,
-    VCHashUpdate (Ops.Author m),
-    VCHashUpdate (Ops.Group m),
-    FromJSON (Ops.Author m),
-    FromJSON (Ops.Group m),
-    ToJSON (Ops.Author m),
-    ToJSON (Ops.Group m),
-    Ops.InfernoVCOperations VCServerError m
+  ( HasField "serverHost" config config T.Text T.Text
+  , HasField "serverPort" config config Int Int
+  , VCHashUpdate (Ops.Author m)
+  , VCHashUpdate (Ops.Group m)
+  , FromJSON (Ops.Author m)
+  , FromJSON (Ops.Group m)
+  , ToJSON (Ops.Author m)
+  , ToJSON (Ops.Group m)
+  , Ops.InfernoVCOperations VCServerError m
   ) =>
   (env -> Middleware) ->
   (forall x. config -> IOTracer T.Text -> (env -> IO x) -> IO x) ->
@@ -180,9 +180,9 @@ runServerConfig middleware withEnv runOp serverConfig = do
           -- cutoff is an hour ago
           cutoff <- subtract (60 * 60) <$> liftIO getPOSIXTime
           runExceptT (runOp (Ops.deleteAutosavedVCObjectsOlderThan cutoff) env) >>= \case
-            Left (VCServerError {serverError}) ->
+            Left (VCServerError{serverError}) ->
               traceWith @IOTracer serverTracer (ThrownVCStoreError serverError)
-            Left (VCOtherError {otherError}) ->
+            Left (VCOtherError{otherError}) ->
               traceWith @IOTracer serverTracer (ThrownVCOtherError otherError)
             Right _ -> pure ()
     print ("running..." :: String)

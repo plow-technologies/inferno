@@ -203,6 +203,7 @@
             projectRootFile = "flake.nix";
             programs = {
               nixpkgs-fmt.enable = true;
+              cabal-fmt.enable = true;
               ormolu = {
                 enable = true;
                 package =

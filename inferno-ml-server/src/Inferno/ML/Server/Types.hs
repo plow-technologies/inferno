@@ -78,18 +78,6 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
-import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( BridgeInfo,
-    EvaluationEnv,
-    EvaluationInfo,
-    InferenceParam,
-    InferenceParamWithModels,
-    InferenceScript,
-    InfernoMlServerAPI,
-    Model,
-    ModelVersion,
-  )
-import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -113,25 +101,37 @@ import UnliftIO.Exception (bracket)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
+  ( BridgeInfo,
+    EvaluationEnv,
+    EvaluationInfo,
+    InferenceParam,
+    InferenceParamWithModels,
+    InferenceScript,
+    InfernoMlServerAPI,
+    Model,
+    ModelVersion,
+  )
+import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
 type RemoteM = ReaderT Env IO
 
 data Env = Env
-  { config :: Config,
-    tracer :: IOTracer RemoteTrace,
-    store :: Pool Connection,
-    -- Lock for starting inference evaluation
-    lock :: MVar (),
-    -- The current inference evaluation job, if any
+  { config :: Config
+  , tracer :: IOTracer RemoteTrace
+  , store :: Pool Connection
+  , -- Lock for starting inference evaluation
+    lock :: MVar ()
+  , -- The current inference evaluation job, if any
     job ::
       MVar
         ( -- ID for the inference param
-          Id InferenceParam,
-          -- The actual job itself. This is stored so it can be canceled later
+          Id InferenceParam
+        , -- The actual job itself. This is stored so it can be canceled later
           Async (Maybe (Types.WriteStream IO))
-        ),
-    manager :: Manager,
-    -- The interpreter needs to be updated if the bridge info changes,
+        )
+  , manager :: Manager
+  , -- The interpreter needs to be updated if the bridge info changes,
     -- hence the need to keep it in an `IORef`
     interpreter :: IORef (Maybe (Interpreter RemoteM BridgeMlValue))
   }
@@ -142,10 +142,10 @@ data Env = Env
 -- directory. Once the 'maxSize' has been exceeded, least-recently-used cached
 -- models will be removed
 data ModelCache = ModelCache
-  { -- | Directory where the models should be cached
-    path :: FilePath,
-    -- | Maximum size in bytes of the model cache directory
-    maxSize :: Word64
+  { path :: FilePath
+  -- ^ Directory where the models should be cached
+  , maxSize :: Word64
+  -- ^ Maximum size in bytes of the model cache directory
   }
   deriving stock (Show, Eq, Generic)
 
@@ -172,7 +172,7 @@ instance FromJSON (EntityId a) where
 instance ToJSON (EntityId a) where
   toJSON = String . Text.pack . ('o' :) . entityIdToHex
 
-instance Typeable a => FromField (EntityId a) where
+instance (Typeable a) => FromField (EntityId a) where
   fromField f =
     maybe (returnError UnexpectedNull f mempty) $
       maybe
@@ -204,16 +204,16 @@ data EntityIdType
   deriving stock (Show, Eq, Generic, Typeable)
 
 data Config = Config
-  { port :: Word64,
-    cache :: ModelCache,
-    -- | Timeout for script evaluation
-    --
-    -- NOTE: Timeout is in seconds, not milliseconds
-    timeout :: Word64,
-    -- | Minimum log level; logs below this level will be ignored
-    logLevel :: LogLevel,
-    -- | Configuration for PostgreSQL database
-    store :: ConnectInfo
+  { port :: Word64
+  , cache :: ModelCache
+  , timeout :: Word64
+  -- ^ Timeout for script evaluation
+  --
+  -- NOTE: Timeout is in seconds, not milliseconds
+  , logLevel :: LogLevel
+  -- ^ Minimum log level; logs below this level will be ignored
+  , store :: ConnectInfo
+  -- ^ Configuration for PostgreSQL database
   }
   deriving stock (Show, Eq, Generic)
 
@@ -257,9 +257,9 @@ mkOptions = decodeFileThrow =<< p
 
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata
-  { author :: EntityId UId,
-    scriptTypes :: [ScriptType],
-    categoryIds :: [Int]
+  { author :: EntityId UId
+  , scriptTypes :: [ScriptType]
+  , categoryIds :: [Int]
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON)
@@ -267,8 +267,8 @@ data ScriptMetadata = ScriptMetadata
 instance FromJSON ScriptMetadata where
   parseJSON x =
     asum
-      [ genericParseJSON defaultOptions x,
-        -- In this case, only the user ID is provided
+      [ genericParseJSON defaultOptions x
+      , -- In this case, only the user ID is provided
         fromUid <$> parseJSON @(EntityId UId) x
       ]
     where
@@ -322,51 +322,51 @@ instance Exception RemoteError where
     CacheSizeExceeded -> "Model exceeds maximum cache size"
     NoSuchModel (Left m) ->
       unwords
-        [ "Model:",
-          "'" <> show m <> "'",
-          "does not exist in the store"
+        [ "Model:"
+        , "'" <> show m <> "'"
+        , "does not exist in the store"
         ]
     NoSuchModel (Right mv) ->
       unwords
-        [ "Model version:",
-          "'" <> show mv <> "'",
-          "does not exist in the store"
+        [ "Model version:"
+        , "'" <> show mv <> "'"
+        , "does not exist in the store"
         ]
     NoSuchScript vch ->
       unwords
-        [ "Script identified by hash",
-          show vch,
-          "does not exist"
+        [ "Script identified by hash"
+        , show vch
+        , "does not exist"
         ]
     NoSuchParameter iid ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
     InvalidScript t -> Text.unpack t
     InvalidOutput t ->
       unwords
-        [ "Script output should be an array of `write` but was",
-          Text.unpack t
+        [ "Script output should be an array of `write` but was"
+        , Text.unpack t
         ]
     InfernoError (SomeInfernoError x) ->
       unwords
-        [ "Inferno evaluation failed with:",
-          show x
+        [ "Inferno evaluation failed with:"
+        , show x
         ]
     NoBridgeSaved -> "No bridge has been saved"
     ScriptTimeout t ->
       unwords
-        [ "Script evaluation timed out after",
-          show $ t `div` 1000000,
-          "seconds"
+        [ "Script evaluation timed out after"
+        , show $ t `div` 1000000
+        , "seconds"
         ]
     ClientError ce ->
       unwords
-        [ "Client error:",
-          displayException ce
+        [ "Client error:"
+        , displayException ce
         ]
     OtherRemoteError e -> Text.unpack e
 
 data SomeInfernoError where
-  SomeInfernoError :: forall a. Show a => a -> SomeInfernoError
+  SomeInfernoError :: forall a. (Show a) => a -> SomeInfernoError
 
 deriving stock instance Show SomeInfernoError
 
@@ -415,7 +415,7 @@ logError = logTrace . ErrorTrace
 -- FLAP!
 infixl 4 ??
 
-(??) :: Functor f => f (a -> b) -> a -> f b
+(??) :: (Functor f) => f (a -> b) -> a -> f b
 f ?? x = ($ x) <$> f
 
 type InferenceParam = Types.InferenceParam (EntityId GId) PID
@@ -502,9 +502,9 @@ joinToTuple (a :. b) = (a, b)
 
 traceLevel :: RemoteTrace -> LogLevel
 traceLevel = \case
-  InfoTrace {} -> LevelInfo
-  WarnTrace {} -> LevelWarn
-  ErrorTrace {} -> LevelError
+  InfoTrace{} -> LevelInfo
+  WarnTrace{} -> LevelWarn
+  ErrorTrace{} -> LevelError
 
 -- | Create the connection pool for the DB
 newConnectionPool :: ConnectInfo -> IO (Pool Connection)
@@ -515,7 +515,7 @@ newConnectionPool ci = Pool.newPool $ Pool.PoolConfig (connect ci) close 60 10
 #endif
 
 withConnectionPool ::
-  forall m a. MonadUnliftIO m => ConnectInfo -> (Pool Connection -> m a) -> m a
+  forall m a. (MonadUnliftIO m) => ConnectInfo -> (Pool Connection -> m a) -> m a
 withConnectionPool = flip bracket destroyPool . liftIO . newConnectionPool
   where
     destroyPool :: Pool Connection -> m ()

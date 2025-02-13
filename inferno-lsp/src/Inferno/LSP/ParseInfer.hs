@@ -62,28 +62,28 @@ import Text.Megaparsec.Pos (SourcePos (..), unPos)
 errorDiagnostic :: Int -> Int -> Int -> Int -> Maybe Text -> Text -> Diagnostic
 errorDiagnostic s_line s_col e_line e_col source message =
   Diagnostic
-    { _range = mkRange (fromIntegral s_line - 2) (fromIntegral s_col - 1) (fromIntegral e_line - 2) (fromIntegral e_col - 1),
-      _severity = Just DsError,
-      _code = Nothing,
-      _source = source,
-      _message = message,
-      _tags = Nothing,
-      _relatedInformation = Nothing
+    { _range = mkRange (fromIntegral s_line - 2) (fromIntegral s_col - 1) (fromIntegral e_line - 2) (fromIntegral e_col - 1)
+    , _severity = Just DsError
+    , _code = Nothing
+    , _source = source
+    , _message = message
+    , _tags = Nothing
+    , _relatedInformation = Nothing
     }
 
 warnDiagnostic :: Int -> Int -> Int -> Int -> Maybe Text -> Text -> Diagnostic
 warnDiagnostic s_line s_col e_line e_col source message =
   Diagnostic
-    { _range = mkRange (fromIntegral s_line - 2) (fromIntegral s_col - 1) (fromIntegral e_line - 2) (fromIntegral e_col - 1),
-      _severity = Just DsWarning,
-      _code = Nothing,
-      _source = source,
-      _message = message,
-      _tags = Nothing,
-      _relatedInformation = Nothing
+    { _range = mkRange (fromIntegral s_line - 2) (fromIntegral s_col - 1) (fromIntegral e_line - 2) (fromIntegral e_col - 1)
+    , _severity = Just DsWarning
+    , _code = Nothing
+    , _source = source
+    , _message = message
+    , _tags = Nothing
+    , _relatedInformation = Nothing
     }
 
-parseErrorDiagnostic :: ShowErrorComponent e => (ParseError Text e, SourcePos) -> Diagnostic
+parseErrorDiagnostic :: (ShowErrorComponent e) => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, SourcePos _ l c) =
   errorDiagnostic
     (unPos l)
@@ -106,10 +106,10 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "Could not match the type",
-            indent 2 (pretty $ closeOverType t1),
-            "with",
-            indent 2 (pretty $ closeOverType t2)
+          [ "Could not match the type"
+          , indent 2 (pretty $ closeOverType t1)
+          , "with"
+          , indent 2 (pretty $ closeOverType t2)
           ]
     ]
   AnnotationUnificationFail _ t1 t2 (s, e) ->
@@ -120,10 +120,10 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The type of this expression",
-            indent 2 (pretty $ closeOverType t1),
-            "does not match with the annotated type",
-            indent 2 (pretty $ closeOverType t2)
+          [ "The type of this expression"
+          , indent 2 (pretty $ closeOverType t1)
+          , "does not match with the annotated type"
+          , indent 2 (pretty $ closeOverType t2)
           ]
     ]
   ExpectedFunction _ t1 t2 (s, e) ->
@@ -134,10 +134,10 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "Expected a function here of type",
-            indent 2 (pretty $ closeOverType t1),
-            "but instead found",
-            indent 2 (pretty $ closeOverType t2)
+          [ "Expected a function here of type"
+          , indent 2 (pretty $ closeOverType t1)
+          , "but instead found"
+          , indent 2 (pretty $ closeOverType t2)
           ]
     ]
   InfiniteType tv t (s, e) ->
@@ -158,8 +158,8 @@ inferErrorDiagnostic = \case
         $ renderDoc
         $ "Unbound variable '"
           <> ( case modNm of
-                 LocalScope -> ""
-                 Scope (ModuleName nm) -> pretty nm <> "."
+                LocalScope -> ""
+                Scope (ModuleName nm) -> pretty nm <> "."
              )
           <> pretty v
           <> "'"
@@ -174,32 +174,32 @@ inferErrorDiagnostic = \case
           FunNamespace (Ident v) ->
             "Unbound variable '"
               <> ( case modNm of
-                     LocalScope -> ""
-                     Scope (ModuleName nm) -> nm <> "."
+                    LocalScope -> ""
+                    Scope (ModuleName nm) -> nm <> "."
                  )
               <> v
               <> "'"
           OpNamespace (Ident v) ->
             "Unbound operator '"
               <> ( case modNm of
-                     LocalScope -> ""
-                     Scope (ModuleName nm) -> nm <> "."
+                    LocalScope -> ""
+                    Scope (ModuleName nm) -> nm <> "."
                  )
               <> v
               <> "'"
           ModuleNamespace (ModuleName v) ->
             "Module '"
               <> ( case modNm of
-                     LocalScope -> ""
-                     Scope (ModuleName nm) -> nm <> "."
+                    LocalScope -> ""
+                    Scope (ModuleName nm) -> nm <> "."
                  )
               <> v
               <> "' could not be found."
           TypeNamespace (Ident v) ->
             "Type '"
               <> ( case modNm of
-                     LocalScope -> ""
-                     Scope (ModuleName nm) -> nm <> "."
+                    LocalScope -> ""
+                    Scope (ModuleName nm) -> nm <> "."
                  )
               <> v
               <> "' could not be found."
@@ -208,12 +208,12 @@ inferErrorDiagnostic = \case
               vsep
                 [ "Could not find the enum constructor '#"
                     <> ( case modNm of
-                           LocalScope -> mempty
-                           Scope (ModuleName nm) -> pretty nm <> "."
+                          LocalScope -> mempty
+                          Scope (ModuleName nm) -> pretty nm <> "."
                        )
                     <> pretty c
-                    <> "'.",
-                  "Make sure the enum you are trying to use has been imported"
+                    <> "'."
+                , "Make sure the enum you are trying to use has been imported"
                 ]
     ]
   UnboundNameInNamespace _modNm (Left h) (s, e) ->
@@ -234,27 +234,27 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The implicit variable '" <> case ident of { Left i -> "var$" <> pretty i; Right i -> pretty i } <> "' has multiple types:",
-            indent 2 (pretty $ closeOverType t1),
-            "and",
-            indent 2 (pretty $ closeOverType t2)
+          [ "The implicit variable '" <> case ident of { Left i -> "var$" <> pretty i; Right i -> pretty i } <> "' has multiple types:"
+          , indent 2 (pretty $ closeOverType t1)
+          , "and"
+          , indent 2 (pretty $ closeOverType t2)
           ]
     ]
   VarMultipleOccurrence (Ident x) (s2, e2) (s1, e1) ->
     let message =
           renderDoc $
             vsep
-              [ "Duplicate declarations of '" <> pretty x <> "' in the pattern match",
-                "at line" <+> pretty (unPos $ sourceLine s1) <> "," <+> "column" <+> pretty (unPos $ sourceColumn s1),
-                "and line" <+> pretty (unPos $ sourceLine s2) <> "," <+> "column" <+> pretty (unPos $ sourceColumn s2)
+              [ "Duplicate declarations of '" <> pretty x <> "' in the pattern match"
+              , "at line" <+> pretty (unPos $ sourceLine s1) <> "," <+> "column" <+> pretty (unPos $ sourceColumn s1)
+              , "and line" <+> pretty (unPos $ sourceLine s2) <> "," <+> "column" <+> pretty (unPos $ sourceColumn s2)
               ]
      in [ errorDiagnosticInfer
             (unPos $ sourceLine s1)
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            message,
-          errorDiagnosticInfer
+            message
+        , errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
@@ -269,8 +269,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The type of the if condition was expected to be a bool, instead I found",
-            indent 2 (pretty $ closeOverType t)
+          [ "The type of the if condition was expected to be a bool, instead I found"
+          , indent 2 (pretty $ closeOverType t)
           ]
     ]
   AssertConditionMustBeBool _ t (s, e) ->
@@ -281,26 +281,26 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The type of the assert condition was expected to be a bool, instead I found",
-            indent 2 (pretty $ closeOverType t)
+          [ "The type of the assert condition was expected to be a bool, instead I found"
+          , indent 2 (pretty $ closeOverType t)
           ]
     ]
   IfBranchesMustBeEqType _ t1 t2 (s1, e1) (s2, e2) ->
     let message =
           renderDoc $
             vsep
-              [ "The type of both branches of the if statement must be the same, however I found two different types:",
-                indent 2 (pretty $ closeOverType t1),
-                "and",
-                indent 2 (pretty $ closeOverType t2)
+              [ "The type of both branches of the if statement must be the same, however I found two different types:"
+              , indent 2 (pretty $ closeOverType t1)
+              , "and"
+              , indent 2 (pretty $ closeOverType t2)
               ]
      in [ errorDiagnosticInfer
             (unPos $ sourceLine s1)
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            message,
-          errorDiagnosticInfer
+            message
+        , errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
@@ -311,18 +311,18 @@ inferErrorDiagnostic = \case
     let message =
           renderDoc $
             vsep
-              [ "The type of all case branches must be the same, but I found two different types:",
-                indent 2 (pretty $ closeOverType t1),
-                "and",
-                indent 2 (pretty $ closeOverType t2)
+              [ "The type of all case branches must be the same, but I found two different types:"
+              , indent 2 (pretty $ closeOverType t1)
+              , "and"
+              , indent 2 (pretty $ closeOverType t2)
               ]
      in [ errorDiagnosticInfer
             (unPos $ sourceLine s1)
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            message,
-          errorDiagnosticInfer
+            message
+        , errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
@@ -337,29 +337,29 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The type of the pattern does not match the case expression",
-            "expected",
-            indent 2 (pretty $ closeOverType tE),
-            "but instead found",
-            indent 2 (pretty p <+> ":" <+> align (pretty $ closeOverType tPat))
+          [ "The type of the pattern does not match the case expression"
+          , "expected"
+          , indent 2 (pretty $ closeOverType tE)
+          , "but instead found"
+          , indent 2 (pretty p <+> ":" <+> align (pretty $ closeOverType tPat))
           ]
     ]
   PatternsMustBeEqType _ t1 t2 p1 p2 (s1, e1) (s2, e2) ->
     let message =
           renderDoc $
             vsep
-              [ "The type of all case patterns must be the same, but I found two different types:",
-                indent 2 (pretty p1 <+> ":" <+> align (pretty $ closeOverType t1)),
-                "and",
-                indent 2 (pretty p2 <+> ":" <+> align (pretty $ closeOverType t2))
+              [ "The type of all case patterns must be the same, but I found two different types:"
+              , indent 2 (pretty p1 <+> ":" <+> align (pretty $ closeOverType t1))
+              , "and"
+              , indent 2 (pretty p2 <+> ":" <+> align (pretty $ closeOverType t2))
               ]
      in [ errorDiagnosticInfer
             (unPos $ sourceLine s1)
             (unPos $ sourceColumn s1)
             (unPos $ sourceLine e1)
             (unPos $ sourceColumn e1)
-            message,
-          errorDiagnosticInfer
+            message
+        , errorDiagnosticInfer
             (unPos $ sourceLine s2)
             (unPos $ sourceColumn s2)
             (unPos $ sourceLine e2)
@@ -374,9 +374,9 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The patterns in this case expression are non-exhaustive.",
-            "For example, the following pattern is missing:",
-            indent 2 (pretty pat)
+          [ "The patterns in this case expression are non-exhaustive."
+          , "For example, the following pattern is missing:"
+          , indent 2 (pretty pat)
           ]
     ]
   UselessPattern (Just pat) (s, e) ->
@@ -387,8 +387,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "This case is unreachable, since it is subsumed by the previous pattern",
-            indent 2 (pretty pat)
+          [ "This case is unreachable, since it is subsumed by the previous pattern"
+          , indent 2 (pretty pat)
           ]
     ]
   UselessPattern Nothing (s, e) ->
@@ -423,8 +423,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "Could not find any definitions for",
-            indent 2 (pretty $ TypeClassShape tcls)
+          [ "Could not find any definitions for"
+          , indent 2 (pretty $ TypeClassShape tcls)
           ]
     ]
   TypeClassNoPartialMatch tcls (s, e) ->
@@ -435,8 +435,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "Could not find any matching definitions for",
-            indent 2 (pretty $ TypeClassShape tcls)
+          [ "Could not find any matching definitions for"
+          , indent 2 (pretty $ TypeClassShape tcls)
           ]
     ]
   ModuleNameTaken (ModuleName m) (s, e) ->
@@ -447,8 +447,8 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The chosen module name already exists:",
-            indent 2 (pretty m)
+          [ "The chosen module name already exists:"
+          , indent 2 (pretty m)
           ]
     ]
   ModuleDoesNotExist (ModuleName m) (s, e) ->
@@ -459,9 +459,9 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The following module does not exist:",
-            indent 2 (pretty m),
-            "make sure you have imported the module"
+          [ "The following module does not exist:"
+          , indent 2 (pretty m)
+          , "make sure you have imported the module"
           ]
     ]
   NameInModuleDoesNotExist (ModuleName m) (Ident i) (s, e) ->
@@ -472,10 +472,10 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The module",
-            indent 2 (pretty m),
-            "does not contain:",
-            indent 2 (pretty i)
+          [ "The module"
+          , indent 2 (pretty m)
+          , "does not contain:"
+          , indent 2 (pretty i)
           ]
     ]
   AmbiguousName (ModuleName m) i (s, e) ->
@@ -486,12 +486,12 @@ inferErrorDiagnostic = \case
         (unPos $ sourceColumn e)
         $ renderDoc
         $ vsep
-          [ "The name",
-            indent 2 (pretty i),
-            "you are trying to import from",
-            indent 2 (pretty m),
-            "already exists in local scope and would be overshadowed. Consider using:",
-            indent 2 $ pretty m <> "." <> pretty i
+          [ "The name"
+          , indent 2 (pretty i)
+          , "you are trying to import from"
+          , indent 2 (pretty m)
+          , "already exists in local scope and would be overshadowed. Consider using:"
+          , indent 2 $ pretty m <> "." <> pretty i
           ]
     ]
   CouldNotFindTypeclassWitness tyCls (s, e) ->
@@ -525,7 +525,7 @@ parseAndInferDiagnostics ::
   Text ->
   (InfernoType -> Either Text ()) ->
   m (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme, [Diagnostic], [(Range, MarkupContent)]))
-parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt validateInput = do
+parseAndInferDiagnostics Interpreter{parseAndInfer, typeClasses} idents txt validateInput = do
   let input = case idents of
         [] -> "\n" <> txt
         ids -> "fun " <> Text.intercalate " " (map (maybe "_" (\(Ident i) -> i)) ids) <> " -> \n" <> txt
@@ -551,10 +551,10 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
               let final = putBackLams lams (void (insertCommentsIntoExpr comments lamBody))
               return $
                 Right
-                  ( final,
-                    tcSch,
-                    unusedVarWarns,
-                    Map.foldrWithKey (\k v xs -> mkHover typeClasses currentClasses k v : xs) mempty tyMap
+                  ( final
+                  , tcSch
+                  , unusedVarWarns
+                  , Map.foldrWithKey (\k v xs -> mkHover typeClasses currentClasses k v : xs) mempty tyMap
                   )
   where
     -- Extract and replace outermost Lams so that comments can be inserted into script body.
@@ -595,7 +595,7 @@ parseAndInferDiagnostics Interpreter {parseAndInfer, typeClasses} idents txt val
 
 parseAndInferPretty :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> IO ()
 parseAndInferPretty prelude txt = do
-  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  interpreter@(Interpreter{typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter [] txt (const $ Right ()) >>= \case
     Left err -> print err
     Right (expr, typ, _warns, _hovers) -> do
@@ -609,7 +609,7 @@ parseAndInferPretty prelude txt = do
 
 parseAndInferTypeReps :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> Text -> IO ()
 parseAndInferTypeReps prelude expr inTys outTy = do
-  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  interpreter@(Interpreter{typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter [] expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _warns, _hovers) -> do
@@ -632,7 +632,7 @@ parseAndInferTypeReps prelude expr inTys outTy = do
 parseAndInferPossibleTypes :: forall c. (Pretty c, Eq c) => ModuleMap IO c -> Text -> [Text] -> [Maybe Text] -> Maybe Text -> IO ()
 parseAndInferPossibleTypes prelude expr args inTys outTy = do
   let argIdents = map (Just . Ident) args
-  interpreter@(Interpreter {typeClasses}) <- mkInferno prelude []
+  interpreter@(Interpreter{typeClasses}) <- mkInferno prelude []
   parseAndInferDiagnostics @IO @c interpreter argIdents expr (const $ Right ()) >>= \case
     Left err -> print err
     Right (_expr, typ, _warns, _hovers) -> do
@@ -655,10 +655,10 @@ parseAndInferPossibleTypes prelude expr args inTys outTy = do
 -- putStrLn $ show hovers
 
 mkHover :: Set.Set TypeClass -> Set.Set TypeClass -> (SourcePos, SourcePos) -> TypeMetadata TCScheme -> (Range, MarkupContent)
-mkHover allClasses currentClasses (s, e) meta@TypeMetadata {identExpr = expr, ty = tcSchTy} =
+mkHover allClasses currentClasses (s, e) meta@TypeMetadata{identExpr = expr, ty = tcSchTy} =
   let prettyTy = mkPrettyTy allClasses currentClasses tcSchTy
-   in ( mkRange (fromIntegral (unPos $ sourceLine s) - 2) (fromIntegral (unPos $ sourceColumn s) - 1) (fromIntegral (unPos $ sourceLine e) - 2) (fromIntegral (unPos $ sourceColumn e) - 1),
-        MarkupContent MkMarkdown $
+   in ( mkRange (fromIntegral (unPos $ sourceLine s) - 2) (fromIntegral (unPos $ sourceColumn s) - 1) (fromIntegral (unPos $ sourceLine e) - 2) (fromIntegral (unPos $ sourceColumn e) - 1)
+      , MarkupContent MkMarkdown $
           "**Type**\n"
             <> "~~~inferno\n"
             <> renderDoc (pretty expr <+> align prettyTy)
@@ -676,14 +676,14 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
         -- things to note:
         --   * we need to filter out the "rep" typeclass, since it is always defined and thererfore pointless to pass to the solver
         --   * we only want to pass in the fvs of typ to the solver, as these are the only type variables we care about displaying
-        case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
-          [] -> error "we must always have at least one witness!"
-          subs ->
-            let prettyList = map pretty $ nub $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
-                prettyListMax10 = take 10 prettyList
-             in if length prettyListMax10 == length prettyList
-                  then sep $ unionTySig prettyList
-                  else sep $ unionTySig $ prettyList <> ["..."]
+          case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
+            [] -> error "we must always have at least one witness!"
+            subs ->
+              let prettyList = map pretty $ nub $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
+                  prettyListMax10 = take 10 prettyList
+               in if length prettyListMax10 == length prettyList
+                    then sep $ unionTySig prettyList
+                    else sep $ unionTySig $ prettyList <> ["..."]
   where
     unionTySig [] = []
     unionTySig (t : ts) = (":" <+> t) : go ts
@@ -694,7 +694,7 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
       ImplType (Map.filter (\case TRep _ -> False; _ -> True) impls) ty
 
 getTypeMetadataText :: TypeMetadata TCScheme -> Maybe Text
-getTypeMetadataText TypeMetadata {docs = tcsDocs, ty = ForallTC _ _ (ImplType _ tcsTy)} =
+getTypeMetadataText TypeMetadata{docs = tcsDocs, ty = ForallTC _ _ (ImplType _ tcsTy)} =
   renderDoc
     <$> case (tcsDocs, tcsTy) of
       (Nothing, _) -> Nothing
@@ -707,6 +707,6 @@ getTypeMetadataText TypeMetadata {docs = tcsDocs, ty = ForallTC _ _ (ImplType _ 
             <> "enum"
             <+> pretty nm
             <+> align (sep $ "=" : punctuate' "|" (map (("#" <>) . pretty . unIdent) $ Set.toList cs))
-              <> hardline
-              <> "~~~"
+            <> hardline
+            <> "~~~"
       _ -> Just $ pretty (fromMaybe "" tcsDocs)

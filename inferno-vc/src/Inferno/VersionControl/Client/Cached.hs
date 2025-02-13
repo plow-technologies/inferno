@@ -53,10 +53,10 @@ import System.IO.Error (isDoesNotExistError)
 import System.Random.Shuffle (shuffleM)
 
 data VCCacheEnv = VCCacheEnv
-  { cachePath :: FilePath,
-    cacheObjInFlight :: TVar (Set.Set VCObjectHash),
-    cacheDepInFlight :: TVar (Set.Set VCObjectHash),
-    tracer :: IOTracer VCCacheTrace
+  { cachePath :: FilePath
+  , cacheObjInFlight :: TVar (Set.Set VCObjectHash)
+  , cacheDepInFlight :: TVar (Set.Set VCObjectHash)
+  , tracer :: IOTracer VCCacheTrace
   }
   deriving (Generic)
 
@@ -108,29 +108,29 @@ initVCCachedClient cachePath tracer = do
   createDirectoryIfMissing True $ cachePath </> "deps"
   cacheObjInFlight <- newTVarIO mempty
   cacheDepInFlight <- newTVarIO mempty
-  pure VCCacheEnv {cachePath, cacheObjInFlight, cacheDepInFlight, tracer}
+  pure VCCacheEnv{cachePath, cacheObjInFlight, cacheDepInFlight, tracer}
 
 fetchVCObjectClosure ::
-  ( MonadError err m,
-    HasType VCCacheEnv env,
-    HasType ClientEnv env,
-    AsType VCServerError err,
-    AsType ClientError err,
-    AsType VCStoreError err,
-    MonadReader env m,
-    MonadIO m,
-    MonadMask m,
-    FromJSON a,
-    FromJSON g,
-    ToJSON a,
-    ToJSON g
+  ( MonadError err m
+  , HasType VCCacheEnv env
+  , HasType ClientEnv env
+  , AsType VCServerError err
+  , AsType ClientError err
+  , AsType VCStoreError err
+  , MonadReader env m
+  , MonadIO m
+  , MonadMask m
+  , FromJSON a
+  , FromJSON g
+  , ToJSON a
+  , ToJSON g
   ) =>
   ([VCObjectHash] -> VCClient.ClientMWithVCStoreError (Map.Map VCObjectHash (VCMeta a g VCObject))) ->
   (VCObjectHash -> VCClient.ClientMWithVCStoreError [VCObjectHash]) ->
   VCObjectHash ->
   m (Map.Map VCObjectHash (VCMeta a g VCObject))
 fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = do
-  VCCacheEnv {cacheObjInFlight, cacheDepInFlight} <- asks getTyped
+  VCCacheEnv{cacheObjInFlight, cacheDepInFlight} <- asks getTyped
   deps <- withSingleConcurrentFetch cacheDepInFlight maybeReadCachedClosureHashes (fetchAndCacheClosureHashes remoteFetchVCObjectClosureHashes) objHash
   -- shuffle scriptIds to improve concurrent performance when cache is cold
   shuffledDeps <- liftIO $ shuffleM $ objHash : deps
@@ -138,17 +138,17 @@ fetchVCObjectClosure fetchVCObjects remoteFetchVCObjectClosureHashes objHash = d
     <$> mapM (withSingleConcurrentFetch cacheObjInFlight maybeReadCachedVCObject (fetchAndCacheVCObject fetchVCObjects)) shuffledDeps
 
 maybeReadCachedClosureHashes ::
-  ( MonadError err m,
-    HasType VCCacheEnv env,
-    AsType VCStoreError err,
-    MonadReader env m,
-    MonadIO m,
-    MonadMask m
+  ( MonadError err m
+  , HasType VCCacheEnv env
+  , AsType VCStoreError err
+  , MonadReader env m
+  , MonadIO m
+  , MonadMask m
   ) =>
   VCObjectHash ->
   m (Maybe [VCObjectHash])
 maybeReadCachedClosureHashes objHash = do
-  VCCacheEnv {tracer} <- asks getTyped
+  VCCacheEnv{tracer} <- asks getTyped
   tryJust (guard . isDoesNotExistError) readCachedClosureHashes >>= \case
     Right deps ->
       Just deps <$ traceWith tracer (VCCacheDepsHit objHash)
@@ -166,13 +166,13 @@ maybeReadCachedClosureHashes objHash = do
           digestFromByteString decoded
 
 fetchAndCacheClosureHashes ::
-  ( MonadError err m,
-    HasType VCCacheEnv env,
-    HasType ClientEnv env,
-    AsType VCServerError err,
-    AsType ClientError err,
-    MonadReader env m,
-    MonadIO m
+  ( MonadError err m
+  , HasType VCCacheEnv env
+  , HasType ClientEnv env
+  , AsType VCServerError err
+  , AsType ClientError err
+  , MonadReader env m
+  , MonadIO m
   ) =>
   (VCObjectHash -> VCClient.ClientMWithVCStoreError [VCObjectHash]) ->
   VCObjectHash ->
@@ -187,18 +187,18 @@ fetchAndCacheClosureHashes remoteFetchVCObjectClosureHashes objHash = do
   pure deps
 
 maybeReadCachedVCObject ::
-  ( MonadReader r m,
-    HasType VCCacheEnv r,
-    MonadError e m,
-    AsType VCStoreError e,
-    MonadIO m,
-    MonadMask m,
-    FromJSON b
+  ( MonadReader r m
+  , HasType VCCacheEnv r
+  , MonadError e m
+  , AsType VCStoreError e
+  , MonadIO m
+  , MonadMask m
+  , FromJSON b
   ) =>
   VCObjectHash ->
   m (Maybe (Map.Map VCObjectHash b))
 maybeReadCachedVCObject objHash = do
-  VCCacheEnv {tracer} <- asks getTyped
+  VCCacheEnv{tracer} <- asks getTyped
   tryJust (guard . isDoesNotExistError) readCachedVCObject >>= \case
     Left _ ->
       Nothing <$ traceWith tracer (VCCacheMiss objHash)
@@ -211,15 +211,15 @@ maybeReadCachedVCObject objHash = do
         =<< liftIO (eitherDecodeStrict <$> Char8.readFile path)
 
 fetchAndCacheVCObject ::
-  ( MonadError err m,
-    HasType VCCacheEnv env,
-    HasType ClientEnv env,
-    AsType VCServerError err,
-    AsType ClientError err,
-    MonadReader env m,
-    MonadIO m,
-    ToJSON a,
-    ToJSON g
+  ( MonadError err m
+  , HasType VCCacheEnv env
+  , HasType ClientEnv env
+  , AsType VCServerError err
+  , AsType ClientError err
+  , MonadReader env m
+  , MonadIO m
+  , ToJSON a
+  , ToJSON g
   ) =>
   ([VCObjectHash] -> VCClient.ClientMWithVCStoreError (Map.Map VCObjectHash (VCMeta a g VCObject))) ->
   VCObjectHash ->
@@ -233,21 +233,21 @@ fetchAndCacheVCObject fetchVCObjects objHash = do
 
 cachedDepsPath :: (MonadReader r m, HasType VCCacheEnv r) => VCObjectHash -> m FilePath
 cachedDepsPath objHash = do
-  VCCacheEnv {cachePath} <- asks getTyped
+  VCCacheEnv{cachePath} <- asks getTyped
   pure $ cachePath </> "deps" </> show objHash
 
 cachedObjPath :: (MonadReader r m, HasType VCCacheEnv r) => VCObjectHash -> m FilePath
 cachedObjPath objHash = do
-  VCCacheEnv {cachePath} <- asks getTyped
+  VCCacheEnv{cachePath} <- asks getTyped
   pure $ cachePath </> show objHash
 
 liftServantClient ::
-  ( MonadError e m,
-    MonadIO m,
-    MonadReader s m,
-    HasType ClientEnv s,
-    AsType a e,
-    AsType ClientError e
+  ( MonadError e m
+  , MonadIO m
+  , MonadReader s m
+  , HasType ClientEnv s
+  , AsType a e
+  , AsType ClientError e
   ) =>
   TypedClientM a b ->
   m b

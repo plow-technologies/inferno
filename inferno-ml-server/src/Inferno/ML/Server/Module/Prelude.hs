@@ -207,9 +207,9 @@ module DataSource
 
 mkBridgePrelude ::
   forall m.
-  ( MonadIO m,
-    MonadThrow m,
-    MonadCatch m
+  ( MonadIO m
+  , MonadThrow m
+  , MonadCatch m
   ) =>
   BridgeFuns m ->
   ModuleMap m BridgeMlValue
@@ -217,23 +217,26 @@ mkBridgePrelude bfuns =
   case modules & view (at "Base") &&& view (at "DataSource") of
     (Just base, Just source) ->
       modules
-        & at "DataSource" .~ Nothing
+        & at "DataSource"
+        .~ Nothing
         & at "Base"
-          ?~ ( base
-                 & #moduleOpsTable
-                   %~ flip
-                     (IntMap.unionWith (<>))
-                     (view #moduleOpsTable source)
-                 & #moduleTypeClasses
-                   <>~ view #moduleTypeClasses source
-                 & #moduleObjects . _1
-                   <>~ view (#moduleObjects . _1) source
-                 & #moduleObjects . _2
-                   <>~ view (#moduleObjects . _2) source
-                 & #moduleObjects
-                   . _3
-                   %~ (`combineTermEnv` view (#moduleObjects . _3) source)
-             )
+        ?~ ( base
+              & #moduleOpsTable
+              %~ flip
+                (IntMap.unionWith (<>))
+                (view #moduleOpsTable source)
+              & #moduleTypeClasses
+              <>~ view #moduleTypeClasses source
+              & #moduleObjects
+              . _1
+              <>~ view (#moduleObjects . _1) source
+              & #moduleObjects
+              . _2
+              <>~ view (#moduleObjects . _2) source
+              & #moduleObjects
+              . _3
+              %~ (`combineTermEnv` view (#moduleObjects . _3) source)
+           )
     _ -> error "mkBridgePrelude: Missing Base and/or DataSource modules"
   where
     combineTermEnv ::
