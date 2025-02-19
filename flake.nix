@@ -259,6 +259,22 @@
             (import ./nix/overlays/deepspeed.nix)
             (import ./nix/overlays/environments.nix)
           ];
+
+          # For building Inferno ML images. The V100 drivers are required
+          # for GPU images, while the `inferno-ml-server` packages are
+          # required by anything using the `inferno-ml-server` NixOS module
+          #
+          # NOTE This requires instantiating the nixpkgs instance used to
+          # create the flake's `legacyPackages` -- use at your own risk
+          image = nixpkgs.lib.composeManyExtensions [
+            (import ./nix/overlays/nvidia/v100.nix)
+            (
+              _: prev: {
+                inherit (self.legacyPackages.${prev.system})
+                  inferno-ml-server;
+              }
+            )
+          ];
         };
       };
 
