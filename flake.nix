@@ -18,12 +18,12 @@
 
   inputs = {
     nixpkgs.follows = "haskell-nix/nixpkgs-unstable";
-    stable.follows = "haskell-nix/nixpkgs-2405";
+    stable.follows = "haskell-nix/nixpkgs-2411";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
     # haskell.nix has far better support for multi-component projects, so it's
     # preferable over nixpkgs' Haskell support
-    haskell-nix.url = "github:input-output-hk/haskell.nix/1397170d29a6740b0582dbc1834c2591de827134";
+    haskell-nix.url = "github:input-output-hk/haskell.nix/2df64d53246fa188ece83e1897e503b935e0f156";
     npm-buildpackage.url = "github:serokell/nix-npm-buildpackage";
     flake-compat = {
       url = "github:edolstra/flake-compat";
