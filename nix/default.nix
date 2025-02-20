@@ -56,6 +56,7 @@ pkgs.haskell-nix.cabalProject {
     tools = {
       cabal = { };
       haskell-language-server = { };
+      hlint = { };
     };
     buildInputs = [
       pkgs.postgresql
