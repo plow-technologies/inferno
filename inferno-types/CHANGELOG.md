@@ -1,7 +1,10 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.4.6.1 -- 2025-1-21
+## 0.4.6.2 -- 2025-02-13
+* Fourmolu
+
+## 0.4.6.1 -- 2025-01-21
 * Change VCUpdateHash @CTime so it produces the same output in both 32bit and
   64bit architectures
 

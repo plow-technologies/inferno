@@ -19,9 +19,6 @@ import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
-  )
 import Inferno.ML.Types.Value (MlValue (VExtended))
 import Inferno.Module.Cast
   ( FromValue (fromValue),
@@ -36,6 +33,9 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), cat, (<+>))
 import System.Posix.Types (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
+import "inferno-ml-server-types" Inferno.ML.Server.Types
+  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
+  )
 
 -- | Custom type for bridge prelude
 data BridgeValue
@@ -61,16 +61,16 @@ instance Pretty BridgeValue where
 newtype PID = PID Int
   deriving stock (Show, Generic)
   deriving newtype
-    ( Eq,
-      Ord,
-      ToJSON,
-      FromJSON,
-      FromHttpApiData,
-      ToHttpApiData,
-      Pretty,
-      FromField,
-      ToField,
-      NFData
+    ( Eq
+    , Ord
+    , ToJSON
+    , FromJSON
+    , FromHttpApiData
+    , ToHttpApiData
+    , Pretty
+    , FromField
+    , ToField
+    , NFData
     )
 
 instance ToValue (MlValue BridgeValue) m PID where
@@ -84,13 +84,13 @@ instance FromValue (MlValue BridgeValue) m PID where
 newtype InverseResolution = InverseResolution Word8
   deriving stock (Show, Generic)
   deriving newtype
-    ( Eq,
-      Ord,
-      Num,
-      Real,
-      Enum,
-      Integral,
-      NFData
+    ( Eq
+    , Ord
+    , Num
+    , Real
+    , Enum
+    , Integral
+    , NFData
     )
 
 instance ToValue (MlValue BridgeValue) m InverseResolution where
@@ -102,10 +102,10 @@ instance FromValue (MlValue BridgeValue) m InverseResolution where
     v -> couldNotCast v
 
 data BridgeFuns m = BridgeFuns
-  { valueAt :: BridgeV m,
-    latestValueAndTimeBefore :: BridgeV m,
-    latestValueAndTime :: BridgeV m,
-    valuesBetween :: BridgeV m
+  { valueAt :: BridgeV m
+  , latestValueAndTimeBefore :: BridgeV m
+  , latestValueAndTime :: BridgeV m
+  , valuesBetween :: BridgeV m
   }
   deriving stock (Generic)
 
@@ -118,7 +118,7 @@ fromIValue = \case
   IEmpty -> VEmpty
   IArray v -> VArray $ Vector.toList $ fromIValue <$> v
 
-toIValue :: MonadThrow f => Value custom m -> f IValue
+toIValue :: (MonadThrow f) => Value custom m -> f IValue
 toIValue = \case
   VText t -> pure $ IText t
   VDouble d -> pure $ IDouble d

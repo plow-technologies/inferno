@@ -48,7 +48,7 @@ xorScript =
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
-    Interpreter {evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
+    Interpreter{evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
       runIO $ mkInferno @_ @(MlValue ()) mlPrelude customTypes
     let shouldEvaluateInEnvTo implEnv str (v :: Value (MlValue ()) IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do

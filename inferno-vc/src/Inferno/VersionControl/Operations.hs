@@ -28,11 +28,11 @@ import Inferno.VersionControl.Types
   )
 
 class
-  ( Ord (Group m), -- This constraint is for fetchFunctionsForGroups's Set argument
-    VCHashUpdate (Author m), -- These ones so we can hash a VCMeta
-    VCHashUpdate (Group m),
-    MonadError err m, -- These so implementors can throw VCStoreError when appropiate
-    AsType VCStoreError err
+  ( Ord (Group m) -- This constraint is for fetchFunctionsForGroups's Set argument
+  , VCHashUpdate (Author m) -- These ones so we can hash a VCMeta
+  , VCHashUpdate (Group m)
+  , MonadError err m -- These so implementors can throw VCStoreError when appropiate
+  , AsType VCStoreError err
   ) =>
   InfernoVCOperations err m
   where

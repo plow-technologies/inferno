@@ -69,23 +69,23 @@ import System.Directory (createDirectoryIfMissing, doesFileExist, getDirectoryCo
 import System.FilePath.Posix (takeFileName, (</>))
 
 data InfernoVCFilesystemEnv = InfernoVCFilesystemEnv
-  { storePath :: VCStorePath,
-    tracer :: IOTracer VCServerTrace,
-    lock :: RWLock
+  { storePath :: VCStorePath
+  , tracer :: IOTracer VCServerTrace
+  , lock :: RWLock
   }
   deriving (Generic)
 
 newtype InfernoVCFilesystemM g a err m x = InfernoVCFilesystemM (ReaderT InfernoVCFilesystemEnv (ExceptT err m) x)
   deriving
-    ( Functor,
-      Applicative,
-      Monad,
-      MonadError err,
-      MonadReader InfernoVCFilesystemEnv,
-      MonadIO,
-      MonadThrow,
-      MonadCatch,
-      MonadMask
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadError err
+    , MonadReader InfernoVCFilesystemEnv
+    , MonadIO
+    , MonadThrow
+    , MonadCatch
+    , MonadMask
     )
 
 runInfernoVCFilesystemM :: forall g a err m x. InfernoVCFilesystemM g a err m x -> InfernoVCFilesystemEnv -> ExceptT err m x
@@ -93,7 +93,7 @@ runInfernoVCFilesystemM (InfernoVCFilesystemM f) = runReaderT f
 
 withEnv ::
   forall config a.
-  HasField "vcPath" config config FilePath FilePath =>
+  (HasField "vcPath" config config FilePath FilePath) =>
   config ->
   IOTracer Text ->
   (InfernoVCFilesystemEnv -> IO a) ->
@@ -104,28 +104,28 @@ withEnv config txtTracer f = do
   createDirectoryIfMissing True $ storePath </> "deps"
   lock <- RWL.new
   let tracer = contramap vcServerTraceToText txtTracer
-  f InfernoVCFilesystemEnv {storePath = VCStorePath storePath, tracer, lock}
+  f InfernoVCFilesystemEnv{storePath = VCStorePath storePath, tracer, lock}
   where
     storePath = config ^. the @"vcPath"
 
 instance
-  ( MonadIO m,
-    MonadMask m,
-    AsType VCStoreError err,
-    Ord g,
-    VCHashUpdate g,
-    VCHashUpdate a,
-    ToJSON g,
-    ToJSON a,
-    FromJSON a,
-    FromJSON g
+  ( MonadIO m
+  , MonadMask m
+  , AsType VCStoreError err
+  , Ord g
+  , VCHashUpdate g
+  , VCHashUpdate a
+  , ToJSON g
+  , ToJSON a
+  , FromJSON a
+  , FromJSON g
   ) =>
   InfernoVCOperations err (InfernoVCFilesystemM g a err m)
   where
   type Author (InfernoVCFilesystemM g a err m) = a
   type Group (InfernoVCFilesystemM g a err m) = g
 
-  storeVCObject obj@VCMeta {obj = ast, pred = p} = do
+  storeVCObject obj@VCMeta{obj = ast, pred = p} = do
     VCStorePath storePath <- asks getTyped
     lock <- asks getTyped
     -- if the new object has a direct predecessor (i.e. is not a clone or an initial commit)
@@ -191,7 +191,7 @@ instance
     lock <- asks getTyped
     withWrite lock $ do
       -- check if object meta exists with hash meta_hash, and get meta
-      VCMeta {name = obj_name} <- fetchVCObject obj_hash
+      VCMeta{name = obj_name} <- fetchVCObject obj_hash
       -- check that it is safe to delete
       if obj_name == pack "<AUTOSAVE>"
         then do
@@ -219,11 +219,11 @@ instance
 
     withWrite lock $ do
       metas <- fetchVCObjectHistory obj_hash
-      forM_ (takeUpUntilClone metas) $ \VCMeta {obj = hash} -> forM_
-        [ show hash,
-          "heads" </> show hash,
-          "to_head" </> show hash,
-          "deps" </> show hash
+      forM_ (takeUpUntilClone metas) $ \VCMeta{obj = hash} -> forM_
+        [ show hash
+        , "heads" </> show hash
+        , "to_head" </> show hash
+        , "deps" </> show hash
         ]
         $ \source_fp -> safeRenameFile (storePath </> source_fp) (storePath </> "removed" </> source_fp)
     where
@@ -234,16 +234,16 @@ instance
 
       takeUpUntilClone :: [VCMeta a g o] -> [VCMeta a g o]
       takeUpUntilClone = \case
-        (x@VCMeta {pred = predObj} : rest)
+        (x@VCMeta{pred = predObj} : rest)
           | isClone predObj -> [x]
           | otherwise -> x : takeUpUntilClone rest
         [] -> []
 
       isClone :: VCObjectPred -> Bool
       isClone = \case
-        CloneOf {} -> True
-        CloneOfRemoved {} -> True
-        CloneOfNotFound {} -> True
+        CloneOf{} -> True
+        CloneOfRemoved{} -> True
+        CloneOfNotFound{} -> True
         _ -> False
 
   fetchVCObject = fetchVCObject' Nothing
@@ -265,7 +265,7 @@ instance
       heads
     where
       checkGroupAndAdd objs hsh = do
-        meta@VCMeta {obj, visibility, group} <- fetchVCObject hsh
+        meta@VCMeta{obj, visibility, group} <- fetchVCObject hsh
         pure $ case obj of
           VCFunction _ _ ->
             if visibility == VCObjectPublic || group `Set.member` grps
@@ -311,7 +311,7 @@ instance
                     -- source that is still available and no longer available.
                     -- This does not change the way the script is persisted in the db, it is still stored as 'CloneOf'.
                     -- See 'CloneOfRemoved' for details.
-                    pure [obj {Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}, ori]
+                    pure [obj{Inferno.VersionControl.Types.pred = CloneOfRemoved hsh'}, ori]
                   Nothing ->
                     -- This script no longer exists even in 'removed' directory. The directory might get cleaned up by accident or something.
                     -- There are two choices we can make,
@@ -350,12 +350,12 @@ instance
       heads
       ( \h -> do
           -- fetch object, check name and timestamp
-          (VCMeta {name, timestamp} :: VCMeta a g VCObject) <- fetchVCObject h
+          (VCMeta{name, timestamp} :: VCMeta a g VCObject) <- fetchVCObject h
           when (name == "<AUTOSAVE>" && timestamp < CTime (truncate t)) $ -- delete the stale ones (> t old)
             deleteAutosavedVCObject h
       )
 
-getAllHeads :: VCStoreEnvM err m => m [VCObjectHash]
+getAllHeads :: (VCStoreEnvM err m) => m [VCObjectHash]
 getAllHeads = do
   VCStorePath storePath <- asks getTyped
   -- We don't need a lock here because this only lists the heads/ directory, it doesn't
@@ -374,14 +374,14 @@ getAllHeads = do
       headsRaw
 
 fetchCurrentHead ::
-  ( MonadError err m,
-    AsType VCStoreError err,
-    HasType (IOTracer VCServerTrace) env,
-    HasType VCStorePath env,
-    HasType RWLock env,
-    MonadMask m,
-    MonadIO m,
-    MonadReader env m
+  ( MonadError err m
+  , AsType VCStoreError err
+  , HasType (IOTracer VCServerTrace) env
+  , HasType VCStorePath env
+  , HasType RWLock env
+  , MonadMask m
+  , MonadIO m
+  , MonadReader env m
   ) =>
   VCObjectHash ->
   m VCObjectHash
@@ -414,7 +414,7 @@ withWrite lock = bracket_ (liftIO $ RWL.acquireWrite lock) (liftIO $ RWL.release
 withRead :: (MonadIO m, MonadMask m) => RWLock -> m a -> m a
 withRead lock = bracket_ (liftIO $ RWL.acquireRead lock) (liftIO $ RWL.releaseRead lock >>= either throwIO return)
 
-trace :: VCStoreLogM env m => VCServerTrace -> m ()
+trace :: (VCStoreLogM env m) => VCServerTrace -> m ()
 trace t = do
   tracer <- asks getTyped
   traceWith @IOTracer tracer t

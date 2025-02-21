@@ -28,13 +28,13 @@ import Inferno.ML.Server.Types
 import Lens.Micro.Platform (view)
 import UnliftIO (MonadUnliftIO (withRunInIO))
 
-throwInfernoError :: forall e a. Exception e => Either e a -> RemoteM a
+throwInfernoError :: forall e a. (Exception e) => Either e a -> RemoteM a
 throwInfernoError = either (throwM . InfernoError . SomeInfernoError) pure
 
 queryStore :: (ToRow b, FromRow a) => Query -> b -> RemoteM (Vector a)
 queryStore q x = withConns $ \conn -> liftIO $ query conn q x
 
-executeStore :: ToRow a => Query -> a -> RemoteM ()
+executeStore :: (ToRow a) => Query -> a -> RemoteM ()
 executeStore q x =
   withConns $ \conn ->
     liftIO . withTransaction conn . void $

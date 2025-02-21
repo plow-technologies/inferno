@@ -39,35 +39,35 @@ data InfernoError
 -- @m@ is the monad to run the interpreter in.
 -- @c@ is the custom value type.
 data Interpreter m c = Interpreter
-  { -- | Evaluates an Expr in a given pinned and implicit env. Use
-    -- @defaultEnv@ for an empty env (only prelude) or compute one using
-    -- @mkEnvFromClosure@.
-    evalExpr ::
+  { evalExpr ::
       forall a.
       TermEnv VCObjectHash c (ImplEnvM m c) a ->
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Expr (Maybe VCObjectHash) a ->
-      m (Either EvalError (Value c (ImplEnvM m c))),
-    parseAndInferTypeReps ::
+      m (Either EvalError (Value c (ImplEnvM m c)))
+  -- ^ Evaluates an Expr in a given pinned and implicit env. Use
+  -- @defaultEnv@ for an empty env (only prelude) or compute one using
+  -- @mkEnvFromClosure@.
+  , parseAndInferTypeReps ::
       Text ->
-      Either InfernoError (Expr (Maybe VCObjectHash) ()),
-    parseAndInfer ::
+      Either InfernoError (Expr (Maybe VCObjectHash) ())
+  , parseAndInfer ::
       Text ->
-      Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme, Map.Map (Location SourcePos) (TypeMetadata TCScheme), [Comment SourcePos]),
-    -- | Evaluates all functions in given closure and creates a pinned env containing them
-    mkEnvFromClosure ::
+      Either InfernoError (Expr (Pinned VCObjectHash) SourcePos, TCScheme, Map.Map (Location SourcePos) (TypeMetadata TCScheme), [Comment SourcePos])
+  , mkEnvFromClosure ::
       Map.Map ExtIdent (Value c (ImplEnvM m c)) ->
       Map.Map VCObjectHash VCObject ->
-      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ()),
-    -- | The default pinned env containing only the prelude
-    defaultEnv ::
-      TermEnv VCObjectHash c (ImplEnvM m c) (),
-    -- | The type of each name in this interpreter's prelude
-    nameToTypeMap ::
-      Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme),
-    -- | The set of all type classes in this interpreter's prelude
-    typeClasses ::
+      ImplEnvM m c (TermEnv VCObjectHash c (ImplEnvM m c) ())
+  -- ^ Evaluates all functions in given closure and creates a pinned env containing them
+  , defaultEnv ::
+      TermEnv VCObjectHash c (ImplEnvM m c) ()
+  -- ^ The default pinned env containing only the prelude
+  , nameToTypeMap ::
+      Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
+  -- ^ The type of each name in this interpreter's prelude
+  , typeClasses ::
       Set.Set TypeClass
+  -- ^ The set of all type classes in this interpreter's prelude
   }
 
 mkInferno :: forall m c. (MonadThrow m, MonadCatch m, MonadFix m, Eq c, Pretty c) => ModuleMap m c -> [CustomType] -> m (Interpreter m c)
@@ -77,13 +77,13 @@ mkInferno prelude customTypes = do
   let (preludeIdentEnv, preludePinnedEnv) = builtinModulesTerms prelude
   return $
     Interpreter
-      { evalExpr = runEvalM,
-        parseAndInferTypeReps = parseAndInferTypeReps,
-        parseAndInfer = parseAndInfer,
-        mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv,
-        defaultEnv = (preludeIdentEnv, preludePinnedEnv),
-        nameToTypeMap = preludeNameToTypeMap prelude,
-        typeClasses = typeClasses
+      { evalExpr = runEvalM
+      , parseAndInferTypeReps = parseAndInferTypeReps
+      , parseAndInfer = parseAndInfer
+      , mkEnvFromClosure = mkEnvFromClosure preludePinnedEnv
+      , defaultEnv = (preludeIdentEnv, preludePinnedEnv)
+      , nameToTypeMap = preludeNameToTypeMap prelude
+      , typeClasses = typeClasses
       }
   where
     parseAndInfer src =
@@ -119,7 +119,7 @@ mkInferno prelude customTypes = do
                           [TypeRep () ty | ty <- runtimeReps]
                    in Right finalAst
 
-    typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module {moduleTypeClasses = cls} <- Map.elems prelude]
+    typeClasses = Set.unions $ moduleTypeClasses builtinModule : [cls | Module{moduleTypeClasses = cls} <- Map.elems prelude]
 
     -- TODO at some point: instead of evaluating closure and putting into pinned env,
     -- add closure into the expression being evaluated by using let bindings.

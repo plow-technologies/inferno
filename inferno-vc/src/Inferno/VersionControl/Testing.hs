@@ -75,26 +75,26 @@ createObjForGroup group visibility predecessor = do
   author <- generate arbitrary
   pure
     VCMeta
-      { timestamp = ctime,
-        author,
-        group,
-        name = "Test",
-        description = "",
-        Inferno.VersionControl.Types.pred = predecessor,
-        visibility = visibility,
-        obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
+      { timestamp = ctime
+      , author
+      , group
+      , name = "Test"
+      , description = ""
+      , Inferno.VersionControl.Types.pred = predecessor
+      , visibility = visibility
+      , obj = (Lit () (LDouble d), ForallTC [TV 0] mempty $ ImplType mempty typeDouble)
       }
 
 vcServerSpec ::
   forall g a.
-  ( Arbitrary a,
-    Show a,
-    FromJSON a,
-    ToJSON a,
-    Arbitrary g,
-    Show g,
-    FromJSON g,
-    ToJSON g
+  ( Arbitrary a
+  , Show a
+  , FromJSON a
+  , ToJSON a
+  , Arbitrary g
+  , Show g
+  , FromJSON g
+  , ToJSON g
   ) =>
   BaseUrl ->
   Spec
@@ -196,7 +196,7 @@ vcServerSpec url = do
       o1 <- createObj Init
       h1 <- runOperation vcClientEnv (pushFunction o1)
       o2 <- createObj Init
-      h2 <- runOperation vcClientEnv (pushFunction (o2 {name = "<AUTOSAVE>"}))
+      h2 <- runOperation vcClientEnv (pushFunction (o2{name = "<AUTOSAVE>"}))
       -- h1 isn't an autosave so can't delete it:
       runOperationFail vcClientEnv (deleteAutosavedFunction h1) >>= \case
         VCServerError (TryingToDeleteNonAutosave _) -> pure ()

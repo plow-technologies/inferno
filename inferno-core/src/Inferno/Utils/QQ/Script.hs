@@ -67,10 +67,10 @@ inferno =
                   Left err -> fail $ "Inference failed:\n" <> show err
                   Right (pinnedAST', t, _tyMap) -> do
                     let final = insertCommentsIntoExpr (appEndo comments []) pinnedAST'
-                    dataToExpQ ((fmap liftText . cast) `extQ` vcObjectHashToValue) (final, t),
-      quotePat = error "inferno: Invalid use of this quasi-quoter in pattern context.",
-      quoteType = error "inferno: Invalid use of this quasi-quoter in type context.",
-      quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
+                    dataToExpQ ((fmap liftText . cast) `extQ` vcObjectHashToValue) (final, t)
+    , quotePat = error "inferno: Invalid use of this quasi-quoter in pattern context."
+    , quoteType = error "inferno: Invalid use of this quasi-quoter in type context."
+    , quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
     }
   where
     builtins = builtinModules @m @c

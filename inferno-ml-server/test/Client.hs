@@ -55,12 +55,12 @@ verifyWrites ipid c = do
   -- a list directly
   result <- runConduit $ c .| sinkList
   unless (result == expected) . throwString . unwords $
-    [ "Expected: ",
-      show expected,
-      "but got:",
-      show result,
-      "for param",
-      show ipid
+    [ "Expected: "
+    , show expected
+    , "but got:"
+    , show result
+    , "for param"
+    , show ipid
     ]
   where
     getExpected :: IO [(Int, [(EpochTime, IValue)])]
@@ -68,17 +68,23 @@ verifyWrites ipid c = do
       maybe (throwString "Missing output PID for parameter") pure
         . Map.lookup ipid
         $ Map.fromList
-          [ ( UUID.fromWords 1 0 0 0,
+          [
+            ( UUID.fromWords 1 0 0 0
+            ,
               [ (1, [(151, IDouble 2.5), (251, IDouble 3.5)])
               ]
-            ),
-            ( UUID.fromWords 2 0 0 0,
+            )
+          ,
+            ( UUID.fromWords 2 0 0 0
+            ,
               [ (2, [(300, IDouble 25.0)])
               ]
-            ),
-            ( UUID.fromWords 3 0 0 0,
-              [ (3, [(100, IDouble 7.0)]),
-                (4, [(100, IDouble 8.0)])
+            )
+          ,
+            ( UUID.fromWords 3 0 0 0
+            ,
+              [ (3, [(100, IDouble 7.0)])
+              , (4, [(100, IDouble 8.0)])
               ]
             )
           ]

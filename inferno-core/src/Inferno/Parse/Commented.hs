@@ -11,21 +11,20 @@ insertCommentIntoImport comment i =
    in if endC <= startE
         then ICommentAbove comment i
         else -- if the comment starts after the current block then, either
-
           if endE <= startC
             then
-              let SourcePos {sourceLine = eLine} = endE
-                  SourcePos {sourceLine = cLine} = startC
+              let SourcePos{sourceLine = eLine} = endE
+                  SourcePos{sourceLine = cLine} = startC
                in -- it is on the same line as the block
                   if eLine == cLine
                     then ICommentAfter i comment
                     else -- otherwise it is below the block
                       ICommentBelow i comment
             else -- if the comment is neither before nor after the block, it must be within the expression
-            case i of
-              ICommentAfter i1 c -> ICommentAfter (insertCommentIntoImport comment i1) c
-              ICommentBelow i1 c -> ICommentBelow (insertCommentIntoImport comment i1) c
-              _ -> i
+              case i of
+                ICommentAfter i1 c -> ICommentAfter (insertCommentIntoImport comment i1) c
+                ICommentBelow i1 c -> ICommentBelow (insertCommentIntoImport comment i1) c
+                _ -> i
   where
     (startC, endC) = blockPosition comment
 
@@ -35,28 +34,27 @@ insertCommentIntoPat comment e =
    in if endC <= startE
         then PCommentAbove comment e
         else -- if the comment starts after the current block then, either
-
           if endE <= startC
             then
-              let SourcePos {sourceLine = eLine} = endE
-                  SourcePos {sourceLine = cLine} = startC
+              let SourcePos{sourceLine = eLine} = endE
+                  SourcePos{sourceLine = cLine} = startC
                in -- it is on the same line as the block
                   if eLine == cLine
                     then PCommentAfter e comment
                     else -- otherwise it is below the block
                       PCommentBelow e comment
             else -- if the comment is neither before nor after the block, it must be within the expression
-            case e of
-              PTuple p1 es1 p2 -> PTuple p1 (tListFromList $ insertTuple $ tListToList es1) p2
-              PRecord p1 fps p2 -> PRecord p1 fps' p2
-                where
-                  (fs, ps) = unzip $ map (\(f, p, mp) -> (f, (p, mp))) fps
-                  ps' = insertTuple ps
-                  fps' = zipWith (\f (p, mp) -> (f, p, mp)) fs ps'
-              POne p e1 -> POne p $ insertCommentIntoPat comment e1
-              PCommentAfter e1 c -> PCommentAfter (insertCommentIntoPat comment e1) c
-              PCommentBelow e1 c -> PCommentBelow (insertCommentIntoPat comment e1) c
-              _ -> e
+              case e of
+                PTuple p1 es1 p2 -> PTuple p1 (tListFromList $ insertTuple $ tListToList es1) p2
+                PRecord p1 fps p2 -> PRecord p1 fps' p2
+                  where
+                    (fs, ps) = unzip $ map (\(f, p, mp) -> (f, (p, mp))) fps
+                    ps' = insertTuple ps
+                    fps' = zipWith (\f (p, mp) -> (f, p, mp)) fs ps'
+                POne p e1 -> POne p $ insertCommentIntoPat comment e1
+                PCommentAfter e1 c -> PCommentAfter (insertCommentIntoPat comment e1) c
+                PCommentBelow e1 c -> PCommentBelow (insertCommentIntoPat comment e1) c
+                _ -> e
   where
     (startC, endC) = blockPosition comment
 
@@ -146,25 +144,23 @@ insertCommentIntoExpr comment = go'
            in if endC <= startE
                 then CommentAbove comment e : es
                 else -- if the comment starts after the current block then, either
-
                   if endE <= startC
                     then
-                      let SourcePos {sourceLine = eLine} = endE
-                          SourcePos {sourceLine = cLine} = startC
+                      let SourcePos{sourceLine = eLine} = endE
+                          SourcePos{sourceLine = cLine} = startC
                        in -- it is on the same line as the block
                           if eLine == cLine
                             then CommentAfter e comment : es
                             else -- otherwise it is below the block
 
-                            -- in case `e` is the last element, we attach the comment below `e`
+                              -- in case `e` is the last element, we attach the comment below `e`
 
-                            case es of
-                              [] -> [CommentBelow e comment]
-                              _ ->
-                                -- in case we have more blocks in the list, we instead proceed to attach the comment lower down
-                                e : go es
+                              case es of
+                                [] -> [CommentBelow e comment]
+                                _ ->
+                                  -- in case we have more blocks in the list, we instead proceed to attach the comment lower down
+                                  e : go es
                     else -- if the comment is neither before nor after the block, it must be within the expression
-
                       ( case e of
                           App e1 e2 -> let res = go [e1, e2] in App (res !! 0) (res !! 1)
                           Lam p1 xs p2 body -> Lam p1 xs p2 $ go' body

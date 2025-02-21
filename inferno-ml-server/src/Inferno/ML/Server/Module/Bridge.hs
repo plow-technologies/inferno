@@ -47,7 +47,7 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
         toInfernoValue :: IValue -> BridgeV RemoteM
         toInfernoValue =
           fromIValue >>> \case
-            d@VDouble {} -> VOne d
+            d@VDouble{} -> VOne d
             v -> v
 
     latestValueAndTimeBeforeFun :: BridgeV RemoteM
@@ -62,7 +62,7 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
         toInfernoValue :: IValue -> BridgeV RemoteM
         toInfernoValue =
           fromIValue >>> \case
-            t@VTuple {} -> VOne t
+            t@VTuple{} -> VOne t
             v -> v
 
     latestValueAndTimeFun :: BridgeV RemoteM
@@ -77,7 +77,7 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
         toInfernoValue :: IValue -> BridgeV RemoteM
         toInfernoValue =
           fromIValue >>> \case
-            t@VTuple {} -> VOne t
+            t@VTuple{} -> VOne t
             v -> v
 
     valuesBetweenFun :: BridgeV RemoteM

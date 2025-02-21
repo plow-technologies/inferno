@@ -19,6 +19,6 @@ ungzipRequest app req = app req'
     req'
       | Just "gzip" <- lookup "Content-encoding" (requestHeaders req) = go req
       | otherwise = req
-    go r = r {requestBody = decompressNonEmpty <$> strictRequestBody r}
+    go r = r{requestBody = decompressNonEmpty <$> strictRequestBody r}
     decompressNonEmpty "" = "" -- Necessary 'cause the IO gets pulled until requestBody gives ""
     decompressNonEmpty x = BL.toStrict . decompress $ x

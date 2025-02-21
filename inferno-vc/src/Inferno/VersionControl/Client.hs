@@ -15,8 +15,8 @@ import Servant.Client (BaseUrl, Client, ClientEnv, ClientM, client, mkClientEnv)
 import Servant.Typed.Error (TypedClientM)
 
 mkVCClientEnv :: Manager -> BaseUrl -> ClientEnv
-mkVCClientEnv man@Manager {mModifyRequest = modReq} =
-  mkClientEnv man {mModifyRequest = modReq'}
+mkVCClientEnv man@Manager{mModifyRequest = modReq} =
+  mkClientEnv man{mModifyRequest = modReq'}
   where
     modReq' :: Request -> IO Request
     modReq' r = do
@@ -31,7 +31,7 @@ mkVCClientEnv man@Manager {mModifyRequest = modReq} =
                   RequestBodyStream _ _ -> (requestHeaders x, requestBody x)
                   RequestBodyStreamChunked _ -> (requestHeaders x, requestBody x)
                   b -> (new_hdrs, compressBody b)
-             in x {requestHeaders = hrds, requestBody = body}
+             in x{requestHeaders = hrds, requestBody = body}
 
     compressBody :: RequestBody -> RequestBody
     compressBody = \case

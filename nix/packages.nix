@@ -77,9 +77,7 @@
           {
             combined =
               builtins.concatLists [
-                # TODO Re-enable after reformatting all Haskell sources
-                # (do this after merging upgrade)
-                # [ self.checks.${system}.treefmt ]
+                [ self.checks.${system}.treefmt ]
                 (builtins.attrValues flakes.${defaultCompiler}.checks)
                 (
                   builtins.attrValues (

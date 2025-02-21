@@ -48,16 +48,16 @@ import Prelude hiding (lookup)
 -------------------------------------------------------------------------------
 
 data Env = TypeEnv
-  { types :: Map.Map ExtIdent (TypeMetadata TCScheme),
-    pinnedTypes :: Map.Map VCObjectHash (TypeMetadata TCScheme)
+  { types :: Map.Map ExtIdent (TypeMetadata TCScheme)
+  , pinnedTypes :: Map.Map VCObjectHash (TypeMetadata TCScheme)
   }
   deriving (Eq, Show)
 
 instance Substitutable Env where
   apply s env =
     env
-      { types = Map.map (\meta -> meta {ty = apply s $ ty meta}) $ types env,
-        pinnedTypes = Map.map (\meta -> meta {ty = apply s $ ty meta}) $ pinnedTypes env
+      { types = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ types env
+      , pinnedTypes = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ pinnedTypes env
       }
   ftv env =
     ftv $ map ty $ Map.elems $ types env
@@ -67,10 +67,10 @@ empty :: Env
 empty = TypeEnv Map.empty Map.empty
 
 extend :: Env -> (ExtIdent, TypeMetadata TCScheme) -> Env
-extend env (x, m) = env {types = Map.insert x m (types env)}
+extend env (x, m) = env{types = Map.insert x m (types env)}
 
 remove :: Env -> ExtIdent -> Env
-remove env v = env {types = Map.delete v (types env)}
+remove env v = env{types = Map.delete v (types env)}
 
 lookup :: ExtIdent -> Env -> Maybe (TypeMetadata TCScheme)
 lookup key env = Map.lookup key (types env)
@@ -88,8 +88,8 @@ mergeEnvs = foldl' merge empty
 singleton :: ExtIdent -> TypeMetadata TCScheme -> Env
 singleton x m =
   TypeEnv
-    { types = Map.singleton x m,
-      pinnedTypes = Map.empty
+    { types = Map.singleton x m
+    , pinnedTypes = Map.empty
     }
 
 keys :: Env -> [ExtIdent]
@@ -98,15 +98,15 @@ keys = Map.keys . types
 fromList :: [(ExtIdent, TypeMetadata TCScheme)] -> Env
 fromList xs =
   TypeEnv
-    { types = Map.fromList xs,
-      pinnedTypes = Map.empty
+    { types = Map.fromList xs
+    , pinnedTypes = Map.empty
     }
 
 fromListModule :: [(VCObjectHash, TypeMetadata TCScheme)] -> Env
 fromListModule xs =
   TypeEnv
-    { types = Map.empty,
-      pinnedTypes = Map.fromList xs
+    { types = Map.empty
+    , pinnedTypes = Map.fromList xs
     }
 
 toList :: Env -> [(ExtIdent, TypeMetadata TCScheme)]

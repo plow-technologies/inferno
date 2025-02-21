@@ -59,12 +59,12 @@ onesFun =
 
 asTensorFun ::
   forall a x m.
-  ( TensorLike a,
-    FromValue
+  ( TensorLike a
+  , FromValue
       (MlValue x)
       m
-      a,
-    MonadThrow m
+      a
+  , MonadThrow m
   ) =>
   String ->
   Proxy a ->
@@ -157,9 +157,9 @@ forwardFun m ts =
 
 randnIOFun ::
   forall m x.
-  ( MonadThrow m,
-    MonadIO m,
-    Pretty x
+  ( MonadThrow m
+  , MonadIO m
+  , Pretty x
   ) =>
   Value (MlValue x) m
 randnIOFun =
@@ -182,9 +182,9 @@ toDeviceFun d t =
 
 mlModules ::
   forall m x.
-  ( MonadThrow m,
-    MonadIO m,
-    Pretty x
+  ( MonadThrow m
+  , MonadIO m
+  , Pretty x
   ) =>
   Prelude.ModuleMap m (MlValue x)
 mlModules =
@@ -259,10 +259,10 @@ module ML
 
 mlPrelude ::
   forall m x.
-  ( MonadIO m,
-    MonadCatch m,
-    Pretty x,
-    Eq x
+  ( MonadIO m
+  , MonadCatch m
+  , Pretty x
+  , Eq x
   ) =>
   Prelude.ModuleMap m (MlValue x)
 mlPrelude =

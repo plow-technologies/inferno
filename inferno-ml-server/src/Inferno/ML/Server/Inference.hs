@@ -121,8 +121,8 @@ runInferenceParam ipid mres uuid =
     mkScriptEnv pwm =
       ScriptEnv pwm.param pwm.models pwm.param.inputs pwm.param.outputs
         <$> getVcObject pwm.param.script
-        ?? pwm.param.script
-        ?? mres
+          ?? pwm.param.script
+          ?? mres
 
 -- | Test an inference param. This requires a script object to be saved to
 -- the DB, but it is does not need to be linked to the parameter itself. It
@@ -149,8 +149,8 @@ testInferenceParam ipid mres uuid eenv =
     mkScriptEnv pwm =
       ScriptEnv pwm.param models inputs outputs
         <$> getVcObject eenv.script
-        ?? eenv.script
-        ?? mres
+          ?? eenv.script
+          ?? mres
       where
         -- If the `inputs` have not been specified in the evaluation env, i.e.
         -- the inputs are not being overridden, use the ones that are linked
@@ -223,89 +223,90 @@ runInferenceParamWithEnv ipid uuid senv =
           Interpreter RemoteM BridgeMlValue ->
           CTime ->
           RemoteM (WriteStream IO)
-        runEval Interpreter {evalExpr, mkEnvFromClosure} t =
+        runEval Interpreter{evalExpr, mkEnvFromClosure} t =
           case senv.obj.obj of
-            VCFunction {} -> do
-              let -- Note that this both includes inputs (i.e. readable)
-                  -- and outputs (i.e. writable, or readable/writable).
-                  -- These need to be provided to the script in order
-                  -- for the symbolic identifer (e.g. `output0`) to
-                  -- resolve. We can discard the input type here,
-                  -- however. The distinction is only relevant for the
-                  -- runtime that runs as a script evaluation engine
-                  -- and commits the output write object
-                  pids :: [SingleOrMany PID]
-                  pids = is <> os
-                    where
-                      is, os :: [SingleOrMany PID]
-                      is = senv ^.. #inputs . to Map.toAscList . each . _2
-                      os = senv ^.. #outputs . to Map.toAscList . each . _2
+            VCFunction{} -> do
+              let
+                -- Note that this both includes inputs (i.e. readable)
+                -- and outputs (i.e. writable, or readable/writable).
+                -- These need to be provided to the script in order
+                -- for the symbolic identifer (e.g. `output0`) to
+                -- resolve. We can discard the input type here,
+                -- however. The distinction is only relevant for the
+                -- runtime that runs as a script evaluation engine
+                -- and commits the output write object
+                pids :: [SingleOrMany PID]
+                pids = is <> os
+                  where
+                    is, os :: [SingleOrMany PID]
+                    is = senv ^.. #inputs . to Map.toAscList . each . _2
+                    os = senv ^.. #outputs . to Map.toAscList . each . _2
 
-                  -- List of model versions, which are used to evaluate
-                  -- `loadModel` primitive (eventually calling Hasktorch to
-                  -- load the script module)
-                  models :: [Id ModelVersion]
-                  models = senv ^.. #models . to Map.toAscList . each . _2
+                -- List of model versions, which are used to evaluate
+                -- `loadModel` primitive (eventually calling Hasktorch to
+                -- load the script module)
+                models :: [Id ModelVersion]
+                models = senv ^.. #models . to Map.toAscList . each . _2
 
-                  mkIdentWith :: Text -> Int -> ExtIdent
-                  mkIdentWith x = ExtIdent . Right . (x <>) . tshow
+                mkIdentWith :: Text -> Int -> ExtIdent
+                mkIdentWith x = ExtIdent . Right . (x <>) . tshow
 
-                  toSeries :: PID -> Value BridgeMlValue m
-                  toSeries = VCustom . VExtended . VSeries
+                toSeries :: PID -> Value BridgeMlValue m
+                toSeries = VCustom . VExtended . VSeries
 
-                  toModelPath :: Id ModelVersion -> Value BridgeMlValue m
-                  toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
+                toModelPath :: Id ModelVersion -> Value BridgeMlValue m
+                toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
 
-                  argsFrom ::
-                    [a] ->
-                    ((Int, a) -> (ExtIdent, Value BridgeMlValue m)) ->
-                    [(ExtIdent, Value BridgeMlValue m)]
-                  argsFrom xs f = f <$> zip [0 ..] xs
+                argsFrom ::
+                  [a] ->
+                  ((Int, a) -> (ExtIdent, Value BridgeMlValue m)) ->
+                  [(ExtIdent, Value BridgeMlValue m)]
+                argsFrom xs f = f <$> zip [0 ..] xs
 
-                  localEnv :: Map ExtIdent (Value BridgeMlValue m)
-                  localEnv = Map.fromList $ inputArgs <> modelArgs
-                    where
-                      inputArgs :: [(ExtIdent, Value BridgeMlValue m)]
-                      inputArgs =
-                        argsFrom pids $ \case
-                          (i, Single pid) ->
-                            ( mkIdentWith "input$" i,
-                              toSeries pid
-                            )
-                          (i, Many pids') ->
-                            ( mkIdentWith "input$" i,
-                              pids' ^.. each & over mapped toSeries & VArray
-                            )
+                localEnv :: Map ExtIdent (Value BridgeMlValue m)
+                localEnv = Map.fromList $ inputArgs <> modelArgs
+                  where
+                    inputArgs :: [(ExtIdent, Value BridgeMlValue m)]
+                    inputArgs =
+                      argsFrom pids $ \case
+                        (i, Single pid) ->
+                          ( mkIdentWith "input$" i
+                          , toSeries pid
+                          )
+                        (i, Many pids') ->
+                          ( mkIdentWith "input$" i
+                          , pids' ^.. each & over mapped toSeries & VArray
+                          )
 
-                      modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
-                      modelArgs =
-                        argsFrom models $
-                          bimap (mkIdentWith "model$") toModelPath
+                    modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
+                    modelArgs =
+                      argsFrom models $
+                        bimap (mkIdentWith "model$") toModelPath
 
-                  closure :: Map VCObjectHash VCObject
-                  closure = Map.singleton senv.script senv.obj.obj
+                closure :: Map VCObjectHash VCObject
+                closure = Map.singleton senv.script senv.obj.obj
 
-                  expr :: Expr (Maybe VCObjectHash) ()
-                  expr =
-                    flip (foldl' App) args $
-                      Var () (Just senv.script) LocalScope dummy
-                    where
-                      -- See note above about inputs/outputs
-                      args :: [Expr (Maybe a) ()]
-                      args = exprsFrom "input$" pids <> exprsFrom "model$" models
-                        where
-                          exprsFrom :: Text -> [a] -> [Expr (Maybe b) ()]
-                          exprsFrom ident xs =
-                            [0 .. length xs - 1]
-                              <&> Var () Nothing LocalScope
-                                . Expl
-                                . ExtIdent
-                                . Right
-                                . (ident <>)
-                                . tshow
+                expr :: Expr (Maybe VCObjectHash) ()
+                expr =
+                  flip (foldl' App) args $
+                    Var () (Just senv.script) LocalScope dummy
+                  where
+                    -- See note above about inputs/outputs
+                    args :: [Expr (Maybe a) ()]
+                    args = exprsFrom "input$" pids <> exprsFrom "model$" models
+                      where
+                        exprsFrom :: Text -> [a] -> [Expr (Maybe b) ()]
+                        exprsFrom ident xs =
+                          [0 .. length xs - 1]
+                            <&> Var () Nothing LocalScope
+                            . Expl
+                            . ExtIdent
+                            . Right
+                            . (ident <>)
+                            . tshow
 
-                      dummy :: ImplExpl
-                      dummy = Expl . ExtIdent $ Right "dummy"
+                    dummy :: ImplExpl
+                    dummy = Expl . ExtIdent $ Right "dummy"
 
               either (throwInfernoError . Left . SomeInfernoError) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
@@ -335,24 +336,27 @@ runInferenceParamWithEnv ipid uuid senv =
                 -- parameter
                 resolution :: InverseResolution
                 resolution =
-                  senv ^. #mres . non (fromIntegral senv.param.resolution)
+                  senv
+                    ^. #mres
+                    . non (fromIntegral senv.param.resolution)
                     & toResolution
 
                 implEnv :: Map ExtIdent (Value BridgeMlValue m)
                 implEnv =
                   Map.fromList
-                    [ (ExtIdent $ Right "now", VEpochTime t),
-                      ( ExtIdent $ Right "resolution",
-                        VCustom . VExtended $ VResolution resolution
+                    [ (ExtIdent $ Right "now", VEpochTime t)
+                    ,
+                      ( ExtIdent $ Right "resolution"
+                      , VCustom . VExtended $ VResolution resolution
                       )
                     ]
             _ ->
               throwM
                 . InvalidScript
                 $ Text.unwords
-                  [ "Script identified by VC hash",
-                    tshow senv.script,
-                    "is not a function"
+                  [ "Script identified by VC hash"
+                  , tshow senv.script
+                  , "is not a function"
                   ]
 
     -- Convert the script timeout from seconds (for ease of configuration) to
@@ -590,7 +594,7 @@ getAndCacheModels cache =
 -- Get a list of models by their access time, so that models that have not been
 -- used recently can be deleted. This will put the least-recently-used paths
 -- at the head of the list
-modelsByAccessTime :: forall m. MonadIO m => FilePath -> m [FilePath]
+modelsByAccessTime :: forall m. (MonadIO m) => FilePath -> m [FilePath]
 modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
   where
     compareAccessTime :: FilePath -> FilePath -> m Ordering
@@ -608,12 +612,12 @@ mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
 -- these will be derived directly from the param. For the interactive test
 -- endpoint, these will be overridden
 data ScriptEnv = ScriptEnv
-  { param :: InferenceParam,
-    models :: Models (Id ModelVersion),
-    inputs :: Inputs PID,
-    outputs :: Outputs PID,
-    obj :: VCMeta VCObject,
-    script :: VCObjectHash,
-    mres :: Maybe Int64
+  { param :: InferenceParam
+  , models :: Models (Id ModelVersion)
+  , inputs :: Inputs PID
+  , outputs :: Outputs PID
+  , obj :: VCMeta VCObject
+  , script :: VCObjectHash
+  , mres :: Maybe Int64
   }
   deriving stock (Generic)

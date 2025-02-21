@@ -101,17 +101,17 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
     toServantErr :: RemoteError -> IO a
     toServantErr =
       throwM . \case
-        e@OtherRemoteError {} -> errWith err500 e
-        e@CacheSizeExceeded {} -> errWith err400 e
-        e@NoSuchModel {} -> errWith err404 e
-        e@NoSuchParameter {} -> errWith err404 e
-        e@NoSuchScript {} -> errWith err404 e
-        e@InvalidScript {} -> errWith err400 e
-        e@InvalidOutput {} -> errWith err400 e
-        e@InfernoError {} -> errWith err500 e
-        e@NoBridgeSaved {} -> errWith err500 e
-        e@ScriptTimeout {} -> errWith err500 e
-        e@ClientError {} -> errWith err500 e
+        e@OtherRemoteError{} -> errWith err500 e
+        e@CacheSizeExceeded{} -> errWith err400 e
+        e@NoSuchModel{} -> errWith err404 e
+        e@NoSuchParameter{} -> errWith err404 e
+        e@NoSuchScript{} -> errWith err404 e
+        e@InvalidScript{} -> errWith err400 e
+        e@InvalidOutput{} -> errWith err400 e
+        e@InfernoError{} -> errWith err500 e
+        e@NoBridgeSaved{} -> errWith err500 e
+        e@ScriptTimeout{} -> errWith err500 e
+        e@ClientError{} -> errWith err500 e
       where
         errWith :: ServerError -> RemoteError -> ServerError
         errWith se e =

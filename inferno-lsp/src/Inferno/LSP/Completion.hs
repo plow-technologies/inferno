@@ -100,35 +100,35 @@ findInPrelude preludeNameToTypeMap prefix =
         TypeNamespace _ -> False
 
 mkCompletionItem :: Set TypeClass -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
-mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata {ty} =
+mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata{ty} =
   CompletionItem
-    { _label = insertModNm $ renderPretty ns,
-      _kind = case ns of
+    { _label = insertModNm $ renderPretty ns
+    , _kind = case ns of
         FunNamespace _ -> Just CiFunction
         OpNamespace _ -> Just CiFunction
         EnumNamespace _ -> Just CiEnum
         ModuleNamespace _ -> Just CiModule
-        TypeNamespace _ -> Nothing,
-      _tags = Nothing,
-      _detail = Just $ renderDoc $ mkPrettyTy typeClasses mempty ty,
-      _documentation = CompletionDocMarkup . MarkupContent MkMarkdown <$> getTypeMetadataText tm,
-      _deprecated = Nothing,
-      _preselect = Nothing,
-      _sortText = Nothing,
-      _filterText =
+        TypeNamespace _ -> Nothing
+    , _tags = Nothing
+    , _detail = Just $ renderDoc $ mkPrettyTy typeClasses mempty ty
+    , _documentation = CompletionDocMarkup . MarkupContent MkMarkdown <$> getTypeMetadataText tm
+    , _deprecated = Nothing
+    , _preselect = Nothing
+    , _sortText = Nothing
+    , _filterText =
         let ftxt = insertModNm $ renderPretty ns
             ftxt' = (if "#" `Text.isPrefixOf` ftxt then Text.drop 1 else id) ftxt
-         in Just ftxt',
-      _insertText = case ns of
+         in Just ftxt'
+    , _insertText = case ns of
         EnumNamespace (Ident i) -> if "#" `Text.isPrefixOf` txt then Just i else Nothing
-        _ -> Nothing,
-      _insertTextMode = Nothing,
-      _insertTextFormat = Nothing,
-      _textEdit = Nothing,
-      _additionalTextEdits = Nothing,
-      _commitCharacters = Nothing,
-      _command = Nothing,
-      _xdata = Nothing
+        _ -> Nothing
+    , _insertTextMode = Nothing
+    , _insertTextFormat = Nothing
+    , _textEdit = Nothing
+    , _additionalTextEdits = Nothing
+    , _commitCharacters = Nothing
+    , _command = Nothing
+    , _xdata = Nothing
     }
   where
     insertModNm txt' = case modNm of
@@ -147,23 +147,23 @@ identifierCompletionItems idents prefix
   where
     makeIdentifierCompletion identifier =
       CompletionItem
-        { _label = identifier,
-          _kind = Just CiVariable,
-          _tags = Nothing,
-          _detail = Nothing,
-          _documentation = Nothing,
-          _deprecated = Nothing,
-          _preselect = Nothing,
-          _sortText = Nothing,
-          _filterText = Just identifier,
-          _insertText = Nothing,
-          _insertTextMode = Nothing,
-          _insertTextFormat = Nothing,
-          _textEdit = Nothing,
-          _additionalTextEdits = Nothing,
-          _commitCharacters = Nothing,
-          _command = Nothing,
-          _xdata = Nothing
+        { _label = identifier
+        , _kind = Just CiVariable
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Just identifier
+        , _insertText = Nothing
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 rwsCompletionItems :: Text -> [CompletionItem]
@@ -179,23 +179,23 @@ rwsCompletionItems prefix
     mkRwsCompletionItem :: Text -> CompletionItem
     mkRwsCompletionItem rw =
       CompletionItem
-        { _label = rw,
-          _kind = Just CiKeyword,
-          _tags = Nothing,
-          _detail = Nothing,
-          _documentation = Nothing,
-          _deprecated = Nothing,
-          _preselect = Nothing,
-          _sortText = Nothing,
-          _filterText = Nothing,
-          _insertText = Nothing,
-          _insertTextMode = Nothing,
-          _insertTextFormat = Nothing,
-          _textEdit = Nothing,
-          _additionalTextEdits = Nothing,
-          _commitCharacters = Nothing,
-          _command = Nothing,
-          _xdata = Nothing
+        { _label = rw
+        , _kind = Just CiKeyword
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Nothing
+        , _insertText = Nothing
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 moduleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> [CompletionItem]
@@ -204,23 +204,23 @@ moduleNameCompletionItems preludeNameToTypeMap = fmap mkModuleCompletionItem mod
     modules = nub . fmap unModuleName . mapMaybe fst $ Map.keys preludeNameToTypeMap
     mkModuleCompletionItem m =
       CompletionItem
-        { _label = m,
-          _kind = Just CiModule,
-          _tags = Nothing,
-          _detail = Nothing,
-          _documentation = Nothing,
-          _deprecated = Nothing,
-          _preselect = Nothing,
-          _sortText = Nothing,
-          _filterText = Just m,
-          _insertText = Just m,
-          _insertTextMode = Nothing,
-          _insertTextFormat = Nothing,
-          _textEdit = Nothing,
-          _additionalTextEdits = Nothing,
-          _commitCharacters = Nothing,
-          _command = Nothing,
-          _xdata = Nothing
+        { _label = m
+        , _kind = Just CiModule
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Just m
+        , _insertText = Just m
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 filterModuleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> Text -> [CompletionItem]

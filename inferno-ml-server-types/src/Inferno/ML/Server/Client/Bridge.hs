@@ -14,9 +14,9 @@ import Web.HttpApiData (ToHttpApiData)
 
 -- | Get the value at the given time via the bridge, for the given entity @p@
 valueAtC ::
-  ( ToJSON t,
-    ToHttpApiData p,
-    ToHttpApiData t
+  ( ToJSON t
+  , ToHttpApiData p
+  , ToHttpApiData t
   ) =>
   Int64 ->
   p ->
@@ -25,9 +25,9 @@ valueAtC ::
 
 -- | Get the latest value (and associated time) for entity @p@ before time @t@
 latestValueAndTimeBeforeC ::
-  ( ToJSON t,
-    ToHttpApiData p,
-    ToHttpApiData t
+  ( ToJSON t
+  , ToHttpApiData p
+  , ToHttpApiData t
   ) =>
   t ->
   p ->

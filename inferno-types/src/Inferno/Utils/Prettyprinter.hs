@@ -15,8 +15,8 @@ import Prettyprinter.Render.Text (renderStrict)
 renderDoc :: Doc ann -> Text.Text
 renderDoc = renderStrict . layoutSmart (LayoutOptions (AvailablePerLine 80 1))
 
-renderPretty :: Pretty a => a -> Text.Text
+renderPretty :: (Pretty a) => a -> Text.Text
 renderPretty = renderDoc . pretty
 
-showPretty :: MonadIO m => Pretty a => a -> m ()
+showPretty :: (MonadIO m) => (Pretty a) => a -> m ()
 showPretty = liftIO . Text.putStrLn . renderPretty

@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.6.1 -- 2025-02-13
+* Fourmolu
+
 ## 0.2.6.0 -- 2024-04-26
 * Add warning when vars defined but unused
 

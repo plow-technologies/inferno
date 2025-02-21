@@ -27,7 +27,7 @@ import Test.Hspec (Spec, describe, expectationFailure, it, runIO, shouldBe)
 type TestCustomValue = ()
 
 runtimeTypeRepsTests :: Interpreter IO TestCustomValue -> Spec
-runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describe "runtime type reps" $ do
+runtimeTypeRepsTests Interpreter{evalExpr, defaultEnv, parseAndInfer} = describe "runtime type reps" $ do
   let expr_3 =
         case parseAndInfer "3" of
           Left err ->
@@ -53,7 +53,7 @@ runtimeTypeRepsTests Interpreter {evalExpr, defaultEnv, parseAndInfer} = describ
 evalTests :: Spec
 evalTests = describe "evaluate" $
   do
-    inferno@(Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps}) <-
+    inferno@(Interpreter{evalExpr, defaultEnv, parseAndInferTypeReps}) <-
       runIO (mkInferno Prelude.builtinModules [] :: IO (Interpreter IO TestCustomValue))
     let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do
@@ -453,7 +453,7 @@ newtype TestEnv = TestEnv {cache :: Int64}
 cachedGet :: (MonadReader TestEnv m, MonadThrow m) => Value TestCustomValue (ImplEnvM m TestCustomValue)
 cachedGet =
   VFun $ \_ -> do
-    TestEnv {cache} <- liftImplEnvM ask
+    TestEnv{cache} <- liftImplEnvM ask
     pure $ VInt cache
 
 evalInMonadPrelude :: ModuleMap (ReaderT TestEnv IO) TestCustomValue
@@ -466,14 +466,14 @@ module EvalInMonad
 
 evalInMonadTest :: Spec
 evalInMonadTest = do
-  let testEnv = TestEnv {cache = 4}
+  let testEnv = TestEnv{cache = 4}
 
   let modules =
         Map.unionWith
           (error "Duplicate module name in builtinModules")
           (Prelude.builtinModules @(ReaderT TestEnv IO) @TestCustomValue)
           evalInMonadPrelude
-  Interpreter {evalExpr, defaultEnv, parseAndInferTypeReps} <-
+  Interpreter{evalExpr, defaultEnv, parseAndInferTypeReps} <-
     runIO $ runReaderT (mkInferno modules []) testEnv
 
   let shouldEvaluateInEnvTo implEnv str (v :: Value TestCustomValue IO) =

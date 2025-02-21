@@ -47,7 +47,7 @@ messageItemsPretty prefix ts
   | otherwise =
       prefix <> (orList . NEList.fromList . Set.toAscList . Set.map pack) ts <> "\n"
 
-showErrorFancy :: ShowErrorComponent e => ErrorFancy e -> String
+showErrorFancy :: (ShowErrorComponent e) => ErrorFancy e -> String
 showErrorFancy = \case
   ErrorFail msg -> msg
   ErrorIndentation ord ref actual ->
@@ -65,7 +65,7 @@ showErrorFancy = \case
   ErrorCustom a -> showErrorComponent a
 
 prettyError ::
-  ShowErrorComponent e =>
+  (ShowErrorComponent e) =>
   -- | Parse error to render
   ParseError Text e ->
   String

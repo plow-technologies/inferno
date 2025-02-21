@@ -11,9 +11,9 @@ import Data.Yaml
 import GHC.Generics (Generic)
 
 data ServerConfig = ServerConfig
-  { serverHost :: Text,
-    serverPort :: Int,
-    vcPath :: FilePath
+  { serverHost :: Text
+  , serverPort :: Int
+  , vcPath :: FilePath
   }
   deriving (Show, Eq, Ord, Generic)
 
@@ -23,10 +23,10 @@ instance FromJSON ServerConfig where
     serverHost <- server .: "host"
     serverPort <- server .: "port"
     vcPath <- server .: "vcPath"
-    pure ServerConfig {serverHost, serverPort, vcPath}
+    pure ServerConfig{serverHost, serverPort, vcPath}
 
 readServerConfig ::
-  FromJSON config =>
+  (FromJSON config) =>
   FilePath ->
   IO (Either String config)
 readServerConfig fp = do

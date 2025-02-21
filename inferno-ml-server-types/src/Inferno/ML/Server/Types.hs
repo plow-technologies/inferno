@@ -209,9 +209,9 @@ instance Arbitrary ServerStatus where
 
 -- | Information for contacting a bridge server that implements the 'BridgeAPI'
 data BridgeInfo gid p = BridgeInfo
-  { id :: Id (InferenceParam gid p),
-    host :: IPv4,
-    port :: Word64
+  { id :: Id (InferenceParam gid p)
+  , host :: IPv4
+  , port :: Word64
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData)
@@ -225,36 +225,36 @@ instance FromRow (BridgeInfo gid p) where
 
 instance ToRow (BridgeInfo gid p) where
   toRow bi =
-    [ bi.id & toField,
-      bi.host & toField,
-      bi.port & toField
+    [ bi.id & toField
+    , bi.host & toField
+    , bi.port & toField
     ]
 
 -- | The ID of a database entity
 newtype Id a = Id UUID
   deriving stock (Show, Generic)
   deriving newtype
-    ( Eq,
-      Ord,
-      Hashable,
-      FromField,
-      ToField,
-      FromJSON,
-      ToJSON,
-      FromJSONKey,
-      ToJSONKey,
-      ToHttpApiData,
-      FromHttpApiData,
-      Arbitrary
+    ( Eq
+    , Ord
+    , Hashable
+    , FromField
+    , ToField
+    , FromJSON
+    , ToJSON
+    , FromJSONKey
+    , ToJSONKey
+    , ToHttpApiData
+    , FromHttpApiData
+    , Arbitrary
     )
   deriving anyclass (NFData, ToADTArbitrary)
 
 -- | Row for the table containing inference script closures
 data InferenceScript uid gid = InferenceScript
-  { -- | This is the ID for each row, stored as a @bytea@ (bytes of the hash)
-    hash :: VCObjectHash,
-    -- | Script closure
-    obj :: VCMeta uid gid VCObject
+  { hash :: VCObjectHash
+  -- ^ This is the ID for each row, stored as a @bytea@ (bytes of the hash)
+  , obj :: VCMeta uid gid VCObject
+  -- ^ Script closure
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToADTArbitrary)
@@ -281,15 +281,15 @@ instance ToField VCObjectHashRow where
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
-    [ s.hash & VCObjectHashRow & toField,
-      s.obj & Aeson & toField
+    [ s.hash & VCObjectHashRow & toField
+    , s.obj & Aeson & toField
     ]
 
 instance
-  ( FromJSON uid,
-    FromJSON gid,
-    Typeable uid,
-    Typeable gid
+  ( FromJSON uid
+  , FromJSON gid
+  , Typeable uid
+  , Typeable gid
   ) =>
   FromRow (InferenceScript uid gid)
   where
@@ -299,8 +299,8 @@ instance
       <*> fmap getAeson field
 
 instance
-  ( Arbitrary uid,
-    Arbitrary gid
+  ( Arbitrary uid
+  , Arbitrary gid
   ) =>
   Arbitrary (InferenceScript uid gid)
   where
@@ -312,21 +312,21 @@ instance
 -- contains the specific versions of each model (and the actual model contents),
 -- along with other metadata that may change between versions
 data Model gid = Model
-  { id :: Maybe (Id (Model gid)),
-    name :: Text,
-    -- | The group that owns this model
-    gid :: gid,
-    -- | Analogous to visibility of @inferno-vc@ scripts
-    visibility :: VCObjectVisibility,
-    -- | When the model was created; if left empty, this will be generated
-    -- automatically when the model is saved
-    created :: Maybe UTCTime,
-    -- | The last time the model was updated (i.e. a new version was created),
-    -- if any
-    updated :: Maybe UTCTime,
-    -- | The time that this model was \"deleted\", if any. For active models,
-    -- this will be @Nothing@
-    terminated :: Maybe UTCTime
+  { id :: Maybe (Id (Model gid))
+  , name :: Text
+  , gid :: gid
+  -- ^ The group that owns this model
+  , visibility :: VCObjectVisibility
+  -- ^ Analogous to visibility of @inferno-vc@ scripts
+  , created :: Maybe UTCTime
+  -- ^ When the model was created; if left empty, this will be generated
+  -- automatically when the model is saved
+  , updated :: Maybe UTCTime
+  -- ^ The last time the model was updated (i.e. a new version was created),
+  -- if any
+  , terminated :: Maybe UTCTime
+  -- ^ The time that this model was \"deleted\", if any. For active models,
+  -- this will be @Nothing@
   }
   deriving stock (Show, Eq, Generic)
 
@@ -334,9 +334,9 @@ instance NFData (Model gid) where
   rnf = rwhnf
 
 instance
-  ( Typeable gid,
-    FromField gid,
-    Ord gid
+  ( Typeable gid
+  , FromField gid
+  , Ord gid
   ) =>
   FromRow (Model gid)
   where
@@ -351,24 +351,24 @@ instance
       <*> field
       <*> field
 
-instance ToField gid => ToRow (Model gid) where
+instance (ToField gid) => ToRow (Model gid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow m =
     [ -- Normally the ID will be missing for new rows, in that case the default
       -- will be used (a random UUID). But in other cases it is useful to set
       -- the ID explicitly (e.g. for testing)
-      m.id & maybe (toField Default) toField,
-      m.name & toField,
-      m.gid & toField,
-      m.visibility & Aeson & toField,
-      m.created & maybe (toField Default) toField,
-      -- The `ToRow` instance is only for new rows, so we don't want to set
+      m.id & maybe (toField Default) toField
+    , m.name & toField
+    , m.gid & toField
+    , m.visibility & Aeson & toField
+    , m.created & maybe (toField Default) toField
+    , -- The `ToRow` instance is only for new rows, so we don't want to set
       -- the `updated` and `terminated` fields to anything by default
       --
       -- The same rationale applies to the other `toField Default`s for
       -- different types below
-      toField Default,
       toField Default
+    , toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -392,16 +392,16 @@ instance
       <*> o .:? "terminated"
 {- ORMOLU_ENABLE -}
 
-instance ToJSON gid => ToJSON (Model gid) where
+instance (ToJSON gid) => ToJSON (Model gid) where
   toJSON m =
     object
-      [ "id" .= m.id,
-        "name" .= m.name,
-        "gid" .= m.gid,
-        "visibility" .= m.visibility,
-        "created" .= m.created,
-        "updated" .= m.updated,
-        "terminated" .= m.terminated
+      [ "id" .= m.id
+      , "name" .= m.name
+      , "gid" .= m.gid
+      , "visibility" .= m.visibility
+      , "created" .= m.created
+      , "updated" .= m.updated
+      , "terminated" .= m.terminated
       ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -434,29 +434,29 @@ instance (Arbitrary gid, Ord gid) => ToADTArbitrary (Model gid) where
 -- model metadata is contained here as well, e.g. the model card, as this
 -- might change between versions
 data ModelVersion gid c = ModelVersion
-  { id :: Maybe (Id (ModelVersion gid c)),
-    -- | Foreign key of the @model@ table, which contains invariant metadata
-    -- related to the model, i.e. name, permissions, user
-    model :: Id (Model gid),
-    description :: Text,
-    card :: ModelCard,
-    -- | The actual contents of version of the model. Normally this will be
-    -- an 'Oid' pointing to the serialized bytes of the model imported into
-    -- the PSQL large object table
-    contents :: c,
-    version :: Version,
-    -- | When the model version was created; if left empty, this will be generated
-    -- automatically when the model version is saved
-    created :: Maybe UTCTime,
-    -- | The time that this model version was \"deleted\", if any. For active
-    -- models versions, this will be @Nothing@
-    terminated :: Maybe UTCTime
+  { id :: Maybe (Id (ModelVersion gid c))
+  , model :: Id (Model gid)
+  -- ^ Foreign key of the @model@ table, which contains invariant metadata
+  -- related to the model, i.e. name, permissions, user
+  , description :: Text
+  , card :: ModelCard
+  , contents :: c
+  -- ^ The actual contents of version of the model. Normally this will be
+  -- an 'Oid' pointing to the serialized bytes of the model imported into
+  -- the PSQL large object table
+  , version :: Version
+  , created :: Maybe UTCTime
+  -- ^ When the model version was created; if left empty, this will be generated
+  -- automatically when the model version is saved
+  , terminated :: Maybe UTCTime
+  -- ^ The time that this model version was \"deleted\", if any. For active
+  -- models versions, this will be @Nothing@
   }
   deriving stock (Show, Eq, Generic)
   -- NOTE: This may require an orphan instance for the `c` type variable
   deriving anyclass (NFData)
 
-instance FromField gid => FromRow (ModelVersion gid Oid) where
+instance (FromField gid) => FromRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema. This instance
   -- could just be `anyclass` derived but it's probably better to be as
   -- explicit as possible
@@ -471,17 +471,17 @@ instance FromField gid => FromRow (ModelVersion gid Oid) where
       <*> field
       <*> field
 
-instance ToField gid => ToRow (ModelVersion gid Oid) where
+instance (ToField gid) => ToRow (ModelVersion gid Oid) where
   -- NOTE: Order of fields must align exactly with DB schema
   toRow mv =
-    [ mv.id & maybe (toField Default) toField,
-      mv.model & toField,
-      mv.description & toField,
-      mv.card & Aeson & toField,
-      mv.contents & toField,
-      mv.version & toField,
-      mv.created & maybe (toField Default) toField,
-      toField Default
+    [ mv.id & maybe (toField Default) toField
+    , mv.model & toField
+    , mv.description & toField
+    , mv.card & Aeson & toField
+    , mv.contents & toField
+    , mv.version & toField
+    , mv.created & maybe (toField Default) toField
+    , toField Default
     ]
 
 {- ORMOLU_DISABLE -}
@@ -501,24 +501,24 @@ instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
       <*> o .:? "terminated"
 {- ORMOLU_ENABLE -}
 
-instance ToJSON gid => ToJSON (ModelVersion gid Oid) where
+instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
   toJSON mv =
     object
-      [ "id" .= mv.id,
-        "model" .= mv.model,
-        "description" .= mv.description,
-        "contents" .= unOid mv.contents,
-        "version" .= mv.version,
-        "card" .= mv.card,
-        "created" .= mv.created,
-        "terminated" .= mv.terminated
+      [ "id" .= mv.id
+      , "model" .= mv.model
+      , "description" .= mv.description
+      , "contents" .= unOid mv.contents
+      , "version" .= mv.version
+      , "card" .= mv.card
+      , "created" .= mv.created
+      , "terminated" .= mv.terminated
       ]
     where
       unOid :: Oid -> Word32
       unOid (Oid (CUInt x)) = x
 
 -- Not derived generically in order to use special `Gen UTCTime`
-instance Arbitrary c => Arbitrary (ModelVersion gid c) where
+instance (Arbitrary c) => Arbitrary (ModelVersion gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
@@ -531,7 +531,7 @@ instance Arbitrary c => Arbitrary (ModelVersion gid c) where
       <*> genMUtc
 
 -- Can't be derived because there is (intentially) no `Arbitrary UTCTime` in scope
-instance Arbitrary c => ToADTArbitrary (ModelVersion gid c) where
+instance (Arbitrary c) => ToADTArbitrary (ModelVersion gid c) where
   toADTArbitrarySingleton _ =
     ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelVersion"
       . ConstructorArbitraryPair "ModelVersion"
@@ -543,9 +543,9 @@ instance Arbitrary c => ToADTArbitrary (ModelVersion gid c) where
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
-  { -- | High-level, structured overview of model details and summary
-    summary :: ModelSummary,
-    metadata :: ModelMetadata
+  { summary :: ModelSummary
+  -- ^ High-level, structured overview of model details and summary
+  , metadata :: ModelMetadata
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, NFData, ToADTArbitrary)
@@ -556,12 +556,12 @@ instance Arbitrary ModelCard where
 
 -- | Structured summary of a model
 data ModelSummary = ModelSummary
-  { -- | General summary of model (longer than top-level @description@ field
-    -- of 'ModelVersion' type)
-    summary :: Text,
-    -- | How the model is intended to be used
-    uses :: Text,
-    evaluation :: Text
+  { summary :: Text
+  -- ^ General summary of model (longer than top-level @description@ field
+  -- of 'ModelVersion' type)
+  , uses :: Text
+  -- ^ How the model is intended to be used
+  , evaluation :: Text
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, NFData, ToADTArbitrary)
@@ -580,10 +580,10 @@ instance Arbitrary ModelSummary where
 
 -- | Metadata for the model, inspired by Hugging Face model card format
 data ModelMetadata = ModelMetadata
-  { categories :: Vector Int,
-    datasets :: Text,
-    metrics :: Text,
-    baseModel :: Maybe Text
+  { categories :: Vector Int
+  , datasets :: Text
+  , metrics :: Text
+  , baseModel :: Maybe Text
   }
   deriving stock (Show, Eq, Generic)
 
@@ -602,8 +602,8 @@ instance ToJSON ModelMetadata where
   toJSON =
     genericToJSON
       defaultOptions
-        { fieldLabelModifier = camelTo2 '-',
-          omitNothingFields = True
+        { fieldLabelModifier = camelTo2 '-'
+        , omitNothingFields = True
         }
 
 instance Arbitrary ModelMetadata where
@@ -629,10 +629,10 @@ instance ToADTArbitrary ModelMetadata where
 -- multiple tags are allowed, separated by @-@
 data Version
   = Version
+      -- | List of digits for version string
       (NonEmpty Int)
-      -- ^ List of digits for version string
+      -- | Any tags
       [Text]
-      -- ^ Any tags
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToADTArbitrary)
 
@@ -693,41 +693,40 @@ versionP = do
     tagsP =
       fmap (filter (not . Text.null) . fmap Text.Encoding.decodeUtf8)
         . Attoparsec.sepBy
-          ( Attoparsec.takeWhile (Attoparsec.inClass "a-zA-Z")
-          )
+          (Attoparsec.takeWhile (Attoparsec.inClass "a-zA-Z"))
         $ Attoparsec.char '-'
 
 showVersion :: Version -> Text
 showVersion (Version ns ts) =
   mconcat
-    [ "v",
-      Text.intercalate "." . fmap tshow $ NonEmpty.toList ns,
-      bool ("-" <> Text.intercalate "-" ts) mempty $ null ts
+    [ "v"
+    , Text.intercalate "." . fmap tshow $ NonEmpty.toList ns
+    , bool ("-" <> Text.intercalate "-" ts) mempty $ null ts
     ]
 
 -- | Row of the inference parameter table, parameterized by the user, group, and
 -- script type
 data InferenceParam gid p = InferenceParam
-  { id :: Maybe (Id (InferenceParam gid p)),
-    -- | The script of the parameter
-    --
-    -- For new parameters, this will be textual or some other identifier
-    -- (e.g. a UUID for use with @inferno-lsp@)
-    --
-    -- For existing inference params, this is the foreign key for the specific
-    -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
-    script :: VCObjectHash,
-    -- | Mapping the input\/output to the Inferno identifier helps ensure that
-    -- Inferno identifiers are always pointing to the correct input\/output;
-    -- otherwise we would need to rely on the order of the original identifiers
-    inputs :: Inputs p,
-    outputs :: Outputs p,
-    -- | Resolution, passed to bridge routes
-    resolution :: Word64,
-    -- | The time that this parameter was \"deleted\", if any. For active
-    -- parameters, this will be @Nothing@
-    terminated :: Maybe UTCTime,
-    gid :: gid
+  { id :: Maybe (Id (InferenceParam gid p))
+  , script :: VCObjectHash
+  -- ^ The script of the parameter
+  --
+  -- For new parameters, this will be textual or some other identifier
+  -- (e.g. a UUID for use with @inferno-lsp@)
+  --
+  -- For existing inference params, this is the foreign key for the specific
+  -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
+  , inputs :: Inputs p
+  -- ^ Mapping the input\/output to the Inferno identifier helps ensure that
+  -- Inferno identifiers are always pointing to the correct input\/output;
+  -- otherwise we would need to rely on the order of the original identifiers
+  , outputs :: Outputs p
+  , resolution :: Word64
+  -- ^ Resolution, passed to bridge routes
+  , terminated :: Maybe UTCTime
+  -- ^ The time that this parameter was \"deleted\", if any. For active
+  -- parameters, this will be @Nothing@
+  , gid :: gid
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToJSON)
@@ -751,10 +750,10 @@ instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
 -- should not be possible to store a new param with a raw script)
 instance
-  ( FromJSON p,
-    FromField gid,
-    Typeable gid,
-    Typeable p
+  ( FromJSON p
+  , FromField gid
+  , Typeable gid
+  , Typeable p
   ) =>
   FromRow (InferenceParam gid p)
   where
@@ -771,13 +770,13 @@ instance
 instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p) where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
-    [ ip.id & maybe (toField Default) toField,
-      ip.script & VCObjectHashRow & toField,
-      ip.inputs & Aeson & toField,
-      ip.outputs & Aeson & toField,
-      ip.resolution & Aeson & toField,
-      toField Default,
-      ip.gid & toField
+    [ ip.id & maybe (toField Default) toField
+    , ip.script & VCObjectHashRow & toField
+    , ip.inputs & Aeson & toField
+    , ip.outputs & Aeson & toField
+    , ip.resolution & Aeson & toField
+    , toField Default
+    , ip.gid & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -806,8 +805,8 @@ instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) w
 -- | An 'InferenceParam' together with all of the model versions that are
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p = InferenceParamWithModels
-  { param :: InferenceParam gid p,
-    models :: Models (Id (ModelVersion gid Oid))
+  { param :: InferenceParam gid p
+  , models :: Models (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -816,23 +815,23 @@ data InferenceParamWithModels gid p = InferenceParamWithModels
 -- later by using the same job identifier that was provided to the @/inference@
 -- route
 data EvaluationInfo gid p = EvaluationInfo
-  { -- | Note that this is the job identifier provided to the inference
-    -- evaluation route, and is also the primary key of the database table
-    id :: UUID,
-    param :: Id (InferenceParam gid p),
-    -- | When inference evaluation started
-    start :: UTCTime,
-    -- | When inference evaluation ended
-    end :: UTCTime,
-    -- | The number of bytes allocated between the @start@ and @end@. Note
-    -- that this is /total/ allocation over the course of evaluation, which
-    -- can be many times greater than peak memory usage. Nevertheless, this
-    -- can be useful to track memory usage over time and across different
-    -- script revisions
-    allocated :: Word64,
-    -- | Additional CPU time used between the @start@ and @end@. This is
-    -- converted from picoseconds to milliseconds
-    cpu :: Word64
+  { id :: UUID
+  -- ^ Note that this is the job identifier provided to the inference
+  -- evaluation route, and is also the primary key of the database table
+  , param :: Id (InferenceParam gid p)
+  , start :: UTCTime
+  -- ^ When inference evaluation started
+  , end :: UTCTime
+  -- ^ When inference evaluation ended
+  , allocated :: Word64
+  -- ^ The number of bytes allocated between the @start@ and @end@. Note
+  -- that this is /total/ allocation over the course of evaluation, which
+  -- can be many times greater than peak memory usage. Nevertheless, this
+  -- can be useful to track memory usage over time and across different
+  -- script revisions
+  , cpu :: Word64
+  -- ^ Additional CPU time used between the @start@ and @end@. This is
+  -- converted from picoseconds to milliseconds
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
@@ -849,12 +848,12 @@ instance FromRow (EvaluationInfo gid p) where
 
 instance ToRow (EvaluationInfo gid p) where
   toRow ei =
-    [ ei.id & toField,
-      ei.param & toField,
-      ei.start & toField,
-      ei.end & toField,
-      ei.allocated & toField,
-      ei.cpu & toField
+    [ ei.id & toField
+    , ei.param & toField
+    , ei.start & toField
+    , ei.end & toField
+    , ei.allocated & toField
+    , ei.cpu & toField
     ]
 
 -- Not derived generically in order to use special `Gen UTCTime`
@@ -914,8 +913,7 @@ instance ToADTArbitrary IPv4 where
 genFromOctects :: Gen IPv4
 genFromOctects =
   toIPv4
-    <$> ( (,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen
-        )
+    <$> ((,,,) <$> octetGen <*> octetGen <*> octetGen <*> octetGen)
 
 octetGen :: Gen Int
 octetGen = choose (0, 255)
@@ -955,8 +953,8 @@ instance FromJSON IValue where
     -- rather than try to deal with distinguishing times and doubles
     Object o ->
       asum
-        [ ITime <$> o .: "time",
-          fmap IArray $ arrayP =<< o .: "array"
+        [ ITime <$> o .: "time"
+        , fmap IArray $ arrayP =<< o .: "array"
         ]
     -- Note that this preserves a plain JSON array for tuples. But we need
     -- some straightforward way of distinguishing tuples and arrays; since
@@ -980,14 +978,14 @@ instance FromJSON IValue where
         asum
           [ -- This alternative means that `null` will be correctly parsed to NaN
             -- when inside an array of doubles
-            fmap IDouble <$> traverse parseJSON a,
-            fmap ITuple <$> traverse parseJSON a,
-            fmap IText <$> traverse parseJSON a,
-            fmap ITime <$> traverse (withObject "EpochTime" (.: "time")) a,
-            -- Nested array support
+            fmap IDouble <$> traverse parseJSON a
+          , fmap ITuple <$> traverse parseJSON a
+          , fmap IText <$> traverse parseJSON a
+          , fmap ITime <$> traverse (withObject "EpochTime" (.: "time")) a
+          , -- Nested array support
             fmap IArray
-              <$> traverse (withObject "IArray" (arrayP <=< (.: "array"))) a,
-            fail "Expected a heterogeneous array"
+              <$> traverse (withObject "IArray" (arrayP <=< (.: "array"))) a
+          , fail "Expected a heterogeneous array"
           ]
 
 instance ToJSON IValue where
@@ -1008,22 +1006,22 @@ data SingleOrMany a
   deriving stock (Show, Eq, Generic, Functor)
   deriving anyclass (NFData, ToADTArbitrary)
 
-instance Arbitrary a => Arbitrary (SingleOrMany a) where
+instance (Arbitrary a) => Arbitrary (SingleOrMany a) where
   arbitrary = genericArbitrary
 
-instance FromJSON a => FromJSON (SingleOrMany a) where
+instance (FromJSON a) => FromJSON (SingleOrMany a) where
   parseJSON v =
     asum
-      [ Single <$> parseJSON v,
-        Many <$> parseJSON v
+      [ Single <$> parseJSON v
+      , Many <$> parseJSON v
       ]
 
-instance ToJSON a => ToJSON (SingleOrMany a) where
+instance (ToJSON a) => ToJSON (SingleOrMany a) where
   toJSON = \case
     Single a -> toJSON a
     Many as -> toJSON as
 
-instance Ord a => Ord (SingleOrMany a) where
+instance (Ord a) => Ord (SingleOrMany a) where
   compare a =
     (a,) >>> \case
       (Single x, Single y) -> compare x y
@@ -1034,22 +1032,22 @@ instance Ord a => Ord (SingleOrMany a) where
 -- | An environment that can be used to override the @inferno-ml-server@ script
 -- evaluator. This allows for more interactive testing
 data EvaluationEnv gid p = EvaluationEnv
-  { script :: VCObjectHash,
-    inputs :: Inputs p,
-    outputs :: Inputs p,
-    models :: Models (Id (ModelVersion gid Oid))
+  { script :: VCObjectHash
+  , inputs :: Inputs p
+  , outputs :: Inputs p
+  , models :: Models (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
 
-instance Arbitrary p => Arbitrary (EvaluationEnv gid p) where
+instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
 
-tshow :: Show a => a -> Text
+tshow :: (Show a) => a -> Text
 tshow = Text.pack . show
 
 maybeConversion ::
-  Typeable b => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
+  (Typeable b) => (a -> Maybe b) -> Field -> Maybe a -> Conversion b
 maybeConversion f fld =
   maybe (returnError UnexpectedNull fld mempty) $
     maybe (returnError ConversionFailed fld mempty) pure
