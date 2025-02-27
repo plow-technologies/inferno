@@ -38,11 +38,21 @@ getDtype funName = \case
   "double" -> return TD.Double
   s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ show s
 
-getDevice :: (MonadThrow m) => String -> Ident -> m DType
-getDevice funName = \case
-  "cpu" -> pure undefined
-  "cuda" -> pure undefined
-  s -> throwM $ RuntimeError $ funName ++ ": unknown device " ++ show s
+-- Get the Torch device from a `device{#cpu, #cuda}`. There will only ever
+-- be one CUDA device available for our purposes, i.e. `cuda:0`, so we only
+-- have to distinguish between CPU and CUDA
+getDevice :: (MonadThrow m) => Ident -> m Device
+getDevice = \case
+  "cpu" -> pure $ Device CPU 0
+  "cuda" -> pure $ Device CUDA 0
+  s ->
+    throwM . RuntimeError $
+      unwords
+        [ "toDevice :"
+        , "unknown device"
+        , show s <> ";"
+        , "expected one of {#cpu,#cuda}"
+        ]
 
 zerosFun :: (MonadThrow m, Pretty a) => Value (MlValue a) m
 zerosFun =
@@ -194,7 +204,14 @@ toDeviceFun ::
   , Pretty x
   ) =>
   Value (MlValue x) m
-toDeviceFun = undefined
+toDeviceFun =
+  VFun $ \case
+    VEnum _ e ->
+      getDevice e <&> \dev ->
+        VFun $ \tensor ->
+          (toValue @_ @_ @Tensor) . toDevice dev
+            <$> (fromValue @_ @_ @Tensor) tensor
+    _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
 
 mlModules ::
   forall m x.
@@ -263,9 +280,10 @@ module ML
   @doc An impure (pseudo)random tensor generator;
   randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;
 
-  @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
+  @doc Move a tensor to a different device;
   toDevice : device{#cpu, #cuda} -> tensor -> tensor := ###!toDeviceFun###;
 
+  @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0" (without checking validity of device name);
   toDeviceUnsafe : text -> tensor -> tensor := ###toDeviceUnsafeFun###;
 
   @doc Load a named, serialized model;
