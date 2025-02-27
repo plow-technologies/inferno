@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wwarn #-}
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
@@ -36,6 +37,22 @@ getDtype funName = \case
   "float" -> return TD.Float
   "double" -> return TD.Double
   s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ show s
+
+-- Get the Torch device from a `device{#cpu, #cuda}`. There will only ever
+-- be one CUDA device available for our purposes, i.e. `cuda:0`, so we only
+-- have to distinguish between CPU and CUDA
+getDevice :: (MonadThrow m) => Ident -> m Device
+getDevice = \case
+  "cpu" -> pure $ Device CPU 0
+  "cuda" -> pure $ Device CUDA 0
+  s ->
+    throwM . RuntimeError $
+      unwords
+        [ "toDevice :"
+        , "unknown device"
+        , show s <> ";"
+        , "expected one of {#cpu,#cuda}"
+        ]
 
 zerosFun :: (MonadThrow m, Pretty a) => Value (MlValue a) m
 zerosFun =
@@ -172,13 +189,29 @@ randnIOFun =
         pure $ VCustom $ VTensor t
     _ -> throwM $ RuntimeError "randnIOFun: expecting a dtype enum"
 
-toDeviceFun :: Text -> Tensor -> Tensor
-toDeviceFun d t =
+toDeviceUnsafeFun :: Text -> Tensor -> Tensor
+toDeviceUnsafeFun d t =
   let dev = case d of
         "cpu" -> Device CPU 0
         "cuda:0" -> Device CUDA 0
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
+
+toDeviceFun ::
+  forall m x.
+  ( MonadThrow m
+  , MonadIO m
+  , Pretty x
+  ) =>
+  Value (MlValue x) m
+toDeviceFun =
+  VFun $ \case
+    VEnum _ e ->
+      getDevice e <&> \dev ->
+        VFun $ \tensor ->
+          (toValue @_ @_ @Tensor) . toDevice dev
+            <$> (fromValue @_ @_ @Tensor) tensor
+    _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
 
 mlModules ::
   forall m x.
@@ -193,6 +226,8 @@ mlModules =
 module ML
 
   enum dtype := #int | #float | #double;
+
+  enum device := #cpu | #cuda;
 
   zeros : dtype{#int, #float, #double} -> array of int -> tensor := ###!zerosFun###;
 
@@ -245,8 +280,11 @@ module ML
   @doc An impure (pseudo)random tensor generator;
   randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;
 
-  @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
-  toDevice : text -> tensor -> tensor := ###toDeviceFun###;
+  @doc Move a tensor to a different device;
+  toDevice : device{#cpu, #cuda} -> tensor -> tensor := ###!toDeviceFun###;
+
+  @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0" (without checking validity of device name);
+  toDeviceUnsafe : text -> tensor -> tensor := ###toDeviceUnsafeFun###;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModelFun###;
