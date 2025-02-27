@@ -1,6 +1,10 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.5.0.0 -- 2025-02-27
+* Breaking change: old `toDevice` renamed to `unsafeToDevice`
+* Breaking change: new `toDevice` primitive
+
 ## 0.4.0.1 -- 2025-02-13
 * Fourmolu
 
