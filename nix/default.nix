@@ -61,6 +61,8 @@ pkgs.haskell-nix.cabalProject {
     buildInputs = [
       pkgs.postgresql
       config.treefmt.build.wrapper
+      pkgs.torch
+      pkgs.torch.dev
     ]
     ++ builtins.attrValues config.treefmt.build.programs;
     shellHook =
@@ -79,9 +81,14 @@ pkgs.haskell-nix.cabalProject {
             esac
             export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:$llp"
           '';
+
+        # Setting the `LD_LIBRARY_PATH` and `CPLUS_INCLUDE_PATH` manually is
+        # needed for `cabal repl` to be able to find the libs for Hasktorch
+        # (ghci doesn't invoke GCC)
         torchHook = ''
           ${setpath}
           export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${inputs.tokenizers}/lib"
+          export CPLUS_INCLUDE_PATH=${lib.getDev pkgs.torch}/include/torch/csrc/api/include
         '';
       in
       ''
