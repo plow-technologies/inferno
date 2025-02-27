@@ -31,4 +31,40 @@
     postgresql-libpq-configure.components.library.libs =
       lib.mkForce [ pkgs.postgresql ];
   };
+
+  nonReinstallablePkgs = lib.mkForce
+    [
+      "system-cxx-std-lib"
+      "rts"
+      "ghc-prim"
+      "integer-gmp"
+      "integer-simple"
+      "base"
+      "containers"
+      "binary"
+      "bytestring"
+      "text"
+      "deepseq"
+      "exceptions"
+      "array"
+      "ghc-boot-th"
+      "ghc-internal"
+      "entropy"
+      "Cabal"
+      "Cabal-syntax"
+      "cabal-doctest"
+      "file-io"
+      "pretty"
+      "template-haskell"
+      "ghc-bignum"
+      "filepath"
+      "directory"
+      "process"
+      "transformers"
+      "stm"
+      "exceptions"
+      "mtl"
+      "time"
+      "unix"
+    ];
 }
