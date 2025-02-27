@@ -2,6 +2,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wwarn #-}
 
 module Inferno.ML.Module.Prelude (mlPrelude) where
 
@@ -36,6 +37,12 @@ getDtype funName = \case
   "float" -> return TD.Float
   "double" -> return TD.Double
   s -> throwM $ RuntimeError $ funName ++ ": unknown dtype " ++ show s
+
+getDevice :: (MonadThrow m) => String -> Ident -> m DType
+getDevice funName = \case
+  "cpu" -> pure undefined
+  "cuda" -> pure undefined
+  s -> throwM $ RuntimeError $ funName ++ ": unknown device " ++ show s
 
 zerosFun :: (MonadThrow m, Pretty a) => Value (MlValue a) m
 zerosFun =
@@ -172,13 +179,22 @@ randnIOFun =
         pure $ VCustom $ VTensor t
     _ -> throwM $ RuntimeError "randnIOFun: expecting a dtype enum"
 
-toDeviceFun :: Text -> Tensor -> Tensor
-toDeviceFun d t =
+toDeviceUnsafeFun :: Text -> Tensor -> Tensor
+toDeviceUnsafeFun d t =
   let dev = case d of
         "cpu" -> Device CPU 0
         "cuda:0" -> Device CUDA 0
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
+
+toDeviceFun ::
+  forall m x.
+  ( MonadThrow m
+  , MonadIO m
+  , Pretty x
+  ) =>
+  Value (MlValue x) m
+toDeviceFun = undefined
 
 mlModules ::
   forall m x.
@@ -193,6 +209,8 @@ mlModules =
 module ML
 
   enum dtype := #int | #float | #double;
+
+  enum device := #cpu | #cuda;
 
   zeros : dtype{#int, #float, #double} -> array of int -> tensor := ###!zerosFun###;
 
@@ -246,7 +264,9 @@ module ML
   randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;
 
   @doc Move a tensor to a different device, e.g. "cpu" or "cuda:0";
-  toDevice : text -> tensor -> tensor := ###toDeviceFun###;
+  toDevice : device{#cpu, #cuda} -> tensor -> tensor := ###!toDeviceFun###;
+
+  toDeviceUnsafe : text -> tensor -> tensor := ###toDeviceUnsafeFun###;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModelFun###;
