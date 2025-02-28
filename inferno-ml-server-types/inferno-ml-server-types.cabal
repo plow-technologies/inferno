@@ -43,6 +43,7 @@ library
     , aeson
     , attoparsec
     , base
+    , bson
     , bytestring
     , conduit
     , containers
@@ -50,6 +51,7 @@ library
     , extra
     , generic-lens
     , hashable
+    , hasktorch
     , http-api-data
     , inferno-core
     , inferno-types
@@ -57,6 +59,7 @@ library
     , iproute
     , microlens-platform
     , postgresql-simple
+    , prettyprinter
     , QuickCheck
     , quickcheck-arbitrary-adt
     , quickcheck-instances
@@ -64,12 +67,9 @@ library
     , servant-client
     , servant-conduit
     , servant-server
+    , template-haskell
     , text
     , time
     , unix
     , uuid
     , vector
-    , bson
-    , hasktorch
-    , prettyprinter
-    , template-haskell

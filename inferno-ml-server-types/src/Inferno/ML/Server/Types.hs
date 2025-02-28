@@ -8,10 +8,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types where
@@ -67,7 +67,6 @@ import Database.PostgreSQL.Simple.ToField
   ( Action (Escape, EscapeByteA),
     ToField (toField),
   )
-import Numeric (readHex)
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import Database.PostgreSQL.Simple.Types
   ( Binary (Binary),
@@ -91,6 +90,7 @@ import Inferno.VersionControl.Types
     VCObjectVisibility,
   )
 import Lens.Micro.Platform hiding ((.=))
+import Numeric (readHex)
 import Prettyprinter (Pretty (..), cat, (<+>))
 import Servant
   ( Capture,
