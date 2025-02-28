@@ -17,7 +17,10 @@ source-repository head
   location: https://github.com/plow-technologies/inferno.git
 
 library
-  exposed-modules:    Inferno.ML.Module.Prelude
+  exposed-modules:
+    Inferno.ML.Module.Prelude
+    Inferno.ML.Types.Value
+
   hs-source-dirs:     src
   ghc-options:
     -Wall -Werror -Wincomplete-uni-patterns -Wincomplete-record-updates
@@ -29,9 +32,9 @@ library
     , exceptions
     , hasktorch
     , inferno-core
-    , inferno-ml-server-types
     , inferno-types
     , prettyprinter
+    , template-haskell
     , text
 
   default-language:   Haskell2010
@@ -50,11 +53,10 @@ executable inferno-ml-exe
     -Wunused-packages -threaded -rtsopts -with-rtsopts=-T
 
   build-depends:
-      base                     >=4.7 && <5
+      base           >=4.7 && <5
     , containers
     , inferno-core
     , inferno-ml
-    , inferno-ml-server-types
     , inferno-types
     , text
 
@@ -68,10 +70,9 @@ executable inferno-ml-lsp-server
     -Wincomplete-record-updates -threaded -rtsopts -with-rtsopts=-T
 
   build-depends:
-      base                     >=4.7 && <5
+      base         >=4.7 && <5
     , inferno-lsp
     , inferno-ml
-    , inferno-ml-server-types
 
   default-language: Haskell2010
 
@@ -80,13 +81,12 @@ test-suite inferno-ml-tests
   hs-source-dirs:   test
   main-is:          Spec.hs
   build-depends:
-      base                     >=4.7 && <5
+      base           >=4.7 && <5
     , containers
     , hasktorch
     , hspec
     , inferno-core
     , inferno-ml
-    , inferno-ml-server-types
     , inferno-types
     , text
 

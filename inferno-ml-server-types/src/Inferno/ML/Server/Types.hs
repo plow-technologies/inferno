@@ -75,10 +75,7 @@ import Database.PostgreSQL.Simple.Types
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
-import Inferno.ML.Types.Value (MlValue (VExtended))
-import Inferno.Module.Cast (FromValue (..), ToValue (..), couldNotCast)
 import Inferno.Types.Syntax (Ident)
-import Inferno.Types.Value (Value (..))
 import Inferno.Types.VersionControl
   ( VCObjectHash,
     byteStringToVCObjectHash,
@@ -1164,14 +1161,6 @@ newtype PID = PID Int
     , NFData
     )
 
-instance ToValue (MlValue BridgeValue) m PID where
-  toValue = VCustom . VExtended . VSeries
-
-instance FromValue (MlValue BridgeValue) m PID where
-  fromValue = \case
-    VCustom (VExtended (VSeries p)) -> pure p
-    v -> couldNotCast v
-
 -- The type for user and groups IDs. This is compatible with the `UserId` and
 -- `GroupId` types from `all`, but we can't import those
 newtype EntityId (a :: EntityIdType) = EntityId Bson.ObjectId
@@ -1252,14 +1241,6 @@ newtype InverseResolution = InverseResolution Word8
     , Integral
     , NFData
     )
-
-instance ToValue (MlValue BridgeValue) m InverseResolution where
-  toValue = VCustom . VExtended . VResolution
-
-instance FromValue (MlValue BridgeValue) m InverseResolution where
-  fromValue = \case
-    VCustom (VExtended (VResolution r)) -> pure r
-    v -> couldNotCast v
 
 tshow :: (Show a) => a -> Text
 tshow = Text.pack . show

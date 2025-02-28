@@ -66,6 +66,7 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
+import Inferno.ML.Types.Value (MlValue (VExtended))
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -360,3 +361,19 @@ withConnectionPool = flip bracket destroyPool . liftIO . newConnectionPool
   where
     destroyPool :: Pool Connection -> m ()
     destroyPool = liftIO . Pool.destroyAllResources
+
+instance ToValue (MlValue BridgeValue) m PID where
+  toValue = VCustom . VExtended . VSeries
+
+instance FromValue (MlValue BridgeValue) m PID where
+  fromValue = \case
+    VCustom (VExtended (VSeries p)) -> pure p
+    v -> couldNotCast v
+
+instance ToValue (MlValue BridgeValue) m InverseResolution where
+  toValue = VCustom . VExtended . VResolution
+
+instance FromValue (MlValue BridgeValue) m InverseResolution where
+  fromValue = \case
+    VCustom (VExtended (VResolution r)) -> pure r
+    v -> couldNotCast v
