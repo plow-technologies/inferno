@@ -184,7 +184,7 @@ type BridgeAPI p t =
 -- @[ (1, [ (100, 5.0) .. (10000, 5000.0) ]) ]@; the stream items will be:
 -- @(1, [ (100, 5.0) .. (500, 2500.0) ]), (1, [ (501, 2501.0) .. (10000, 5000.0) ])@.
 -- This means the same output may appear more than once in the stream
-type WriteStream m = ConduitT () (Int, [(EpochTime, IValue)]) m ()
+type WriteStream m = ConduitT () (Int, [(IValue, EpochTime)]) m ()
 
 -- | Convenience synonym for the consumed 'WriteStream'
 type Writes p = Map p [(Double, EpochTime)]

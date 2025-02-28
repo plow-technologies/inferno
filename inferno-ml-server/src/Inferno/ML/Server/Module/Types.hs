@@ -41,7 +41,7 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types
 data BridgeValue
   = VResolution InverseResolution
   | VSeries PID
-  | VWrite (PID, [(EpochTime, IValue)])
+  | VWrite (PID, [(IValue, EpochTime)])
   deriving stock (Generic)
 
 instance Eq BridgeValue where
