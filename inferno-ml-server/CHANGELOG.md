@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.2.28
+* Update for new order of `makeWrites` elements
+
 ## 2025.2.13
 * Fourmolu
 

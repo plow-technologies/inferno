@@ -202,7 +202,7 @@ module DataSource
             Value c n ->
             ImplEnvM m BridgeMlValue (IValue, EpochTime)
           extractPair = \case
-            VTuple [x, VEpochTime t] -> (t,) <$> toIValue x
+            VTuple [x, VEpochTime t] -> (,t) <$> toIValue x
             _ -> throwM $ RuntimeError "extractPair: expected a tuple ('a, time)"
 
 mkBridgePrelude ::
