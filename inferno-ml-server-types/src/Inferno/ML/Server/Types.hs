@@ -1071,6 +1071,7 @@ data RemoteError
   | ClientError String
   | OtherRemoteError Text
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 instance Exception RemoteError where
   displayException = \case
@@ -1125,6 +1126,7 @@ data RemoteTrace
   | WarnTrace TraceWarn
   | ErrorTrace RemoteError
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 data TraceInfo
   = StartingServer
@@ -1133,11 +1135,13 @@ data TraceInfo
   | CopyingModel (Id (ModelVersion (EntityId GId) Oid))
   | OtherInfo Text
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 data TraceWarn
   = CancelingInference (Id (InferenceParam (EntityId GId) PID))
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 -- | Unique ID for pollable data point (for the data source that can be
 -- queried using the bridge)
