@@ -36,6 +36,7 @@ library
     Inferno.ML.Server.Client
     Inferno.ML.Server.Client.Bridge
     Inferno.ML.Server.Types
+    Inferno.ML.Types.Value
 
   hs-source-dirs:  src
   build-depends:
@@ -68,3 +69,7 @@ library
     , unix
     , uuid
     , vector
+    , bson
+    , hasktorch
+    , prettyprinter
+    , template-haskell
