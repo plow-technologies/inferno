@@ -57,7 +57,7 @@ module DataSource
   @doc Create a `write` object encapsulating an array of `(time, 'a)` values to be
   written to a given parameter. All ML scripts must return an array of such `write`
   objects, potentially empty, and this is the only way for them to write values to parameters.;
-  makeWrites : forall 'a. series of 'a -> array of (time, 'a) -> write := ###!makeWriteFun###;
+  makeWrites : forall 'a. series of 'a -> array of ('a, time) -> write := ###!makeWriteFun###;
 
   toResolution : int -> resolution := ###toResolution###;
 
@@ -195,15 +195,15 @@ module DataSource
         where
           extractPairs ::
             [Value c n] ->
-            ImplEnvM m BridgeMlValue [(EpochTime, IValue)]
+            ImplEnvM m BridgeMlValue [(IValue, EpochTime)]
           extractPairs = flip foldrM mempty $ \v acc -> (: acc) <$> extractPair v
 
           extractPair ::
             Value c n ->
-            ImplEnvM m BridgeMlValue (EpochTime, IValue)
+            ImplEnvM m BridgeMlValue (IValue, EpochTime)
           extractPair = \case
-            VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
-            _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
+            VTuple [x, VEpochTime t] -> (t,) <$> toIValue x
+            _ -> throwM $ RuntimeError "extractPair: expected a tuple ('a, time)"
 
 mkBridgePrelude ::
   forall m.
