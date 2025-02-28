@@ -43,9 +43,7 @@ import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Pool (Pool)
 import qualified Data.Pool as Pool
-import Data.Scientific (Scientific)
 import Data.Text (Text)
-import qualified Data.Text as Text
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
 import Data.Word (Word64)
@@ -53,14 +51,12 @@ import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
-    ResultError (ConversionFailed, UnexpectedNull),
     close,
     connect,
     (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
-    returnError,
   )
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField
