@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.2.28
+* Extracted RemoteTrace and deps to inferno-ml-server-types
+
 ## 2025.2.13
 * Fourmolu
 

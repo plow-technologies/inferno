@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedLabels #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Utils
@@ -29,7 +30,7 @@ import Lens.Micro.Platform (view)
 import UnliftIO (MonadUnliftIO (withRunInIO))
 
 throwInfernoError :: forall e a. (Exception e) => Either e a -> RemoteM a
-throwInfernoError = either (throwM . InfernoError . SomeInfernoError) pure
+throwInfernoError = either (throwM . InfernoError . SomeInfernoError . show) pure
 
 queryStore :: (ToRow b, FromRow a) => Query -> b -> RemoteM (Vector a)
 queryStore q x = withConns $ \conn -> liftIO $ query conn q x

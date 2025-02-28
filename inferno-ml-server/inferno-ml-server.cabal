@@ -180,6 +180,7 @@ executable parse-and-save
     , inferno-core
     , inferno-ml
     , inferno-ml-server
+    , inferno-ml-server-types
     , inferno-types
     , inferno-vc
     , microlens-platform

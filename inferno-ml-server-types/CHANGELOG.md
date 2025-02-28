@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.13.0
+* Brought RemoteTrace from inferno-ml-server and implenteded JSON serde for it
+
 ## 0.12.2
 * Fourmolu
 

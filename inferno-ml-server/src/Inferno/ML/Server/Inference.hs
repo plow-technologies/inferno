@@ -216,7 +216,7 @@ runInferenceParamWithEnv ipid uuid senv =
       -- e.g. `loadModel "~/inferno/.cache/..."`)
       withCurrentDirectory cache.path $ do
         logInfo $ EvaluatingParam ipid
-        getAndCacheModels cache $ senv.models
+        getAndCacheModels cache senv.models
         runEval interpreter t
       where
         runEval ::
@@ -308,7 +308,7 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              either (throwInfernoError . Left . SomeInfernoError) yieldPairs
+              either (throwInfernoError . Left . SomeInfernoError . show) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
                 =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
               where

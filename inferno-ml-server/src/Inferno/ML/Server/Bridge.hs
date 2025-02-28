@@ -64,7 +64,7 @@ initializeInferno ipid = do
 -- | Call one of the bridge endpoints using the given 'BridgeInfo'
 callBridge :: (NFData a) => BridgeInfo -> ClientM a -> RemoteM a
 callBridge bi c =
-  either (throwM . ClientError) pure =<< liftIO . runClientM c =<< mkEnv
+  either (throwM . ClientError . show) pure =<< liftIO . runClientM c =<< mkEnv
   where
     mkEnv :: RemoteM ClientEnv
     mkEnv = asks $ (`mkClientEnv` url) . view #manager

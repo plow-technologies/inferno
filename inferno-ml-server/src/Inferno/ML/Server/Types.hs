@@ -3,15 +3,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -22,17 +23,14 @@ module Inferno.ML.Server.Types
 where
 
 import Control.Applicative (Alternative ((<|>)), asum, (<**>))
-import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT)
 import Data.Aeson
   ( FromJSON (parseJSON),
-    FromJSONKey,
     Object,
-    ToJSON (toJSON),
-    ToJSONKey,
-    Value (String),
+    ToJSON,
+    Value,
     defaultOptions,
     genericParseJSON,
     withObject,
@@ -42,18 +40,11 @@ import Data.Aeson
     (.:?),
   )
 import Data.Aeson.Types (Parser)
-import qualified Data.Bits as Bits
-import qualified Data.Bson as Bson
-import qualified Data.ByteString.Char8 as ByteString.Char8
-import Data.Data (Typeable)
 import Data.Generics.Labels ()
 import Data.Generics.Wrapped (wrappedTo)
 import Data.Pool (Pool)
 import qualified Data.Pool as Pool
-import Data.Scientific (Scientific)
 import Data.Text (Text)
-import qualified Data.Text as Text
-import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
 import Data.Word (Word64)
@@ -61,14 +52,12 @@ import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
     Connection,
-    ResultError (ConversionFailed, UnexpectedNull),
     close,
     connect,
     (:.) ((:.)),
   )
 import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
-    returnError,
   )
 import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField
@@ -78,6 +67,13 @@ import Foreign.C (CTime (CTime))
 import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
+import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.Module.Cast
+  ( FromValue (fromValue),
+    ToValue (toValue),
+    couldNotCast,
+  )
+import Inferno.Types.Value (Value (VCustom))
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -87,15 +83,12 @@ import Inferno.VersionControl.Types
 import qualified Inferno.VersionControl.Types
 import Lens.Micro.Platform (view)
 import Network.HTTP.Client (Manager)
-import Numeric (readHex)
 import qualified Options.Applicative as Options
 import Plow.Logging (IOTracer, traceWith)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelInfo, LevelWarn),
   )
-import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
-import Text.Read (readMaybe)
 import UnliftIO (Async, MonadUnliftIO)
 import UnliftIO.Exception (bracket)
 import UnliftIO.IORef (IORef)
@@ -152,56 +145,6 @@ data ModelCache = ModelCache
 instance FromJSON ModelCache where
   parseJSON = withObject "ModelCache" $ \o ->
     ModelCache <$> o .: "path" <*> o .: "max-size"
-
--- The type for user and groups IDs. This is compatible with the `UserId` and
--- `GroupId` types from `all`, but we can't import those
-newtype EntityId (a :: EntityIdType) = EntityId Bson.ObjectId
-  deriving stock (Show, Generic, Typeable)
-  deriving newtype (Eq, Ord)
-  deriving anyclass (FromJSONKey, ToJSONKey)
-
-instance FromJSON (EntityId a) where
-  parseJSON =
-    withText "EntityId" $
-      fmap entityIdFromInteger
-        . either fail (pure . fst)
-        . Text.Read.hexadecimal
-        -- Drop leading 'o'
-        . Text.drop 1
-
-instance ToJSON (EntityId a) where
-  toJSON = String . Text.pack . ('o' :) . entityIdToHex
-
-instance (Typeable a) => FromField (EntityId a) where
-  fromField f =
-    maybe (returnError UnexpectedNull f mempty) $
-      maybe
-        (returnError ConversionFailed f mempty)
-        (pure . entityIdFromInteger . round)
-        -- `numeric` column
-        . readMaybe @Scientific
-        . ByteString.Char8.unpack
-
-instance ToField (EntityId a) where
-  toField o = toField $ case readHex @Integer (entityIdToHex o) of
-    (n, _) : _ -> fromInteger @Scientific n
-    _ -> error "EntityId contained invalid fields"
-
-entityIdFromInteger :: Integer -> EntityId a
-entityIdFromInteger =
-  fmap EntityId . Bson.Oid
-    <$> fromInteger . (`Bits.shiftR` 64)
-    <*> fromInteger
-
-entityIdToHex :: EntityId a -> String
-entityIdToHex (EntityId (Bson.Oid x y)) =
-  Bson.showHexLen 8 x $
-    Bson.showHexLen 16 y mempty
-
-data EntityIdType
-  = UId
-  | GId
-  deriving stock (Show, Eq, Generic, Typeable)
 
 data Config = Config
   { port :: Word64
@@ -287,7 +230,7 @@ instance FromJSON ScriptType where
       <|> tagP v
       <|> pure OtherScript
     where
-      tagP :: Value -> Parser ScriptType
+      tagP :: Data.Aeson.Value -> Parser ScriptType
       tagP = withText "ScriptType" $ \case
         "MLInferenceScript" ->
           pure . MLInferenceScript $
@@ -299,101 +242,6 @@ newtype InferenceOptions = InferenceOptions
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
-
-data RemoteError
-  = CacheSizeExceeded
-  | -- | Either parent model row corresponding to the model version, or the
-    -- the requested model version itself, does not exist
-    NoSuchModel (Either (Id Model) (Id ModelVersion))
-  | NoSuchScript VCObjectHash
-  | NoSuchParameter (Id InferenceParam)
-  | InvalidScript Text
-  | InvalidOutput Text
-  | -- | Any error condition returned by Inferno script evaluation
-    InfernoError SomeInfernoError
-  | NoBridgeSaved
-  | ScriptTimeout Int
-  | ClientError ClientError
-  | OtherRemoteError Text
-  deriving stock (Show, Eq, Generic)
-
-instance Exception RemoteError where
-  displayException = \case
-    CacheSizeExceeded -> "Model exceeds maximum cache size"
-    NoSuchModel (Left m) ->
-      unwords
-        [ "Model:"
-        , "'" <> show m <> "'"
-        , "does not exist in the store"
-        ]
-    NoSuchModel (Right mv) ->
-      unwords
-        [ "Model version:"
-        , "'" <> show mv <> "'"
-        , "does not exist in the store"
-        ]
-    NoSuchScript vch ->
-      unwords
-        [ "Script identified by hash"
-        , show vch
-        , "does not exist"
-        ]
-    NoSuchParameter iid ->
-      unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
-    InvalidScript t -> Text.unpack t
-    InvalidOutput t ->
-      unwords
-        [ "Script output should be an array of `write` but was"
-        , Text.unpack t
-        ]
-    InfernoError (SomeInfernoError x) ->
-      unwords
-        [ "Inferno evaluation failed with:"
-        , show x
-        ]
-    NoBridgeSaved -> "No bridge has been saved"
-    ScriptTimeout t ->
-      unwords
-        [ "Script evaluation timed out after"
-        , show $ t `div` 1000000
-        , "seconds"
-        ]
-    ClientError ce ->
-      unwords
-        [ "Client error:"
-        , displayException ce
-        ]
-    OtherRemoteError e -> Text.unpack e
-
-data SomeInfernoError where
-  SomeInfernoError :: forall a. (Show a) => a -> SomeInfernoError
-
-deriving stock instance Show SomeInfernoError
-
-instance Eq SomeInfernoError where
-  _ == _ = False
-
-instance Exception SomeInfernoError where
-  displayException (SomeInfernoError x) = show x
-
-data RemoteTrace
-  = InfoTrace TraceInfo
-  | WarnTrace TraceWarn
-  | ErrorTrace RemoteError
-  deriving stock (Show, Eq, Generic)
-
-data TraceInfo
-  = StartingServer
-  | RunningInference (Id InferenceParam) Int
-  | EvaluatingParam (Id InferenceParam)
-  | CopyingModel (Id ModelVersion)
-  | OtherInfo Text
-  deriving stock (Show, Eq, Generic)
-
-data TraceWarn
-  = CancelingInference (Id InferenceParam)
-  | OtherWarn Text
-  deriving stock (Show, Eq, Generic)
 
 logTrace :: RemoteTrace -> RemoteM ()
 logTrace t =
@@ -520,3 +368,19 @@ withConnectionPool = flip bracket destroyPool . liftIO . newConnectionPool
   where
     destroyPool :: Pool Connection -> m ()
     destroyPool = liftIO . Pool.destroyAllResources
+
+instance ToValue (MlValue BridgeValue) m PID where
+  toValue = VCustom . VExtended . VSeries
+
+instance FromValue (MlValue BridgeValue) m PID where
+  fromValue = \case
+    VCustom (VExtended (VSeries p)) -> pure p
+    v -> couldNotCast v
+
+instance ToValue (MlValue BridgeValue) m InverseResolution where
+  toValue = VCustom . VExtended . VResolution
+
+instance FromValue (MlValue BridgeValue) m InverseResolution where
+  fromValue = \case
+    VCustom (VExtended (VResolution r)) -> pure r
+    v -> couldNotCast v
