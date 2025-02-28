@@ -86,8 +86,7 @@ server = valueAt :<|> latestValueAndTimeBefore :<|> valuesBetween
 valueAt :: Int64 -> PID -> Int -> DummyM IValue
 valueAt _ p t =
   view #values
-    <&> maybe IEmpty IDouble
-    . preview (at p . _Just . at t . _Just)
+    <&> maybe IEmpty IDouble . preview (at p . _Just . at t . _Just)
 
 latestValueAndTimeBefore :: Int -> PID -> DummyM IValue
 latestValueAndTimeBefore _ _ =
