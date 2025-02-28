@@ -20,7 +20,7 @@ import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Server.Module.Types
-import Inferno.ML.Server.Types (IValue)
+import Inferno.ML.Server.Types (BridgeValue (..), IValue)
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)

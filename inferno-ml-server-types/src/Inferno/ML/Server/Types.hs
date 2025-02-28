@@ -1065,13 +1065,17 @@ data RemoteError
   | InvalidScript Text
   | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
-    InfernoError String
+    InfernoError SomeInfernoError
   | NoBridgeSaved
   | ScriptTimeout Int
   | ClientError String
   | OtherRemoteError Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+newtype SomeInfernoError = SomeInfernoError String
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (Exception, ToJSON, FromJSON)
 
 instance Exception RemoteError where
   displayException = \case
@@ -1102,7 +1106,7 @@ instance Exception RemoteError where
         [ "Script output should be an array of `write` but was"
         , Text.unpack t
         ]
-    InfernoError x ->
+    InfernoError (SomeInfernoError x) ->
       unwords
         [ "Inferno evaluation failed with:"
         , x

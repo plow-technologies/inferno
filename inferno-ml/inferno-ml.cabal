@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               inferno-ml
-version:            0.5.0.0
+version:            0.6.0.0
 synopsis:           Machine Learning primitives for Inferno
 description:        Machine Learning primitives for Inferno
 homepage:           https://github.com/plow-technologies/inferno.git#readme
@@ -19,7 +19,6 @@ source-repository head
 library
   exposed-modules:
     Inferno.ML.Module.Prelude
-    Inferno.ML.Types.Value
 
   hs-source-dirs:     src
   ghc-options:
@@ -33,8 +32,8 @@ library
     , hasktorch
     , inferno-core
     , inferno-types
+    , inferno-ml-server-types
     , prettyprinter
-    , template-haskell
     , text
 
   default-language:   Haskell2010
@@ -58,6 +57,7 @@ executable inferno-ml-exe
     , inferno-core
     , inferno-ml
     , inferno-types
+    , inferno-ml-server-types
     , text
 
   default-language: Haskell2010
@@ -73,6 +73,7 @@ executable inferno-ml-lsp-server
       base         >=4.7 && <5
     , inferno-lsp
     , inferno-ml
+    , inferno-ml-server-types
 
   default-language: Haskell2010
 
