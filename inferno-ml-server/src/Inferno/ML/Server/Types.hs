@@ -3,15 +3,16 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -67,6 +68,12 @@ import GHC.Generics (Generic)
 import Inferno.Core (Interpreter)
 import Inferno.ML.Server.Module.Types as M
 import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.Module.Cast
+  ( FromValue (fromValue),
+    ToValue (toValue),
+    couldNotCast,
+  )
+import Inferno.Types.Value (Value (VCustom))
 import Inferno.VersionControl.Types
   ( VCObject,
     VCObjectHash,
@@ -223,7 +230,7 @@ instance FromJSON ScriptType where
       <|> tagP v
       <|> pure OtherScript
     where
-      tagP :: Value -> Parser ScriptType
+      tagP :: Data.Aeson.Value -> Parser ScriptType
       tagP = withText "ScriptType" $ \case
         "MLInferenceScript" ->
           pure . MLInferenceScript $
