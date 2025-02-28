@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,6 +25,7 @@ import Inferno.ML.Server.Types (IValue)
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
+import qualified Inferno.Types.Module
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
@@ -217,26 +219,20 @@ mkBridgePrelude bfuns =
   case modules & view (at "Base") &&& view (at "DataSource") of
     (Just base, Just source) ->
       modules
-        & at "DataSource"
-        .~ Nothing
+        & at "DataSource" .~ Nothing
         & at "Base"
-        ?~ ( base
-              & #moduleOpsTable
-              %~ flip
-                (IntMap.unionWith (<>))
-                (view #moduleOpsTable source)
-              & #moduleTypeClasses
-              <>~ view #moduleTypeClasses source
-              & #moduleObjects
-              . _1
-              <>~ view (#moduleObjects . _1) source
-              & #moduleObjects
-              . _2
-              <>~ view (#moduleObjects . _2) source
-              & #moduleObjects
-              . _3
-              %~ (`combineTermEnv` view (#moduleObjects . _3) source)
-           )
+          ?~ ( base
+                & #moduleOpsTable
+                  %~ flip (IntMap.unionWith (<>)) source.moduleOpsTable
+                & #moduleTypeClasses
+                  <>~ source.moduleTypeClasses
+                & #moduleObjects . _1
+                  <>~ view (#moduleObjects . _1) source
+                & #moduleObjects . _2
+                  <>~ view (#moduleObjects . _2) source
+                & #moduleObjects . _3
+                  %~ (`combineTermEnv` view (#moduleObjects . _3) source)
+             )
     _ -> error "mkBridgePrelude: Missing Base and/or DataSource modules"
   where
     combineTermEnv ::
