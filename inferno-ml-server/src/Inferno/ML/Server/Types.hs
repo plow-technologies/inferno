@@ -323,9 +323,9 @@ infixl 4 ??
 (??) :: (Functor f) => f (a -> b) -> a -> f b
 f ?? x = ($ x) <$> f
 
-type RemoteError = Types.RemoteError InferenceParam ModelVersion
+type RemoteError = Types.RemoteError InferenceParam Model ModelVersion
 
-type RemoteTrace = Types.RemoteTrace InferenceParam ModelVersion
+type RemoteTrace = Types.RemoteTrace InferenceParam Model ModelVersion
 
 type InferenceParam = Types.InferenceParam (EntityId GId) PID
 

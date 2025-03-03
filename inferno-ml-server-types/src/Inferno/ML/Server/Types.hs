@@ -1047,11 +1047,11 @@ data EvaluationEnv gid p = EvaluationEnv
 instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
 
-data RemoteError p m
+data RemoteError p m mv
   = CacheSizeExceeded
   | -- | Either parent model row corresponding to the model version, or the
     -- the requested model version itself, does not exist
-    NoSuchModel (Either (Id m) (Id m))
+    NoSuchModel (Either (Id m) (Id mv))
   | NoSuchScript VCObjectHash
   | NoSuchParameter (Id p)
   | InvalidScript Text
@@ -1069,7 +1069,7 @@ newtype SomeInfernoError = SomeInfernoError String
   deriving stock (Show, Eq, Generic)
   deriving anyclass (Exception, ToJSON, FromJSON)
 
-instance (Typeable p, Typeable m) => Exception (RemoteError p m) where
+instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv) where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
     NoSuchModel (Left m) ->
@@ -1117,18 +1117,18 @@ instance (Typeable p, Typeable m) => Exception (RemoteError p m) where
         ]
     OtherRemoteError e -> Text.unpack e
 
-data RemoteTrace p m
-  = InfoTrace (TraceInfo p m)
+data RemoteTrace p m mv
+  = InfoTrace (TraceInfo p mv)
   | WarnTrace (TraceWarn p)
-  | ErrorTrace (RemoteError p m)
+  | ErrorTrace (RemoteError p m mv)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-data TraceInfo p m
+data TraceInfo p mv
   = StartingServer
   | RunningInference (Id p) Int
   | EvaluatingParam (Id p)
-  | CopyingModel (Id m)
+  | CopyingModel (Id mv)
   | OtherInfo Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
