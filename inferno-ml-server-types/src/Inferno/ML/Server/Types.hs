@@ -26,9 +26,7 @@ import Data.Aeson hiding (Value)
 import qualified Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
-import qualified Data.Bits as Bits
 import Data.Bool (bool)
-import qualified Data.Bson as Bson
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Char (chr)
@@ -42,17 +40,16 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Ord (comparing)
-import Data.Scientific (Scientific, toRealFloat)
+import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
-import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
 import qualified Data.Vector as Vector
-import Data.Word (Word32, Word64, Word8)
+import Data.Word (Word32, Word64)
 import Database.PostgreSQL.Simple.FromField
   ( Conversion,
     Field,
@@ -87,8 +84,6 @@ import Inferno.VersionControl.Types
     VCObjectVisibility,
   )
 import Lens.Micro.Platform hiding ((.=))
-import Numeric (readHex)
-import Prettyprinter (Pretty (..), cat, (<+>))
 import Servant
   ( Capture,
     Get,
@@ -1052,13 +1047,13 @@ data EvaluationEnv gid p = EvaluationEnv
 instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
 
-data RemoteError
+data RemoteError p m
   = CacheSizeExceeded
   | -- | Either parent model row corresponding to the model version, or the
     -- the requested model version itself, does not exist
-    NoSuchModel (Either (Id (Model (EntityId GId))) (Id (ModelVersion (EntityId GId) Oid)))
+    NoSuchModel (Either (Id m) (Id m))
   | NoSuchScript VCObjectHash
-  | NoSuchParameter (Id (InferenceParam (EntityId GId) PID))
+  | NoSuchParameter (Id p)
   | InvalidScript Text
   | InvalidOutput Text
   | -- | Any error condition returned by Inferno script evaluation
@@ -1074,7 +1069,7 @@ newtype SomeInfernoError = SomeInfernoError String
   deriving stock (Show, Eq, Generic)
   deriving anyclass (Exception, ToJSON, FromJSON)
 
-instance Exception RemoteError where
+instance (Typeable p, Typeable m) => Exception (RemoteError p m) where
   displayException = \case
     CacheSizeExceeded -> "Model exceeds maximum cache size"
     NoSuchModel (Left m) ->
@@ -1122,125 +1117,27 @@ instance Exception RemoteError where
         ]
     OtherRemoteError e -> Text.unpack e
 
-data RemoteTrace
-  = InfoTrace TraceInfo
-  | WarnTrace TraceWarn
-  | ErrorTrace RemoteError
+data RemoteTrace p m
+  = InfoTrace (TraceInfo p m)
+  | WarnTrace (TraceWarn p)
+  | ErrorTrace (RemoteError p m)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-data TraceInfo
+data TraceInfo p m
   = StartingServer
-  | RunningInference (Id (InferenceParam (EntityId GId) PID)) Int
-  | EvaluatingParam (Id (InferenceParam (EntityId GId) PID))
-  | CopyingModel (Id (ModelVersion (EntityId GId) Oid))
+  | RunningInference (Id p) Int
+  | EvaluatingParam (Id p)
+  | CopyingModel (Id m)
   | OtherInfo Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
 
-data TraceWarn
-  = CancelingInference (Id (InferenceParam (EntityId GId) PID))
+data TraceWarn p
+  = CancelingInference (Id p)
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
-
--- | Unique ID for pollable data point (for the data source that can be
--- queried using the bridge)
-newtype PID = PID Int
-  deriving stock (Show, Generic)
-  deriving newtype
-    ( Eq
-    , Ord
-    , ToJSON
-    , FromJSON
-    , FromHttpApiData
-    , ToHttpApiData
-    , Pretty
-    , FromField
-    , ToField
-    , NFData
-    )
-
--- The type for user and groups IDs. This is compatible with the `UserId` and
--- `GroupId` types from `all`, but we can't import those
-newtype EntityId (a :: EntityIdType) = EntityId Bson.ObjectId
-  deriving stock (Show, Generic, Typeable)
-  deriving newtype (Eq, Ord)
-  deriving anyclass (FromJSONKey, ToJSONKey)
-
-instance FromJSON (EntityId a) where
-  parseJSON =
-    withText "EntityId" $
-      fmap entityIdFromInteger
-        . either fail (pure . fst)
-        . Text.Read.hexadecimal
-        -- Drop leading 'o'
-        . Text.drop 1
-
-instance ToJSON (EntityId a) where
-  toJSON = String . Text.pack . ('o' :) . entityIdToHex
-
-instance (Typeable a) => FromField (EntityId a) where
-  fromField f =
-    maybe (returnError UnexpectedNull f mempty) $
-      maybe
-        (returnError ConversionFailed f mempty)
-        (pure . entityIdFromInteger . round)
-        -- `numeric` column
-        . readMaybe @Scientific
-        . ByteString.Char8.unpack
-
-instance ToField (EntityId a) where
-  toField o = toField $ case readHex @Integer (entityIdToHex o) of
-    (n, _) : _ -> fromInteger @Scientific n
-    _ -> error "EntityId contained invalid fields"
-
-entityIdFromInteger :: Integer -> EntityId a
-entityIdFromInteger =
-  fmap EntityId . Bson.Oid
-    <$> fromInteger . (`Bits.shiftR` 64)
-    <*> fromInteger
-
-entityIdToHex :: EntityId a -> String
-entityIdToHex (EntityId (Bson.Oid x y)) =
-  Bson.showHexLen 8 x $
-    Bson.showHexLen 16 y mempty
-
-data EntityIdType
-  = UId
-  | GId
-  deriving stock (Show, Eq, Generic, Typeable)
-
--- | Custom type for bridge prelude
-data BridgeValue
-  = VResolution InverseResolution
-  | VSeries PID
-  | VWrite (PID, [(EpochTime, IValue)])
-  deriving stock (Generic)
-
-instance Eq BridgeValue where
-  VResolution r1 == VResolution r2 = r1 == r2
-  VSeries v1 == VSeries v2 = v1 == v2
-  VWrite w1 == VWrite w2 = w1 == w2
-  _ == _ = False
-
-instance Pretty BridgeValue where
-  pretty = \case
-    VSeries p -> cat ["<<", "series" <+> pretty p, ">>"]
-    VResolution e -> pretty @Int $ 2 ^ e
-    VWrite (p, vs) -> "Write" <+> pretty p <> ":" <+> pretty (show vs)
-
-newtype InverseResolution = InverseResolution Word8
-  deriving stock (Show, Generic)
-  deriving newtype
-    ( Eq
-    , Ord
-    , Num
-    , Real
-    , Enum
-    , Integral
-    , NFData
-    )
 
 tshow :: (Show a) => a -> Text
 tshow = Text.pack . show
