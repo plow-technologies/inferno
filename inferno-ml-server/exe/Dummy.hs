@@ -14,6 +14,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Client.Bridge (api)
+import Inferno.ML.Server.Module.Types (PID (PID))
 import Lens.Micro.Platform
 import Network.HTTP.Types (Status)
 import Network.Wai (Request)
@@ -27,10 +28,9 @@ import Network.Wai.Handler.Warp
 import Network.Wai.Logger (withStdoutLogger)
 import Servant
 import UnliftIO.Exception (throwIO, try)
-import "inferno-ml-server" Inferno.ML.Server.Types
+import "inferno-ml-server-types" Inferno.ML.Server.Types
   ( BridgeAPI,
     IValue (IDouble, IEmpty),
-    PID (PID),
   )
 
 main :: IO ()

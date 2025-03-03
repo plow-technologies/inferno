@@ -7,7 +7,6 @@ module Inferno.ML.Server.Bridge
 where
 
 import Control.DeepSeq (NFData)
-import Control.Monad.Catch (throwM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (asks)
 import Data.Int (Int64)
@@ -64,7 +63,7 @@ initializeInferno ipid = do
 -- | Call one of the bridge endpoints using the given 'BridgeInfo'
 callBridge :: (NFData a) => BridgeInfo -> ClientM a -> RemoteM a
 callBridge bi c =
-  either (throwM . ClientError . show) pure =<< liftIO . runClientM c =<< mkEnv
+  either (throwRemoteError . ClientError . show) pure =<< liftIO . runClientM c =<< mkEnv
   where
     mkEnv :: RemoteM ClientEnv
     mkEnv = asks $ (`mkClientEnv` url) . view #manager

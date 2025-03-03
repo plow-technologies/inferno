@@ -1,8 +1,9 @@
-{-# LANGUAGE OverloadedLabels #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Utils
   ( throwInfernoError,
+    throwRemoteError,
     firstOrThrow,
     queryStore,
     executeStore,
@@ -29,8 +30,11 @@ import Inferno.ML.Server.Types
 import Lens.Micro.Platform (view)
 import UnliftIO (MonadUnliftIO (withRunInIO))
 
-throwInfernoError :: forall e a. (Exception e) => Either e a -> RemoteM a
-throwInfernoError = either (throwM . InfernoError . SomeInfernoError . show) pure
+throwRemoteError :: RemoteError -> RemoteM a
+throwRemoteError = throwM
+
+throwInfernoError :: (Exception e) => e -> RemoteM a
+throwInfernoError = throwRemoteError . InfernoError . SomeInfernoError . show
 
 queryStore :: (ToRow b, FromRow a) => Query -> b -> RemoteM (Vector a)
 queryStore q x = withConns $ \conn -> liftIO $ query conn q x
@@ -41,7 +45,7 @@ executeStore q x =
     liftIO . withTransaction conn . void $
       execute conn q x
 
-firstOrThrow :: (MonadThrow m, Exception e) => e -> Vector a -> m a
+firstOrThrow :: (MonadThrow m) => RemoteError -> Vector a -> m a
 firstOrThrow e = maybe (throwM e) pure . (!? 0)
 
 withConns :: (Connection -> RemoteM b) -> RemoteM b

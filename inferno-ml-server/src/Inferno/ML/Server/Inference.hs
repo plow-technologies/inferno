@@ -18,7 +18,6 @@ where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Monad (void, when, (<=<))
-import Control.Monad.Catch (throwM)
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
@@ -182,7 +181,7 @@ runInferenceParamWithEnv ::
 runInferenceParamWithEnv ipid uuid senv =
   withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
-    maybe (throwM (ScriptTimeout t)) pure
+    maybe (throwRemoteError (ScriptTimeout t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
   where
@@ -308,7 +307,7 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              either (throwInfernoError . Left . SomeInfernoError . show) yieldPairs
+              either (throwInfernoError . SomeInfernoError . show) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
                 =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
               where
@@ -319,8 +318,8 @@ runInferenceParamWithEnv ipid uuid senv =
                   VArray vs ->
                     fmap ((.| mkChunks) . yieldMany) . for vs $ \case
                       VCustom (VExtended (VWrite vw)) -> pure vw
-                      v -> throwM . InvalidOutput $ renderPretty v
-                  v -> throwM . InvalidOutput $ renderPretty v
+                      v -> throwRemoteError . InvalidOutput $ renderPretty v
+                  v -> throwRemoteError . InvalidOutput $ renderPretty v
                   where
                     mkChunks ::
                       ConduitT
@@ -351,7 +350,7 @@ runInferenceParamWithEnv ipid uuid senv =
                       )
                     ]
             _ ->
-              throwM
+              throwRemoteError
                 . InvalidScript
                 $ Text.unwords
                   [ "Script identified by VC hash"
@@ -536,7 +535,7 @@ getAndCacheModels cache =
         mkPath :: RemoteM FilePath
         mkPath =
           maybe
-            (throwM (OtherRemoteError "Missing model version ID"))
+            (throwRemoteError (OtherRemoteError "Missing model version ID"))
             (pure . mkModelPath)
             mversion.id
 
@@ -545,7 +544,7 @@ getAndCacheModels cache =
     -- are deleted until there is enough free space
     checkCacheSize :: Integer -> RemoteM ()
     checkCacheSize modelSize = do
-      when (modelSize >= maxSize) $ throwM CacheSizeExceeded
+      when (modelSize >= maxSize) $ throwRemoteError CacheSizeExceeded
       whenM cacheSizeExceeded evictOldModels
       where
         evictOldModels :: RemoteM ()
