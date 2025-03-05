@@ -4,7 +4,10 @@
 {-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wwarn #-}
 
-module Inferno.ML.Module.Prelude (mlPrelude) where
+module Inferno.ML.Module.Prelude
+  ( mlPrelude,
+    mkMlPrelude,
+  ) where
 
 import Control.Monad.Catch
   ( Exception (displayException),
@@ -24,7 +27,7 @@ import Inferno.ML.Types.Value
 import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
-import Inferno.Types.Value (Value (..))
+import Inferno.Types.Value (ImplEnvM, Value (..))
 import Prettyprinter (Pretty)
 import Torch
 import qualified Torch.DType as TD
@@ -197,14 +200,16 @@ toDeviceUnsafeFun d t =
         device' -> error $ "Unknown device setting: " ++ unpack device'
    in toDevice dev t
 
-toDeviceFun ::
+-- Implementation of `toDevice` that doesn't check the device that the
+-- moved tensor is on (i.e. may fail silently)
+defaultToDeviceFun ::
   forall m x.
   ( MonadThrow m
   , MonadIO m
   , Pretty x
   ) =>
   Value (MlValue x) m
-toDeviceFun =
+defaultToDeviceFun =
   VFun $ \case
     VEnum _ e ->
       getDevice e <&> \dev ->
@@ -220,7 +225,17 @@ mlModules ::
   , Pretty x
   ) =>
   Prelude.ModuleMap m (MlValue x)
-mlModules =
+mlModules = mkMlModules defaultToDeviceFun
+
+mkMlModules ::
+  forall m x.
+  ( MonadThrow m
+  , MonadIO m
+  , Pretty x
+  ) =>
+  Value (MlValue x) (ImplEnvM m (MlValue x)) ->
+  Prelude.ModuleMap m (MlValue x)
+mkMlModules toDeviceFun =
   [mlQuoter|
 
 module ML
@@ -307,4 +322,20 @@ mlPrelude =
   Map.unionWith
     (error "Duplicate module name in builtinModules")
     (Prelude.builtinModules @m @(MlValue x))
-    (mlModules @m)
+    $ mlModules @m
+
+mkMlPrelude ::
+  forall m x.
+  ( MonadIO m
+  , MonadCatch m
+  , Pretty x
+  , Eq x
+  ) =>
+  -- | @toDevice@ implementation
+  Value (MlValue x) (ImplEnvM m (MlValue x)) ->
+  Prelude.ModuleMap m (MlValue x)
+mkMlPrelude =
+  Map.unionWith
+    (error "Duplicate module name in builtinModules")
+    (Prelude.builtinModules @m @(MlValue x))
+    . mkMlModules @m
