@@ -15,7 +15,7 @@ import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Inferno.Core (Interpreter, mkInferno)
 import qualified Inferno.ML.Server.Client.Bridge as Bridge
 import Inferno.ML.Server.Module.Bridge (mkBridgeFuns)
-import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
+import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, serverMlPrelude)
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
 import Inferno.ML.Types.Value (customTypes)
@@ -36,7 +36,7 @@ import System.Posix.Types (EpochTime)
 initializeInferno ::
   Id InferenceParam -> RemoteM (Interpreter RemoteM BridgeMlValue)
 initializeInferno ipid = do
-  (`mkInferno` customTypes) . mkBridgePrelude . mkFuns
+  (`mkInferno` customTypes) . (`mkServerBridgePrelude` serverMlPrelude) . mkFuns
     =<< getBridgeInfo
   where
     -- There should always be a bridge saved for the param

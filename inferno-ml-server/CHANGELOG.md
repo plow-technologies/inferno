@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.3.6
+* Add `toDevice` impl with logging on failure to move tensor
+
 ## 2025.3.3
 * Brought back shims from inferno-ml-server-types
 

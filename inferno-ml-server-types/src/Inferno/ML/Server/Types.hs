@@ -1135,6 +1135,14 @@ data TraceInfo p mv
 
 data TraceWarn p
   = CancelingInference (Id p)
+  | -- | The tensor could not be moved from the device. The device is represented
+    -- as a string here so that we don't need to use @Device@ from Hasktorch
+    -- (which would pose build problems for us elsewhere)
+    --
+    -- Normally this would occur if a CPU-only @inferno-ml-server@ tried
+    -- moving a tensor from \"cpu:0\" to \"cuda:0\". We don\'t throw any
+    -- exceptions in that case, but the log is still helpful
+    CouldntMoveTensor String
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)

@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.14.1
+* Add `CouldntMoveTensor` warning trace
+
 ## 0.14.0
 * Made RemoteTrace and RemoteError polymorphic so we can remove shims
 * Removed shims
