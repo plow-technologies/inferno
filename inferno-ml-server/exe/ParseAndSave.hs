@@ -20,7 +20,6 @@ import Control.Monad (void)
 import Data.Aeson (FromJSON, eitherDecode)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8
-import Inferno.ML.Module.Prelude (mlPrelude)
 import qualified Data.ByteString.Lazy.Char8 as Lazy.Char8
 import qualified Data.Map.Strict as Map
 import Data.Text (Text)
@@ -42,6 +41,7 @@ import Inferno.Core
   ( Interpreter (Interpreter, parseAndInfer),
     mkInferno,
   )
+import Inferno.ML.Module.Prelude (mlPrelude)
 import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude)
 import Inferno.ML.Types.Value (customTypes)
 import Inferno.Types.Syntax (Expr, TCScheme)

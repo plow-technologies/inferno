@@ -11,7 +11,7 @@ module Inferno.ML.Server.Module.Prelude
 where
 
 import Control.Exception (ErrorCall)
-import Control.Monad.Catch (MonadThrow (throwM), MonadCatch)
+import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
