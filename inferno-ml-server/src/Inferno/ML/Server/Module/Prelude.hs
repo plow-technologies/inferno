@@ -216,6 +216,7 @@ module DataSource
             VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
             _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
 
+-- | Make a prelude that works without @RemoteM@ monad
 mkServerBridgePrelude ::
   forall m.
   ( MonadIO m
@@ -262,6 +263,7 @@ mkServerBridgePrelude bfuns mlPrelude =
       Map.unionWith (error "Redefined builtins") mlPrelude $
         bridgeModules @_ bfuns
 
+-- | ML prelude for use only in @RemoteM@ (needed for tracing effects)
 serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
 serverMlPrelude = mkMlPrelude toDeviceFun
   where
