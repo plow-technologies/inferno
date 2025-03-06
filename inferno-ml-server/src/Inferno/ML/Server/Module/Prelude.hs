@@ -9,7 +9,7 @@ module Inferno.ML.Server.Module.Prelude
   )
 where
 
-import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
+import Control.Monad.Catch (MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO)
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
@@ -18,20 +18,21 @@ import qualified Data.Map as Map
 import Data.Tuple.Extra ((&&&))
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import Inferno.ML.Module.Prelude (mlPrelude)
+import Inferno.ML.Module.Prelude (mkMlPrelude, getDevice)
 import Inferno.ML.Server.Module.Types
-import Inferno.ML.Server.Types (IValue)
+import Inferno.ML.Server.Types (IValue, RemoteM)
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEmpty, VEpochTime, VFun, VTuple),
+    Value (VArray, VCustom, VEmpty, VEpochTime, VFun, VTuple, VEnum),
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
 import System.Posix.Types (EpochTime)
+import Torch (Tensor, toDevice)
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
@@ -206,37 +207,32 @@ module DataSource
             _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
 
 mkBridgePrelude ::
-  forall m.
-  ( MonadIO m
-  , MonadThrow m
-  , MonadCatch m
-  ) =>
-  BridgeFuns m ->
-  ModuleMap m BridgeMlValue
+  BridgeFuns RemoteM ->
+  ModuleMap RemoteM BridgeMlValue
 mkBridgePrelude bfuns =
   case modules & view (at "Base") &&& view (at "DataSource") of
     (Just base, Just source) ->
       modules
         & at "DataSource"
-        .~ Nothing
+          .~ Nothing
         & at "Base"
-        ?~ ( base
-              & #moduleOpsTable
-              %~ flip
-                (IntMap.unionWith (<>))
-                (view #moduleOpsTable source)
-              & #moduleTypeClasses
-              <>~ view #moduleTypeClasses source
-              & #moduleObjects
-              . _1
-              <>~ view (#moduleObjects . _1) source
-              & #moduleObjects
-              . _2
-              <>~ view (#moduleObjects . _2) source
-              & #moduleObjects
-              . _3
-              %~ (`combineTermEnv` view (#moduleObjects . _3) source)
-           )
+          ?~ ( base
+                & #moduleOpsTable
+                  %~ flip
+                    (IntMap.unionWith (<>))
+                    (view #moduleOpsTable source)
+                & #moduleTypeClasses
+                  <>~ view #moduleTypeClasses source
+                & #moduleObjects
+                  . _1
+                  <>~ view (#moduleObjects . _1) source
+                & #moduleObjects
+                  . _2
+                  <>~ view (#moduleObjects . _2) source
+                & #moduleObjects
+                  . _3
+                  %~ (`combineTermEnv` view (#moduleObjects . _3) source)
+             )
     _ -> error "mkBridgePrelude: Missing Base and/or DataSource modules"
   where
     combineTermEnv ::
@@ -245,9 +241,21 @@ mkBridgePrelude bfuns =
       (Map.Map ExtIdent v, Map.Map VCObjectHash e)
     combineTermEnv trm1 trm2 = trm1 >>= \x -> trm2 <&> (x <>)
 
-    modules :: ModuleMap m BridgeMlValue
+    modules :: ModuleMap RemoteM BridgeMlValue
     modules =
-      Map.unionWith
-        (error "Redefined builtins")
-        (mlPrelude @_ @BridgeValue)
-        $ bridgeModules @_ bfuns
+      Map.unionWith (error "Redefined builtins") mlPrelude $
+        bridgeModules @_ bfuns
+
+mlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
+mlPrelude = mkMlPrelude toDeviceFun
+  where
+    toDeviceFun ::
+      Value (MlValue BridgeValue) (ImplEnvM RemoteM (MlValue BridgeValue))
+    toDeviceFun =
+      VFun $ \case
+        VEnum _ e ->
+          getDevice e <&> \dev ->
+            VFun $ \tensor ->
+              (toValue @_ @_ @Tensor) . toDevice dev
+                <$> (fromValue @_ @_ @Tensor) tensor
+        _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"

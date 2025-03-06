@@ -7,6 +7,7 @@
 module Inferno.ML.Module.Prelude
   ( mlPrelude,
     mkMlPrelude,
+    getDevice,
   ) where
 
 import Control.Monad.Catch

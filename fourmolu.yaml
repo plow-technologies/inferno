@@ -2,3 +2,9 @@ indentation: 2
 import-export-style: trailing
 haddock-style: single-line
 indent-wheres: true
+fixities:
+  - infixl 1 &
+  - infixr 4 .~
+  - infixr 4 ?~
+  - infixr 4 %~
+  - infixr 4 <>~

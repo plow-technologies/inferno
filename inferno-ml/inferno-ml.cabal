@@ -31,7 +31,6 @@ library
     , containers
     , exceptions
     , hasktorch
-    , libtorch-ffi
     , inferno-core
     , inferno-types
     , prettyprinter
