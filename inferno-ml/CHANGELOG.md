@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.7.0.0 -- 2025-03-06
+* Added parameterized version of `mlModules` to provide specific `toDevice` primitive
+
 ## 0.6.0.0 -- 2025-02-28
 * Breaking change: Moved Inferno.ML.Module.Value to inferno-ml-server-types
 
