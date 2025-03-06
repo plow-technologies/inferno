@@ -5,12 +5,13 @@
 
 module Inferno.ML.Server.Module.Prelude
   ( bridgeModules,
-    mkBridgePrelude,
+    mkServerBridgePrelude,
+    serverMlPrelude,
   )
 where
 
 import Control.Exception (ErrorCall)
-import Control.Monad.Catch (MonadThrow (throwM))
+import Control.Monad.Catch (MonadThrow (throwM), MonadCatch)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
@@ -215,10 +216,16 @@ module DataSource
             VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
             _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
 
-mkBridgePrelude ::
-  BridgeFuns RemoteM ->
-  ModuleMap RemoteM BridgeMlValue
-mkBridgePrelude bfuns =
+mkServerBridgePrelude ::
+  forall m.
+  ( MonadIO m
+  , MonadCatch m
+  , MonadThrow m
+  ) =>
+  BridgeFuns m ->
+  ModuleMap m BridgeMlValue ->
+  ModuleMap m BridgeMlValue
+mkServerBridgePrelude bfuns mlPrelude =
   case modules & view (at "Base") &&& view (at "DataSource") of
     (Just base, Just source) ->
       modules
@@ -242,7 +249,7 @@ mkBridgePrelude bfuns =
                   . _3
                   %~ (`combineTermEnv` view (#moduleObjects . _3) source)
              )
-    _ -> error "mkBridgePrelude: Missing Base and/or DataSource modules"
+    _ -> error "mkServerBridgePrelude: Missing Base and/or DataSource modules"
   where
     combineTermEnv ::
       (Map.Map ExtIdent v, Map.Map VCObjectHash e) ->
@@ -250,13 +257,13 @@ mkBridgePrelude bfuns =
       (Map.Map ExtIdent v, Map.Map VCObjectHash e)
     combineTermEnv trm1 trm2 = trm1 >>= \x -> trm2 <&> (x <>)
 
-    modules :: ModuleMap RemoteM BridgeMlValue
+    modules :: ModuleMap m BridgeMlValue
     modules =
       Map.unionWith (error "Redefined builtins") mlPrelude $
         bridgeModules @_ bfuns
 
-mlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
-mlPrelude = mkMlPrelude toDeviceFun
+serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
+serverMlPrelude = mkMlPrelude toDeviceFun
   where
     toDeviceFun ::
       Value (MlValue BridgeValue) (ImplEnvM RemoteM (MlValue BridgeValue))
