@@ -28,13 +28,11 @@ source-repository-package
     tag: f9e3e485409c5a1de1de99a8ec0f35226c79da79
     --sha256: j+SZk5AZsNP674fb+1aiA7vrsk6Eq5BQM2losQSnaeE=
 
--- NOTE Fork due to issues with `error`s when moving tensors.
--- Modifications will almost certainly not be accepted upstream.
 source-repository-package
     type: git
-    location: https://github.com/plow-technologies/hasktorch.git
-    tag: a70a3c788615ff1d9b8012b192b574ea12d17c26
-    --sha256: sha256-nlGg9YcBhYKS+3E6uGYYE2DM1iceraIHSRorc0uV8Xo=
+    location: https://github.com/hasktorch/hasktorch.git
+    tag: 51894a2abd95d50af147997b76b473edc15385b1
+    --sha256: sha256-o9y/sa26q27Jgu9ozntYdl7ZQdTOxxuDN5hqmBy+ecE=
     subdir:
       libtorch-ffi
       libtorch-ffi-helper
