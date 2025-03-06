@@ -46,6 +46,12 @@ traceRemote = \case
         [ "Canceling inference job for param:"
         , tshow i
         ]
+    CouldntMoveTensor dev ->
+      Text.pack $
+        unwords
+          [ "Couldn't move tensor to device"
+          , dev
+          ]
     OtherWarn t -> t
   ErrorTrace e -> err . Text.pack $ displayException e
   where

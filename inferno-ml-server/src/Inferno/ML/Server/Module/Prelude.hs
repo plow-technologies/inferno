@@ -18,21 +18,28 @@ import qualified Data.Map as Map
 import Data.Tuple.Extra ((&&&))
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import Inferno.ML.Module.Prelude (mkMlPrelude, getDevice)
+import Inferno.ML.Module.Prelude (getDevice, mkMlPrelude)
 import Inferno.ML.Server.Module.Types
-import Inferno.ML.Server.Types (IValue, RemoteM)
+import Inferno.ML.Server.Types
+  ( IValue,
+    RemoteM,
+    TraceWarn (CouldntMoveTensor),
+    logWarn,
+  )
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEmpty, VEpochTime, VFun, VTuple, VEnum),
+    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VTuple),
+    liftImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
 import System.Posix.Types (EpochTime)
-import Torch (Tensor, toDevice)
+import Torch (Tensor)
+import qualified Torch (device, toDevice)
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
@@ -254,8 +261,32 @@ mlPrelude = mkMlPrelude toDeviceFun
     toDeviceFun =
       VFun $ \case
         VEnum _ e ->
-          getDevice e <&> \dev ->
-            VFun $ \tensor ->
-              (toValue @_ @_ @Tensor) . toDevice dev
-                <$> (fromValue @_ @_ @Tensor) tensor
+          -- The device that the user wants to move the tensor to; currently
+          -- can only be `#cpu` or `#cuda`
+          getDevice e <&> \device ->
+            -- Original tensor to be moved (as Inferno value)
+            VFun $ \vtensor -> do
+              (fromValue vtensor >>=) . (. Torch.toDevice device) $ \case
+                -- This is the (potentially) moved tensor; its having been moved
+                -- or not depends on the devices involved
+                --
+                -- Since we are using a fork of Hasktorch that does not throw
+                -- an `error` when a tensor cannot be moved, we want to at least
+                -- log the fact that it wasn't moved
+                --
+                -- In most cases, this would happen if a CPU-only `inferno-ml-server`
+                -- tries to evaluate `ML.toDevice t #cuda`; with no CUDA device
+                -- it can't be moved. Logging is more important, however, if
+                -- for some reason CUDA-enabled `inferno-ml-server`s can't move
+                -- the device when they should be able to. Logging can at least
+                -- help with detecting these types of problems
+                tensor
+                  | tdevice <- Torch.device tensor
+                  , -- In this case, since the potentially moved tensor's current
+                    -- device does not match the device specified by the user,
+                    -- we know the move failed, and can log the warning
+                    tdevice /= device -> do
+                      liftImplEnvM . logWarn . CouldntMoveTensor $ show device
+                      pure $ toValue @_ @_ @Tensor tensor
+                  | otherwise -> pure $ toValue @_ @_ @Tensor tensor
         _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
