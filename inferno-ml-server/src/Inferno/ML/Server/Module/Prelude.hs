@@ -11,7 +11,7 @@ where
 
 import Control.Exception (ErrorCall)
 import Control.Monad.Catch (MonadThrow (throwM))
-import Control.Monad.IO.Class (MonadIO(liftIO))
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
@@ -39,7 +39,7 @@ import Inferno.Types.Value
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
 import System.Posix.Types (EpochTime)
-import Torch (Tensor, Device)
+import Torch (Device, Tensor)
 import qualified Torch (toDevice)
 import UnliftIO.Exception (handle)
 
