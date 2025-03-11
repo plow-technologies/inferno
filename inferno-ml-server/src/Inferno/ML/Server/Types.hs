@@ -31,7 +31,7 @@ import Data.Aeson
     Object,
     ToJSON (toJSON),
     ToJSONKey,
-    Value (String),
+    Value (Null, String),
     defaultOptions,
     genericParseJSON,
     withObject,
@@ -214,6 +214,8 @@ data Config = Config
   -- ^ Minimum log level; logs below this level will be ignored
   , store :: ConnectInfo
   -- ^ Configuration for PostgreSQL database
+  , instanceId :: InstanceId
+  -- ^ The instanceId used for DB logging
   }
   deriving stock (Show, Eq, Generic)
 
@@ -226,6 +228,7 @@ instance FromJSON Config where
       <*> o .: "timeout"
       <*> o .:? "log-level" .!= LevelWarn
       <*> (connInfoP =<< o .: "store")
+      <*> (o .:? "instanceId"  .!= NoDbLogging)
     where
       connInfoP :: Object -> Parser ConnectInfo
       connInfoP o =
@@ -236,6 +239,23 @@ instance FromJSON Config where
           <*> o .: "password"
           <*> o .: "database"
 {- ORMOLU_ENABLE -}
+
+data InstanceId
+  = InstanceId Text
+  | Auto
+  | NoDbLogging
+  deriving stock (Show, Eq, Generic)
+
+instance ToJSON InstanceId where
+  toJSON Auto = String "auto"
+  toJSON (InstanceId x) = String x
+  toJSON NoDbLogging = Null
+
+instance FromJSON InstanceId where
+  parseJSON Null = pure NoDbLogging
+  parseJSON (String "auto") = pure Auto
+  parseJSON (String x) = pure (InstanceId x)
+  parseJSON _ = fail "Invalid InstanceId. Expected \"auto\", an instance-id or Null"
 
 mkOptions :: IO Config
 mkOptions = decodeFileThrow =<< p

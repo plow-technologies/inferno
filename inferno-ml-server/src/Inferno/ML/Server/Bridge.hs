@@ -41,7 +41,7 @@ initializeInferno ipid = do
   where
     -- There should always be a bridge saved for the param
     getBridgeInfo :: RemoteM BridgeInfo
-    getBridgeInfo = firstOrThrow NoBridgeSaved =<< queryStore q (Only ipid)
+    getBridgeInfo = firstOrThrow (NoBridgeSaved ipid) =<< queryStore q (Only ipid)
       where
         q :: Query
         q = [sql| SELECT * FROM bridges WHERE id = ? |]
@@ -50,20 +50,20 @@ initializeInferno ipid = do
     mkFuns bi = mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween
       where
         valueAt :: Int64 -> PID -> EpochTime -> RemoteM IValue
-        valueAt res pid = callBridge bi . Bridge.valueAtC res pid
+        valueAt res pid = callBridge ipid bi . Bridge.valueAtC res pid
 
         latestValueAndTimeBefore :: EpochTime -> PID -> RemoteM IValue
         latestValueAndTimeBefore t =
-          callBridge bi . Bridge.latestValueAndTimeBeforeC t
+          callBridge ipid bi . Bridge.latestValueAndTimeBeforeC t
 
         valuesBetween :: Int64 -> PID -> EpochTime -> EpochTime -> RemoteM IValue
         valuesBetween res pid t1 =
-          callBridge bi . Bridge.valuesBetweenC res pid t1
+          callBridge ipid bi . Bridge.valuesBetweenC res pid t1
 
 -- | Call one of the bridge endpoints using the given 'BridgeInfo'
-callBridge :: (NFData a) => BridgeInfo -> ClientM a -> RemoteM a
-callBridge bi c =
-  either (throwRemoteError . ClientError . show) pure =<< liftIO . runClientM c =<< mkEnv
+callBridge :: (NFData a) => Id InferenceParam -> BridgeInfo -> ClientM a -> RemoteM a
+callBridge ipid bi c =
+  either (throwRemoteError . ClientError ipid . show) pure =<< liftIO . runClientM c =<< mkEnv
   where
     mkEnv :: RemoteM ClientEnv
     mkEnv = asks $ (`mkClientEnv` url) . view #manager
