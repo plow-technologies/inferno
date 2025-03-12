@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.3.11
+* Persist error traces in DB if instance-id is provided in the config
+
 ## 2025.3.6
 * Add `toDevice` impl with logging on failure to move tensor
 

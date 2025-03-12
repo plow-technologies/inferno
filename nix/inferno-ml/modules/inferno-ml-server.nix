@@ -63,6 +63,13 @@ in
                   "Number of seconds for script eval timeout";
               };
 
+              instanceId = lib.mkOption {
+                type = lib.types.nullOr lib.types.str;
+                default = null;
+                description = lib.mdDoc
+                  "The instance-id for DB logs. Use 'auto' to introspect it from EC2, null for no DB logging";
+              };
+
               cache = lib.mkOption {
                 description = lib.mdDoc ''
                   Options for the cache itself

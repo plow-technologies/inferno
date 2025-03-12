@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.15.0
+* Added some context to RemoteError constructors
+
 ## 0.14.1
 * Add `CouldntMoveTensor` warning trace
 

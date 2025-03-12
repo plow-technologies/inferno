@@ -214,7 +214,7 @@ pkgs.nixosTest {
       'pg_isready -U inferno -d inferno -h 127.0.0.1 -p 5432'
     )
     node.succeed(
-      'psql -U inferno -d inferno -f ${../migrations/v1-create-tables.sql}'
+      'psql -U inferno -d inferno -f ${../migrations/v1-create-tables.sql} -v "ON_ERROR_STOP=1"'
     )
     node.succeed('insert-mnist-model')
     node.wait_for_unit("inferno-ml-server.service")

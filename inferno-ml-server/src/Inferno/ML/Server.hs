@@ -33,7 +33,7 @@ import Network.Wai.Handler.Warp
     setPort,
   )
 import Network.Wai.Logger (withStdoutLogger)
-import Plow.Logging (traceWith)
+import Plow.Logging (IOTracer, traceWith)
 import Servant
   ( Application,
     Handler (Handler),
@@ -78,7 +78,7 @@ main = runServer =<< mkOptions
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
   withConnectionPool cfg.store $ \pool ->
-    withRemoteTracer $ \tracer -> do
+    withRemoteTracer (cfg ^. #instanceId) pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
       f
         =<< Env cfg tracer pool
@@ -96,22 +96,16 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
         . ExceptT
         . try
         . handle toServantErr
+        . handle (logAndRethrowError (env ^. #tracer))
         . runReaderT m
+
+    logAndRethrowError :: IOTracer RemoteTrace -> RemoteError -> IO a
+    logAndRethrowError tracer err =
+      traceWith tracer (ErrorTrace err) >> throwM err
 
     toServantErr :: RemoteError -> IO a
     toServantErr =
-      throwM . \case
-        e@OtherRemoteError{} -> errWith err500 e
-        e@CacheSizeExceeded{} -> errWith err400 e
-        e@NoSuchModel{} -> errWith err404 e
-        e@NoSuchParameter{} -> errWith err404 e
-        e@NoSuchScript{} -> errWith err404 e
-        e@InvalidScript{} -> errWith err400 e
-        e@InvalidOutput{} -> errWith err400 e
-        e@InfernoError{} -> errWith err500 e
-        e@NoBridgeSaved{} -> errWith err500 e
-        e@ScriptTimeout{} -> errWith err500 e
-        e@ClientError{} -> errWith err500 e
+      throwM . translateError
       where
         errWith :: ServerError -> RemoteError -> ServerError
         errWith se e =
@@ -120,6 +114,19 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
                 ByteString.Lazy.Char8.pack . displayException $
                   e
             }
+        translateError =
+          \case
+            e@OtherRemoteError{} -> errWith err500 e
+            e@CacheSizeExceeded{} -> errWith err400 e
+            e@NoSuchModel{} -> errWith err404 e
+            e@NoSuchParameter{} -> errWith err404 e
+            e@NoSuchScript{} -> errWith err404 e
+            e@InvalidScript{} -> errWith err400 e
+            e@InvalidOutput{} -> errWith err400 e
+            e@InfernoError{} -> errWith err500 e
+            e@NoBridgeSaved{} -> errWith err500 e
+            e@ScriptTimeout{} -> errWith err500 e
+            e@ClientError{} -> errWith err500 e
 
 api :: Proxy InfernoMlServerAPI
 api = Proxy

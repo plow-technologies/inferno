@@ -1054,13 +1054,13 @@ data RemoteError p m mv
     NoSuchModel (Either (Id m) (Id mv))
   | NoSuchScript VCObjectHash
   | NoSuchParameter (Id p)
-  | InvalidScript Text
-  | InvalidOutput Text
+  | InvalidScript (Id p) Text
+  | InvalidOutput (Id p) Text
   | -- | Any error condition returned by Inferno script evaluation
-    InfernoError SomeInfernoError
-  | NoBridgeSaved
-  | ScriptTimeout Int
-  | ClientError String
+    InfernoError (Id p) SomeInfernoError
+  | NoBridgeSaved (Id p)
+  | ScriptTimeout (Id p) Int
+  | ClientError (Id p) String
   | OtherRemoteError Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
@@ -1092,27 +1092,46 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         ]
     NoSuchParameter iid ->
       unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
-    InvalidScript t -> Text.unpack t
-    InvalidOutput t ->
+    InvalidScript ipid t ->
       unwords
-        [ "Script output should be an array of `write` but was"
+        [ "Invalid script when evaluating"
+        , show ipid
+        , ":"
         , Text.unpack t
         ]
-    InfernoError (SomeInfernoError x) ->
+    InvalidOutput ipid t ->
       unwords
-        [ "Inferno evaluation failed with:"
+        [ "When evaluating"
+        , show ipid
+        , "script output should be an array of `write` but was"
+        , Text.unpack t
+        ]
+    InfernoError ipid (SomeInfernoError x) ->
+      unwords
+        [ "Inferno evaluation failed when evaluating"
+        , show ipid
+        , "with:"
         , x
         ]
-    NoBridgeSaved -> "No bridge has been saved"
-    ScriptTimeout t ->
+    NoBridgeSaved ipid ->
       unwords
-        [ "Script evaluation timed out after"
+        [ "No bridge for "
+        , show ipid
+        , "has been saved"
+        ]
+    ScriptTimeout ipid t ->
+      unwords
+        [ "Script evaluation for"
+        , show ipid
+        , "timed out after"
         , show $ t `div` 1000000
         , "seconds"
         ]
-    ClientError ce ->
+    ClientError ipid ce ->
       unwords
-        [ "Client error:"
+        [ "Client error when calculating"
+        , show ipid
+        , ":"
         , ce
         ]
     OtherRemoteError e -> Text.unpack e
@@ -1123,6 +1142,9 @@ data RemoteTrace p m mv
   | ErrorTrace (RemoteError p m mv)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
+
+instance ToField (RemoteTrace p m mv) where
+  toField = toField . toJSON
 
 data TraceInfo p mv
   = StartingServer

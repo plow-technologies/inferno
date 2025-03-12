@@ -108,3 +108,15 @@ create table if not exists bridges
 
 create trigger "manage-mversion-lo" before update or delete on mversions
   for each row execute function lo_manage(contents);
+
+create table if not exists traces
+  ( -- the EC2 instance id where the server that that produced the trace was running.
+    instance_id text not null,
+    -- Timestamp
+    ts timestamptz not null,
+    -- The RemoteTrace
+    trace jsonb not null
+  );
+-- For queries where we want to see what happened on an instance during a time
+-- range
+create index trace_instance_ts_ix on traces ( instance_id, ts );

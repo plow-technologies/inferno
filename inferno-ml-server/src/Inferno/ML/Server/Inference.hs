@@ -181,7 +181,7 @@ runInferenceParamWithEnv ::
 runInferenceParamWithEnv ipid uuid senv =
   withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
-    maybe (throwRemoteError (ScriptTimeout t)) pure
+    maybe (throwRemoteError (ScriptTimeout ipid t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
   where
@@ -307,7 +307,7 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              either (throwInfernoError . SomeInfernoError . show) yieldPairs
+              either (throwInfernoError ipid) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
                 =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
               where
@@ -318,8 +318,8 @@ runInferenceParamWithEnv ipid uuid senv =
                   VArray vs ->
                     fmap ((.| mkChunks) . yieldMany) . for vs $ \case
                       VCustom (VExtended (VWrite vw)) -> pure vw
-                      v -> throwRemoteError . InvalidOutput $ renderPretty v
-                  v -> throwRemoteError . InvalidOutput $ renderPretty v
+                      v -> throwRemoteError . InvalidOutput ipid $ renderPretty v
+                  v -> throwRemoteError . InvalidOutput ipid $ renderPretty v
                   where
                     mkChunks ::
                       ConduitT
@@ -351,7 +351,7 @@ runInferenceParamWithEnv ipid uuid senv =
                     ]
             _ ->
               throwRemoteError
-                . InvalidScript
+                . InvalidScript ipid
                 $ Text.unwords
                   [ "Script identified by VC hash"
                   , tshow senv.script
