@@ -1142,7 +1142,7 @@ data RemoteTrace p m mv
   | ErrorTrace (RemoteError p m mv)
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
-  deriving (FromField, ToField) via Aeson (RemoteTrace p m v)
+  deriving (FromField, ToField) via Aeson (RemoteTrace p m mv)
 
 data TraceInfo p mv
   = StartingServer
