@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.15.2
+* Fix typo
+
 ## 0.15.1
 * Added FromField instance for RemoteTrace
 
