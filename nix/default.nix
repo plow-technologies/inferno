@@ -63,6 +63,7 @@ pkgs.haskell-nix.cabalProject {
       config.treefmt.build.wrapper
       pkgs.torch
       pkgs.torch.dev
+      pkgs.ghcid
     ]
     ++ builtins.attrValues config.treefmt.build.programs;
     shellHook =

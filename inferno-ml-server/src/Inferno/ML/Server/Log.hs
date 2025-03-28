@@ -1,20 +1,37 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Log where
 
 import Control.Exception (displayException)
+import Control.Monad (when)
+import Control.Monad.Reader (runReaderT)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Contravariant (contramap)
+import Data.Pool (Pool)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as T
+import Data.Time (getCurrentTime)
+import Database.PostgreSQL.Simple
+  ( Connection,
+  )
+import Database.PostgreSQL.Simple.SqlQQ (sql)
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types
-import Plow.Logging (IOTracer (IOTracer), withEitherTracer)
+import Inferno.ML.Server.Utils (executeStore)
+import qualified Network.HTTP.Client as HTTP
+import Plow.Logging
+  ( IOTracer (IOTracer),
+    Tracer (Tracer),
+    withEitherTracer,
+  )
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelInfo, LevelWarn),
   )
-import UnliftIO (MonadUnliftIO)
+import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
 import UnliftIO.IO (Handle, stderr, stdout)
 
 traceRemote :: RemoteTrace -> Message
@@ -46,6 +63,12 @@ traceRemote = \case
         [ "Canceling inference job for param:"
         , tshow i
         ]
+    CouldntMoveTensor dev ->
+      Text.pack $
+        unwords
+          [ "Couldn't move tensor to device"
+          , dev
+          ]
     OtherWarn t -> t
   ErrorTrace e -> err . Text.pack $ displayException e
   where
@@ -67,10 +90,17 @@ data StdStream a
 withRemoteTracer ::
   forall m a.
   (MonadUnliftIO m) =>
+  InstanceId ->
+  Pool Connection ->
   (IOTracer RemoteTrace -> m a) ->
   m a
-withRemoteTracer f = withAsyncHandleIOTracers stdout stderr $
-  \tso tse -> f $ mkRemoteTracer tso tse
+withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
+  \tso tse -> do
+    mInstanceId <- case instanceId of
+      InstanceId instanceId' -> pure $ Just instanceId'
+      Auto -> Just <$> queryInstanceId
+      NoDbLogging -> pure Nothing
+    f $ mkRemoteTracer mInstanceId tso tse
   where
     withAsyncHandleIOTracers ::
       (MonadUnliftIO m) =>
@@ -84,12 +114,42 @@ withRemoteTracer f = withAsyncHandleIOTracers stdout stderr $
         inner = withAsyncHandleTracer h2 100 . g
 
     mkRemoteTracer ::
-      IOTracer Text -> IOTracer Text -> IOTracer RemoteTrace
-    mkRemoteTracer (IOTracer traceStdout) (IOTracer traceStderr) =
-      IOTracer $
-        contramap (printMessage . traceRemote) $
-          withEitherTracer traceStdout traceStderr
+      Maybe Text -> IOTracer Text -> IOTracer Text -> IOTracer RemoteTrace
+    mkRemoteTracer mInstanceId (IOTracer traceStdout) (IOTracer traceStderr) =
+      IOTracer $ consoleTracer <> maybe mempty databaseTracer mInstanceId
       where
+        databaseTracer :: forall m'. (MonadIO m') => Text -> Tracer m' RemoteTrace
+        databaseTracer instanceId' = Tracer $ \t ->
+          when (shallPersist t) $
+            liftIO $ do
+              ts <- getCurrentTime
+              flip runReaderT pool $
+                executeStore
+                  [sql|INSERT INTO traces (instance_id, ts, trace) VALUES (?, ?, ?)|]
+                  (instanceId', ts, t)
+
+        consoleTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
+        consoleTracer =
+          contramap (printMessage . traceRemote) $
+            withEitherTracer traceStdout traceStderr
+
+        shallPersist :: RemoteTrace -> Bool
+        shallPersist = \case
+          InfoTrace _ -> False
+          WarnTrace _ -> False
+          ErrorTrace err -> case err of
+            CacheSizeExceeded -> False
+            NoSuchModel{} -> True
+            NoSuchScript{} -> True
+            NoSuchParameter{} -> True
+            InvalidScript{} -> True
+            InvalidOutput{} -> True
+            InfernoError{} -> True
+            NoBridgeSaved{} -> True
+            ScriptTimeout{} -> True
+            ClientError{} -> True
+            OtherRemoteError{} -> False
+
         printMessage :: Message -> Either Text Text
         printMessage (Message level stream) = case stream of
           Stderr t -> printWithLevel Right t
@@ -100,3 +160,11 @@ withRemoteTracer f = withAsyncHandleIOTracers stdout stderr $
             printWithLevel ::
               (Text -> Either Text Text) -> Text -> Either Text Text
             printWithLevel ctor = ctor . (mconcat ["[", tshow level, "] "] <>)
+
+-- | Retrieve EC2 instance id from EC2 environment. See
+-- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
+queryInstanceId :: (MonadIO m) => m Text
+queryInstanceId = liftIO $ do
+  req <- HTTP.parseRequest "http://169.254.169.254/latest/meta-data/instance-id"
+  mgr <- HTTP.newManager HTTP.defaultManagerSettings
+  T.decodeUtf8Lenient . LBS.toStrict . HTTP.responseBody <$> HTTP.httpLbs req mgr

@@ -26,6 +26,7 @@
     enable = true;
     configuration = {
       port = 8080;
+      instanceId = "auto";
       cache = {
         path = "/home/inferno/.cache/models";
         max-size = 10 * 1073741824;

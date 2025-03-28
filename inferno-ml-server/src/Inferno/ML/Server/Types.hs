@@ -22,7 +22,6 @@ module Inferno.ML.Server.Types
 where
 
 import Control.Applicative (Alternative ((<|>)), asum, (<**>))
-import Control.Exception (Exception (displayException))
 import Control.Monad.Extra (whenM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT)
@@ -32,7 +31,7 @@ import Data.Aeson
     Object,
     ToJSON (toJSON),
     ToJSONKey,
-    Value (String),
+    Value (Null, String),
     defaultOptions,
     genericParseJSON,
     withObject,
@@ -93,7 +92,6 @@ import Plow.Logging (IOTracer, traceWith)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelInfo, LevelWarn),
   )
-import Servant.Client.Streaming (ClientError)
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async, MonadUnliftIO)
@@ -111,6 +109,8 @@ import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
     InfernoMlServerAPI,
     Model,
     ModelVersion,
+    RemoteError,
+    RemoteTrace,
   )
 import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 
@@ -214,6 +214,8 @@ data Config = Config
   -- ^ Minimum log level; logs below this level will be ignored
   , store :: ConnectInfo
   -- ^ Configuration for PostgreSQL database
+  , instanceId :: InstanceId
+  -- ^ The instanceId used for DB logging
   }
   deriving stock (Show, Eq, Generic)
 
@@ -226,6 +228,7 @@ instance FromJSON Config where
       <*> o .: "timeout"
       <*> o .:? "log-level" .!= LevelWarn
       <*> (connInfoP =<< o .: "store")
+      <*> (o .:? "instanceId"  .!= NoDbLogging)
     where
       connInfoP :: Object -> Parser ConnectInfo
       connInfoP o =
@@ -236,6 +239,23 @@ instance FromJSON Config where
           <*> o .: "password"
           <*> o .: "database"
 {- ORMOLU_ENABLE -}
+
+data InstanceId
+  = InstanceId Text
+  | Auto
+  | NoDbLogging
+  deriving stock (Show, Eq, Generic)
+
+instance ToJSON InstanceId where
+  toJSON Auto = String "auto"
+  toJSON (InstanceId x) = String x
+  toJSON NoDbLogging = Null
+
+instance FromJSON InstanceId where
+  parseJSON Null = pure NoDbLogging
+  parseJSON (String "auto") = pure Auto
+  parseJSON (String x) = pure (InstanceId x)
+  parseJSON _ = fail "Invalid InstanceId. Expected \"auto\", an instance-id or Null"
 
 mkOptions :: IO Config
 mkOptions = decodeFileThrow =<< p
@@ -300,101 +320,6 @@ newtype InferenceOptions = InferenceOptions
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-data RemoteError
-  = CacheSizeExceeded
-  | -- | Either parent model row corresponding to the model version, or the
-    -- the requested model version itself, does not exist
-    NoSuchModel (Either (Id Model) (Id ModelVersion))
-  | NoSuchScript VCObjectHash
-  | NoSuchParameter (Id InferenceParam)
-  | InvalidScript Text
-  | InvalidOutput Text
-  | -- | Any error condition returned by Inferno script evaluation
-    InfernoError SomeInfernoError
-  | NoBridgeSaved
-  | ScriptTimeout Int
-  | ClientError ClientError
-  | OtherRemoteError Text
-  deriving stock (Show, Eq, Generic)
-
-instance Exception RemoteError where
-  displayException = \case
-    CacheSizeExceeded -> "Model exceeds maximum cache size"
-    NoSuchModel (Left m) ->
-      unwords
-        [ "Model:"
-        , "'" <> show m <> "'"
-        , "does not exist in the store"
-        ]
-    NoSuchModel (Right mv) ->
-      unwords
-        [ "Model version:"
-        , "'" <> show mv <> "'"
-        , "does not exist in the store"
-        ]
-    NoSuchScript vch ->
-      unwords
-        [ "Script identified by hash"
-        , show vch
-        , "does not exist"
-        ]
-    NoSuchParameter iid ->
-      unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
-    InvalidScript t -> Text.unpack t
-    InvalidOutput t ->
-      unwords
-        [ "Script output should be an array of `write` but was"
-        , Text.unpack t
-        ]
-    InfernoError (SomeInfernoError x) ->
-      unwords
-        [ "Inferno evaluation failed with:"
-        , show x
-        ]
-    NoBridgeSaved -> "No bridge has been saved"
-    ScriptTimeout t ->
-      unwords
-        [ "Script evaluation timed out after"
-        , show $ t `div` 1000000
-        , "seconds"
-        ]
-    ClientError ce ->
-      unwords
-        [ "Client error:"
-        , displayException ce
-        ]
-    OtherRemoteError e -> Text.unpack e
-
-data SomeInfernoError where
-  SomeInfernoError :: forall a. (Show a) => a -> SomeInfernoError
-
-deriving stock instance Show SomeInfernoError
-
-instance Eq SomeInfernoError where
-  _ == _ = False
-
-instance Exception SomeInfernoError where
-  displayException (SomeInfernoError x) = show x
-
-data RemoteTrace
-  = InfoTrace TraceInfo
-  | WarnTrace TraceWarn
-  | ErrorTrace RemoteError
-  deriving stock (Show, Eq, Generic)
-
-data TraceInfo
-  = StartingServer
-  | RunningInference (Id InferenceParam) Int
-  | EvaluatingParam (Id InferenceParam)
-  | CopyingModel (Id ModelVersion)
-  | OtherInfo Text
-  deriving stock (Show, Eq, Generic)
-
-data TraceWarn
-  = CancelingInference (Id InferenceParam)
-  | OtherWarn Text
-  deriving stock (Show, Eq, Generic)
-
 logTrace :: RemoteTrace -> RemoteM ()
 logTrace t =
   whenM shouldLog $
@@ -403,10 +328,10 @@ logTrace t =
     shouldLog :: RemoteM Bool
     shouldLog = (traceLevel t >=) <$> view (#config . #logLevel)
 
-logInfo :: TraceInfo -> RemoteM ()
+logInfo :: TraceInfo InferenceParam ModelVersion -> RemoteM ()
 logInfo = logTrace . InfoTrace
 
-logWarn :: TraceWarn -> RemoteM ()
+logWarn :: TraceWarn InferenceParam -> RemoteM ()
 logWarn = logTrace . WarnTrace
 
 logError :: RemoteError -> RemoteM ()
@@ -417,6 +342,10 @@ infixl 4 ??
 
 (??) :: (Functor f) => f (a -> b) -> a -> f b
 f ?? x = ($ x) <$> f
+
+type RemoteError = Types.RemoteError InferenceParam Model ModelVersion
+
+type RemoteTrace = Types.RemoteTrace InferenceParam Model ModelVersion
 
 type InferenceParam = Types.InferenceParam (EntityId GId) PID
 

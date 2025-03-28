@@ -28,3 +28,4 @@ result*
 .direnv/
 data/
 .nixos-test-history
+*.sw?

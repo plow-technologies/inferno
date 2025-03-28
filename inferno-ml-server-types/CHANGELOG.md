@@ -1,8 +1,27 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.13.0
+## 0.16.0
 * Breaking change: swap order of `makeWrites` elements
+
+## 0.15.2
+* Fix typo
+
+## 0.15.1
+* Added FromField instance for RemoteTrace
+
+## 0.15.0
+* Added some context to RemoteError constructors
+
+## 0.14.1
+* Add `CouldntMoveTensor` warning trace
+
+## 0.14.0
+* Made RemoteTrace and RemoteError polymorphic so we can remove shims
+* Removed shims
+
+## 0.13.0
+* Brought RemoteTrace from inferno-ml-server and implenteded JSON serde for it
 
 ## 0.12.2
 * Fourmolu

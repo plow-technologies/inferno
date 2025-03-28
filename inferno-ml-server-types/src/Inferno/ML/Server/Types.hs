@@ -7,6 +7,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
@@ -18,8 +20,10 @@ import Conduit (ConduitT)
 import Control.Applicative (asum, optional)
 import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
+import Control.Exception (Exception, displayException)
 import Control.Monad (void, (<=<))
-import Data.Aeson
+import Data.Aeson hiding (Value)
+import qualified Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
@@ -970,7 +974,7 @@ instance FromJSON IValue where
     Null -> pure IEmpty
     _ -> fail "Expected one of: string, double, time, tuple, null, array"
     where
-      arrayP :: Vector Value -> Parser (Vector IValue)
+      arrayP :: Vector Data.Aeson.Value -> Parser (Vector IValue)
       arrayP a =
         -- This is a bit tedious, but we want to make sure that the array elements
         -- are homogeneous; parsing all elements to `IValue`s first can't guarantee
@@ -1042,6 +1046,126 @@ data EvaluationEnv gid p = EvaluationEnv
 
 instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
+
+data RemoteError p m mv
+  = CacheSizeExceeded
+  | -- | Either parent model row corresponding to the model version, or the
+    -- the requested model version itself, does not exist
+    NoSuchModel (Either (Id m) (Id mv))
+  | NoSuchScript VCObjectHash
+  | NoSuchParameter (Id p)
+  | InvalidScript (Id p) Text
+  | InvalidOutput (Id p) Text
+  | -- | Any error condition returned by Inferno script evaluation
+    InfernoError (Id p) SomeInfernoError
+  | NoBridgeSaved (Id p)
+  | ScriptTimeout (Id p) Int
+  | ClientError (Id p) String
+  | OtherRemoteError Text
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+newtype SomeInfernoError = SomeInfernoError String
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (Exception, ToJSON, FromJSON)
+
+instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv) where
+  displayException = \case
+    CacheSizeExceeded -> "Model exceeds maximum cache size"
+    NoSuchModel (Left m) ->
+      unwords
+        [ "Model:"
+        , "'" <> show m <> "'"
+        , "does not exist in the store"
+        ]
+    NoSuchModel (Right mv) ->
+      unwords
+        [ "Model version:"
+        , "'" <> show mv <> "'"
+        , "does not exist in the store"
+        ]
+    NoSuchScript vch ->
+      unwords
+        [ "Script identified by hash"
+        , show vch
+        , "does not exist"
+        ]
+    NoSuchParameter iid ->
+      unwords ["Parameter:", "'" <> show iid <> "'", "does not exist"]
+    InvalidScript ipid t ->
+      unwords
+        [ "Invalid script when evaluating"
+        , show ipid
+        , ":"
+        , Text.unpack t
+        ]
+    InvalidOutput ipid t ->
+      unwords
+        [ "When evaluating"
+        , show ipid
+        , "script output should be an array of `write` but was"
+        , Text.unpack t
+        ]
+    InfernoError ipid (SomeInfernoError x) ->
+      unwords
+        [ "Inferno evaluation failed when evaluating"
+        , show ipid
+        , "with:"
+        , x
+        ]
+    NoBridgeSaved ipid ->
+      unwords
+        [ "No bridge for "
+        , show ipid
+        , "has been saved"
+        ]
+    ScriptTimeout ipid t ->
+      unwords
+        [ "Script evaluation for"
+        , show ipid
+        , "timed out after"
+        , show $ t `div` 1000000
+        , "seconds"
+        ]
+    ClientError ipid ce ->
+      unwords
+        [ "Client error when calculating"
+        , show ipid
+        , ":"
+        , ce
+        ]
+    OtherRemoteError e -> Text.unpack e
+
+data RemoteTrace p m mv
+  = InfoTrace (TraceInfo p mv)
+  | WarnTrace (TraceWarn p)
+  | ErrorTrace (RemoteError p m mv)
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+  deriving (FromField, ToField) via Aeson (RemoteTrace p m mv)
+
+data TraceInfo p mv
+  = StartingServer
+  | RunningInference (Id p) Int
+  | EvaluatingParam (Id p)
+  | CopyingModel (Id mv)
+  | OtherInfo Text
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
+
+data TraceWarn p
+  = CancelingInference (Id p)
+  | -- | The tensor could not be moved from the device. The device is represented
+    -- as a string here so that we don't need to use @Device@ from Hasktorch
+    -- (which would pose build problems for us elsewhere)
+    --
+    -- Normally this would occur if a CPU-only @inferno-ml-server@ tried
+    -- moving a tensor from \"cpu:0\" to \"cuda:0\". We don\'t throw any
+    -- exceptions in that case, but the log is still helpful
+    CouldntMoveTensor String
+  | OtherWarn Text
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 tshow :: (Show a) => a -> Text
 tshow = Text.pack . show

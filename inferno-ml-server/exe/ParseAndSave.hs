@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -40,8 +41,8 @@ import Inferno.Core
   ( Interpreter (Interpreter, parseAndInfer),
     mkInferno,
   )
-import Inferno.ML.Server.Module.Prelude (mkBridgePrelude)
-import Inferno.ML.Server.Types
+import Inferno.ML.Module.Prelude (mlPrelude)
+import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude)
 import Inferno.ML.Types.Value (customTypes)
 import Inferno.Types.Syntax (Expr, TCScheme)
 import Inferno.Types.VersionControl
@@ -57,6 +58,7 @@ import Inferno.VersionControl.Types
 import System.Environment (getArgs)
 import System.Exit (die)
 import UnliftIO.Exception (bracket, throwString)
+import "inferno-ml-server" Inferno.ML.Server.Types
 
 main :: IO ()
 main =
@@ -80,7 +82,7 @@ parseAndSave ipid p conns ios = do
   now <- fromIntegral @Int . round <$> getPOSIXTime
   ast <-
     either (throwString . displayException) pure . (`parse` t)
-      =<< mkInferno @_ @BridgeMlValue (mkBridgePrelude funs) customTypes
+      =<< mkInferno @_ @BridgeMlValue (mkServerBridgePrelude funs mlPrelude) customTypes
   bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now ios)
 
 saveScriptAndParam ::
@@ -189,7 +191,7 @@ parse ::
     (Expr (Pinned VCObjectHash) (), TCScheme)
 parse Interpreter{parseAndInfer} =
   parseAndInfer >>> \case
-    Left e -> Left $ SomeInfernoError e
+    Left e -> Left $ SomeInfernoError $ show e
     Right (x, t, _, _) -> Right (void x, t)
 
 -- These are needed to parse the script, but do not need to do anything

@@ -9,6 +9,7 @@
       port = 8080;
       # Ten minute timeout
       timeout = 600;
+      instanceId = "i-11111111111111111";
       cache = {
         path = "/home/inferno/.cache/models";
         max-size = 10 * 1073741824;
