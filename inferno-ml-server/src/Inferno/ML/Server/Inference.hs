@@ -323,8 +323,8 @@ runInferenceParamWithEnv ipid uuid senv =
                   where
                     mkChunks ::
                       ConduitT
-                        (PID, [(EpochTime, IValue)])
-                        (Int, [(EpochTime, IValue)])
+                        (PID, [(IValue, EpochTime)])
+                        (Int, [(IValue, EpochTime)])
                         IO
                         ()
                     mkChunks = awaitForever $ \(p, ws) ->

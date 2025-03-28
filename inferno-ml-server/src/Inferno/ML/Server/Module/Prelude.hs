@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -31,6 +32,7 @@ import Inferno.ML.Server.Types
 import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
+import qualified Inferno.Types.Module
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
@@ -68,7 +70,7 @@ module DataSource
   @doc Create a `write` object encapsulating an array of `(time, 'a)` values to be
   written to a given parameter. All ML scripts must return an array of such `write`
   objects, potentially empty, and this is the only way for them to write values to parameters.;
-  makeWrites : forall 'a. series of 'a -> array of (time, 'a) -> write := ###!makeWriteFun###;
+  makeWrites : forall 'a. series of 'a -> array of ('a, time) -> write := ###!makeWriteFun###;
 
   toResolution : int -> resolution := ###toResolution###;
 
@@ -206,15 +208,15 @@ module DataSource
         where
           extractPairs ::
             [Value c n] ->
-            ImplEnvM m BridgeMlValue [(EpochTime, IValue)]
+            ImplEnvM m BridgeMlValue [(IValue, EpochTime)]
           extractPairs = flip foldrM mempty $ \v acc -> (: acc) <$> extractPair v
 
           extractPair ::
             Value c n ->
-            ImplEnvM m BridgeMlValue (EpochTime, IValue)
+            ImplEnvM m BridgeMlValue (IValue, EpochTime)
           extractPair = \case
-            VTuple [VEpochTime t, x] -> (t,) <$> toIValue x
-            _ -> throwM $ RuntimeError "extractPair: expected a tuple (time, 'a)"
+            VTuple [x, VEpochTime t] -> (,t) <$> toIValue x
+            _ -> throwM $ RuntimeError "extractPair: expected a tuple ('a, time)"
 
 -- | Make a prelude that works without @RemoteM@ monad
 mkServerBridgePrelude ::
@@ -230,27 +232,21 @@ mkServerBridgePrelude bfuns mlPrelude =
   case modules & view (at "Base") &&& view (at "DataSource") of
     (Just base, Just source) ->
       modules
-        & at "DataSource"
-          .~ Nothing
+        & at "DataSource" .~ Nothing
         & at "Base"
           ?~ ( base
                 & #moduleOpsTable
-                  %~ flip
-                    (IntMap.unionWith (<>))
-                    (view #moduleOpsTable source)
+                  %~ flip (IntMap.unionWith (<>)) source.moduleOpsTable
                 & #moduleTypeClasses
-                  <>~ view #moduleTypeClasses source
-                & #moduleObjects
-                  . _1
+                  <>~ source.moduleTypeClasses
+                & #moduleObjects . _1
                   <>~ view (#moduleObjects . _1) source
-                & #moduleObjects
-                  . _2
+                & #moduleObjects . _2
                   <>~ view (#moduleObjects . _2) source
-                & #moduleObjects
-                  . _3
+                & #moduleObjects . _3
                   %~ (`combineTermEnv` view (#moduleObjects . _3) source)
              )
-    _ -> error "mkServerBridgePrelude: Missing Base and/or DataSource modules"
+    _ -> error "mkBridgePrelude: Missing Base and/or DataSource modules"
   where
     combineTermEnv ::
       (Map.Map ExtIdent v, Map.Map VCObjectHash e) ->

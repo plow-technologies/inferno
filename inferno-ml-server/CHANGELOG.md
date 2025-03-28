@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.3.28
+* Update for new order of `makeWrites` elements
+
 ## 2025.3.11
 * Persist error traces in DB if instance-id is provided in the config
 

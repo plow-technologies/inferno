@@ -63,7 +63,7 @@ verifyWrites ipid c = do
     , show ipid
     ]
   where
-    getExpected :: IO [(Int, [(EpochTime, IValue)])]
+    getExpected :: IO [(Int, [(IValue, EpochTime)])]
     getExpected =
       maybe (throwString "Missing output PID for parameter") pure
         . Map.lookup ipid
@@ -71,20 +71,20 @@ verifyWrites ipid c = do
           [
             ( UUID.fromWords 1 0 0 0
             ,
-              [ (1, [(151, IDouble 2.5), (251, IDouble 3.5)])
+              [ (1, [(IDouble 2.5, 151), (IDouble 3.5, 251)])
               ]
             )
           ,
             ( UUID.fromWords 2 0 0 0
             ,
-              [ (2, [(300, IDouble 25.0)])
+              [ (2, [(IDouble 25.0, 300)])
               ]
             )
           ,
             ( UUID.fromWords 3 0 0 0
             ,
-              [ (3, [(100, IDouble 7.0)])
-              , (4, [(100, IDouble 8.0)])
+              [ (3, [(IDouble 7.0, 100)])
+              , (4, [(IDouble 8.0, 100)])
               ]
             )
           ]
