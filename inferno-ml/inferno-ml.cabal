@@ -30,9 +30,11 @@ library
       base
     , containers
     , exceptions
+    , extra
     , hasktorch
     , inferno-core
     , inferno-types
+    , inline-c-cpp
     , prettyprinter
     , template-haskell
     , text
