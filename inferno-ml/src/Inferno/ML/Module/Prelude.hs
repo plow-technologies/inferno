@@ -176,7 +176,7 @@ forwardFun = VFun $ \case
   VCustom (VModel model) -> pure . VFun $ \case
     VArray mts ->
       getTensors mts >>= \tensors ->
-        -- Note that we are using `forwardIO` here so any CPP exception can be
+        -- Note that we are using `forwardIO` here so any C++ exception can be
         -- caught, otherwise the operation will fail silently (besides printing
         -- to stderr)
         fmap (VArray . fmap (VCustom . VTensor)) . liftIO $
@@ -189,7 +189,7 @@ forwardFun = VFun $ \case
           VCustom (VTensor t) -> pure t
           _ -> throwM expectedTensors
 
-        -- Rethrow the CPP exception as a `RuntimeError` so we can at least
+        -- Rethrow the C++ exception as a `RuntimeError` so we can at least
         -- see it in error messages more clearly
         torchHandler :: CppException -> IO [Tensor]
         torchHandler =
