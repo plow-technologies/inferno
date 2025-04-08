@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.7.0.1 -- 2025-04-08
+* Catch C++ exceptions in `forward` primitive
+
 ## 0.7.0.0 -- 2025-03-06
 * Added parameterized version of `mlModules` to provide specific `toDevice` primitive
 

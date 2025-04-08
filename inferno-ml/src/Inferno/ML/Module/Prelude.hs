@@ -10,13 +10,16 @@ module Inferno.ML.Module.Prelude
     getDevice,
   ) where
 
+import Control.Exception (evaluate)
 import Control.Monad.Catch
   ( Exception (displayException),
     MonadCatch,
     MonadThrow (throwM),
     SomeException,
+    catch,
     try,
   )
+import Control.Monad.Extra (concatMapM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Functor ((<&>))
 import qualified Data.Map as Map
@@ -29,6 +32,7 @@ import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value (ImplEnvM, Value (..))
+import Language.C.Inline.Cpp.Exception (CppException)
 import Prettyprinter (Pretty)
 import Torch
 import qualified Torch.DType as TD
@@ -166,15 +170,53 @@ loadModelFun = VFun $ \case
       loadModel = TS.loadScript TS.WithoutRequiredGrad mn
   _ -> throwM $ RuntimeError "Expected a modelName"
 
-forwardFun :: ScriptModule -> [Tensor] -> [Tensor]
-forwardFun m ts =
-  unIV $ forward m (map IVTensor ts)
+forwardFun ::
+  forall m x. (Pretty x, MonadIO m, MonadThrow m) => Value (MlValue x) m
+forwardFun = VFun $ \case
+  VCustom (VModel model) -> pure . VFun $ \case
+    VArray mts ->
+      getTensors mts >>= \tensors ->
+        -- Note that we are using `forwardIO` here so any C++ exception can be
+        -- caught, otherwise the operation will fail silently (besides printing
+        -- to stderr)
+        fmap (VArray . fmap (VCustom . VTensor)) . liftIO $
+          forwardIO model tensors `catch` torchHandler
+      where
+        -- Unfortunately we need to unwrap all of the constructors to get the
+        -- tensors inside
+        getTensors :: [Value (MlValue x) m] -> m [Tensor]
+        getTensors = traverse $ \case
+          VCustom (VTensor t) -> pure t
+          _ -> throwM expectedTensors
+
+        -- Rethrow the C++ exception as a `RuntimeError` so we can at least
+        -- see it in error messages more clearly
+        torchHandler :: CppException -> IO [Tensor]
+        torchHandler =
+          throwM
+            . RuntimeError
+            . ("forward: exception from Torchscript interpreter " <>)
+            . displayException
+    _ -> throwM expectedTensors
+  _ -> throwM $ RuntimeError "expected a model"
   where
+    expectedTensors :: EvalError
+    expectedTensors = RuntimeError "expected an array of tensors"
+
+-- Lifts Hasktorch's `forward` to `IO` (via `evaluate`) so we can catch
+-- any `CppStdException`s in case the Torchscript interpreter fails;
+-- `forward` has a "pure" interface but internally uses `unsafePerformIO`,
+-- so we need to `evaluate` it to be able to catch the exception in the Inferno
+-- primitive
+forwardIO :: ScriptModule -> [Tensor] -> IO [Tensor]
+forwardIO m ts = unIV =<< evaluate (forward m (fmap IVTensor ts))
+  where
+    unIV :: IValue -> IO [Tensor]
     unIV = \case
-      IVTensor t' -> [t']
-      IVTensorList ts' -> ts'
-      IVTuple ivs -> concatMap unIV ivs
-      res -> error $ "expected tensor result, got " ++ show res
+      IVTensor t -> pure [t]
+      IVTensorList tl -> pure tl
+      IVTuple ivs -> concatMapM unIV ivs
+      res -> throwM . RuntimeError $ "expected tensor result, got " <> show res
 
 randnIOFun ::
   forall m x.
@@ -307,7 +349,7 @@ module ML
 
   unsafeLoadScript : text -> model := ###unsafeLoadScriptFun###;
 
-  forward : model -> array of tensor -> array of tensor := ###forwardFun###;
+  forward : model -> array of tensor -> array of tensor := ###!forwardFun###;
 
 |]
 
