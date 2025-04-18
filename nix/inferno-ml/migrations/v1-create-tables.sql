@@ -26,7 +26,7 @@ create table if not exists models
   , updated timestamptz
     -- See note above
   , terminated timestamptz
-  , unique (name, gid)
+  , unique nulls not distinct (name, gid, terminated)
   );
 
 create table if not exists mversions
