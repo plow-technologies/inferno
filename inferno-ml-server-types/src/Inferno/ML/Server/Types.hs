@@ -1055,6 +1055,7 @@ data RemoteError p m mv
     InfernoError (Id p) SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
+  | DbError String
   | ClientError (Id p) String
   | OtherRemoteError Text
   deriving stock (Show, Eq, Generic)
@@ -1121,6 +1122,11 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , "timed out after"
         , show $ t `div` 1000000
         , "seconds"
+        ]
+    DbError e ->
+      unwords
+        [ "Database error:"
+        , e
         ]
     ClientError ipid ce ->
       unwords

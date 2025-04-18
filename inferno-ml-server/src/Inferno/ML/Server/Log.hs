@@ -147,6 +147,7 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
             InfernoError{} -> True
             NoBridgeSaved{} -> True
             ScriptTimeout{} -> True
+            DbError{} -> True
             ClientError{} -> True
             OtherRemoteError{} -> False
 
