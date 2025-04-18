@@ -375,10 +375,9 @@ instance (ToField gid) => ToRow (Model gid) where
     , toField Default
     ]
 
-{- ORMOLU_DISABLE -}
 instance
-  ( FromJSON gid,
-    Ord gid
+  ( FromJSON gid
+  , Ord gid
   ) =>
   FromJSON (Model gid)
   where
@@ -394,7 +393,6 @@ instance
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
-{- ORMOLU_ENABLE -}
 
 instance (ToJSON gid) => ToJSON (Model gid) where
   toJSON m =
@@ -497,7 +495,7 @@ instance (ToField gid) => ToRow (ModelVersion gid Oid) where
     , toField Default
     ]
 
-instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
+instance (FromJSON gid) => FromJSON (ModelVersion gid Oid) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       <$> o .:? "id"
@@ -580,14 +578,12 @@ data ModelSummary = ModelSummary
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, NFData, ToADTArbitrary)
 
-{- ORMOLU_DISABLE -}
 instance FromJSON ModelSummary where
   parseJSON = withObject "ModelSummary" $ \o ->
     ModelSummary
       <$> o .: "summary"
       <*> o .:? "uses" .!= mempty
       <*> o .:? "evaluation" .!= mempty
-{- ORMOLU_ENABLE -}
 
 instance Arbitrary ModelSummary where
   arbitrary = genericArbitrary
@@ -745,9 +741,7 @@ data InferenceParam gid p = InferenceParam
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToJSON)
 
-{- ORMOLU_DISABLE -}
-instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
-  where
+instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p) where
   parseJSON = withObject "InferenceParam" $ \o ->
     InferenceParam
       -- The ID needs to be included when deserializing
@@ -759,7 +753,6 @@ instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
       -- We shouldn't require this field
       <*> o .:? "terminated"
       <*> o .: "gid"
-{- ORMOLU_ENABLE -}
 
 -- We only want this instance if the `script` is a `VCObjectHash` (because it
 -- should not be possible to store a new param with a raw script)
