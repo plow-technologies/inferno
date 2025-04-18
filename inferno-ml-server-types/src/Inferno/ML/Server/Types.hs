@@ -448,6 +448,9 @@ data ModelVersion gid c = ModelVersion
   -- ^ The actual contents of version of the model. Normally this will be
   -- an 'Oid' pointing to the serialized bytes of the model imported into
   -- the PSQL large object table
+  , size :: Word64
+  -- ^ The size of the @contents@ above; the contents are immutable so we can
+  -- calculate this once and store it
   , version :: Version
   , created :: Maybe UTCTime
   -- ^ When the model version was created; if left empty, this will be generated
@@ -471,6 +474,11 @@ instance (FromField gid) => FromRow (ModelVersion gid Oid) where
       <*> field
       <*> field
       <*> field
+      -- The actual storage type is a `bigint` because a regular `integer` may
+      -- not be big enough (only large enough for ~2gb size). We can't have a
+      -- negative model size though, so this is represented as a `Word64` on
+      -- the Haskell side
+      <*> fmap fromIntegral (field @Int64)
       <*> field
       <*> field
       <*> field
@@ -483,12 +491,12 @@ instance (ToField gid) => ToRow (ModelVersion gid Oid) where
     , mv.description & toField
     , mv.card & Aeson & toField
     , mv.contents & toField
+    , mv.size & toField
     , mv.version & toField
     , mv.created & maybe (toField Default) toField
     , toField Default
     ]
 
-{- ORMOLU_DISABLE -}
 instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
@@ -497,13 +505,13 @@ instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
       <*> o .: "description"
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "size"
       <*> o .: "version"
       -- Will be absent when saving new model version
       <*> o .:? "created"
       -- If a new model version is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
-{- ORMOLU_ENABLE -}
 
 instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
   toJSON mv =
@@ -512,6 +520,7 @@ instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
       , "model" .= mv.model
       , "description" .= mv.description
       , "contents" .= unOid mv.contents
+      , "size" .= mv.size
       , "version" .= mv.version
       , "card" .= mv.card
       , "created" .= mv.created
@@ -526,6 +535,7 @@ instance (Arbitrary c) => Arbitrary (ModelVersion gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
+      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
