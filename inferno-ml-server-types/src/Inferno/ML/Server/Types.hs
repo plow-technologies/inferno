@@ -720,12 +720,6 @@ data InferenceParam gid p = InferenceParam
   { id :: Maybe (Id (InferenceParam gid p))
   , script :: VCObjectHash
   -- ^ The script of the parameter
-  --
-  -- For new parameters, this will be textual or some other identifier
-  -- (e.g. a UUID for use with @inferno-lsp@)
-  --
-  -- For existing inference params, this is the foreign key for the specific
-  -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
   , inputs :: Inputs p
   -- ^ Mapping the input\/output to the Inferno identifier helps ensure that
   -- Inferno identifiers are always pointing to the correct input\/output;
@@ -754,8 +748,6 @@ instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p) where
       <*> o .:? "terminated"
       <*> o .: "gid"
 
--- We only want this instance if the `script` is a `VCObjectHash` (because it
--- should not be possible to store a new param with a raw script)
 instance
   ( FromJSON p
   , FromField gid
