@@ -21,7 +21,6 @@ import Control.Monad (void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
-import Data.Bifoldable (bitraverse_)
 import Data.Bifunctor (bimap)
 import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl', traverse_)
@@ -529,8 +528,9 @@ getAndCacheModels cache =
       mkPath >>= \path ->
         unlessM (doesPathExist path) $ do
           whenJust mversion.id $ logInfo . CopyingModel
-          bitraverse_ checkCacheSize (writeBinaryFileDurableAtomic path)
-            =<< getModelVersionSizeAndContents mversion.contents
+          checkCacheSize $ fromIntegral mversion.size
+          writeBinaryFileDurableAtomic path
+            =<< getModelVersionContents mversion
       where
         mkPath :: RemoteM FilePath
         mkPath =
@@ -539,56 +539,56 @@ getAndCacheModels cache =
             (pure . mkModelPath)
             mversion.id
 
-    -- Checks that the configured cache size will not be exceeded by
-    -- caching the new model. If it will, least-recently-used models
-    -- are deleted until there is enough free space
-    checkCacheSize :: Integer -> RemoteM ()
-    checkCacheSize modelSize = do
-      when (modelSize >= maxSize) $ throwRemoteError CacheSizeExceeded
-      whenM cacheSizeExceeded evictOldModels
-      where
-        evictOldModels :: RemoteM ()
-        evictOldModels =
-          loopM doEvict
-            =<< modelsByAccessTime
-            -- Note that the current directory is the cache, because this
-            -- action is only run above using `withCurrentDirectory` pointing
-            -- to the cache
-            =<< getCurrentDirectory
-
-        doEvict :: [FilePath] -> RemoteM (Either [FilePath] ())
-        doEvict = \case
-          [] -> pure $ Right ()
-          -- The list of paths is sorted in ascending order based on access
-          -- time, so whatever path is at the head of the list is the current
-          -- least-recently-used path
-          m : ms ->
-            cacheSizeExceeded >>= \case
-              False -> pure $ Right ()
-              True -> Left ms <$ tryRemoveFile
-            where
-              tryRemoveFile :: RemoteM ()
-              tryRemoveFile =
-                catchIO (removeFile m) $
-                  logWarn
-                    . OtherWarn
-                    . Text.pack
-                    . displayException
-
-        -- Adds the new model byte size to the existing model cache
-        -- directory size. This needs to be re-computed on each loop
-        -- iteration because models may have been deleted in the loop
-        cacheSizeExceeded :: RemoteM Bool
-        cacheSizeExceeded = (>= maxSize) <$> newCacheSize
+        -- Checks that the configured cache size will not be exceeded by
+        -- caching the new model. If it will, least-recently-used models
+        -- are deleted until there is enough free space
+        checkCacheSize :: Integer -> RemoteM ()
+        checkCacheSize modelSize = do
+          when (modelSize >= maxSize) $ throwRemoteError CacheSizeExceeded
+          whenM cacheSizeExceeded evictOldModels
           where
-            newCacheSize :: RemoteM Integer
-            newCacheSize =
-              fmap ((+ modelSize) . sum) . traverse getFileSize
-                =<< listDirectory
+            evictOldModels :: RemoteM ()
+            evictOldModels =
+              loopM doEvict
+                =<< modelsByAccessTime
+                -- Note that the current directory is the cache, because this
+                -- action is only run above using `withCurrentDirectory` pointing
+                -- to the cache
                 =<< getCurrentDirectory
 
-        maxSize :: Integer
-        maxSize = fromIntegral cache.maxSize
+            doEvict :: [FilePath] -> RemoteM (Either [FilePath] ())
+            doEvict = \case
+              [] -> pure $ Right ()
+              -- The list of paths is sorted in ascending order based on access
+              -- time, so whatever path is at the head of the list is the current
+              -- least-recently-used path
+              m : ms ->
+                cacheSizeExceeded >>= \case
+                  False -> pure $ Right ()
+                  True -> Left ms <$ tryRemoveFile
+                where
+                  tryRemoveFile :: RemoteM ()
+                  tryRemoveFile =
+                    catchIO (removeFile m) $
+                      logWarn
+                        . OtherWarn
+                        . Text.pack
+                        . displayException
+
+            -- Adds the new model byte size to the existing model cache
+            -- directory size. This needs to be re-computed on each loop
+            -- iteration because models may have been deleted in the loop
+            cacheSizeExceeded :: RemoteM Bool
+            cacheSizeExceeded = (>= maxSize) <$> newCacheSize
+              where
+                newCacheSize :: RemoteM Integer
+                newCacheSize =
+                  fmap ((+ modelSize) . sum) . traverse getFileSize
+                    =<< listDirectory
+                    =<< getCurrentDirectory
+
+            maxSize :: Integer
+            maxSize = fromIntegral cache.maxSize
 
 -- Get a list of models by their access time, so that models that have not been
 -- used recently can be deleted. This will put the least-recently-used paths

@@ -24,7 +24,7 @@ import Data.Word (Word8)
 import Inferno.ML.Server (runInEnv)
 import Inferno.ML.Server.Inference (getAndCacheModels)
 import Inferno.ML.Server.Inference.Model
-  ( getModelVersionSizeAndContents,
+  ( getModelVersionContents,
     getModelsAndVersions,
   )
 import Inferno.ML.Server.Types
@@ -104,20 +104,20 @@ mkDbSpec env = Hspec.describe "Database" $ do
 
   Hspec.it "gets model size and contents" $ do
     getWithContents env >>= \case
-      (size, contents) -> do
+      (mversion, contents) -> do
         -- This size is computed using PG functions
-        size `Hspec.shouldBe` fromIntegral mnistV1Size
+        mversion.size `Hspec.shouldBe` fromIntegral mnistV1Size
         -- This is the magic number for a ZIP
         getZipMagic contents `Hspec.shouldBe` zipMagic
         -- The size from PG and the size of the bytestring should be
         -- the same
-        ByteString.length contents `Hspec.shouldBe` fromIntegral size
+        ByteString.length contents `Hspec.shouldBe` fromIntegral mversion.size
 
-getWithContents :: Env -> IO (Integer, ByteString)
+getWithContents :: Env -> IO (ModelVersion, ByteString)
 getWithContents env = flip runReaderT env $ do
   (getModelsAndVersions modelVersions >>=) . (. fmap snd . toList) $ \case
     [] -> throwString "No model was retrieved"
-    v : _ -> getModelVersionSizeAndContents v.contents
+    v : _ -> (v,) <$> getModelVersionContents v
 
 mnistV1 :: Id ModelVersion
 mnistV1 = Id $ UUID.fromWords 6 0 0 0
