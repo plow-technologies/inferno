@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.17.0
+* Breaking change: add `size` field to `ModelVersion`
+
 ## 0.16.0
 * Breaking change: swap order of `makeWrites` elements
 
