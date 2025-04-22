@@ -104,8 +104,7 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
       traceWith tracer (ErrorTrace err) >> throwM err
 
     toServantErr :: RemoteError -> IO a
-    toServantErr =
-      throwM . translateError
+    toServantErr = throwM . translateError
       where
         errWith :: ServerError -> RemoteError -> ServerError
         errWith se e =
@@ -114,6 +113,8 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
                 ByteString.Lazy.Char8.pack . displayException $
                   e
             }
+
+        translateError :: RemoteError -> ServerError
         translateError =
           \case
             e@OtherRemoteError{} -> errWith err500 e
@@ -126,6 +127,7 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
             e@InfernoError{} -> errWith err500 e
             e@NoBridgeSaved{} -> errWith err500 e
             e@ScriptTimeout{} -> errWith err500 e
+            e@DbError{} -> errWith err500 e
             e@ClientError{} -> errWith err500 e
 
 api :: Proxy InfernoMlServerAPI

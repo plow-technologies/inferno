@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.4.21
+* Update for new `size` field in `ModelVersion`
+
 ## 2025.3.28
 * Update for new order of `makeWrites` elements
 

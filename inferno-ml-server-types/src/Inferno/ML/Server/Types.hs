@@ -375,10 +375,9 @@ instance (ToField gid) => ToRow (Model gid) where
     , toField Default
     ]
 
-{- ORMOLU_DISABLE -}
 instance
-  ( FromJSON gid,
-    Ord gid
+  ( FromJSON gid
+  , Ord gid
   ) =>
   FromJSON (Model gid)
   where
@@ -394,7 +393,6 @@ instance
       -- If a new model is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
-{- ORMOLU_ENABLE -}
 
 instance (ToJSON gid) => ToJSON (Model gid) where
   toJSON m =
@@ -448,6 +446,9 @@ data ModelVersion gid c = ModelVersion
   -- ^ The actual contents of version of the model. Normally this will be
   -- an 'Oid' pointing to the serialized bytes of the model imported into
   -- the PSQL large object table
+  , size :: Word64
+  -- ^ The size of the @contents@ above; the contents are immutable so we can
+  -- calculate this once and store it
   , version :: Version
   , created :: Maybe UTCTime
   -- ^ When the model version was created; if left empty, this will be generated
@@ -471,6 +472,11 @@ instance (FromField gid) => FromRow (ModelVersion gid Oid) where
       <*> field
       <*> field
       <*> field
+      -- The actual storage type is a `bigint` because a regular `integer` may
+      -- not be big enough (only large enough for ~2gb size). We can't have a
+      -- negative model size though, so this is represented as a `Word64` on
+      -- the Haskell side
+      <*> fmap fromIntegral (field @Int64)
       <*> field
       <*> field
       <*> field
@@ -483,13 +489,13 @@ instance (ToField gid) => ToRow (ModelVersion gid Oid) where
     , mv.description & toField
     , mv.card & Aeson & toField
     , mv.contents & toField
+    , mv.size & toField
     , mv.version & toField
     , mv.created & maybe (toField Default) toField
     , toField Default
     ]
 
-{- ORMOLU_DISABLE -}
-instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
+instance (FromJSON gid) => FromJSON (ModelVersion gid Oid) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       <$> o .:? "id"
@@ -497,13 +503,13 @@ instance FromJSON gid => FromJSON (ModelVersion gid Oid) where
       <*> o .: "description"
       <*> o .: "card"
       <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "size"
       <*> o .: "version"
       -- Will be absent when saving new model version
       <*> o .:? "created"
       -- If a new model version is being serialized, it does not really make
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
-{- ORMOLU_ENABLE -}
 
 instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
   toJSON mv =
@@ -512,6 +518,7 @@ instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
       , "model" .= mv.model
       , "description" .= mv.description
       , "contents" .= unOid mv.contents
+      , "size" .= mv.size
       , "version" .= mv.version
       , "card" .= mv.card
       , "created" .= mv.created
@@ -526,6 +533,7 @@ instance (Arbitrary c) => Arbitrary (ModelVersion gid c) where
   arbitrary =
     ModelVersion
       <$> arbitrary
+      <*> arbitrary
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
@@ -570,14 +578,12 @@ data ModelSummary = ModelSummary
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, NFData, ToADTArbitrary)
 
-{- ORMOLU_DISABLE -}
 instance FromJSON ModelSummary where
   parseJSON = withObject "ModelSummary" $ \o ->
     ModelSummary
       <$> o .: "summary"
       <*> o .:? "uses" .!= mempty
       <*> o .:? "evaluation" .!= mempty
-{- ORMOLU_ENABLE -}
 
 instance Arbitrary ModelSummary where
   arbitrary = genericArbitrary
@@ -714,12 +720,6 @@ data InferenceParam gid p = InferenceParam
   { id :: Maybe (Id (InferenceParam gid p))
   , script :: VCObjectHash
   -- ^ The script of the parameter
-  --
-  -- For new parameters, this will be textual or some other identifier
-  -- (e.g. a UUID for use with @inferno-lsp@)
-  --
-  -- For existing inference params, this is the foreign key for the specific
-  -- script in the 'InferenceScript' table (i.e. a @VCObjectHash@)
   , inputs :: Inputs p
   -- ^ Mapping the input\/output to the Inferno identifier helps ensure that
   -- Inferno identifiers are always pointing to the correct input\/output;
@@ -735,9 +735,7 @@ data InferenceParam gid p = InferenceParam
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData, ToJSON)
 
-{- ORMOLU_DISABLE -}
-instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
-  where
+instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p) where
   parseJSON = withObject "InferenceParam" $ \o ->
     InferenceParam
       -- The ID needs to be included when deserializing
@@ -749,10 +747,7 @@ instance (FromJSON p, FromJSON gid) => FromJSON (InferenceParam gid p)
       -- We shouldn't require this field
       <*> o .:? "terminated"
       <*> o .: "gid"
-{- ORMOLU_ENABLE -}
 
--- We only want this instance if the `script` is a `VCObjectHash` (because it
--- should not be possible to store a new param with a raw script)
 instance
   ( FromJSON p
   , FromField gid
@@ -1060,6 +1055,7 @@ data RemoteError p m mv
     InfernoError (Id p) SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
+  | DbError String
   | ClientError (Id p) String
   | OtherRemoteError Text
   deriving stock (Show, Eq, Generic)
@@ -1126,6 +1122,11 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , "timed out after"
         , show $ t `div` 1000000
         , "seconds"
+        ]
+    DbError e ->
+      unwords
+        [ "Database error:"
+        , e
         ]
     ClientError ipid ce ->
       unwords

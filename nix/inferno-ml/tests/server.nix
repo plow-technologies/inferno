@@ -63,16 +63,18 @@ pkgs.nixosTest {
                 , description
                 , card
                 , contents
+                , size
                 , version
                 )
-                VALUES
-                ( '00000006-0000-0000-0000-000000000000'::uuid
+                SELECT
+                  '00000006-0000-0000-0000-000000000000'::uuid
                 , '00000005-0000-0000-0000-000000000000'::uuid
                 , 'My first model'
                 , '${card}'::jsonb
                 , :LASTOID
+                , length(lo_get(:LASTOID))
                 , 'v1'
-                );
+                ;
               EOF
             '';
         }

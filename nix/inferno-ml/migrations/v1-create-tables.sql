@@ -26,7 +26,7 @@ create table if not exists models
   , updated timestamptz
     -- See note above
   , terminated timestamptz
-  , unique (name, gid)
+  , unique nulls not distinct (name, gid, terminated)
   );
 
 create table if not exists mversions
@@ -42,6 +42,10 @@ create table if not exists mversions
     -- that saving a model version requires as its first step `lo_import`ing
     -- the contents
   , contents oid not null
+    -- The size of the `contents` above in bytes. This could be calculated
+    -- on-demand, but since the `contents` are immutable, we can calculate
+    -- this once and store it here
+  , size bigint not null
   , version text not null
   , created timestamptz default now()
     -- See note above
