@@ -33,12 +33,12 @@ import Inferno.Types.Value
         VDouble,
         VEmpty,
         VEpochTime,
-        VText,
         VInt,
+        VText,
+        VTuple,
         VWord16,
         VWord32,
-        VWord64,
-        VTuple
+        VWord64
       ),
   )
 import Inferno.Types.VersionControl (VCObjectHash)
