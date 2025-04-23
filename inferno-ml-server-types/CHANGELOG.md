@@ -1,6 +1,11 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.18.0
+* Breaking changes:
+  - Make `Writes` polymorphic
+  - Add more value types to `IValue` and change JSON representation
+
 ## 0.17.0
 * Breaking change: add `size` field to `ModelVersion`
 

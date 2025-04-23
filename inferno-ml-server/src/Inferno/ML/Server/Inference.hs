@@ -490,12 +490,12 @@ getInferenceParamWithModels ipid =
     q =
       [sql|
         SELECT
-          P.*,
-          coalesce
-            ( jsonb_object_agg(MS.ident, MS.model)
-                FILTER (WHERE MS.ident IS NOT NULL)
-            , '{}'::jsonb
-            ) mversions
+          P.*
+        , coalesce
+          ( jsonb_object_agg(MS.ident, MS.model)
+              FILTER (WHERE MS.ident IS NOT NULL)
+          , '{}'::jsonb
+          ) mversions
         FROM params P
           LEFT OUTER JOIN scripts S ON P.script = S.id
           LEFT OUTER JOIN mselections MS ON MS.script = S.id
