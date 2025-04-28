@@ -10,8 +10,10 @@ import Control.DeepSeq (NFData)
 import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits (countLeadingZeros)
+import Data.Bool (bool)
 import Data.Generics.Labels ()
 import Data.Int (Int64)
+import qualified Data.Text as Text
 import qualified Data.Vector as Vector
 import Data.Word (Word8)
 import Database.PostgreSQL.Simple.FromField (FromField)
@@ -20,11 +22,13 @@ import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast
   ( FromValue (fromValue),
     ToValue (toValue),
     couldNotCast,
   )
+import Inferno.Types.Syntax (Ident (Ident))
 import Inferno.Types.Value
   ( ImplEnvM,
     Value
@@ -32,6 +36,7 @@ import Inferno.Types.Value
         VCustom,
         VDouble,
         VEmpty,
+        VEnum,
         VEpochTime,
         VInt,
         VText,
@@ -129,6 +134,7 @@ fromIValue = \case
   IDouble d -> VDouble d
   ITime t -> VEpochTime t
   IEmpty -> VEmpty
+  IBool b -> VEnum enumBoolHash . Ident $ bool "false" "true" b
   ITuple (x, y) -> VTuple [fromIValue x, fromIValue y]
   IArray v -> VArray $ Vector.toList $ fromIValue <$> v
 
@@ -144,6 +150,16 @@ toIValue = \case
   VEmpty -> pure IEmpty
   VTuple [x, y] -> curry ITuple <$> toIValue x <*> toIValue y
   VArray vs -> IArray . Vector.fromList <$> traverse toIValue vs
+  VEnum h (Ident i) | h == enumBoolHash -> case i of
+    "true" -> pure $ IBool True
+    "false" -> pure $ IBool False
+    v ->
+      throwM . RuntimeError $
+        unwords
+          [ "toIValue:"
+          , "got invalid boolean value"
+          , Text.unpack v
+          ]
   _ -> throwM $ RuntimeError "toIValue: got an unsupported value type"
 
 toResolution :: Int64 -> InverseResolution

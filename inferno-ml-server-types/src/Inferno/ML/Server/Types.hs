@@ -937,6 +937,7 @@ data IValue
   | IWord32 Word32
   | IWord64 Word64
   | IDouble Double
+  | IBool Bool
   | ITime EpochTime
   | IArray (Vector IValue)
   | ITuple (IValue, IValue)
