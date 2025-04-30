@@ -11,7 +11,7 @@ import Inferno.ML.Server.Types
 import Inferno.Module.Cast (ToValue (toValue))
 import Inferno.Types.Value
   ( ImplicitCast (ImplicitCast),
-    Value (VDouble, VOne, VTuple),
+    Value (VDouble, VOne, VText, VTuple),
     liftImplEnvM,
   )
 import System.Posix.Types (EpochTime)
@@ -46,8 +46,12 @@ mkBridgeFuns valueAt latestValueAndTimeBefore valuesBetween =
 
         toInfernoValue :: IValue -> BridgeV RemoteM
         toInfernoValue =
+          -- Note that only double and text values can be directly queried;
+          -- if we get a value that's not `VEmpty`, we need to wrap it in a
+          -- `VOne`, since this is supposed to be a `Some` on the Inferno side
           fromIValue >>> \case
             d@VDouble{} -> VOne d
+            t@VText{} -> VOne t
             v -> v
 
     latestValueAndTimeBeforeFun :: BridgeV RemoteM
