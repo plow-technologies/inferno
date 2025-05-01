@@ -21,10 +21,8 @@ import Control.Applicative (asum, optional)
 import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Exception (Exception, displayException)
-import Control.Monad (void, (<=<))
+import Control.Monad (void)
 import Data.Aeson hiding (Value)
-import qualified Data.Aeson
-import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
@@ -40,7 +38,6 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Ord (comparing)
-import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
@@ -48,8 +45,7 @@ import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
-import qualified Data.Vector as Vector
-import Data.Word (Word32, Word64)
+import Data.Word (Word16, Word32, Word64)
 import Database.PostgreSQL.Simple.FromField
   ( Conversion,
     Field,
@@ -191,7 +187,7 @@ type BridgeAPI p t =
 type WriteStream m = ConduitT () (Int, [(IValue, EpochTime)]) m ()
 
 -- | Convenience synonym for the consumed 'WriteStream'
-type Writes p = Map p [(Double, EpochTime)]
+type Writes p = Map p [(IValue, EpochTime)]
 
 -- | Just a convenience synonym for cleaning up type signatures
 type Inputs p = Map Ident (SingleOrMany p)
@@ -936,67 +932,36 @@ fromIPv4 =
 -- which cannot have sensible @ToJSON@ and @FromJSON@ instances
 data IValue
   = IText Text
+  | IInt Int64
+  | IWord16 Word16
+  | IWord32 Word32
+  | IWord64 Word64
   | IDouble Double
-  | ITuple (IValue, IValue)
+  | IBool Bool
   | ITime EpochTime
-  | IEmpty
   | IArray (Vector IValue)
+  | ITuple (IValue, IValue)
+  | IEmpty
   deriving stock (Show, Eq, Generic)
   deriving anyclass (NFData)
 
 instance FromJSON IValue where
-  parseJSON = \case
-    String t -> pure $ IText t
-    Number n -> pure . IDouble $ toRealFloat n
-    -- It's easier to just mark the time explicitly in an object,
-    -- rather than try to deal with distinguishing times and doubles
-    Object o ->
-      asum
-        [ ITime <$> o .: "time"
-        , fmap IArray $ arrayP =<< o .: "array"
-        ]
-    -- Note that this preserves a plain JSON array for tuples. But we need
-    -- some straightforward way of distinguishing tuples and arrays; since
-    -- the bridge often transmits a large number of individual tuples (times
-    -- and values), it's better to use arrays for the tuples and a tagged object
-    -- for arrays themselves; we often will only deal with one large array, and
-    -- adding a few bytes to this is better than adding a few bytes to thousands
-    -- of encoded tuples
-    Array a
-      | [x, y] <- Vector.toList a ->
-          fmap ITuple $ (,) <$> parseJSON x <*> parseJSON y
-      | otherwise -> fail "Only two-element tuples are supported"
-    Null -> pure IEmpty
-    _ -> fail "Expected one of: string, double, time, tuple, null, array"
-    where
-      arrayP :: Vector Data.Aeson.Value -> Parser (Vector IValue)
-      arrayP a =
-        -- This is a bit tedious, but we want to make sure that the array elements
-        -- are homogeneous; parsing all elements to `IValue`s first can't guarantee
-        -- this
-        asum
-          [ -- This alternative means that `null` will be correctly parsed to NaN
-            -- when inside an array of doubles
-            fmap IDouble <$> traverse parseJSON a
-          , fmap ITuple <$> traverse parseJSON a
-          , fmap IText <$> traverse parseJSON a
-          , fmap ITime <$> traverse (withObject "EpochTime" (.: "time")) a
-          , -- Nested array support
-            fmap IArray
-              <$> traverse (withObject "IArray" (arrayP <=< (.: "array"))) a
-          , fail "Expected a heterogeneous array"
-          ]
+  parseJSON =
+    genericParseJSON
+      defaultOptions
+        { -- `t` for type and `v` for value; it may seem a bit cryptic but
+          -- this is not for human consumption and using the abbreviations
+          -- reduces space for each item in the stream
+          sumEncoding = TaggedObject "t" "v"
+        }
 
 instance ToJSON IValue where
-  toJSON = \case
-    IDouble d -> toJSON d
-    IText t -> toJSON t
-    ITuple t -> toJSON t
-    -- See `FromJSON` instance above
-    ITime t -> object ["time" .= t]
-    -- See `FromJSON` instance above
-    IArray is -> object ["array" .= is]
-    IEmpty -> toJSON Null
+  toJSON =
+    genericToJSON
+      defaultOptions
+        { -- See note above
+          sumEncoding = TaggedObject "t" "v"
+        }
 
 -- | Used to represent inputs to the script. 'Many' allows for an array input
 data SingleOrMany a

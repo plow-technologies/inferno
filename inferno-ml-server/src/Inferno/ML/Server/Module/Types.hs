@@ -10,8 +10,10 @@ import Control.DeepSeq (NFData)
 import Control.Monad.Catch (MonadThrow (throwM))
 import Data.Aeson (FromJSON, ToJSON)
 import Data.Bits (countLeadingZeros)
+import Data.Bool (bool)
 import Data.Generics.Labels ()
 import Data.Int (Int64)
+import qualified Data.Text as Text
 import qualified Data.Vector as Vector
 import Data.Word (Word8)
 import Database.PostgreSQL.Simple.FromField (FromField)
@@ -20,22 +22,35 @@ import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast
   ( FromValue (fromValue),
     ToValue (toValue),
     couldNotCast,
   )
+import Inferno.Types.Syntax (Ident (Ident))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VDouble, VEmpty, VEpochTime, VText, VTuple),
+    Value
+      ( VArray,
+        VCustom,
+        VDouble,
+        VEmpty,
+        VEnum,
+        VEpochTime,
+        VInt,
+        VText,
+        VTuple,
+        VWord16,
+        VWord32,
+        VWord64
+      ),
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Prettyprinter (Pretty (pretty), cat, (<+>))
 import System.Posix.Types (EpochTime)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 import "inferno-ml-server-types" Inferno.ML.Server.Types
-  ( IValue (IArray, IDouble, IEmpty, IText, ITime, ITuple),
-  )
 
 -- | Custom type for bridge prelude
 data BridgeValue
@@ -111,21 +126,40 @@ data BridgeFuns m = BridgeFuns
 
 fromIValue :: IValue -> Value v m
 fromIValue = \case
-  IDouble d -> VDouble d
   IText t -> VText t
+  IInt i -> VInt i
+  IWord16 w -> VWord16 w
+  IWord32 w -> VWord32 w
+  IWord64 w -> VWord64 w
+  IDouble d -> VDouble d
   ITime t -> VEpochTime t
-  ITuple (x, y) -> VTuple [fromIValue x, fromIValue y]
   IEmpty -> VEmpty
+  IBool b -> VEnum enumBoolHash . Ident $ bool "false" "true" b
+  ITuple (x, y) -> VTuple [fromIValue x, fromIValue y]
   IArray v -> VArray $ Vector.toList $ fromIValue <$> v
 
 toIValue :: (MonadThrow f) => Value custom m -> f IValue
 toIValue = \case
   VText t -> pure $ IText t
+  VInt i -> pure $ IInt i
+  VWord16 w -> pure $ IWord16 w
+  VWord32 w -> pure $ IWord32 w
+  VWord64 w -> pure $ IWord64 w
   VDouble d -> pure $ IDouble d
   VEpochTime t -> pure $ ITime t
-  VTuple [x, y] -> curry ITuple <$> toIValue x <*> toIValue y
   VEmpty -> pure IEmpty
+  VTuple [x, y] -> curry ITuple <$> toIValue x <*> toIValue y
   VArray vs -> IArray . Vector.fromList <$> traverse toIValue vs
+  VEnum h (Ident i) | h == enumBoolHash -> case i of
+    "true" -> pure $ IBool True
+    "false" -> pure $ IBool False
+    v ->
+      throwM . RuntimeError $
+        unwords
+          [ "toIValue:"
+          , "got invalid boolean value"
+          , Text.unpack v
+          ]
   _ -> throwM $ RuntimeError "toIValue: got an unsupported value type"
 
 toResolution :: Int64 -> InverseResolution

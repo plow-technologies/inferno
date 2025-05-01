@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.4.23
+* Update for new polymorphic writes
+
 ## 2025.4.21
 * Update for new `size` field in `ModelVersion`
 
