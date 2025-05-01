@@ -949,14 +949,18 @@ instance FromJSON IValue where
   parseJSON =
     genericParseJSON
       defaultOptions
-        { sumEncoding = TaggedObject "type" "value"
+        { -- `t` for type and `v` for value; it may seem a bit cryptic but
+          -- this is not for human consumption and using the abbreviations
+          -- reduces space for each item in the stream
+          sumEncoding = TaggedObject "t" "v"
         }
 
 instance ToJSON IValue where
   toJSON =
     genericToJSON
       defaultOptions
-        { sumEncoding = TaggedObject "type" "value"
+        { -- See note above
+          sumEncoding = TaggedObject "t" "v"
         }
 
 -- | Used to represent inputs to the script. 'Many' allows for an array input
