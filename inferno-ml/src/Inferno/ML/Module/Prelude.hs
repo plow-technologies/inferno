@@ -156,6 +156,9 @@ tanHTFun = Torch.Functional.tanh
 powTFun :: Int -> Tensor -> Tensor
 powTFun = pow
 
+unsqueezeFun :: Int -> Tensor -> Tensor
+unsqueezeFun = Torch.Functional.unsqueeze . Dim
+
 unsafeLoadScriptFun :: Text -> ScriptModule
 unsafeLoadScriptFun f = unsafePerformIO $ TS.loadScript TS.WithoutRequiredGrad $ unpack f
 
@@ -334,6 +337,8 @@ module ML
   matmul : tensor -> tensor -> tensor := ###matmul###;
 
   mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
+
+  unsqueeze : int -> tensor -> tensor := ###unsqueezeFun###;
 
   @doc An impure (pseudo)random tensor generator;
   randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIOFun###;

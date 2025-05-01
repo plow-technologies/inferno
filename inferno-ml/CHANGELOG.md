@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.7.0.2 -- 2025-05-01
+* Add `unsqueeze`
+
 ## 0.7.0.1 -- 2025-04-08
 * Catch C++ exceptions in `forward` primitive
 
