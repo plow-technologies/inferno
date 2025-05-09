@@ -180,6 +180,9 @@ runInferenceParamWithEnv ::
 runInferenceParamWithEnv ipid uuid senv =
   withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
+    -- Clear the "console" before running the script, so any calls to
+    -- `Print.print` will write to a fresh console
+    (`atomicWriteIORef` mempty) =<< view #console
     maybe (throwRemoteError (ScriptTimeout ipid t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
@@ -306,9 +309,9 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              either (throwInfernoError ipid) yieldPairs
-                =<< flip (`evalExpr` implEnv) expr
-                =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
+              runImplEnvM mempty (mkEnvFromClosure localEnv closure)
+                >>= flip (`evalExpr` implEnv) expr
+                >>= either (throwInfernoError ipid) ((saveConsole *>) . yieldPairs)
               where
                 yieldPairs ::
                   Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
@@ -348,6 +351,12 @@ runInferenceParamWithEnv ipid uuid senv =
                       , VCustom . VExtended $ VResolution resolution
                       )
                     ]
+
+                -- Save anything printed to the "console" via `Print.print` to
+                -- the DB so it can be retrieved later
+                saveConsole :: RemoteM ()
+                saveConsole = undefined
+
             _ ->
               throwRemoteError
                 . InvalidScript ipid

@@ -50,6 +50,7 @@ import Data.Generics.Wrapped (wrappedTo)
 import Data.Pool (Pool)
 import qualified Data.Pool as Pool
 import Data.Scientific (Scientific)
+import Data.Sequence (Seq)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
@@ -131,6 +132,8 @@ data Env = Env
           Async (Maybe (Types.WriteStream IO))
         )
   , manager :: Manager
+  , -- Prints to the console. This is cleared before every script evaluation
+    console :: IORef (Seq Text)
   , -- The interpreter needs to be updated if the bridge info changes,
     -- hence the need to keep it in an `IORef`
     interpreter :: IORef (Maybe (Interpreter RemoteM BridgeMlValue))
