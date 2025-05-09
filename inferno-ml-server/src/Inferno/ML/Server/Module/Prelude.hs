@@ -18,6 +18,8 @@ import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
+import Data.Sequence ((|>))
+import Data.Text (Text)
 import Data.Tuple.Extra ((&&&))
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
@@ -41,10 +43,13 @@ import Inferno.Types.Value
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
+import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty)
+import Prettyprinter.Render.Text (renderStrict)
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
 import qualified Torch (toDevice)
 import UnliftIO.Exception (handle)
+import UnliftIO.IORef (atomicModifyIORef')
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
@@ -321,6 +326,13 @@ module Print
    print : forall 'a. 'a -> () := ###!printFun###;
 
   |]
-
-printFun :: BridgeV RemoteM
-printFun = undefined
+  where
+    -- Sticks the prettified value onto the end of the "console" output
+    printFun :: BridgeV RemoteM
+    printFun = VFun $ \v ->
+      liftImplEnvM $
+        fmap toValue $
+          (`atomicModifyIORef'` ((|> render v) &&& const ())) =<< view #console
+      where
+        render :: BridgeV RemoteM -> Text
+        render = renderStrict . layoutPretty defaultLayoutOptions . pretty
