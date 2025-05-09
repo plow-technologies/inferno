@@ -261,10 +261,12 @@ mkServerBridgePrelude bfuns mlPrelude =
 
 -- | ML prelude for use only in @RemoteM@ (needed for tracing effects)
 serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
-serverMlPrelude = mkMlPrelude toDeviceFun
+serverMlPrelude =
+  -- NOTE There's no risk of overlap in module names here, so we can just
+  -- use `union` instead of `unionWith`
+  Map.union extraModules $ mkMlPrelude toDeviceFun
   where
-    toDeviceFun ::
-      Value (MlValue BridgeValue) (ImplEnvM RemoteM (MlValue BridgeValue))
+    toDeviceFun :: BridgeV RemoteM
     toDeviceFun =
       VFun $ \case
         VEnum _ e ->
@@ -309,3 +311,16 @@ toDeviceIO device t1 = handle handler $ t2 `seq` pure (Right t2)
     -- throw an `error`
     t2 :: Tensor
     t2 = Torch.toDevice device t1
+
+extraModules :: ModuleMap RemoteM (MlValue BridgeValue)
+extraModules =
+  [mlQuoter|
+module Print
+
+   @doc Print a value to the console;
+   print : forall 'a. 'a -> () := ###!printFun###;
+
+  |]
+
+printFun :: BridgeV RemoteM
+printFun = undefined
