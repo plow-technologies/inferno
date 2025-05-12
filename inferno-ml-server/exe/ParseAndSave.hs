@@ -42,8 +42,9 @@ import Inferno.Core
     mkInferno,
   )
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude)
+import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, mkExtraModules)
 import Inferno.ML.Types.Value (customTypes)
+import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (Expr, TCScheme)
 import Inferno.Types.VersionControl
   ( Pinned,
@@ -82,8 +83,14 @@ parseAndSave ipid p conns ios = do
   now <- fromIntegral @Int . round <$> getPOSIXTime
   ast <-
     either (throwString . displayException) pure . (`parse` t)
-      =<< mkInferno @_ @BridgeMlValue (mkServerBridgePrelude funs mlPrelude) customTypes
+      =<< mkInferno prelude customTypes
   bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now ios)
+  where
+    prelude :: ModuleMap IO BridgeMlValue
+    prelude = Map.union extraModules $ mkServerBridgePrelude funs mlPrelude
+
+    extraModules :: ModuleMap IO BridgeMlValue
+    extraModules = mkExtraModules notSupported
 
 saveScriptAndParam ::
   Id InferenceParam ->
@@ -197,9 +204,9 @@ parse Interpreter{parseAndInfer} =
 -- These are needed to parse the script, but do not need to do anything
 funs :: BridgeFuns IO
 funs = BridgeFuns notSupported notSupported notSupported notSupported
-  where
-    notSupported :: a
-    notSupported = error "Not supported"
+
+notSupported :: a
+notSupported = error "Not supported"
 
 data InputsOutputs = InputsOutputs
   { inputs :: Inputs PID

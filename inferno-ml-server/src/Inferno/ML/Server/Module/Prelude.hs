@@ -8,6 +8,7 @@ module Inferno.ML.Server.Module.Prelude
   ( bridgeModules,
     mkServerBridgePrelude,
     serverMlPrelude,
+    mkExtraModules,
   )
 where
 
@@ -317,8 +318,14 @@ toDeviceIO device t1 = handle handler $ t2 `seq` pure (Right t2)
     t2 :: Tensor
     t2 = Torch.toDevice device t1
 
-extraModules :: ModuleMap RemoteM (MlValue BridgeValue)
-extraModules =
+mkExtraModules ::
+  forall m.
+  ( MonadIO m
+  , MonadCatch m
+  , MonadThrow m
+  ) =>
+  BridgeV m -> ModuleMap m (MlValue BridgeValue)
+mkExtraModules printFun =
   [mlQuoter|
 module Print
 
@@ -326,6 +333,9 @@ module Print
    print : forall 'a. 'a -> () := ###!printFun###;
 
   |]
+
+extraModules :: ModuleMap RemoteM (MlValue BridgeValue)
+extraModules = mkExtraModules printFun
   where
     -- Sticks the prettified value onto the end of the "console" output
     printFun :: BridgeV RemoteM
