@@ -310,9 +310,9 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              runImplEnvM mempty (mkEnvFromClosure localEnv closure)
-                >>= flip (`evalExpr` implEnv) expr
-                >>= either (throwInfernoError ipid) ((writeConsole *>) . yieldPairs)
+              either (throwInfernoError ipid) yieldPairs
+                =<< flip (`evalExpr` implEnv) expr
+                =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
               where
                 yieldPairs ::
                   Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
@@ -353,16 +353,6 @@ runInferenceParamWithEnv ipid uuid senv =
                       )
                     ]
 
-                -- Save anything printed to the "console" via `Print.print` to
-                -- the DB so it can be retrieved later
-                writeConsole :: RemoteM ()
-                writeConsole =
-                  executeStore q . (uuid,) . PGArray . toList
-                    =<< readIORef
-                    =<< view #console
-                  where
-                    q :: Query
-                    q = [sql| INSERT INTO consoles (id, prints) VALUES (?, ?) |]
             _ ->
               throwRemoteError
                 . InvalidScript ipid
@@ -391,8 +381,12 @@ runInferenceParamWithEnv ipid uuid senv =
       end <- getCurrentTime
       bytes1 <- getAllocationCounter
       cpu1 <- getCPUTime
-
-      ws <$ r (saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
+      r $ saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0)
+      -- The console needs to be written here, after evaluation info is saved,
+      -- since the ID of the `consoles` column is an fkey pointing to the `evalinfo`
+      -- pkey
+      r writeConsole
+      pure ws
       where
         saveEvaluationInfo ::
           -- End and start times
@@ -438,6 +432,17 @@ runInferenceParamWithEnv ipid uuid senv =
                 . ("Failed to save eval info: " <>)
                 . Text.pack
                 . displayException
+
+        -- Save anything printed to the "console" via `Print.print` to
+        -- the DB so it can be retrieved later
+        writeConsole :: RemoteM ()
+        writeConsole =
+          executeStore q . (uuid,) . PGArray . toList
+            =<< readIORef
+            =<< view #console
+          where
+            q :: Query
+            q = [sql| INSERT INTO consoles (id, prints) VALUES (?, ?) |]
 
 getOrMkInferno ::
   Id InferenceParam -> RemoteM (Interpreter RemoteM BridgeMlValue)
