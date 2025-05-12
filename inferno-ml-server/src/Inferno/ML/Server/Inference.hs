@@ -17,7 +17,7 @@ module Inferno.ML.Server.Inference
 where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
-import Control.Monad (void, when, (<=<))
+import Control.Monad (unless, void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
@@ -90,7 +90,6 @@ import UnliftIO.Directory
   )
 import UnliftIO.Exception
   ( bracket_,
-    catch,
     catchIO,
     displayException,
   )
@@ -352,7 +351,6 @@ runInferenceParamWithEnv ipid uuid senv =
                       , VCustom . VExtended $ VResolution resolution
                       )
                     ]
-
             _ ->
               throwRemoteError
                 . InvalidScript ipid
@@ -397,15 +395,11 @@ runInferenceParamWithEnv ipid uuid senv =
           (Integer, Integer) ->
           RemoteM ()
         saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
-          insert `catch` logAndIgnore
+          executeStore q $
+            EvaluationInfo uuid ipid start end allocated cpuMillis
           where
-            insert :: RemoteM ()
-            insert =
-              executeStore q $
-                EvaluationInfo uuid ipid start end allocated cpuMillis
-              where
-                q :: Query
-                q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
+            q :: Query
+            q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
 
             -- Note that the allocation counter counts *down*, so we need to
             -- subtract the second value from the first value
@@ -422,24 +416,16 @@ runInferenceParamWithEnv ipid uuid senv =
             cpuMillis :: Word64
             cpuMillis = fromIntegral $ (cpu1 - cpu0) `div` 1_000_000_000
 
-            -- We don't want a DB error to completely break inference
-            -- evaluation. Inability to store the eval info is more of
-            -- an inconvenience than a fatal error
-            logAndIgnore :: SqlError -> RemoteM ()
-            logAndIgnore =
-              logWarn
-                . OtherWarn
-                . ("Failed to save eval info: " <>)
-                . Text.pack
-                . displayException
-
         -- Save anything printed to the "console" via `Print.print` to
         -- the DB so it can be retrieved later
         writeConsole :: RemoteM ()
         writeConsole =
-          executeStore q . (uuid,) . PGArray . toList
-            =<< readIORef
-            =<< view #console
+          view #console >>= readIORef >>= \console ->
+            -- There's no point in adding a row if no `print`s were evaluated,
+            -- we can always return an empty array as a default when querying
+            -- the console
+            unless (null console) . executeStore q . (uuid,) . PGArray $
+              toList console
           where
             q :: Query
             q = [sql| INSERT INTO consoles (id, prints) VALUES (?, ?) |]
