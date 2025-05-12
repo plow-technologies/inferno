@@ -998,7 +998,7 @@ instance (Ord a) => Ord (SingleOrMany a) where
 data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash
   , inputs :: Inputs p
-  , outputs :: Inputs p
+  , outputs :: Outputs p
   , models :: Models (Id (ModelVersion gid Oid))
   }
   deriving stock (Show, Eq, Generic)

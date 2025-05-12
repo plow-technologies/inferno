@@ -23,7 +23,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifunctor (bimap)
 import Data.Conduit.List (chunksOf, sourceList)
-import Data.Foldable (foldl', traverse_)
+import Data.Foldable (foldl', toList, traverse_)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -44,6 +44,7 @@ import Database.PostgreSQL.Simple
   )
 import Database.PostgreSQL.Simple.Newtypes (getAeson)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Database.PostgreSQL.Simple.Types (PGArray (PGArray))
 import Foreign.C (CTime)
 import GHC.Generics (Generic)
 import Inferno.Core
@@ -311,7 +312,7 @@ runInferenceParamWithEnv ipid uuid senv =
 
               runImplEnvM mempty (mkEnvFromClosure localEnv closure)
                 >>= flip (`evalExpr` implEnv) expr
-                >>= either (throwInfernoError ipid) ((saveConsole *>) . yieldPairs)
+                >>= either (throwInfernoError ipid) ((writeConsole *>) . yieldPairs)
               where
                 yieldPairs ::
                   Value BridgeMlValue (ImplEnvM RemoteM BridgeMlValue) ->
@@ -354,9 +355,14 @@ runInferenceParamWithEnv ipid uuid senv =
 
                 -- Save anything printed to the "console" via `Print.print` to
                 -- the DB so it can be retrieved later
-                saveConsole :: RemoteM ()
-                saveConsole = undefined
-
+                writeConsole :: RemoteM ()
+                writeConsole =
+                  executeStore q . (uuid,) . PGArray . toList
+                    =<< readIORef
+                    =<< view #console
+                  where
+                    q :: Query
+                    q = [sql| INSERT INTO consoles (id, prints) VALUES (?, ?) |]
             _ ->
               throwRemoteError
                 . InvalidScript ipid
