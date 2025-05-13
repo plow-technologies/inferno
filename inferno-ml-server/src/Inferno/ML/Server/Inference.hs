@@ -40,7 +40,6 @@ import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only, fromOnly),
     Query,
-    SqlError,
   )
 import Database.PostgreSQL.Simple.Newtypes (getAeson)
 import Database.PostgreSQL.Simple.SqlQQ (sql)

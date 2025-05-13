@@ -3,4 +3,5 @@ fun input0 output0 mnist ->
   let ?resolution = (toResolution 128) in
   let v = valueAt input0 t ? 0.0 in
   let i = Print.print v in
+  let i = Print.printWith "valueAt is:" v in
   [makeWrites output0 [(v + 5.0, Time.toTime (Time.seconds 300))]]

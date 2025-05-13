@@ -90,7 +90,7 @@ parseAndSave ipid p conns ios = do
     prelude = Map.union extraModules $ mkServerBridgePrelude funs mlPrelude
 
     extraModules :: ModuleMap IO BridgeMlValue
-    extraModules = mkExtraModules notSupported
+    extraModules = mkExtraModules notSupported notSupported
 
 saveScriptAndParam ::
   Id InferenceParam ->

@@ -39,7 +39,7 @@ import qualified Inferno.Types.Module
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VTuple),
+    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VTuple, VText),
     liftImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
@@ -324,25 +324,38 @@ mkExtraModules ::
   , MonadCatch m
   , MonadThrow m
   ) =>
-  BridgeV m -> ModuleMap m (MlValue BridgeValue)
-mkExtraModules printFun =
+  BridgeV m ->
+  BridgeV m ->
+  ModuleMap m (MlValue BridgeValue)
+mkExtraModules printFun printWithFun =
   [mlQuoter|
 module Print
 
-   @doc Print a value to the console;
+   @doc Convert a value to text and print it to the console;
    print : forall 'a. 'a -> () := ###!printFun###;
+
+   @doc Convert a value to text and print it to the console, with a text prefix;
+   printWith : forall 'a. text -> 'a := ###!printWithFun###;
 
   |]
 
 extraModules :: ModuleMap RemoteM (MlValue BridgeValue)
-extraModules = mkExtraModules printFun
+extraModules = mkExtraModules printFun printWithFun
   where
     -- Sticks the prettified value onto the end of the "console" output
     printFun :: BridgeV RemoteM
-    printFun = VFun $ \v ->
+    printFun = VFun $ writeConsole . renderValue
+
+    printWithFun :: BridgeV RemoteM
+    printWithFun = VFun $ \case
+      VText t -> pure . VFun $ writeConsole . ((t <>) . (" " <>)) . renderValue
+      _ -> throwM $ RuntimeError "printWith: expecting a text value"
+
+    renderValue :: BridgeV RemoteM -> Text
+    renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty
+
+    writeConsole :: Text -> ImplEnvM RemoteM (MlValue BridgeValue) (BridgeV RemoteM)
+    writeConsole t =
       liftImplEnvM $
         fmap toValue $
-          (`atomicModifyIORef'` ((|> render v) &&& const ())) =<< view #console
-      where
-        render :: BridgeV RemoteM -> Text
-        render = renderStrict . layoutPretty defaultLayoutOptions . pretty
+          (`atomicModifyIORef'` ((|> t) &&& const ())) =<< view #console
