@@ -8,7 +8,7 @@ module Inferno.ML.Server.Module.Prelude
   ( bridgeModules,
     mkServerBridgePrelude,
     serverMlPrelude,
-    mkExtraModules,
+    mkPrintModules,
   )
 where
 
@@ -39,12 +39,12 @@ import qualified Inferno.Types.Module
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VTuple, VText),
+    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VText, VTuple),
     liftImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty)
+import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, Pretty)
 import Prettyprinter.Render.Text (renderStrict)
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
@@ -270,7 +270,7 @@ serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
 serverMlPrelude =
   -- NOTE There's no risk of overlap in module names here, so we can just
   -- use `union` instead of `unionWith`
-  Map.union extraModules $ mkMlPrelude toDeviceFun
+  Map.union printModules $ mkMlPrelude toDeviceFun
   where
     toDeviceFun :: BridgeV RemoteM
     toDeviceFun =
@@ -301,6 +301,27 @@ serverMlPrelude =
                   pure $ toValue @_ @_ @Tensor tensor
         _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
 
+    printModules :: ModuleMap RemoteM (MlValue BridgeValue)
+    printModules = mkPrintModules printFun printWithFun
+      where
+        -- Sticks the prettified value onto the end of the "console" output
+        printFun :: BridgeV RemoteM
+        printFun = VFun $ writeConsole . renderValue
+
+        -- Sticks the prettified value onto the end of the "console" output,
+        -- along with its text prefix
+        printWithFun :: BridgeV RemoteM
+        printWithFun = VFun $ \case
+          VText t -> pure . VFun $ writeConsole . ((t <>) . (" " <>)) . renderValue
+          _ -> throwM $ RuntimeError "printWith: expecting a text value"
+
+        writeConsole :: Text -> BridgeImplM RemoteM
+        writeConsole t =
+          liftImplEnvM $
+            fmap toValue $
+              (`atomicModifyIORef'` ((|> t) &&& const ())) =<< view #console
+
+
 -- Workaround for `error`s in Torch's "pure" `toDevice`. If the original
 -- tensor cannot be moved, `Left Tensor` is returned to signal failure to move
 -- the tensor to the new device, i.e. the original tensor is returned;
@@ -318,16 +339,23 @@ toDeviceIO device t1 = handle handler $ t2 `seq` pure (Right t2)
     t2 :: Tensor
     t2 = Torch.toDevice device t1
 
-mkExtraModules ::
+-- | Provided with implementations for @print@ and @printWith@, creates a
+-- @Print@ module with effects for printing to the \"console\"
+--
+-- These are defined separately from the main @inferno-ml@ modules as they
+-- are not strictly related to Inferno ML and require a specific implementation
+mkPrintModules ::
   forall m.
   ( MonadIO m
   , MonadCatch m
   , MonadThrow m
   ) =>
+  -- | @Print.print@ implementation
   BridgeV m ->
+  -- | @Print.printWith@ implementation
   BridgeV m ->
   ModuleMap m (MlValue BridgeValue)
-mkExtraModules printFun printWithFun =
+mkPrintModules printFun printWithFun =
   [mlQuoter|
 module Print
 
@@ -337,25 +365,13 @@ module Print
    @doc Convert a value to text and print it to the console, with a text prefix;
    printWith : forall 'a. text -> 'a := ###!printWithFun###;
 
+   @doc Convert a value to text;
+   show : forall 'a. 'a -> text := ###!showFun###;
+
   |]
-
-extraModules :: ModuleMap RemoteM (MlValue BridgeValue)
-extraModules = mkExtraModules printFun printWithFun
   where
-    -- Sticks the prettified value onto the end of the "console" output
-    printFun :: BridgeV RemoteM
-    printFun = VFun $ writeConsole . renderValue
+    showFun :: BridgeV m
+    showFun = VFun $ pure . toValue . renderValue
 
-    printWithFun :: BridgeV RemoteM
-    printWithFun = VFun $ \case
-      VText t -> pure . VFun $ writeConsole . ((t <>) . (" " <>)) . renderValue
-      _ -> throwM $ RuntimeError "printWith: expecting a text value"
-
-    renderValue :: BridgeV RemoteM -> Text
-    renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty
-
-    writeConsole :: Text -> ImplEnvM RemoteM (MlValue BridgeValue) (BridgeV RemoteM)
-    writeConsole t =
-      liftImplEnvM $
-        fmap toValue $
-          (`atomicModifyIORef'` ((|> t) &&& const ())) =<< view #console
+renderValue :: Pretty v => Value v (ImplEnvM m v) -> Text
+renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty

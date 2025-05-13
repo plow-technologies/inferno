@@ -42,7 +42,7 @@ import Inferno.Core
     mkInferno,
   )
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, mkExtraModules)
+import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, mkPrintModules)
 import Inferno.ML.Types.Value (customTypes)
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (Expr, TCScheme)
@@ -87,10 +87,10 @@ parseAndSave ipid p conns ios = do
   bracket (connectPostgreSQL conns) close (saveScriptAndParam ipid ast now ios)
   where
     prelude :: ModuleMap IO BridgeMlValue
-    prelude = Map.union extraModules $ mkServerBridgePrelude funs mlPrelude
+    prelude = Map.union printModules $ mkServerBridgePrelude funs mlPrelude
 
-    extraModules :: ModuleMap IO BridgeMlValue
-    extraModules = mkExtraModules notSupported notSupported
+    printModules :: ModuleMap IO BridgeMlValue
+    printModules = mkPrintModules notSupported notSupported
 
 saveScriptAndParam ::
   Id InferenceParam ->
