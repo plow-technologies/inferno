@@ -73,7 +73,7 @@ bridgeModules
     ) =
     [mlQuoter|
 module DataSource
-  @doc Create a `write` object encapsulating an array of `(time, 'a)` values to be
+  @doc Create a `write` object encapsulating an array of `('a, time)` values to be
   written to a given parameter. All ML scripts must return an array of such `write`
   objects, potentially empty, and this is the only way for them to write values to parameters.;
   makeWrites : forall 'a. series of 'a -> array of ('a, time) -> write := ###!makeWriteFun###;
