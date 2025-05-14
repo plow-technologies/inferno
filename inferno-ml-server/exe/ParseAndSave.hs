@@ -42,7 +42,7 @@ import Inferno.Core
     mkInferno,
   )
 import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, mkPrintModules)
+import Inferno.ML.Server.Module.Prelude (mkPrintModules, mkServerBridgePrelude)
 import Inferno.ML.Types.Value (customTypes)
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax (Expr, TCScheme)

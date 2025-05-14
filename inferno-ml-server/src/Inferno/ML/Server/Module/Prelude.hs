@@ -44,7 +44,7 @@ import Inferno.Types.Value
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
-import Prettyprinter (defaultLayoutOptions, layoutPretty, pretty, Pretty)
+import Prettyprinter (Pretty, defaultLayoutOptions, layoutPretty, pretty)
 import Prettyprinter.Render.Text (renderStrict)
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
@@ -280,7 +280,7 @@ serverMlPrelude =
           -- can only be `#cpu` or `#cuda`
           getDevice e <&> \device ->
             -- Original tensor to be moved (as Inferno value)
-            VFun $ \vtensor -> do
+            VFun $ \vtensor ->
               fromValue vtensor >>= liftIO . toDeviceIO device >>= \case
                 -- This is the (potentially) moved tensor; its having been moved
                 -- or not depends on the devices involved
@@ -320,7 +320,6 @@ serverMlPrelude =
           liftImplEnvM $
             fmap toValue $
               (`atomicModifyIORef'` ((|> t) &&& const ())) =<< view #console
-
 
 -- Workaround for `error`s in Torch's "pure" `toDevice`. If the original
 -- tensor cannot be moved, `Left Tensor` is returned to signal failure to move
@@ -363,7 +362,7 @@ module Print
    print : forall 'a. 'a -> () := ###!printFun###;
 
    @doc Convert a value to text and print it to the console, with a text prefix;
-   printWith : forall 'a. text -> 'a := ###!printWithFun###;
+   printWith : forall 'a. text -> 'a -> () := ###!printWithFun###;
 
    @doc Convert a value to text;
    show : forall 'a. 'a -> text := ###!showFun###;
@@ -373,5 +372,5 @@ module Print
     showFun :: BridgeV m
     showFun = VFun $ pure . toValue . renderValue
 
-renderValue :: Pretty v => Value v (ImplEnvM m v) -> Text
+renderValue :: (Pretty v) => Value v (ImplEnvM m v) -> Text
 renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty
