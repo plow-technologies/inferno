@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.7.0 -- 2025-05-15
+* Allow wildcard bindings (`_` as an identifier)
+
 ## 0.11.6.1 -- 2025-02-13
 * Fourmolu
 

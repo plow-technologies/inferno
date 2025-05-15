@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.7.0 -- 2025-05-15
+* Allow wildcard bindings (`_` as an identifier)
+
 ## 0.4.6.2 -- 2025-02-13
 * Fourmolu
 
