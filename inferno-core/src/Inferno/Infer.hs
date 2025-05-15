@@ -93,6 +93,7 @@ import Inferno.Types.Syntax
     tListFromList,
     tListToList,
     toEitherList,
+    wildcard,
   )
 import Inferno.Types.Type
   ( BaseType (TEnum),
@@ -775,7 +776,7 @@ infer expr =
             checkVariableOverlap :: [(SourcePos, Ident, SourcePos, b, Maybe SourcePos)] -> Infer ()
             checkVariableOverlap = \case
               [] -> return ()
-              (loc, x, _, _e, _) : xs -> case find (\(_, x', _, _, _) -> x == x') xs of
+              (loc, x, _, _e, _) : xs -> case find (\(_, x', _, _, _) -> x == x' && x /= wildcard) xs of
                 Just (loc', x', _, _, _) -> throwError [VarMultipleOccurrence x (elementPosition loc x) (elementPosition loc' x')]
                 Nothing -> checkVariableOverlap xs
         Lam p1 args p2 e -> do
@@ -1229,8 +1230,10 @@ infer expr =
               let patLoc = blockPosition pat
                in case pat of
                     PVar _ (Just x) -> case Map.lookup x vars of
-                      Just loc' -> throwError [VarMultipleOccurrence x patLoc loc']
-                      Nothing -> return $ Map.insert x patLoc vars
+                      Just loc'
+                        | x == wildcard -> pure vars
+                        | otherwise -> throwError [VarMultipleOccurrence x patLoc loc']
+                      Nothing -> pure $ Map.insert x patLoc vars
                     POne _ p -> checkVariableOverlap vars p
                     PArray _ ps _ -> foldM checkVariableOverlap vars $ map fst ps
                     PTuple _ ps _ -> foldM checkVariableOverlap vars $ map fst $ tListToList ps

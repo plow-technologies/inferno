@@ -114,6 +114,7 @@ module Inferno.Types.Syntax
     typeTimeDiff,
     typeTime,
     unusedVars,
+    wildcard,
   )
 where
 
@@ -1757,3 +1758,6 @@ instance Dependencies (Expr hash pos) hash where
     EnumF _ h _ _ -> Set.singleton h
     OpF _ _ h _ _ _ _ -> Set.singleton h
     rest -> foldr Set.union mempty rest
+
+wildcard :: Ident
+wildcard = "_"
