@@ -18,11 +18,6 @@ main = do
         ["x"]
 
       unusedVarsShouldBe
-        -- let _ = 1 in 2.2
-        (Let () () (Expl (ExtIdent (Right "_"))) () (Lit () (LInt 1)) () (Lit () (LDouble 2.2)))
-        []
-
-      unusedVarsShouldBe
         -- let x = 1 in let y = x + 2 in 2.2
         (Let () () (Expl (ExtIdent (Right "x"))) () (Lit () (LInt 1)) () (Let () () (Expl (ExtIdent (Right "y"))) () (Op (Var () () LocalScope (Expl (ExtIdent (Right "x")))) () () (9, LeftFix) LocalScope (Ident{unIdent = "+"}) (Lit () (LInt 2))) () (Lit () (LDouble 2.2))))
         ["y"]

@@ -7,7 +7,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -115,7 +114,6 @@ module Inferno.Types.Syntax
     typeTimeDiff,
     typeTime,
     unusedVars,
-    wildcard,
   )
 where
 
@@ -1391,14 +1389,7 @@ unusedVars = fst . cata go
     go = \case
       VarF _ _ _ (Expl (ExtIdent (Right x))) -> (mempty, Set.singleton x)
       LetF _ p (Expl (ExtIdent (Right x))) _ (unusedE, usedE) _ (unusedBody, usedBody) ->
-        ( -- If the variable binding is a wildcard (i.e. `_`), then don't warn if
-          -- it's unused
-          if
-            | Set.member x usedBody -> unused
-            | Ident x == wildcard -> unused
-            | otherwise -> Set.insert xPP unused
-        , used
-        )
+        (if Set.member x usedBody then unused else Set.insert xPP unused, used)
         where
           xPP = let (pS, pE) = elementPosition p (Ident x) in (x, pS, pE)
           -- Remove x from usedBody because it goes out of scope after this Let
@@ -1766,6 +1757,3 @@ instance Dependencies (Expr hash pos) hash where
     EnumF _ h _ _ -> Set.singleton h
     OpF _ _ h _ _ _ _ -> Set.singleton h
     rest -> foldr Set.union mempty rest
-
-wildcard :: Ident
-wildcard = "_"

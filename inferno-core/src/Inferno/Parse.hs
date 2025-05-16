@@ -187,7 +187,7 @@ variable = do
   (opsTable, _, _) <- ask
   try (p >>= check opsTable)
   where
-    p = pack <$> (((:) <$> (letterChar <|> char '_') <*> hidden (many alphaNumCharOrSeparator)) <?> "a variable")
+    p = pack <$> (((:) <$> letterChar <*> hidden (many alphaNumCharOrSeparator)) <?> "a variable")
     check oT x =
       if x `elem` rws ++ map (\(_, _, i) -> i) (concat oT)
         then fail $ "Keyword " <> show x <> " cannot be a variable/function name"
