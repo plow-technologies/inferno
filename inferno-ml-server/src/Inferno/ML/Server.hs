@@ -85,6 +85,7 @@ runInEnv cfg f =
           <$> newMVar ()
           <*> newEmptyMVar
           <*> newManager defaultManagerSettings
+          <*> newIORef mempty
           <*> newIORef Nothing
 
 infernoMlRemote :: Env -> Application

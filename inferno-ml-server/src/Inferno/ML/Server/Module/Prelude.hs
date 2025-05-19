@@ -8,6 +8,7 @@ module Inferno.ML.Server.Module.Prelude
   ( bridgeModules,
     mkServerBridgePrelude,
     serverMlPrelude,
+    mkPrintModules,
   )
 where
 
@@ -18,6 +19,8 @@ import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
+import Data.Sequence ((|>))
+import Data.Text (Text)
 import Data.Tuple.Extra ((&&&))
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
@@ -36,15 +39,18 @@ import qualified Inferno.Types.Module
 import Inferno.Types.Syntax (ExtIdent (ExtIdent))
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VTuple),
+    Value (VArray, VCustom, VEmpty, VEnum, VEpochTime, VFun, VText, VTuple),
     liftImplEnvM,
   )
 import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
+import Prettyprinter (Pretty, defaultLayoutOptions, layoutPretty, pretty)
+import Prettyprinter.Render.Text (renderStrict)
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
 import qualified Torch (toDevice)
 import UnliftIO.Exception (handle)
+import UnliftIO.IORef (atomicModifyIORef')
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
 -- data
@@ -67,7 +73,7 @@ bridgeModules
     ) =
     [mlQuoter|
 module DataSource
-  @doc Create a `write` object encapsulating an array of `(time, 'a)` values to be
+  @doc Create a `write` object encapsulating an array of `('a, time)` values to be
   written to a given parameter. All ML scripts must return an array of such `write`
   objects, potentially empty, and this is the only way for them to write values to parameters.;
   makeWrites : forall 'a. series of 'a -> array of ('a, time) -> write := ###!makeWriteFun###;
@@ -261,10 +267,12 @@ mkServerBridgePrelude bfuns mlPrelude =
 
 -- | ML prelude for use only in @RemoteM@ (needed for tracing effects)
 serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
-serverMlPrelude = mkMlPrelude toDeviceFun
+serverMlPrelude =
+  -- NOTE There's no risk of overlap in module names here, so we can just
+  -- use `union` instead of `unionWith`
+  Map.union printModules $ mkMlPrelude toDeviceFun
   where
-    toDeviceFun ::
-      Value (MlValue BridgeValue) (ImplEnvM RemoteM (MlValue BridgeValue))
+    toDeviceFun :: BridgeV RemoteM
     toDeviceFun =
       VFun $ \case
         VEnum _ e ->
@@ -272,7 +280,7 @@ serverMlPrelude = mkMlPrelude toDeviceFun
           -- can only be `#cpu` or `#cuda`
           getDevice e <&> \device ->
             -- Original tensor to be moved (as Inferno value)
-            VFun $ \vtensor -> do
+            VFun $ \vtensor ->
               fromValue vtensor >>= liftIO . toDeviceIO device >>= \case
                 -- This is the (potentially) moved tensor; its having been moved
                 -- or not depends on the devices involved
@@ -293,6 +301,26 @@ serverMlPrelude = mkMlPrelude toDeviceFun
                   pure $ toValue @_ @_ @Tensor tensor
         _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
 
+    printModules :: ModuleMap RemoteM (MlValue BridgeValue)
+    printModules = mkPrintModules printFun printWithFun
+      where
+        -- Sticks the prettified value onto the end of the "console" output
+        printFun :: BridgeV RemoteM
+        printFun = VFun $ writeConsole . renderValue
+
+        -- Sticks the prettified value onto the end of the "console" output,
+        -- along with its text prefix
+        printWithFun :: BridgeV RemoteM
+        printWithFun = VFun $ \case
+          VText t -> pure . VFun $ writeConsole . ((t <>) . (" " <>)) . renderValue
+          _ -> throwM $ RuntimeError "printWith: expecting a text value"
+
+        writeConsole :: Text -> BridgeImplM RemoteM
+        writeConsole t =
+          liftImplEnvM $
+            fmap toValue $
+              (`atomicModifyIORef'` ((|> t) &&& const ())) =<< view #console
+
 -- Workaround for `error`s in Torch's "pure" `toDevice`. If the original
 -- tensor cannot be moved, `Left Tensor` is returned to signal failure to move
 -- the tensor to the new device, i.e. the original tensor is returned;
@@ -309,3 +337,40 @@ toDeviceIO device t1 = handle handler $ t2 `seq` pure (Right t2)
     -- throw an `error`
     t2 :: Tensor
     t2 = Torch.toDevice device t1
+
+-- | Provided with implementations for @print@ and @printWith@, creates a
+-- @Print@ module with effects for printing to the \"console\"
+--
+-- These are defined separately from the main @inferno-ml@ modules as they
+-- are not strictly related to Inferno ML and require a specific implementation
+mkPrintModules ::
+  forall m.
+  ( MonadIO m
+  , MonadCatch m
+  , MonadThrow m
+  ) =>
+  -- | @Print.print@ implementation
+  BridgeV m ->
+  -- | @Print.printWith@ implementation
+  BridgeV m ->
+  ModuleMap m (MlValue BridgeValue)
+mkPrintModules printFun printWithFun =
+  [mlQuoter|
+module Print
+
+   @doc Convert a value to text and print it to the console;
+   print : forall 'a. 'a -> () := ###!printFun###;
+
+   @doc Convert a value to text and print it to the console, with a text prefix;
+   printWith : forall 'a. text -> 'a -> () := ###!printWithFun###;
+
+   @doc Convert a value to text;
+   show : forall 'a. 'a -> text := ###!showFun###;
+
+  |]
+  where
+    showFun :: BridgeV m
+    showFun = VFun $ pure . toValue . renderValue
+
+renderValue :: (Pretty v) => Value v (ImplEnvM m v) -> Text
+renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty

@@ -101,6 +101,14 @@ create table if not exists evalinfo
   , cpu bigint not null
   );
 
+create table if not exists consoles
+  ( -- Each "console" belongs to the same evaluation job as the `evalinfo`
+    -- table, so it can use the same ID
+    id uuid not null references evalinfo (id)
+    -- Each line of "console" output
+  , prints text[] not null
+  );
+
 -- Stores information required to call the data bridge
 create table if not exists bridges
   ( -- Same ID as the referenced param

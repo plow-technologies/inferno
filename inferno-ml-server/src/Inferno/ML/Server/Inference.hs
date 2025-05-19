@@ -17,13 +17,13 @@ module Inferno.ML.Server.Inference
 where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
-import Control.Monad (void, when, (<=<))
+import Control.Monad (unless, void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
 import Data.Bifunctor (bimap)
 import Data.Conduit.List (chunksOf, sourceList)
-import Data.Foldable (foldl', traverse_)
+import Data.Foldable (foldl', toList, traverse_)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -40,10 +40,10 @@ import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only, fromOnly),
     Query,
-    SqlError,
   )
 import Database.PostgreSQL.Simple.Newtypes (getAeson)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
+import Database.PostgreSQL.Simple.Types (PGArray (PGArray))
 import Foreign.C (CTime)
 import GHC.Generics (Generic)
 import Inferno.Core
@@ -89,7 +89,6 @@ import UnliftIO.Directory
   )
 import UnliftIO.Exception
   ( bracket_,
-    catch,
     catchIO,
     displayException,
   )
@@ -180,6 +179,9 @@ runInferenceParamWithEnv ::
 runInferenceParamWithEnv ipid uuid senv =
   withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
+    -- Clear the "console" before running the script, so any calls to
+    -- `Print.print` will write to a fresh console
+    (`atomicWriteIORef` mempty) =<< view #console
     maybe (throwRemoteError (ScriptTimeout ipid t)) pure
       =<< (`withMVar` const (run t))
       =<< view #lock
@@ -376,8 +378,12 @@ runInferenceParamWithEnv ipid uuid senv =
       end <- getCurrentTime
       bytes1 <- getAllocationCounter
       cpu1 <- getCPUTime
-
-      ws <$ r (saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0))
+      r $ saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0)
+      -- The console needs to be written here, after evaluation info is saved,
+      -- since the ID of the `consoles` column is an fkey pointing to the `evalinfo`
+      -- pkey
+      r writeConsole
+      pure ws
       where
         saveEvaluationInfo ::
           -- End and start times
@@ -388,15 +394,11 @@ runInferenceParamWithEnv ipid uuid senv =
           (Integer, Integer) ->
           RemoteM ()
         saveEvaluationInfo (end, start) (bytes1, bytes0) (cpu1, cpu0) =
-          insert `catch` logAndIgnore
+          executeStore q $
+            EvaluationInfo uuid ipid start end allocated cpuMillis
           where
-            insert :: RemoteM ()
-            insert =
-              executeStore q $
-                EvaluationInfo uuid ipid start end allocated cpuMillis
-              where
-                q :: Query
-                q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
+            q :: Query
+            q = [sql| INSERT INTO evalinfo VALUES (?, ?, ?, ?, ?, ?) |]
 
             -- Note that the allocation counter counts *down*, so we need to
             -- subtract the second value from the first value
@@ -413,16 +415,19 @@ runInferenceParamWithEnv ipid uuid senv =
             cpuMillis :: Word64
             cpuMillis = fromIntegral $ (cpu1 - cpu0) `div` 1_000_000_000
 
-            -- We don't want a DB error to completely break inference
-            -- evaluation. Inability to store the eval info is more of
-            -- an inconvenience than a fatal error
-            logAndIgnore :: SqlError -> RemoteM ()
-            logAndIgnore =
-              logWarn
-                . OtherWarn
-                . ("Failed to save eval info: " <>)
-                . Text.pack
-                . displayException
+        -- Save anything printed to the "console" via `Print.print` to
+        -- the DB so it can be retrieved later
+        writeConsole :: RemoteM ()
+        writeConsole =
+          view #console >>= readIORef >>= \console ->
+            -- There's no point in adding a row if no `print`s were evaluated,
+            -- we can always return an empty array as a default when querying
+            -- the console
+            unless (null console) . executeStore q . (uuid,) . PGArray $
+              toList console
+          where
+            q :: Query
+            q = [sql| INSERT INTO consoles (id, prints) VALUES (?, ?) |]
 
 getOrMkInferno ::
   Id InferenceParam -> RemoteM (Interpreter RemoteM BridgeMlValue)
