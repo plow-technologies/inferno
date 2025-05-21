@@ -42,9 +42,11 @@ library
     , aeson
     , attoparsec
     , base
+    , base64-bytestring
     , bytestring
     , conduit
     , containers
+    , cryptonite
     , deepseq
     , generic-lens
     , hashable

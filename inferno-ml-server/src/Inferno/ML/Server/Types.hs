@@ -418,10 +418,10 @@ type EvaluationEnv = Types.EvaluationEnv (EntityId GId) PID
 -- Orphans
 
 instance FromField VCObjectHash where
-  fromField f mb = wrappedTo <$> fromField @VCObjectHashRow f mb
+  fromField f mb = wrappedTo <$> fromField @VCObjectHashField f mb
 
 instance ToField VCObjectHash where
-  toField = toField . VCObjectHashRow
+  toField = toField . VCObjectHashField
 
 deriving newtype instance ToHttpApiData EpochTime
 
