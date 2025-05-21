@@ -20,8 +20,8 @@ create table if not exists models
   ( id uuid primary key default gen_random_uuid()
   , name text not null
   , gid numeric not null
-  , visibility jsonb
-  , created timestamptz default now()
+  , visibility jsonb not null
+  , created timestamptz not null default now()
     -- May be missing, if there is no model version yet
   , updated timestamptz
     -- See note above
@@ -47,7 +47,7 @@ create table if not exists mversions
     -- this once and store it here
   , size bigint not null
   , version text not null
-  , created timestamptz default now()
+  , created timestamptz not null default now()
     -- See note above
   , terminated timestamptz
   , unique (version, model)
