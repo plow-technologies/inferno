@@ -64,7 +64,7 @@ create table if not exists scripts
 -- Model versions linked to specific Inferno scripts (i.e. junction table
 -- between `scripts` and `mversions`)
 create table if not exists mselections
-  ( script bytea not null references scripts (id)
+  ( script bytea primary key references scripts (id)
   , model uuid not null references mversions (id)
     -- Inferno identifier linked to this specific model version
   , ident text not null
@@ -89,7 +89,9 @@ create table if not exists params
 
 -- Execution info for inference evaluation
 create table if not exists evalinfo
-  ( id uuid primary key
+  ( -- Note that it is required to provide the ID when creating a new row,
+    -- hence no default
+    id uuid primary key
   , param uuid not null references params (id)
     -- When inference evaluation began
   , started timestamptz not null
@@ -104,7 +106,7 @@ create table if not exists evalinfo
 create table if not exists consoles
   ( -- Each "console" belongs to the same evaluation job as the `evalinfo`
     -- table, so it can use the same ID
-    id uuid not null references evalinfo (id)
+    id uuid primary key references evalinfo (id)
     -- Each line of "console" output
   , prints text[] not null
   );
@@ -112,7 +114,7 @@ create table if not exists consoles
 -- Stores information required to call the data bridge
 create table if not exists bridges
   ( -- Same ID as the referenced param
-    id uuid not null references params (id)
+    id uuid primary key references params (id)
     -- Host of the bridge server
   , ip inet not null
   , port integer check (port > 0)
