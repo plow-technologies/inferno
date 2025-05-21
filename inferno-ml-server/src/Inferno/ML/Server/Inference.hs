@@ -308,7 +308,7 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              either (throwInfernoError ipid) yieldPairs
+              either (throwInfernoError ipid senv.script) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
                 =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
               where

@@ -1018,7 +1018,7 @@ data RemoteError p m mv
   | InvalidScript (Id p) Text
   | InvalidOutput (Id p) Text
   | -- | Any error condition returned by Inferno script evaluation
-    InfernoError (Id p) SomeInfernoError
+    InfernoError (Id p) VCObjectHash SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
   | DbError String
@@ -1068,10 +1068,12 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , "script output should be an array of `write` but was"
         , Text.unpack t
         ]
-    InfernoError ipid (SomeInfernoError x) ->
+    InfernoError ipid vch (SomeInfernoError x) ->
       unwords
-        [ "Inferno evaluation failed when evaluating"
+        [ "Parameter"
         , show ipid
+        , "failed to evaluate script"
+        , show vch
         , "with:"
         , x
         ]

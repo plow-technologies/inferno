@@ -32,6 +32,7 @@ import Database.PostgreSQL.Simple
   )
 import Database.PostgreSQL.Simple.Vector (query)
 import Inferno.ML.Server.Types
+import Inferno.VersionControl.Types (VCObjectHash)
 import Lens.Micro.Platform (view)
 import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Exception (catch, displayException)
@@ -39,8 +40,9 @@ import UnliftIO.Exception (catch, displayException)
 throwRemoteError :: RemoteError -> RemoteM a
 throwRemoteError = throwM
 
-throwInfernoError :: (Exception e) => Id InferenceParam -> e -> RemoteM a
-throwInfernoError ipid = throwRemoteError . InfernoError ipid . SomeInfernoError . show
+throwInfernoError :: (Exception e) => Id InferenceParam -> VCObjectHash -> e -> RemoteM a
+throwInfernoError ipid vch =
+  throwRemoteError . InfernoError ipid vch . SomeInfernoError . show
 
 catchDb :: (MonadThrow m, MonadCatch m, MonadUnliftIO m) => m a -> m a
 catchDb f = catch @_ @SqlError f $ (throwM @_ @RemoteError) . DbError . displayException
