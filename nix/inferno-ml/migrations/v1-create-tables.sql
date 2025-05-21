@@ -20,8 +20,8 @@ create table if not exists models
   ( id uuid primary key default gen_random_uuid()
   , name text not null
   , gid numeric not null
-  , visibility jsonb
-  , created timestamptz default now()
+  , visibility jsonb not null
+  , created timestamptz not null default now()
     -- May be missing, if there is no model version yet
   , updated timestamptz
     -- See note above
@@ -47,34 +47,39 @@ create table if not exists mversions
     -- this once and store it here
   , size bigint not null
   , version text not null
-  , created timestamptz default now()
+  , created timestamptz not null default now()
     -- See note above
   , terminated timestamptz
   , unique (version, model)
   );
 
 create table if not exists scripts
-  ( -- Since the hash uniquely identifies a script, it's probably fine
-    -- to keep this as a `bytea`
-    id bytea primary key
+  ( -- This is the base64-encoded SHA-256 digest of the script hash
+    id text primary key
     -- Script closure
   , obj jsonb not null
+    -- Since we always have a base64-encoded hash digest, we know exactly
+    -- how long it should be. We could use a `varchar` but storage, etc...
+    -- is the same and `text` is more flexible anyway
+  , check (char_length(id) = 44)
   );
 
 -- Model versions linked to specific Inferno scripts (i.e. junction table
 -- between `scripts` and `mversions`)
 create table if not exists mselections
-  ( script bytea not null references scripts (id)
+  ( script text not null references scripts (id)
   , model uuid not null references mversions (id)
     -- Inferno identifier linked to this specific model version
   , ident text not null
-  , unique (script, model)
+    -- The script and model combination must be unique, so can be used as
+    -- a composite primary key
+  , primary key (script, model)
   );
 
 create table if not exists params
   ( id uuid primary key default gen_random_uuid()
     -- Script hash from `inferno-vc`
-  , script bytea not null references scripts (id)
+  , script text not null references scripts (id)
     -- Inputs and outputs are a `Map Ident (SingleOrMany p)` on the Haskell
     -- side. Stored as JSONB for convenience (e.g. Postgres subarrays must all
     -- be the same length, making `SingleOrMany` harder to represent)
@@ -89,7 +94,9 @@ create table if not exists params
 
 -- Execution info for inference evaluation
 create table if not exists evalinfo
-  ( id uuid primary key
+  ( -- Note that it is required to provide the ID when creating a new row,
+    -- hence no default
+    id uuid primary key
   , param uuid not null references params (id)
     -- When inference evaluation began
   , started timestamptz not null
@@ -104,7 +111,7 @@ create table if not exists evalinfo
 create table if not exists consoles
   ( -- Each "console" belongs to the same evaluation job as the `evalinfo`
     -- table, so it can use the same ID
-    id uuid not null references evalinfo (id)
+    id uuid primary key references evalinfo (id)
     -- Each line of "console" output
   , prints text[] not null
   );
@@ -112,7 +119,7 @@ create table if not exists consoles
 -- Stores information required to call the data bridge
 create table if not exists bridges
   ( -- Same ID as the referenced param
-    id uuid not null references params (id)
+    id uuid primary key references params (id)
     -- Host of the bridge server
   , ip inet not null
   , port integer check (port > 0)

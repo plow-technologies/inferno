@@ -22,10 +22,12 @@ import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Exception (Exception, displayException)
 import Control.Monad (void)
+import Crypto.Hash (digestFromByteString)
 import Data.Aeson hiding (Value)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString.Base64.URL as Base64.URL
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Char (chr)
 import Data.Data (Typeable)
@@ -57,21 +59,19 @@ import Database.PostgreSQL.Simple.FromRow (FromRow (fromRow), field)
 import Database.PostgreSQL.Simple.LargeObjects (Oid (Oid))
 import Database.PostgreSQL.Simple.Newtypes (Aeson (Aeson), getAeson)
 import Database.PostgreSQL.Simple.ToField
-  ( Action (Escape, EscapeByteA),
+  ( Action (Escape),
     ToField (toField),
   )
 import Database.PostgreSQL.Simple.ToRow (ToRow (toRow))
 import Database.PostgreSQL.Simple.Types
-  ( Binary (Binary),
-    Default (Default),
+  ( Default (Default),
   )
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
-  ( VCObjectHash,
-    byteStringToVCObjectHash,
+  ( VCObjectHash (VCObjectHash),
     vcObjectHashToByteString,
   )
 import Inferno.VersionControl.Types
@@ -262,26 +262,27 @@ data InferenceScript uid gid = InferenceScript
 -- Newtype just for `FromRow`/`ToRow` instances. It would be possible to just
 -- add the instances to `inferno-types`, but then there would be a dependency
 -- on `postgresql-simple`
-newtype VCObjectHashRow = VCObjectHashRow VCObjectHash
+newtype VCObjectHashField = VCObjectHashField VCObjectHash
   deriving stock (Generic)
 
-instance FromField VCObjectHashRow where
+instance FromField VCObjectHashField where
   fromField f = \case
-    Nothing -> returnError UnexpectedNull f "Expected non-empty bytea"
+    Nothing -> returnError UnexpectedNull f "Expected non-empty text column"
     Just bs ->
-      fromField @(Binary ByteString) f (Just bs) >>= \case
-        Binary b
-          | Just h <- byteStringToVCObjectHash b ->
-              pure $ VCObjectHashRow h
-        _ -> returnError ConversionFailed f "Invalid hash"
+      fromField @ByteString f (Just bs) >>= \case
+        b
+          | Right base64 <- Base64.URL.decode b
+          , Just digest <- digestFromByteString base64 ->
+              pure . VCObjectHashField $ VCObjectHash digest
+        _ -> returnError ConversionFailed f "Invalid VC object hash"
 
-instance ToField VCObjectHashRow where
-  toField = EscapeByteA . vcObjectHashToByteString . wrappedTo
+instance ToField VCObjectHashField where
+  toField = Escape . vcObjectHashToByteString . wrappedTo
 
 instance (ToJSON uid, ToJSON gid) => ToRow (InferenceScript uid gid) where
   toRow s =
     -- NOTE: Don't change the order!
-    [ s.hash & VCObjectHashRow & toField
+    [ s.hash & VCObjectHashField & toField
     , s.obj & Aeson & toField
     ]
 
@@ -295,7 +296,7 @@ instance
   where
   fromRow =
     InferenceScript
-      <$> fmap wrappedTo (field @VCObjectHashRow)
+      <$> fmap wrappedTo (field @VCObjectHashField)
       <*> fmap getAeson field
 
 instance
@@ -755,7 +756,7 @@ instance
   fromRow =
     InferenceParam
       <$> field
-      <*> fmap wrappedTo (field @VCObjectHashRow)
+      <*> fmap wrappedTo (field @VCObjectHashField)
       <*> fmap getAeson field
       <*> fmap getAeson field
       <*> fmap fromIntegral (field @Int64)
@@ -766,7 +767,7 @@ instance (ToJSON p, ToField gid) => ToRow (InferenceParam gid p) where
   -- NOTE: Do not change the order of the field actions
   toRow ip =
     [ ip.id & maybe (toField Default) toField
-    , ip.script & VCObjectHashRow & toField
+    , ip.script & VCObjectHashField & toField
     , ip.inputs & Aeson & toField
     , ip.outputs & Aeson & toField
     , ip.resolution & Aeson & toField
@@ -1017,7 +1018,7 @@ data RemoteError p m mv
   | InvalidScript (Id p) Text
   | InvalidOutput (Id p) Text
   | -- | Any error condition returned by Inferno script evaluation
-    InfernoError (Id p) SomeInfernoError
+    InfernoError (Id p) VCObjectHash SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
   | DbError String
@@ -1067,10 +1068,12 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , "script output should be an array of `write` but was"
         , Text.unpack t
         ]
-    InfernoError ipid (SomeInfernoError x) ->
+    InfernoError ipid vch (SomeInfernoError x) ->
       unwords
-        [ "Inferno evaluation failed when evaluating"
+        [ "Parameter"
         , show ipid
+        , "failed to evaluate script"
+        , show vch
         , "with:"
         , x
         ]
