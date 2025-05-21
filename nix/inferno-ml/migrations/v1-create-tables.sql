@@ -64,11 +64,13 @@ create table if not exists scripts
 -- Model versions linked to specific Inferno scripts (i.e. junction table
 -- between `scripts` and `mversions`)
 create table if not exists mselections
-  ( script bytea primary key references scripts (id)
+  ( script bytea not null references scripts (id)
   , model uuid not null references mversions (id)
     -- Inferno identifier linked to this specific model version
   , ident text not null
-  , unique (script, model)
+    -- The script and model combination must be unique, so can be used as
+    -- a composite primary key
+  , primary key (script, model)
   );
 
 create table if not exists params
