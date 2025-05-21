@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.5.21
+* Add script hash to server's `InfernoError`
+
 ## 2025.5.15
 * Add `Print` module with new logging primitives
 

@@ -1,6 +1,11 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.19.0
+* Breaking changes:
+  - Rename `VCObjectHashRow` to `VCObjectHashField` and change its DB (de)serialization
+  - Add script hash to server's `InfernoError`
+
 ## 0.18.0
 * Breaking changes:
   - Make `Writes` polymorphic
