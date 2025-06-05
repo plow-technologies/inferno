@@ -33,6 +33,7 @@ library
     , extra
     , hasktorch
     , inferno-core
+    , inferno-ml-compat
     , inferno-types
     , inline-c-cpp
     , prettyprinter

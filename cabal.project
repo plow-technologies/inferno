@@ -5,6 +5,7 @@ packages:
   ./inferno-types
   ./inferno-lsp
   ./inferno-vc
+  ./inferno-ml-compat
   ./inferno-ml
   ./inferno-ml-server-types
   ./inferno-ml-server
