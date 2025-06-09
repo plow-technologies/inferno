@@ -1,12 +1,18 @@
+{-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Inferno.ML.Compat.Module.Prelude where
+module Inferno.ML.Module.Compat where
 
+import Control.Monad.Catch (MonadThrow)
+import Control.Monad.IO.Class (MonadIO)
 import Data.Text (Text)
-import Inferno.ML.Compat.Types.Value (MlValue)
+import Inferno.ML.Types.Value.Compat (MlValue, mlQuoter)
+import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Value (ImplEnvM, Value)
-import Prelude hiding (tanh)
+import Prettyprinter (Pretty)
 
 -- | Record-of-functions to generate the ML prelude, given implementations of
 -- each primitive within the sub-records. This is broken up into smaller internal
@@ -86,6 +92,31 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , mseLoss :: tensor -> tensor -> tensor
   }
 
+mkMlModule ::
+  forall m tensor model mname x.
+  ( MonadThrow m
+  , MonadIO m
+  , Show tensor
+  , Show model
+  , Show mname
+  , Pretty tensor
+  , Pretty model
+  , Pretty mname
+  , Pretty x
+  ) =>
+  MkModule m tensor model mname x ->
+  ModuleMap m (MlValue tensor model mname x)
+mkMlModule _mk =
+  [mlQuoter|
+
+module ML
+
+  enum dtype := #int | #float | #double;
+
+  enum device := #cpu | #cuda;
+
+|]
+
 -- | Given concrete types, this will create a 'MkPrelude' that is suitable for
 -- type-checking purposes, but which will throw an error if evaluated. This is
 -- useful when creating a prelude that does not depend directly on Hasktorch
@@ -96,12 +127,12 @@ mkUnboundPrelude =
   MkModule
     { models =
         MkModelFuns
-          { loadModel = undefined
-          , unsafeLoadScript = undefined
+          { loadModel = unbound
+          , unsafeLoadScript = unbound
           }
     , devices =
         MkDeviceFuns
-          { toDevice = undefined
+          { toDevice = unbound
           }
     , factories =
         MkFactoryFuns

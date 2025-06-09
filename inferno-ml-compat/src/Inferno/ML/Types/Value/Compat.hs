@@ -2,7 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module Inferno.ML.Compat.Types.Value where
+module Inferno.ML.Types.Value.Compat where
 
 import Data.Data (Typeable)
 import qualified Data.Text as Text

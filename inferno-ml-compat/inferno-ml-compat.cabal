@@ -18,8 +18,8 @@ source-repository head
 
 library
   exposed-modules:
-    Inferno.ML.Compat.Module.Prelude
-    Inferno.ML.Compat.Types.Value
+    Inferno.ML.Module.Compat
+    Inferno.ML.Types.Value.Compat
 
   hs-source-dirs:     src
   -- TODO -Werror
