@@ -45,7 +45,7 @@ data MkModelFuns m tensor model mname x = MkModelFuns
 -- NOTE: For Inferno primitive documentation, see the Inferno module
 data MkDeviceFuns m tensor model mname x = MkDeviceFuns
   { toDevice :: Value (MlValue tensor model mname x) m
-  , toDeviceUnsafe :: Value (MlValue tensor model mname x) m
+  , toDeviceUnsafe :: Text -> tensor -> tensor
   }
   deriving (Generic)
 
@@ -106,9 +106,6 @@ mkMlModule ::
   , Show tensor
   , Show model
   , Show mname
-  , Pretty tensor
-  , Pretty model
-  , Pretty mname
   , Pretty x
   , Pretty (MlValue tensor model mname x)
   , FromValue
