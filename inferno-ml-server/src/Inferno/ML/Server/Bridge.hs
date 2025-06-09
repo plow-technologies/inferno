@@ -18,7 +18,7 @@ import Inferno.ML.Server.Module.Bridge (mkBridgeFuns)
 import Inferno.ML.Server.Module.Prelude (mkServerBridgePrelude, serverMlPrelude)
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
-import Inferno.ML.Types.Value (customTypes)
+import Inferno.ML.Types.Value.Compat (customTypes)
 import Lens.Micro.Platform
 import Servant.Client.Streaming
   ( BaseUrl (BaseUrl),

@@ -8,6 +8,7 @@ module Inferno.ML.Module.Prelude
     defaultMlModule,
     mkMlPrelude,
     getDevice,
+    MlModule,
   ) where
 
 import Control.Exception (evaluate)
@@ -57,7 +58,7 @@ import qualified Torch.DType as DType
 import qualified Torch.Functional
 import qualified Torch.Script
 
-type MkModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
+type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
 
 defaultMlModule ::
   forall m x.
@@ -66,7 +67,7 @@ defaultMlModule ::
   , Pretty x
   , Eq x
   ) =>
-  MkModule m x
+  MlModule m x
 defaultMlModule =
   Compat.MkMlModule
     { models =
@@ -282,7 +283,7 @@ mkMlPrelude ::
   , Eq x
   ) =>
   -- | Implementation of Inferno ML primitives
-  MkModule (ImplEnvM m (MlValue x)) x ->
+  MlModule (ImplEnvM m (MlValue x)) x ->
   Prelude.ModuleMap m (MlValue x)
 mkMlPrelude =
   Map.unionWith

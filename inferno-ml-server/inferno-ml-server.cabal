@@ -67,6 +67,7 @@ library
     , http-types
     , inferno-core
     , inferno-ml
+    , inferno-ml-compat
     , inferno-ml-server-types
     , inferno-types
     , inferno-vc

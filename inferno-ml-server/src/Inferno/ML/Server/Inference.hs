@@ -4,6 +4,7 @@
 {-# LANGUAGE LexicalNegation #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
@@ -53,7 +54,10 @@ import Inferno.ML.Server.Bridge (initializeInferno)
 import Inferno.ML.Server.Inference.Model
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
-import Inferno.ML.Types.Value (MlValue (VExtended, VModelName))
+import Inferno.ML.Types.Value
+  ( pattern VExtended,
+    pattern VModelName,
+  )
 import Inferno.Types.Syntax
   ( Expr (App, Var),
     ExtIdent (ExtIdent),
