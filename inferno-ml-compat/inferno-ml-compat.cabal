@@ -22,19 +22,15 @@ library
     Inferno.ML.Types.Value.Compat
 
   hs-source-dirs:     src
-  -- TODO -Werror
   ghc-options:
-    -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wall -Werror -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wunused-packages
 
   build-depends:
       base
-    , containers
     , exceptions
-    , extra
     , inferno-core
     , inferno-types
-    , inline-c-cpp
     , prettyprinter
     , template-haskell
     , text
