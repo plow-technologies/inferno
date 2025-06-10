@@ -57,8 +57,12 @@ import qualified Torch.DType as DType
 import qualified Torch.Functional
 import qualified Torch.Script
 
+-- | A @MkMlModule@ implementation that depends on Hasktorch types
 type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
 
+-- | The default @ML@ Inferno module generator which depends on Hasktorch.
+-- Applying @mkMlModule@ will create the @ML@ module with these primitive
+-- implementations
 defaultMlModule ::
   forall m x.
   ( MonadIO m
@@ -260,6 +264,7 @@ forwardIO m ts = unIV =<< evaluate (Torch.forward m (fmap IVTensor ts))
       IVTuple ivs -> concatMapM unIV ivs
       res -> throwM . RuntimeError $ "expected tensor result, got " <> show res
 
+-- | Inferno prelude with a default @ML@ implementation (see 'defaultMlModule')
 defaultMlPrelude ::
   forall m x.
   ( MonadIO m
@@ -274,6 +279,8 @@ defaultMlPrelude =
     (Prelude.builtinModules @m @(MlValue x))
     $ Compat.mkMlModule defaultMlModule
 
+-- | Create an Inferno prelude with a custom @ML@ implementation. This can
+-- be used to override certain primitives inside the @MlModule@
 mkMlPrelude ::
   forall m x.
   ( MonadIO m
