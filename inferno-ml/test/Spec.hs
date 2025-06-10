@@ -1,9 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE PatternSynonyms #-}
 
 module Main (main) where
 
@@ -12,7 +12,7 @@ import qualified Data.Map as Map
 import Data.Text (Text, unpack)
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (defaultMlPrelude)
-import Inferno.ML.Types.Value (MlValue, pattern VTensor, customTypes)
+import Inferno.ML.Types.Value (MlValue, customTypes, pattern VTensor)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
