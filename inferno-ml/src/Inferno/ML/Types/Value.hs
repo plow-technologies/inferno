@@ -12,10 +12,13 @@ module Inferno.ML.Types.Value
     pattern VModelName,
     pattern VExtended,
     ModelName (ModelName),
+    -- Convenience re-export
+    customTypes,
   ) where
 
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
+import Inferno.ML.Types.Value.Compat (customTypes)
 import qualified Inferno.ML.Types.Value.Compat as Compat
 import Inferno.Module.Cast
   ( FromValue (fromValue),
