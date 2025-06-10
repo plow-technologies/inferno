@@ -280,10 +280,13 @@ serverMlPrelude =
   Map.union printModules $ mkMlPrelude mlModule
   where
     mlModule :: MlModule (ImplEnvM RemoteM (MlValue BridgeValue)) BridgeValue
-    mlModule = module_ & #devices . #toDevice .~ toDeviceFun
-
-    module_ :: MlModule (ImplEnvM RemoteM (MlValue BridgeValue)) BridgeValue
-    module_ = defaultMlModule
+    mlModule =
+      -- Note that the type app seems to be necessary for inference to work,
+      -- even though `mlModule` has a type signature above
+      defaultMlModule @(ImplEnvM RemoteM (MlValue BridgeValue)) @BridgeValue
+        -- Overrides the default, less-safe `toDevice` implementation with one
+        -- that checks if the tensor has been moved
+        & #devices . #toDevice .~ toDeviceFun
 
     toDeviceFun :: BridgeV RemoteM
     toDeviceFun =

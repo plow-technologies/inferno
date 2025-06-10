@@ -204,7 +204,7 @@ getDType funName = \case
     throwM . RuntimeError $
       unwords
         [ funName <> ":"
-        , "unknown dtype "
+        , "unknown dtype"
         , show s
         ]
 
