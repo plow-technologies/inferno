@@ -1,6 +1,12 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.8.0.0 -- 2025-06-10
+* Breaking change: make `ML` module an implementation of `inferno-ml-compat` modules and general refactor
+* Breaking change: make `MlValue` a type synonym and its constructors pattern synonyms (based on `inferno-ml-compat`'s `MlValue`)
+* Breaking change: `mlPrelude` -> `defaultMlPrelude`
+* Breaking change: Remove `mkMlPrelude`
+
 ## 0.7.0.2 -- 2025-05-01
 * Add `unsqueeze`
 
