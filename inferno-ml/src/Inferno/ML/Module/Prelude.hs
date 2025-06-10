@@ -1,14 +1,13 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wwarn #-}
 
 module Inferno.ML.Module.Prelude
-  ( defaultMlPrelude,
+  ( MlModule,
+    defaultMlPrelude,
     defaultMlModule,
     mkMlPrelude,
     getDevice,
-    MlModule,
   ) where
 
 import Control.Exception (evaluate)
