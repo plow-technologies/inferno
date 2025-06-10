@@ -39,6 +39,7 @@ data MkModelFuns m tensor model mname x = MkModelFuns
   , forward :: Value (MlValue tensor model mname x) m
   , unsafeLoadScript :: Text -> model
   }
+  deriving (Generic)
 
 -- | Device-related primitives, e.g. moving tensors
 --
