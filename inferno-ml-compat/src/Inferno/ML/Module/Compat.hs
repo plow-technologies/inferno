@@ -226,8 +226,8 @@ module ML
 -- useful when creating a prelude that does not depend directly on Hasktorch
 --
 -- See the @inferno-ml@ package\'s prelude for a true implementation
-mkUnboundPrelude :: MkMlModule m tensor model mname x
-mkUnboundPrelude =
+mkUnboundModule :: MkMlModule m tensor model mname x
+mkUnboundModule =
   MkMlModule
     { models =
         MkModelFuns
