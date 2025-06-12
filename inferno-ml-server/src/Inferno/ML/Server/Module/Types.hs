@@ -3,6 +3,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Inferno.ML.Server.Module.Types where
 
@@ -21,7 +22,7 @@ import Database.PostgreSQL.Simple.ToField (ToField)
 import GHC.Generics (Generic)
 import Inferno.Eval (TermEnv)
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import Inferno.ML.Types.Value (MlValue (VExtended))
+import Inferno.ML.Types.Value (MlValue, pattern VExtended)
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast
   ( FromValue (fromValue),

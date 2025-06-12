@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -24,7 +25,12 @@ import Data.Text (Text)
 import Data.Tuple.Extra ((&&&))
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
-import Inferno.ML.Module.Prelude (getDevice, mkMlPrelude)
+import Inferno.ML.Module.Prelude
+  ( MlModule,
+    defaultMlModule,
+    getDevice,
+    mkMlPrelude,
+  )
 import Inferno.ML.Server.Module.Types
 import Inferno.ML.Server.Types
   ( IValue,
@@ -32,7 +38,8 @@ import Inferno.ML.Server.Types
     TraceWarn (CouldntMoveTensor),
     logWarn,
   )
-import Inferno.ML.Types.Value (MlValue (VExtended), mlQuoter)
+import Inferno.ML.Types.Value (MlValue, pattern VExtended)
+import Inferno.ML.Types.Value.Compat (mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
 import qualified Inferno.Types.Module
@@ -270,8 +277,17 @@ serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
 serverMlPrelude =
   -- NOTE There's no risk of overlap in module names here, so we can just
   -- use `union` instead of `unionWith`
-  Map.union printModules $ mkMlPrelude toDeviceFun
+  Map.union printModules $ mkMlPrelude mlModule
   where
+    mlModule :: MlModule (ImplEnvM RemoteM (MlValue BridgeValue)) BridgeValue
+    mlModule =
+      -- Note that the type app seems to be necessary for inference to work,
+      -- even though `mlModule` has a type signature above
+      defaultMlModule @(ImplEnvM RemoteM (MlValue BridgeValue)) @BridgeValue
+        -- Overrides the default, less-safe `toDevice` implementation with one
+        -- that checks if the tensor has been moved
+        & #devices . #toDevice .~ toDeviceFun
+
     toDeviceFun :: BridgeV RemoteM
     toDeviceFun =
       VFun $ \case

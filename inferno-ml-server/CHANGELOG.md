@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.6.10
+* Updates for introduction of `inferno-ml-compat`
+
 ## 2025.5.21
 * Add script hash to server's `InfernoError`
 

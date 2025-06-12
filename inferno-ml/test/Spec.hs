@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -10,8 +11,8 @@ import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Text (Text, unpack)
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
-import Inferno.ML.Module.Prelude (mlPrelude)
-import Inferno.ML.Types.Value (MlValue (VTensor), customTypes)
+import Inferno.ML.Module.Prelude (defaultMlPrelude)
+import Inferno.ML.Types.Value (MlValue, customTypes, pattern VTensor)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -49,7 +50,7 @@ evalTests :: Spec
 evalTests = describe "evaluate" $
   do
     Interpreter{evalExpr, defaultEnv, parseAndInfer, parseAndInferTypeReps} <-
-      runIO $ mkInferno @_ @(MlValue ()) mlPrelude customTypes
+      runIO $ mkInferno @_ @(MlValue ()) defaultMlPrelude customTypes
     let shouldEvaluateInEnvTo implEnv str (v :: Value (MlValue ()) IO) =
           it ("\"" <> unpack str <> "\" should evaluate to " <> unpack (renderPretty v)) $ do
             case parseAndInferTypeReps str of
