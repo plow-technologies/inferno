@@ -17,7 +17,23 @@ import Inferno.Module.Cast (FromValue (..), ToValue (..))
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Value (ImplEnvM, Value)
 import Prettyprinter (Pretty)
-import Prelude hiding (tanh)
+import Prelude hiding
+  ( abs,
+    cos,
+    cosh,
+    div,
+    exp,
+    floor,
+    log,
+    max,
+    min,
+    sin,
+    sinh,
+    sqrt,
+    take,
+    tan,
+    tanh,
+  )
 
 -- | Record-of-functions to generate the ML prelude, given implementations of
 -- each primitive within the sub-records. This is broken up into smaller internal
@@ -81,20 +97,69 @@ data MkConversionFuns m tensor model mname x = MkConversionFuns
 -- | Tensor operation primitives, corresponding to those in @Torch.Functional@
 --
 -- NOTE: For Inferno primitive documentation, see the Inferno module
---
--- TODO: Add a lot more, re-rexport most of @Torch.Functional@. Will probably
--- need to split this into several sub-records though to avoid massive size
 data MkFunctionalFuns tensor = MkFunctionalFuns
-  { argmax :: Int -> Bool -> tensor -> tensor
-  , softmax :: Int -> tensor -> tensor
-  , stack :: Int -> [tensor] -> tensor
-  , tanh :: tensor -> tensor
-  , pow :: Int -> tensor -> tensor
-  , unsqueeze :: Int -> tensor -> tensor
-  , add :: tensor -> tensor -> tensor
+  { mean :: tensor -> tensor
+  , std :: tensor -> tensor
+  , var :: tensor -> tensor
   , sumAll :: tensor -> tensor
-  , transpose2D :: tensor -> tensor
+  , abs :: tensor -> tensor
+  , frac :: tensor -> tensor
+  , argmax :: Int -> Bool -> tensor -> tensor
+  , add :: tensor -> tensor -> tensor
+  , mul :: tensor -> tensor -> tensor
+  , sub :: tensor -> tensor -> tensor
+  , div :: tensor -> tensor -> tensor
+  , ceil :: tensor -> tensor
+  , floor :: tensor -> tensor
+  , min :: tensor -> tensor
+  , max :: tensor -> tensor
+  , median :: tensor -> tensor
   , matmul :: tensor -> tensor -> tensor
+  , oneHot :: Int -> tensor -> tensor
+  , erf :: tensor -> tensor
+  , erfc :: tensor -> tensor
+  , erfinv :: tensor -> tensor
+  , lgamma :: tensor -> tensor
+  , digamma :: tensor -> tensor
+  , polygamma :: Int -> tensor -> tensor
+  , mvlgamma :: Int -> tensor -> tensor
+  , exp :: tensor -> tensor
+  , log1p :: tensor -> tensor
+  , log2 :: tensor -> tensor
+  , log :: tensor -> tensor
+  , log10 :: tensor -> tensor
+  , pow :: Int -> tensor -> tensor
+  , powt :: tensor -> tensor -> tensor
+  , relu :: tensor -> tensor
+  , elu :: Int -> tensor -> tensor
+  , selu :: tensor -> tensor
+  , celu :: Float -> tensor -> tensor
+  , sigmoid :: tensor -> tensor
+  , softmax :: Int -> tensor -> tensor
+  , logSoftmax :: Int -> tensor -> tensor
+  , threshold :: Float -> Float -> tensor -> tensor
+  , sin :: tensor -> tensor
+  , cos :: tensor -> tensor
+  , tan :: tensor -> tensor
+  , sinh :: tensor -> tensor
+  , cosh :: tensor -> tensor
+  , tanh :: tensor -> tensor
+  , sqrt :: tensor -> tensor
+  , gt :: tensor -> tensor -> tensor
+  , lt :: tensor -> tensor -> tensor
+  , ge :: tensor -> tensor -> tensor
+  , le :: tensor -> tensor -> tensor
+  , eq :: tensor -> tensor -> tensor
+  , take :: tensor -> tensor -> tensor
+  , maskedSelect :: tensor -> tensor -> tensor
+  , nonzero :: tensor -> tensor
+  , isnan :: tensor -> tensor
+  , isNonzero :: tensor -> Bool
+  , isSameSize :: tensor -> tensor -> Bool
+  , isSigned :: tensor -> Bool
+  , stack :: Int -> [tensor] -> tensor
+  , unsqueeze :: Int -> tensor -> tensor
+  , transpose2D :: tensor -> tensor
   , mseLoss :: tensor -> tensor -> tensor
   }
   deriving (Generic)
@@ -175,7 +240,7 @@ module ML
 
   sumAll : tensor -> tensor := ###sumAll###;
 
-  powT : int -> tensor -> tensor := ###pow###;
+  powt : int -> tensor -> tensor := ###powt###;
 
   tanH : tensor -> tensor := ###tanh###;
 
@@ -262,16 +327,68 @@ mkUnboundModule =
           }
     , functional =
         MkFunctionalFuns
-          { argmax = unbound
-          , softmax = unbound
-          , stack = unbound
-          , tanh = unbound
-          , pow = unbound
-          , unsqueeze = unbound
-          , add = unbound
+          { mean = unbound
+          , std = unbound
+          , var = unbound
           , sumAll = unbound
-          , transpose2D = unbound
+          , abs = unbound
+          , frac = unbound
+          , argmax = unbound
+          , add = unbound
+          , sub = unbound
+          , div = unbound
+          , ceil = unbound
+          , mul = unbound
+          , floor = unbound
+          , min = unbound
+          , max = unbound
+          , median = unbound
           , matmul = unbound
+          , oneHot = unbound
+          , erf = unbound
+          , erfc = unbound
+          , erfinv = unbound
+          , lgamma = unbound
+          , digamma = unbound
+          , polygamma = unbound
+          , mvlgamma = unbound
+          , exp = unbound
+          , log1p = unbound
+          , log2 = unbound
+          , log = unbound
+          , log10 = unbound
+          , pow = unbound
+          , powt = unbound
+          , relu = unbound
+          , selu = unbound
+          , elu = unbound
+          , celu = unbound
+          , sigmoid = unbound
+          , softmax = unbound
+          , logSoftmax = unbound
+          , threshold = unbound
+          , sin = unbound
+          , cos = unbound
+          , tan = unbound
+          , sinh = unbound
+          , cosh = unbound
+          , tanh = unbound
+          , sqrt = unbound
+          , gt = unbound
+          , lt = unbound
+          , ge = unbound
+          , le = unbound
+          , eq = unbound
+          , take = unbound
+          , maskedSelect = unbound
+          , nonzero = unbound
+          , isnan = unbound
+          , isNonzero = unbound
+          , isSameSize = unbound
+          , isSigned = unbound
+          , stack = unbound
+          , unsqueeze = unbound
+          , transpose2D = unbound
           , mseLoss = unbound
           }
     }
