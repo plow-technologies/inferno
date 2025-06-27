@@ -19,6 +19,8 @@ import Inferno.Types.Value (ImplEnvM, Value)
 import Prettyprinter (Pretty)
 import Prelude hiding
   ( abs,
+    all,
+    any,
     cos,
     cosh,
     div,
@@ -27,6 +29,7 @@ import Prelude hiding
     log,
     max,
     min,
+    repeat,
     sin,
     sinh,
     sqrt,
@@ -133,11 +136,11 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , relu :: tensor -> tensor
   , elu :: Int -> tensor -> tensor
   , selu :: tensor -> tensor
-  , celu :: Float -> tensor -> tensor
+  , celu :: Double -> tensor -> tensor
   , sigmoid :: tensor -> tensor
   , softmax :: Int -> tensor -> tensor
   , logSoftmax :: Int -> tensor -> tensor
-  , threshold :: Float -> Float -> tensor -> tensor
+  , threshold :: Double -> Double -> tensor -> tensor
   , sin :: tensor -> tensor
   , cos :: tensor -> tensor
   , tan :: tensor -> tensor
@@ -157,10 +160,45 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , isNonzero :: tensor -> Bool
   , isSameSize :: tensor -> tensor -> Bool
   , isSigned :: tensor -> Bool
-  , stack :: Int -> [tensor] -> tensor
-  , unsqueeze :: Int -> tensor -> tensor
-  , transpose2D :: tensor -> tensor
+  , squeezeAll :: tensor -> tensor
+  , squeezeDim :: Int -> tensor -> tensor
+  , ne :: tensor -> tensor -> tensor
   , mseLoss :: tensor -> tensor -> tensor
+  , dist :: Double -> tensor -> tensor
+  , inverse :: tensor -> tensor
+  , solve :: tensor -> tensor -> tensor
+  , bitwiseNot :: tensor -> tensor
+  , logicalNot :: tensor -> tensor
+  , logicalXor :: tensor -> tensor -> tensor
+  , logicalAnd :: tensor -> tensor -> tensor
+  , logicalOr :: tensor -> tensor -> tensor
+  , cat :: Int -> [tensor] -> tensor
+  , index :: [tensor] -> tensor -> tensor
+  , indexCopy :: Int -> tensor -> tensor -> tensor -> tensor
+  , indexPut :: Bool -> [tensor] -> tensor -> tensor -> tensor
+  , chunk :: Int -> Int -> tensor -> [tensor]
+  , clamp :: Double -> Double -> tensor -> tensor
+  , clampMax :: Double -> tensor -> tensor
+  , clampMin :: Double -> tensor -> tensor
+  , transpose :: Int -> Int -> tensor -> tensor
+  , transpose2D :: tensor -> tensor
+  , all :: tensor -> Bool
+  , any :: tensor -> Bool
+  , allDim :: Int -> Bool -> tensor -> tensor
+  , anyDim :: Int -> Bool -> tensor -> tensor
+  , permute :: [Int] -> tensor -> tensor
+  , flatten :: Int -> Int -> tensor -> tensor
+  , flattenAll :: tensor -> tensor
+  , softShrink :: Double -> tensor -> tensor
+  , stack :: Int -> [tensor] -> tensor
+  , logsumexp :: Bool -> Int -> tensor -> tensor
+  , trunc :: tensor -> tensor
+  , unsqueeze :: Int -> tensor -> tensor
+  , split :: Int -> Int -> tensor -> [tensor]
+  , chainMatmul :: [tensor] -> tensor
+  , gelu :: tensor -> tensor
+  , view :: [Int] -> tensor -> tensor
+  , repeat :: [Int] -> tensor -> tensor
   }
   deriving (Generic)
 
@@ -386,10 +424,45 @@ mkUnboundModule =
           , isNonzero = unbound
           , isSameSize = unbound
           , isSigned = unbound
-          , stack = unbound
-          , unsqueeze = unbound
-          , transpose2D = unbound
+          , squeezeAll = unbound
+          , squeezeDim = unbound
+          , ne = unbound
           , mseLoss = unbound
+          , dist = unbound
+          , inverse = unbound
+          , solve = unbound
+          , bitwiseNot = unbound
+          , logicalNot = unbound
+          , logicalXor = unbound
+          , logicalAnd = unbound
+          , logicalOr = unbound
+          , cat = unbound
+          , index = unbound
+          , indexCopy = unbound
+          , indexPut = unbound
+          , chunk = unbound
+          , clamp = unbound
+          , clampMax = unbound
+          , clampMin = unbound
+          , transpose = unbound
+          , transpose2D = unbound
+          , all = unbound
+          , any = unbound
+          , allDim = unbound
+          , anyDim = unbound
+          , permute = unbound
+          , flatten = unbound
+          , flattenAll = unbound
+          , softShrink = unbound
+          , stack = unbound
+          , logsumexp = unbound
+          , trunc = unbound
+          , unsqueeze = unbound
+          , split = unbound
+          , chainMatmul = unbound
+          , gelu = unbound
+          , view = unbound
+          , repeat = unbound
           }
     }
   where
