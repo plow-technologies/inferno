@@ -180,6 +180,7 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , clamp :: Double -> Double -> tensor -> tensor
   , clampMax :: Double -> tensor -> tensor
   , clampMin :: Double -> tensor -> tensor
+  , sign :: tensor -> tensor
   , transpose :: Int -> Int -> tensor -> tensor
   , transpose2D :: tensor -> tensor
   , all :: tensor -> Bool
@@ -418,17 +419,207 @@ module Tensor
   @doc Applies the rectified linear unit function element-wise;
   relu : tensor -> tensor := ###relu###;
 
-  tanh : tensor -> tensor := ###tanh###;
+  @doc `elu α t` applies exponential linear unit function element-wise,
+  with alpha input `a`;
+  elu : int -> tensor -> tensor := ###elu###;
 
+  @doc Applies element-wise, `SELU(x) = scale * (max(0, x) + min(0, α * (exp(x) - 1)))`,
+  with α=1.6732632423543772848170429916717 and scale=1.0507009873554804934193349852946;
+  selu : tensor -> tensor := ###selu###;
+
+  @doc `celu α t` Applies element-wise `CELU(x) = max(0, x) + min(0, α * (exp(x/α) - 1))`;
+  celu : double -> tensor -> tensor := ###celu###;
+
+  @doc Applies element-wise sigmoid function;
+  sigmoid : tensor -> tensor := ###sigmoid###;
+
+  @doc `softmax dim t` applies a softmax function. It is applied to all slices along `dim`,
+  and will re-scale them so that the elements lie in the range `[0, 1]` and sum to 1;
   softmax : int -> tensor -> tensor := ###softmax###;
 
-  @doc `stack i [t]` takes an array of tensors `t` and appends them along the
-  dimension `i` in a new tensor;
-  stack : int -> array of tensor -> tensor := ###stack###;
+  @doc `logSoftmax dim t` applies a softmax followed by a logarithm. While mathematically
+  equivalent to `log(softmax(t))`, doing these two operations separately is slower, and
+  numerically unstable. This function uses an alternative formulation to compute the output
+  and gradient correctly;
+  logSoftmax : int -> tensor -> tensor := ###logSoftmax###;
 
+  @doc `threshold d value t` thresholds each element of the input according to `d`;
+  threshold : double -> double -> tensor -> tensor := ###threshold###;
+
+  @doc Returns a new tensor with the sine of the elements of input;
+  sin : tensor -> tensor := ###sin###;
+
+  @doc Returns a new tensor with the cos of the elements of input;
+  cos : tensor -> tensor := ###cos###;
+
+  @doc Returns a new tensor with the tangent of the elements of input;
+  tan : tensor -> tensor := ###tan###;
+
+  @doc Returns a new tensor with the hyperbolic sine of the elements of input;
+  sinh : tensor -> tensor := ###sinh###;
+
+  @doc Returns a new tensor with the hyperbolic cos of the elements of input;
+  cosh : tensor -> tensor := ###cosh###;
+
+  @doc Returns a new tensor with the hyperbolic tangent of the elements of input;
+  tanh : tensor -> tensor := ###tanh###;
+
+  @doc Returns a new tensor with the square root of the elements of input;
+  sqrt : tensor -> tensor := ###sqrt###;
+
+  @doc `gt t1 t2` computes `t1 > t2` element-wise;
+  gt : tensor -> tensor -> tensor := ###gt###;
+
+  @doc `lt t1 t2` computes `t1 < t2` element-wise;
+  lt : tensor -> tensor -> tensor := ###lt###;
+
+  @doc `ge t1 t2` computes `t1 ≥ t2` element-wise;
+  ge : tensor -> tensor -> tensor := ###ge###;
+
+  @doc `le t1 t2` computes `t1 ≤ t2` element-wise;
+  le : tensor -> tensor -> tensor := ###le###;
+
+  @doc `eq t1 t2` computes `t1 == t2` element-wise;
+  eq : tensor -> tensor -> tensor := ###eq###;
+
+  @doc `ne t1 t2` computes `t1 ≠ t2` element-wise;
+  ne : tensor -> tensor -> tensor := ###ne###;
+
+  @doc `take indices t` returns a new tensor with the elements of input at the
+  given `indices`. The input tensor is treated as if it were viewed as a 1-D tensor.
+  The result takes the same shape as the indices;
+  take : tensor -> tensor -> tensor := ###take###;
+
+  @doc `maskedSelect mask t` returns a new 1-D tensor which indexes the input
+  tensor according to the boolean mask `mask` which is a tensor with dtype `#bool`.
+  The shapes of the mask tensor and the input tensor don’t need to match, but they
+  must be broadcastable;
+  maskedSelect : tensor -> tensor -> tensor := ###maskedSelect###;
+
+  @doc Returns a tensor containing the indices of all non-zero elements of input.
+  Each row in the result contains the indices of a non-zero element in input.
+  The result is sorted lexicographically, with the last index changing the fastest;
+  nonzero : tensor -> tensor := ###nonzero###;
+
+  @doc Returns a new tensor with dtype `#bool` whose elements represent if each
+  element of the input is NaN or not. Complex values are considered NaN when either
+  their real and/or imaginary part is NaN;
+  isnan : tensor -> tensor := ###isnan###;
+
+  @doc Returns true if the input is a single element tensor which is not equal
+  to zero after type conversions;
+  isNonzero : tensor -> bool{#true, #false} := ###isNonzero###;
+
+  isSameSize : tensor -> tensor -> bool{#true, #false} := ###isSameSize###;
+
+  @doc Returns true if the data type of the input is a signed type;
+  isSigned : tensor -> bool{#true, #false} := ###isSigned###;
+
+  @doc Returns a tensor with all specified dimensions of the input of size 1
+  removed. For example, if the input `t` is of shape: `(A×1×B×C×1×D)` then
+  `squeezeAll t` will be of shape: `(A×B×C×D)`;
+  squeezeAll : tensor -> tensor := ###squeezeAll###;
+
+  @doc Similar to `Tensor.squeezeAll`, but only squeezes along the provided dim.
+  For example, if input `t` is of shape: `(A×1×B)`, `squeeze t 0` leaves the tensor
+  unchanged, but `squeeze t 1` will squeeze the tensor to the shape `(A×B)`;
+  squeezeDim : int -> tensor -> tensor := ###squeezeDim###;
+
+  @doc `mseLoss target t` creates a criterion that measures the mean squared error
+  (squared L2 norm) between each element in the input `t` and `target`;
+  mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
+
+  @doc `dist p t1 t2` returns the `p`-norm of `(t1 - t2)`. The shapes of `t1`
+  and `t2` must be broadcastable;
+  dist : double -> tensor -> tensor := ###dist###;
+
+  @doc Takes the inverse of the square matrix input. The input can be batches of
+  2D square tensors, in which case this function would return a tensor composed
+  of individual inverses;
+  inverse : tensor -> tensor := ###inverse###;
+
+  @doc `solve t square` returns the solution to the system of linear equations
+  represented by `AX = BAX=B` and the LU factorization of A;
+  solve : tensor -> tensor -> tensor := ###solve###;
+
+  @doc Computes the bitwise NOT of the given input tensor. The input tensor must
+  be of integral or Boolean types. For bool tensors, it computes the logical NOT;
+  bitwiseNot : tensor -> tensor := ###bitwiseNot###;
+
+  @doc Computes the element-wise logical NOT of the given input tensor. The output
+  tensor will have the `#bool` dtype. If the input tensor is not a bool tensor,
+  zeros are treated as false and non-zeros are treated as true;
+  logicalNot : tensor -> tensor := ###logicalNot###;
+
+  @doc Computes the element-wise logical XOR of the given input tensors.
+  Zeros are treated as false and nonzeros are treated as true;
+  logicalXor : tensor -> tensor := ###logicalXor###;
+
+  @doc Computes the element-wise logical AND of the given input tensors.
+  Zeros are treated as false and nonzeros are treated as true;
+  logicalAnd : tensor -> tensor := ###logicalAnd###;
+
+  @doc Computes the element-wise logical OR of the given input tensors.
+  Zeros are treated as false and nonzeros are treated as true;
+  logicalOr : tensor -> tensor := ###logicalOr###;
+
+  @doc `cat dim ts` concatenates `ts` in the given `dim`. All tensors must either
+  have the same shape (except in the concatenating dimension) or be empty;
+  cat : int -> array of tensor -> tensor := ###cat###;
+
+  index : array of tensor -> tensor -> tensor := ###index###;
+
+  @doc `indexCopy dim index source t` copies the elements of `source` into `t`
+  (out-of-place) by selecting the indices in the order given in the `index`
+  tensor. For example, if `dim == 0` and `index[i] == j`, then the `i`th row of
+  `source` is copied to the `j`th row of `t`. The `dim`th dimension of `source`
+  must have the same size as the length of `index` (which must be a vector),
+  and all other dimensions must match `t`, or an error will be raised;
+  indexCopy : int -> tensor -> tensor -> tensor -> tensor := ###indexCopy###;
+
+  @doc `indexPut accumulate indices source t` Puts values from the tensor `source`
+  into `t` (out-of-place) using the indices specified in `indices` (which is a
+  tuple of tensors). The expression `Tensor.indexPut #true indices source t` is
+  equivalent to `t[indices] = source`. If `accumulate` is true, the elements in
+  `source` are added to `t`. If accumulate is false, the behavior is undefined if
+  indices contain duplicate elements;
+  indexPut : bool{#true, #false} -> array of tensor -> tensor -> tensor -> tensor := ###indexPut###;
+
+  @doc `chunk chunks dim t` splits a tensor into a specific number of chunks.
+  The last chunk will be smaller if the size of `t` along the given dimension
+  `dim` is not divisible by `chunks`;
+  chunk : int -> int -> tensor -> array of tensor := ###chunk###;
+
+  @doc `clamp min max t` clamps all elements in input into the range `[ min, max ]`
+  and returns the resulting tensor;
+  clamp : double -> double -> tensor -> tensor := ###clamp###;
+
+  @doc `clampMax max t` clamps all elements in `t` to be smaller or equal to `max`;
+  clampMax : double -> tensor -> tensor := ###clampMax###;
+
+  @doc `clampMin min t` clamps all elements in `t` to be larger or equal to `min`;
+  clampMin : double -> tensor -> tensor := ###clampMin###;
+
+  @doc Returns a new tensor with the signs of the elements of the input;
+  sign : tensor -> tensor := ###sign###;
+
+  @doc `transpose dim1 dim2 t` returns a tensor that is a transposed version of `t`.
+  The given dimensions `dim1` and `dim2` are swapped;
+  transpose : int -> int -> tensor -> tensor := ###transpose###;
+
+  @doc Special case of `Tensor.transpose` for a 2D tensor (where `dim1 = 0` and
+  `dim2 = 1`);
   transpose2D : tensor -> tensor := ###transpose2D###;
 
-  mseLoss : tensor -> tensor -> tensor := ###mseLoss###;
+  @doc Returns true if all elements in the tensor are true, false otherwise;
+  all : tensor -> bool{#true, #false} := ###all###;
+
+  @doc Returns true if any element in the tensor is true, false otherwise;
+  any : tensor -> bool{#true, #false} := ###any###;
+
+  @doc `stack i ts` takes an array of tensors `ts` and appends them along the
+  dimension `i` in a new tensor;
+  stack : int -> array of tensor -> tensor := ###stack###;
 
   unsqueeze : int -> tensor -> tensor := ###unsqueeze###;
 
@@ -562,6 +753,7 @@ mkUnboundModule =
           , clamp = unbound
           , clampMax = unbound
           , clampMin = unbound
+          , sign = unbound
           , transpose = unbound
           , transpose2D = unbound
           , all = unbound
