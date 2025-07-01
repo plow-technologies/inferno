@@ -1,4 +1,6 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -31,7 +33,7 @@ import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
-import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
+import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
@@ -200,6 +202,10 @@ defaultMlModule =
           , min = Torch.Functional.min
           , max = Torch.Functional.max
           , median = Torch.Functional.median
+          , addScalar = withScalar Torch.Functional.addScalar
+          , subScalar = withScalar Torch.Functional.subScalar
+          , mulScalar = withScalar Torch.Functional.mulScalar
+          , divScalar = withScalar Torch.Functional.divScalar
           , matmul = Torch.Functional.matmul
           , oneHot = Torch.Functional.oneHot
           , erf = Torch.Functional.erf
@@ -214,10 +220,10 @@ defaultMlModule =
           , log2 = Torch.Functional.log2
           , log = Torch.Functional.log
           , log10 = Torch.Functional.log10
-          , pow = Torch.Functional.pow
+          , pow = withScalar Torch.Functional.pow
           , powt = Torch.Functional.powt
           , relu = Torch.Functional.relu
-          , elu = Torch.Functional.elu
+          , elu = withScalar Torch.Functional.elu
           , selu = Torch.Functional.selu
           , celu = Torch.Functional.celu . realToFrac
           , sigmoid = Torch.Functional.sigmoid
@@ -389,3 +395,20 @@ mkMlPrelude =
     (error "Duplicate module name in builtinModules")
     (Prelude.builtinModules @m @(MlValue x))
     . Compat.mkMlModule
+
+data SomeScalar where
+  SomeScalar :: forall a. (Torch.Scalar a) => a -> SomeScalar
+
+-- Gets an existentially-wrapped `Torch.Scalar` from types that implement
+-- `scalar` class in Inferno
+getScalar :: Either3 Int Double Bool -> SomeScalar
+getScalar = either SomeScalar $ either SomeScalar SomeScalar
+
+withScalar ::
+  (forall a. (Torch.Scalar a) => a -> Tensor -> Tensor) ->
+  -- Types that implement `scalar` in Inferno
+  Either3 Int Double Bool ->
+  Tensor ->
+  Tensor
+withScalar f s t = case getScalar s of
+  SomeScalar a -> f a t

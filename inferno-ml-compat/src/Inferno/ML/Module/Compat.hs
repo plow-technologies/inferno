@@ -7,13 +7,13 @@
 
 module Inferno.ML.Module.Compat where
 
-import Control.Monad.Catch (MonadThrow)
+import Control.Monad.Catch (MonadCatch, MonadThrow)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Data (Typeable)
 import Data.Text (Text)
 import GHC.Generics
 import Inferno.ML.Types.Value.Compat (MlValue, mlQuoter)
-import Inferno.Module.Cast (FromValue (..), ToValue (..))
+import Inferno.Module.Cast (Either3, FromValue (..), ToValue (..))
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Value (ImplEnvM, Value)
 import Prettyprinter (Pretty)
@@ -117,6 +117,10 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , min :: tensor -> tensor
   , max :: tensor -> tensor
   , median :: tensor -> tensor
+  , addScalar :: ScalarValue -> tensor -> tensor
+  , subScalar :: ScalarValue -> tensor -> tensor
+  , mulScalar :: ScalarValue -> tensor -> tensor
+  , divScalar :: ScalarValue -> tensor -> tensor
   , matmul :: tensor -> tensor -> tensor
   , oneHot :: Int -> tensor -> tensor
   , erf :: tensor -> tensor
@@ -131,10 +135,10 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , log2 :: tensor -> tensor
   , log :: tensor -> tensor
   , log10 :: tensor -> tensor
-  , pow :: Int -> tensor -> tensor
+  , pow :: ScalarValue -> tensor -> tensor
   , powt :: tensor -> tensor -> tensor
   , relu :: tensor -> tensor
-  , elu :: Int -> tensor -> tensor
+  , elu :: ScalarValue -> tensor -> tensor
   , selu :: tensor -> tensor
   , celu :: Double -> tensor -> tensor
   , sigmoid :: tensor -> tensor
@@ -207,6 +211,7 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
 mkMlModule ::
   forall m tensor model mname x.
   ( MonadThrow m
+  , MonadCatch m
   , MonadIO m
   , Typeable tensor
   , Show tensor
@@ -351,6 +356,22 @@ module Tensor
   @doc Returns the median value of all elements in the input tensor;
   median : tensor -> tensor -> tensor := ###median###;
 
+  @doc `addScalar summand t` adds each element of `t` with the scalar `summand`
+  and returns a new resulting tensor;
+  addScalar : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###addScalar###;
+
+  @doc `subScalar subtrahend t` subtracts each element of `t` with the scalar
+  `subtrahend` and returns a new resulting tensor;
+  subScalar : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###subScalar###;
+
+  @doc `mulScalar multiplier t` multiplies each element of `t` with the scalar
+  `multiplier` and returns a new resulting tensor;
+  mulScalar : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###mulScalar###;
+
+  @doc `divScalar divisor t` divides each element of `t` with the scalar `divisor`
+  and returns a new resulting tensor;
+  divScalar : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###divScalar###;
+
   @doc `matmul t1 t2` is the matrix product of two tensors. The behavior depends
   on the dimensionality of the tensors as follows:
     - If both tensors are 1-dimensional, the dot product (scalar) is returned
@@ -410,7 +431,7 @@ module Tensor
 
   @doc `pow e t` takes the power of each element in `t` with exponent `e` and
   returns a tensor with the result;
-  pow : int -> tensor -> tensor := ###pow###;
+  pow : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###pow###;
 
   @doc `powt t1 t2` takes the power of each element in input `t1` with exponent
   `t2` and returns a tensor with the result. Exponent `t2` is a tensor with the
@@ -421,8 +442,8 @@ module Tensor
   relu : tensor -> tensor := ###relu###;
 
   @doc `elu α t` applies exponential linear unit function element-wise,
-  with alpha input `a`;
-  elu : int -> tensor -> tensor := ###elu###;
+  with alpha input `α`, `ELU(x) = max(0, x) + min(0, α * (x^2 - 1))`;
+  elu : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###elu###;
 
   @doc Applies element-wise, `SELU(x) = scale * (max(0, x) + min(0, α * (exp(x) - 1)))`,
   with α=1.6732632423543772848170429916717 and scale=1.0507009873554804934193349852946;
@@ -754,6 +775,10 @@ mkUnboundModule =
           , min = unbound
           , max = unbound
           , median = unbound
+          , addScalar = unbound
+          , subScalar = unbound
+          , mulScalar = unbound
+          , divScalar = unbound
           , matmul = unbound
           , oneHot = unbound
           , erf = unbound
@@ -843,3 +868,6 @@ mkUnboundModule =
   where
     unbound :: a
     unbound = error "Primitive is unbound"
+
+-- These are types that implement `scalar` typeclass in Inferno
+type ScalarValue = Either3 Int Double Bool

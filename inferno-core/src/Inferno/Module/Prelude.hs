@@ -351,6 +351,10 @@ module Number
   @doc A (pseudo)random `double` number in the `[0, 1)` interval. To obtain a random number between 20 and 30, use `(10 * random ()) + 20`. The `()` argument is needed so that each time `random` is called a new random value is generated.;
   random : () -> double := ###!randomFun###;
 
+  define scalar on int;
+  define scalar on double;
+  define scalar on bool{#true, #false};
+
 module Option
   @doc `Option.reduce f o d` unwraps an optional value `o` and applies `f` to it, if o contains a `Some` value. Otherwise it returns the default value `d`.
   ~~~inferno
