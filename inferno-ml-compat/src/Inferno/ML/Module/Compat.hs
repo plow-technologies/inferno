@@ -251,7 +251,7 @@ mkMlModule mk =
 
 module ML
 
-  enum dtype := #int | #float | #double;
+  enum dtype := #int | #float | #double | #bool;
 
   enum device := #cpu | #cuda;
 
@@ -262,9 +262,9 @@ module ML
 
   forward : model -> array of tensor -> array of tensor := ###!forward###;
 
-  zeros : dtype{#int, #float, #double} -> array of int -> tensor := ###!zeros###;
+  zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 
-  ones : dtype{#int, #float, #double} -> array of int -> tensor := ###!ones###;
+  ones : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!ones###;
 
   @doc An impure (pseudo)random tensor generator;
   randnIO : dtype{#int, #float, #double} -> array of int -> tensor := ###!randnIO###;
@@ -276,17 +276,17 @@ module ML
   (without checking validity of device name);
   toDeviceUnsafe : text -> tensor -> tensor := ###toDeviceUnsafe###;
 
-  toType : dtype{#int, #float, #double} -> tensor -> tensor := ###!toType###;
+  toType : dtype{#int, #float, #double, #bool} -> tensor -> tensor := ###!toType###;
 
-  asTensor0 : dtype{#int, #float, #double} -> double -> tensor := ###!asTensor0###;
+  asTensor0 : dtype{#int, #float, #double, #bool} -> double -> tensor := ###!asTensor0###;
 
-  asTensor1 : dtype{#int, #float, #double} -> array of double -> tensor := ###!asTensor1###;
+  asTensor1 : dtype{#int, #float, #double, #bool} -> array of double -> tensor := ###!asTensor1###;
 
-  asTensor2 : dtype{#int, #float, #double} -> array of (array of double) -> tensor := ###!asTensor2###;
+  asTensor2 : dtype{#int, #float, #double, #bool} -> array of (array of double) -> tensor := ###!asTensor2###;
 
-  asTensor3 : dtype{#int, #float, #double} -> array of (array of (array of double)) -> tensor := ###!asTensor3###;
+  asTensor3 : dtype{#int, #float, #double, #bool} -> array of (array of (array of double)) -> tensor := ###!asTensor3###;
 
-  asTensor4 : dtype{#int, #float, #double} -> array of (array of (array of (array of double))) -> tensor := ###!asTensor4###;
+  asTensor4 : dtype{#int, #float, #double, #bool} -> array of (array of (array of (array of double))) -> tensor := ###!asTensor4###;
 
   asDouble : tensor -> double := ###asDouble###;
 

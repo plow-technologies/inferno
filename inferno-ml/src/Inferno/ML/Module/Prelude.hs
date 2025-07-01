@@ -302,6 +302,7 @@ getDType funName = \case
   "int" -> pure DType.Int64
   "float" -> pure DType.Float
   "double" -> pure DType.Double
+  "bool" -> pure DType.Bool
   s ->
     throwM . RuntimeError $
       unwords
