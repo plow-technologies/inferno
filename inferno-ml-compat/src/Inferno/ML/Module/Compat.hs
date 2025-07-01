@@ -198,6 +198,7 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , split :: Int -> Int -> tensor -> [tensor]
   , chainMatmul :: [tensor] -> tensor
   , gelu :: tensor -> tensor
+  , glu :: Int -> tensor -> tensor
   , view :: [Int] -> tensor -> tensor
   , repeat :: [Int] -> tensor -> tensor
   }
@@ -617,11 +618,74 @@ module Tensor
   @doc Returns true if any element in the tensor is true, false otherwise;
   any : tensor -> bool{#true, #false} := ###any###;
 
+  @doc `allDim dim keepdim t` returns true if all elements in each row of `t`
+  in the given dimension `dim` are true, false otherwise. If `keepdim` is `#true`,
+  the output tensor is of the same size as `t` except in the dimension `dim` where
+  it is of size 1. Otherwise, `dim` is squeezed, resulting in the output tensor
+  having 1 fewer dimension than `t`;
+  allDim : int -> bool{#true, #false} -> tensor -> tensor := ###allDim###;
+
+  @doc `anyDim dim keepdim t` returns true if any elements in each row of `t`
+  in the given dimension `dim` are true, false otherwise. If `keepdim` is `#true`,
+  the output tensor is of the same size as `t` except in the dimension `dim` where
+  it is of size 1. Otherwise, `dim` is squeezed, resulting in the output tensor
+  having 1 fewer dimension than `t`;
+  anyDim : int -> bool{#true, #false} -> tensor -> tensor := ###anyDim###;
+
+  @doc `permute dims t` permutes the dimensions of this tensor, where `dims`
+  corresponds to the ordering of dimensions to permute with;
+  permute : array of int -> tensor -> tensor := ###permute###;
+
+  @doc `flatten startdim enddim t` flattens `t` by reshaping it into a
+  one-dimensional tensor. Only dimensions starting with `startdim` and ending
+  with `enddim` are flattened. The order of elements in `t` is unchanged;
+  flatten : int -> int -> tensor -> tensor := ###flatten###;
+
+  @doc `flatten t` flattens `t` by reshaping it into a one-dimensional tensor;
+  flattenAll : int -> int -> tensor -> tensor := ###flattenAll###;
+
+  @doc `softShrink lambda t` applies the soft shrinkage function elementwise;
+  softShrink : double -> tensor -> tensor := ###softShrink###;
+
   @doc `stack i ts` takes an array of tensors `ts` and appends them along the
-  dimension `i` in a new tensor;
+  dimension `i` in a new tensor. All tensors need to be of the same size;
   stack : int -> array of tensor -> tensor := ###stack###;
 
+  @doc `unsqueeze dim t` returns a new tensor with a dimension of size one
+  inserted at the specified position. The returned tensor shares the same
+  underlying data with `t`. A `dim` value within the range `[(dim t) - 1, (dim t) + 1)]`
+  can be used. Negative `dim` will correspond to unsqueeze applied at
+  `dim = dim + (dim t) + 1`;
   unsqueeze : int -> tensor -> tensor := ###unsqueeze###;
+
+  @doc `split size dim t` splits `t` into chunks of given `size` if possible;
+  split : int -> int -> tensor -> tensor := ###split###;
+
+  @doc `chainMatmul ts` returns the matrix product of the NN 2-D tensors `ts`.
+  This product is efficiently computed using the matrix chain order algorithm
+  which selects the order in which incurs the lowest cost in terms of arithmetic
+  operations. Note that since this is a function to compute the product, NN needs
+  to be greater than or equal to 2. If equal to 2 then a trivial matrix-matrix
+  product is returned. If NN is 1, then this is a no-op - the original matrix is
+  returned as is;
+  chainMatmul : array of tensor -> tensor := ###chainMatmul###;
+
+  @doc Applies element-wise the function `GELU(x) = x * φ(x)` where `φ(x)` is
+  the Cumulative Distribution Function for Gaussian Distribution;
+  gelu : tensor -> tensor := ###gelu###;
+
+  @doc `glu dim t` is the gated linear unit. Computes: `GLU(a, b) = a ⊗ Σ(b)`,
+  where `t` is split in half along `dim` to form `a` and `b`, `Σ` is the sigmoid
+  function and `⊗` is the element-wise product between matrices;
+  glu : int -> tensor -> tensor := ###gelu###;
+
+  @doc `view size t` returns a new tensor with the same data as the `t` but of a
+  different shape according to desired `size`;
+  view : array of int -> tensor -> tensor := ###view###;
+
+  @doc `repeat times t` repeats `t` according to the number of `times` to repeat
+  `t` along each dimension;
+  repeat : array of int -> tensor -> tensor := ###repeat###;
 
 |]
   where
@@ -771,6 +835,7 @@ mkUnboundModule =
           , split = unbound
           , chainMatmul = unbound
           , gelu = unbound
+          , glu = unbound
           , view = unbound
           , repeat = unbound
           }
