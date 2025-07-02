@@ -11,7 +11,7 @@ import Control.Monad.Catch (MonadCatch, MonadThrow)
 import Control.Monad.IO.Class (MonadIO)
 import Data.Data (Typeable)
 import Data.Text (Text)
-import GHC.Generics
+import GHC.Generics (Generic)
 import Inferno.ML.Types.Value.Compat (MlValue, mlQuoter)
 import Inferno.Module.Cast (Either3, FromValue (..), ToValue (..))
 import Inferno.Module.Prelude (ModuleMap)
@@ -47,6 +47,7 @@ data MkMlModule m tensor model mname x = MkMlModule
   , factories :: MkFactoryFuns m tensor model mname x
   , conversions :: MkConversionFuns m tensor model mname x
   , functional :: MkFunctionalFuns tensor
+  , properties :: MkPropertyFuns m tensor model mname x
   }
   deriving (Generic)
 
@@ -208,6 +209,19 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   }
   deriving (Generic)
 
+-- | Tensor properties, corresponding to those in @Torch.Tensor@
+--
+-- NOTE: For Inferno primitive documentation, see the Inferno module
+data MkPropertyFuns m tensor model mname x = MkPropertyFuns
+  { numel :: tensor -> Int
+  , size :: Int -> tensor -> Int
+  , shape :: tensor -> [Int]
+  , dim :: tensor -> Int
+  , dtype :: Value (MlValue tensor model mname x) m
+  , device :: Value (MlValue tensor model mname x) m
+  }
+  deriving (Generic)
+
 mkMlModule ::
   forall m tensor model mname x.
   ( MonadThrow m
@@ -299,6 +313,23 @@ module ML
   asArray4 : tensor -> array of (array of (array of (array of double))) := ###asArray4###;
 
 module Tensor
+  @doc Returns the total number of elements in the input tensor;
+  numel : tensor -> int := ###numel###;
+
+  @doc `size dim t` returns the size of the given `dim` of the input `t`;
+  size : int -> tensor -> int := ###size###;
+
+  @doc Returns the shape of the tensor;
+  shape : tensor -> array of int := ###shape###;
+
+  @doc Returns the dimensions of the input tensor;
+  dim : tensor -> int := ###dim###;
+
+  @doc Returns the device on which the tensor is currently allocated;
+  device : tensor -> device{#cpu, #cuda} := ###!device###;
+
+  @doc Returns the data type of the input tensor;
+  dtype : tensor -> dtype{#int, #float, #double, #bool} := ###!dtype###;
 
   @doc Returns the mean value of all elements in the input tensor;
   mean : tensor -> tensor := ###mean###;
@@ -446,7 +477,7 @@ module Tensor
   elu : forall 'a. {requires scalar on 'a} => 'a -> tensor -> tensor := ###elu###;
 
   @doc Applies element-wise, `SELU(x) = scale * (max(0, x) + min(0, α * (exp(x) - 1)))`,
-  with α=1.6732632423543772848170429916717 and scale=1.0507009873554804934193349852946;
+  with `α`=1.6732632423543772848170429916717 and `scale`=1.0507009873554804934193349852946;
   selu : tensor -> tensor := ###selu###;
 
   @doc `celu α t` Applies element-wise `CELU(x) = max(0, x) + min(0, α * (exp(x/α) - 1))`;
@@ -717,6 +748,7 @@ module Tensor
     MkFactoryFuns{..} = mk.factories
     MkConversionFuns{..} = mk.conversions
     MkFunctionalFuns{..} = mk.functional
+    MkPropertyFuns{..} = mk.properties
 
 -- | Given concrete types, this will create a 'MkPrelude' that is suitable for
 -- type-checking purposes, but which will throw an error if evaluated. This is
@@ -863,6 +895,15 @@ mkUnboundModule =
           , glu = unbound
           , view = unbound
           , repeat = unbound
+          }
+    , properties =
+        MkPropertyFuns
+          { numel = unbound
+          , size = unbound
+          , shape = unbound
+          , dim = unbound
+          , dtype = unbound
+          , device = unbound
           }
     }
   where

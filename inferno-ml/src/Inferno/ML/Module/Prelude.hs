@@ -31,6 +31,7 @@ import Data.Proxy (Proxy (Proxy))
 import qualified Data.Text as Text
 import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
+import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
@@ -58,6 +59,7 @@ import qualified Torch
 import qualified Torch.DType as DType
 import qualified Torch.Functional
 import qualified Torch.Script
+import qualified Torch.Tensor as Tensor
 
 -- | A @MkMlModule@ implementation that depends on Hasktorch types
 type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
@@ -294,6 +296,15 @@ defaultMlModule =
           , glu = Torch.glu . Dim
           , view = Torch.view
           , repeat = Torch.repeat
+          }
+    , properties =
+        MkPropertyFuns
+          { numel = Tensor.numel
+          , size = Tensor.size
+          , shape = Tensor.shape
+          , dim = Tensor.dim
+          , dtype = undefined
+          , device = undefined
           }
     }
 
