@@ -4,6 +4,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Inferno.ML.Types.Value
   ( MlValue,
@@ -12,22 +13,37 @@ module Inferno.ML.Types.Value
     pattern VModelName,
     pattern VExtended,
     ModelName (ModelName),
+    enumDeviceHash,
+    enumDTypeHash,
     -- Convenience re-export
     customTypes,
   ) where
 
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Inferno.ML.Types.Value.Compat (customTypes)
 import qualified Inferno.ML.Types.Value.Compat as Compat
+import Inferno.Module (BuiltinEnumHash (BuiltinEnumHash))
 import Inferno.Module.Cast
   ( FromValue (fromValue),
     ToValue (toValue),
     couldNotCast,
   )
+import Inferno.Types.Syntax
+  ( BaseType (TEnum),
+    ImplType (ImplType),
+    InfernoType (TBase),
+    TCScheme (ForallTC),
+  )
 import Inferno.Types.Value (Value (VCustom))
+import Inferno.Types.VersionControl (VCObjectHash, vcHash)
 import Prettyprinter (Pretty (pretty), align)
-import Torch (ScriptModule, Tensor)
+import Torch
+  ( ScriptModule,
+    Tensor,
+  )
 
 type MlValue x = Compat.MlValue Tensor ScriptModule ModelName x
 
@@ -86,3 +102,27 @@ instance (Pretty x) => FromValue (MlValue x) m ModelName where
   fromValue = \case
     VCustom (VModelName t) -> pure t
     v -> couldNotCast v
+
+-- We need a hash for the `device` enum in Inferno in order to create one
+-- in the `ToValue` impl
+enumDeviceHash :: VCObjectHash
+enumDeviceHash = vcHash $ BuiltinEnumHash deviceTy
+  where
+    typeDevice :: InfernoType
+    typeDevice = TBase . TEnum "device" $ Set.fromList ["cpu", "cuda"]
+
+    deviceTy :: TCScheme
+    deviceTy = ForallTC [] Set.empty $ ImplType Map.empty typeDevice
+
+-- We need a hash for the `dtype` enum in Inferno in order to create one
+-- in the `ToValue` impl
+enumDTypeHash :: VCObjectHash
+enumDTypeHash = vcHash $ BuiltinEnumHash dtypeTy
+  where
+    typeDType :: InfernoType
+    typeDType =
+      TBase . TEnum "dtype" $
+        Set.fromList ["int", "float", "double", "bool"]
+
+    dtypeTy :: TCScheme
+    dtypeTy = ForallTC [] Set.empty $ ImplType Map.empty typeDType

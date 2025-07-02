@@ -354,8 +354,8 @@ module Tensor
   `k` denotes whether the output tensor has dim retained or not.;
   argmax : int -> bool{#true, #false} -> tensor -> tensor := ###argmax###;
 
-  @doc `add t1 t2` Each element of the tensor `t2` added to each element of the tensor `t1`.
-  The resulting tensor is returned;
+  @doc `add t1 t2` adds each element of the tensor `t2` to each element of the
+  tensor `t1` and returns a new resulting tensor;
   add : tensor -> tensor -> tensor := ###add###;
 
   @doc `mul t1 t2` multiplies each element of the tensor `t2` to each element of the

@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Inferno.ML.Module.Prelude
   ( MlModule,
@@ -139,9 +140,7 @@ defaultMlModule =
               VFun $ \case
                 VEnum _ e ->
                   getDevice e <&> \dev ->
-                    VFun $
-                      fmap (toValue @_ @_ @Tensor . Torch.toDevice dev)
-                        . fromValue @_ @_ @Tensor
+                    VFun $ fmap (toValue . Torch.toDevice @Tensor dev) . fromValue
                 _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
           , toDeviceUnsafe = \dev t ->
               flip Torch.toDevice t $ case dev of
@@ -303,10 +302,45 @@ defaultMlModule =
           , size = Tensor.size
           , shape = Tensor.shape
           , dim = Tensor.dim
-          , dtype = undefined
-          , device = undefined
+          , -- We could just try to implement `FromValue`/`ToValue` for `DType`,
+            -- but we would need to account for invalid dtypes in the `ToValue`
+            -- impl, e.g. by `error`ing. It's probably better to do the runtime
+            -- error in that case.
+            --
+            -- The same considerations apply to `device` right below, since there
+            -- may be invalid devices (for our purposes)
+            dtype =
+              VFun $ \case
+                VCustom (VTensor t) -> case Torch.dtype t of
+                  DType.Int64 -> pure $ VEnum enumDTypeHash "int"
+                  DType.Float -> pure $ VEnum enumDTypeHash "float"
+                  DType.Double -> pure $ VEnum enumDTypeHash "double"
+                  DType.Bool -> pure $ VEnum enumDTypeHash "bool"
+                  -- We don't support all possible tensor dtypes
+                  d ->
+                    throwM . RuntimeError $
+                      "dtype: recevied unexpected dtype " <> show d
+                _ -> throwM . RuntimeError $ "dtype: expected a tensor"
+          , device =
+              VFun $ \case
+                VCustom (VTensor t) -> case Torch.device t of
+                  Device CPU 0 -> pure $ VEnum enumDeviceHash "cpu"
+                  Device CUDA 0 -> pure $ VEnum enumDeviceHash "cuda"
+                  -- Again, there are several possibilities that we don't support
+                  -- which need to be accounted for
+                  d ->
+                    throwM . RuntimeError $
+                      "device: recevied unexpected device " <> show d
+                _ -> throwM . RuntimeError $ "device: expected a tensor"
           }
     }
+
+withDType ::
+  (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m
+withDType funName f =
+  VFun $ \case
+    VEnum _ e -> f <$> getDType funName e
+    _ -> throwM . RuntimeError $ funName <> ": expecting a dtype enum"
 
 getDType :: (MonadThrow m) => String -> Ident -> m DType
 getDType funName = \case
@@ -321,13 +355,6 @@ getDType funName = \case
         , "unknown dtype"
         , show s
         ]
-
-withDType ::
-  (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m
-withDType funName f =
-  VFun $ \case
-    VEnum _ e -> f <$> getDType funName e
-    _ -> throwM . RuntimeError $ funName <> ": expecting a dtype enum"
 
 -- Get the Torch device from a `device{#cpu, #cuda}`. There will only ever
 -- be one CUDA device available for our purposes, i.e. `cuda:0`, so we only
