@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.8.0.0 -- 2025-07-03
+* Breaking change: add implementations for new tensor operations in `inferno-ml-compat` (includes changes to some names and arguments)
+
 ## 0.8.0.0 -- 2025-06-10
 * Breaking change: make `ML` module an implementation of `inferno-ml-compat` modules and general refactor
 * Breaking change: make `MlValue` a type synonym and its constructors pattern synonyms (based on `inferno-ml-compat`'s `MlValue`)
