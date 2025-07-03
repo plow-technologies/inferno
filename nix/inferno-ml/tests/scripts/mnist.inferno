@@ -33,7 +33,7 @@ fun input0 output0 output1 mnist ->
   let model = ML.loadModel mnist in
   match ML.forward model [input] with {
     | [scores] ->
-        let m = ML.toType ML.#double (ML.argmax 1 #false scores) in
+        let m = ML.toType ML.#double (Tensor.argmax 1 #false scores) in
         [makeWrites output0 [(ML.asDouble m, t)], makeWrites output1 [(ML.asDouble m + 1.0, t)]]
     | _ ->
         [makeWrites output0 [(-1.0, t)], makeWrites output1 [(-1.0, t)]]

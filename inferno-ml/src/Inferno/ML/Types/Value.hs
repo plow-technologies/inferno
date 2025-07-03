@@ -12,22 +12,39 @@ module Inferno.ML.Types.Value
     pattern VModelName,
     pattern VExtended,
     ModelName (ModelName),
+    enumDeviceHash,
+    enumDTypeHash,
     -- Convenience re-export
     customTypes,
   ) where
 
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Inferno.ML.Types.Value.Compat (customTypes)
 import qualified Inferno.ML.Types.Value.Compat as Compat
+import Inferno.Module (BuiltinEnumHash (BuiltinEnumHash))
 import Inferno.Module.Cast
   ( FromValue (fromValue),
     ToValue (toValue),
     couldNotCast,
   )
+import Inferno.Types.Syntax
+  ( BaseType (TEnum),
+    Ident,
+    ImplType (ImplType),
+    InfernoType (TBase),
+    TCScheme (ForallTC),
+  )
 import Inferno.Types.Value (Value (VCustom))
+import Inferno.Types.VersionControl (VCObjectHash, vcHash)
 import Prettyprinter (Pretty (pretty), align)
-import Torch (ScriptModule, Tensor)
+import Torch
+  ( ScriptModule,
+    Tensor,
+  )
 
 type MlValue x = Compat.MlValue Tensor ScriptModule ModelName x
 
@@ -86,3 +103,23 @@ instance (Pretty x) => FromValue (MlValue x) m ModelName where
   fromValue = \case
     VCustom (VModelName t) -> pure t
     v -> couldNotCast v
+
+-- We need a hash for the `device` enum in Inferno in order for functions
+-- to evaluate to an Inferno `device`
+enumDeviceHash :: VCObjectHash
+enumDeviceHash = hashEnum "device" ["cpu", "cuda"]
+
+-- We need a hash for the `dtype` enum in Inferno in order for functions
+-- to evaluate to an Inferno `dtype`
+enumDTypeHash :: VCObjectHash
+enumDTypeHash = hashEnum "dtype" ["int", "float", "double", "bool"]
+
+hashEnum :: Text -> [Ident] -> VCObjectHash
+hashEnum name =
+  vcHash
+    . BuiltinEnumHash
+    . ForallTC [] Set.empty
+    . ImplType Map.empty
+    . TBase
+    . TEnum name
+    . Set.fromList

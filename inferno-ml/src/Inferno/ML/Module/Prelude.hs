@@ -1,4 +1,6 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -29,9 +31,10 @@ import Data.Proxy (Proxy (Proxy))
 import qualified Data.Text as Text
 import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
+import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
-import Inferno.Module.Cast (FromValue (fromValue), ToValue (toValue))
+import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
@@ -56,6 +59,7 @@ import qualified Torch
 import qualified Torch.DType as DType
 import qualified Torch.Functional
 import qualified Torch.Script
+import qualified Torch.Tensor as Tensor
 
 -- | A @MkMlModule@ implementation that depends on Hasktorch types
 type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
@@ -135,9 +139,7 @@ defaultMlModule =
               VFun $ \case
                 VEnum _ e ->
                   getDevice e <&> \dev ->
-                    VFun $
-                      fmap (toValue @_ @_ @Tensor . Torch.toDevice dev)
-                        . fromValue @_ @_ @Tensor
+                    VFun $ fmap (toValue . Torch.toDevice @Tensor dev) . fromValue
                 _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
           , toDeviceUnsafe = \dev t ->
               flip Torch.toDevice t $ case dev of
@@ -183,33 +185,154 @@ defaultMlModule =
           }
     , functional =
         Compat.MkFunctionalFuns
-          { argmax =
-              \i -> Torch.Functional.argmax (Dim i) . bool RemoveDim KeepDim
-          , softmax = Torch.Functional.softmax . Dim
-          , stack = Torch.stack . Dim
-          , tanh = Torch.Functional.tanh
-          , pow = Torch.Functional.pow
-          , unsqueeze = Torch.Functional.unsqueeze . Dim
-          , add = Torch.Functional.add
+          { mean = Torch.Functional.mean
+          , std = Torch.Functional.std
+          , var = Torch.Functional.var
           , sumAll = Torch.Functional.sumAll
-          , transpose2D = Torch.Functional.transpose2D
+          , abs = Torch.Functional.abs
+          , frac = Torch.Functional.frac
+          , argmax =
+              \i -> Torch.Functional.argmax (Dim i) . bool RemoveDim KeepDim
+          , add = Torch.Functional.add
+          , mul = Torch.Functional.mul
+          , sub = Torch.Functional.sub
+          , div = Torch.Functional.div
+          , ceil = Torch.Functional.ceil
+          , floor = Torch.Functional.floor
+          , min = Torch.Functional.min
+          , max = Torch.Functional.max
+          , median = Torch.Functional.median
+          , addScalar = withScalar Torch.Functional.addScalar
+          , subScalar = withScalar Torch.Functional.subScalar
+          , mulScalar = withScalar Torch.Functional.mulScalar
+          , divScalar = withScalar Torch.Functional.divScalar
           , matmul = Torch.Functional.matmul
+          , oneHot = Torch.Functional.oneHot
+          , erf = Torch.Functional.erf
+          , erfc = Torch.Functional.erfc
+          , erfinv = Torch.Functional.erfinv
+          , lgamma = Torch.Functional.lgamma
+          , digamma = Torch.Functional.digamma
+          , polygamma = Torch.Functional.polygamma
+          , mvlgamma = Torch.Functional.mvlgamma
+          , exp = Torch.Functional.exp
+          , log1p = Torch.Functional.log1p
+          , log2 = Torch.Functional.log2
+          , log = Torch.Functional.log
+          , log10 = Torch.Functional.log10
+          , pow = withScalar Torch.Functional.pow
+          , powt = Torch.Functional.powt
+          , relu = Torch.Functional.relu
+          , elu = withScalar Torch.Functional.elu
+          , selu = Torch.Functional.selu
+          , celu = Torch.Functional.celu . realToFrac
+          , sigmoid = Torch.Functional.sigmoid
+          , softmax = Torch.Functional.softmax . Dim
+          , logSoftmax = Torch.Functional.logSoftmax . Dim
+          , threshold = \d v ->
+              Torch.Functional.threshold (realToFrac d) $
+                realToFrac v
+          , sin = Torch.Functional.sin
+          , cos = Torch.Functional.cos
+          , tan = Torch.Functional.tan
+          , sinh = Torch.Functional.sinh
+          , cosh = Torch.Functional.cosh
+          , tanh = Torch.Functional.tanh
+          , sqrt = Torch.Functional.sqrt
+          , gt = Torch.Functional.gt
+          , lt = Torch.Functional.lt
+          , ge = Torch.Functional.ge
+          , le = Torch.Functional.le
+          , eq = Torch.Functional.eq
+          , take = Torch.Functional.take
+          , maskedSelect = Torch.Functional.maskedSelect
+          , nonzero = Torch.Functional.nonzero
+          , isnan = Torch.Functional.isnan
+          , isNonzero = Torch.Functional.isNonzero
+          , isSameSize = Torch.Functional.isSameSize
+          , isSigned = Torch.Functional.isSigned
+          , squeezeAll = Torch.Functional.squeezeAll
+          , squeezeDim = Torch.Functional.squeezeDim
+          , ne = Torch.Functional.ne
           , mseLoss = Torch.Functional.mseLoss
+          , dist = flip Torch.Functional.mseLoss . realToFrac
+          , inverse = Torch.Functional.inverse
+          , solve = Torch.Functional.solve
+          , bitwiseNot = Torch.Functional.bitwiseNot
+          , logicalNot = Torch.Functional.logicalNot
+          , logicalXor = Torch.Functional.logicalXor
+          , logicalAnd = Torch.Functional.logicalAnd
+          , logicalOr = Torch.Functional.logicalOr
+          , cat = Torch.Functional.cat . Dim
+          , index = Torch.Functional.index
+          , indexCopy = Torch.Functional.indexCopy
+          , indexPut = Torch.Functional.indexPut
+          , chunk = \i -> Torch.Functional.chunk i . Dim
+          , clamp = \mn mx ->
+              Torch.Functional.clamp (realToFrac mn) $
+                realToFrac mx
+          , clampMax = Torch.Functional.clampMax . realToFrac
+          , clampMin = Torch.Functional.clampMin . realToFrac
+          , sign = Torch.Functional.sign
+          , transpose = \d1 -> Torch.Functional.transpose (Dim d1) . Dim
+          , transpose2D = Torch.Functional.transpose2D
+          , all = Torch.Functional.all
+          , any = Torch.Functional.any
+          , allDim = Torch.Functional.allDim . Dim
+          , anyDim = Torch.Functional.anyDim . Dim
+          , permute = Torch.Functional.permute
+          , flatten = \d1 -> Torch.Functional.flatten (Dim d1) . Dim
+          , flattenAll = Torch.Functional.flattenAll
+          , softShrink = Torch.Functional.softShrink . realToFrac
+          , stack = Torch.stack . Dim
+          , logsumexp = Torch.logsumexp
+          , trunc = Torch.trunc
+          , unsqueeze = Torch.Functional.unsqueeze . Dim
+          , split = \i -> Torch.Functional.split i . Dim
+          , chainMatmul = Torch.chainMatmul
+          , gelu = Torch.gelu
+          , glu = Torch.glu . Dim
+          , view = Torch.view
+          , repeat = Torch.repeat
+          }
+    , properties =
+        MkPropertyFuns
+          { numel = Tensor.numel
+          , size = Tensor.size
+          , shape = Tensor.shape
+          , dim = Tensor.dim
+          , -- We could just try to implement `FromValue`/`ToValue` for `DType`,
+            -- but we would need to account for invalid dtypes in the `ToValue`
+            -- impl, e.g. by `error`ing. It's probably better to do the runtime
+            -- error in that case.
+            --
+            -- The same considerations apply to `device` right below, since there
+            -- may be invalid devices (for our purposes)
+            dtype =
+              VFun $ \case
+                VCustom (VTensor t) -> case Torch.dtype t of
+                  DType.Int64 -> pure $ VEnum enumDTypeHash "int"
+                  DType.Float -> pure $ VEnum enumDTypeHash "float"
+                  DType.Double -> pure $ VEnum enumDTypeHash "double"
+                  DType.Bool -> pure $ VEnum enumDTypeHash "bool"
+                  -- We don't support all possible tensor dtypes
+                  d ->
+                    throwM . RuntimeError $
+                      "dtype: recevied unexpected dtype " <> show d
+                _ -> throwM . RuntimeError $ "dtype: expected a tensor"
+          , device =
+              VFun $ \case
+                VCustom (VTensor t) -> case Torch.device t of
+                  Device CPU 0 -> pure $ VEnum enumDeviceHash "cpu"
+                  Device CUDA 0 -> pure $ VEnum enumDeviceHash "cuda"
+                  -- Again, there are several possibilities that we don't support
+                  -- which need to be accounted for
+                  d ->
+                    throwM . RuntimeError $
+                      "device: recevied unexpected device " <> show d
+                _ -> throwM . RuntimeError $ "device: expected a tensor"
           }
     }
-
-getDType :: (MonadThrow m) => String -> Ident -> m DType
-getDType funName = \case
-  "int" -> pure DType.Int64
-  "float" -> pure DType.Float
-  "double" -> pure DType.Double
-  s ->
-    throwM . RuntimeError $
-      unwords
-        [ funName <> ":"
-        , "unknown dtype"
-        , show s
-        ]
 
 withDType ::
   (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m
@@ -217,6 +340,20 @@ withDType funName f =
   VFun $ \case
     VEnum _ e -> f <$> getDType funName e
     _ -> throwM . RuntimeError $ funName <> ": expecting a dtype enum"
+
+getDType :: (MonadThrow m) => String -> Ident -> m DType
+getDType funName = \case
+  "int" -> pure DType.Int64
+  "float" -> pure DType.Float
+  "double" -> pure DType.Double
+  "bool" -> pure DType.Bool
+  s ->
+    throwM . RuntimeError $
+      unwords
+        [ funName <> ":"
+        , "unknown dtype"
+        , show s
+        ]
 
 -- Get the Torch device from a `device{#cpu, #cuda}`. There will only ever
 -- be one CUDA device available for our purposes, i.e. `cuda:0`, so we only
@@ -296,3 +433,20 @@ mkMlPrelude =
     (error "Duplicate module name in builtinModules")
     (Prelude.builtinModules @m @(MlValue x))
     . Compat.mkMlModule
+
+data SomeScalar where
+  SomeScalar :: forall a. (Torch.Scalar a) => a -> SomeScalar
+
+-- Gets an existentially-wrapped `Torch.Scalar` from types that implement
+-- `scalar` class in Inferno
+getScalar :: Either3 Int Double Bool -> SomeScalar
+getScalar = either SomeScalar $ either SomeScalar SomeScalar
+
+withScalar ::
+  (forall a. (Torch.Scalar a) => a -> Tensor -> Tensor) ->
+  -- Types that implement `scalar` in Inferno
+  Either3 Int Double Bool ->
+  Tensor ->
+  Tensor
+withScalar f s t = case getScalar s of
+  SomeScalar a -> f a t
