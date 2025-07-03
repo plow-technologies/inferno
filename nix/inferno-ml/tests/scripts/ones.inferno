@@ -4,5 +4,5 @@ fun input0 output0 mnist ->
   let vs = Array.map mkV ts in
   let xs = ML.ones ML.#double [2] in
   let ts1 = Array.map (fun t -> Time.toTime (Time.seconds (t + 1))) ts in
-  let vs1 = ML.asArray1 (ML.add xs (ML.asTensor1 ML.#double vs)) in
+  let vs1 = ML.asArray1 (Tensor.add xs (ML.asTensor1 ML.#double vs)) in
   [makeWrites output0 (zip vs1 ts1)]
