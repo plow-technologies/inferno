@@ -3,7 +3,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Inferno.ML.Module.Prelude
   ( MlModule,

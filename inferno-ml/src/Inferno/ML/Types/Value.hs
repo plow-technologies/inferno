@@ -4,7 +4,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PatternSynonyms #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Inferno.ML.Types.Value
   ( MlValue,
