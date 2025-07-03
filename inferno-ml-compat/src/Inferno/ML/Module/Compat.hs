@@ -372,20 +372,20 @@ module Tensor
 
   @doc Returns a new tensor with the ceil of the elements of input, the smallest
   integer greater than or equal to each element;
-  ceil : tensor -> tensor -> tensor := ###ceil###;
+  ceil : tensor -> tensor := ###ceil###;
 
   @doc Returns a new tensor with the floor of the elements of input, the smallest
   integer less than or equal to each element;
-  floor : tensor -> tensor -> tensor := ###floor###;
+  floor : tensor -> tensor := ###floor###;
 
   @doc Returns the minimum value of all elements in the input tensor;
-  min : tensor -> tensor -> tensor := ###min###;
+  min : tensor -> tensor := ###min###;
 
   @doc Returns the maximum value of all elements in the input tensor;
-  max : tensor -> tensor -> tensor := ###max###;
+  max : tensor -> tensor := ###max###;
 
   @doc Returns the median value of all elements in the input tensor;
-  median : tensor -> tensor -> tensor := ###median###;
+  median : tensor -> tensor := ###median###;
 
   @doc `addScalar summand t` adds each element of `t` with the scalar `summand`
   and returns a new resulting tensor;
@@ -606,15 +606,15 @@ module Tensor
 
   @doc Computes the element-wise logical XOR of the given input tensors.
   Zeros are treated as false and nonzeros are treated as true;
-  logicalXor : tensor -> tensor := ###logicalXor###;
+  logicalXor : tensor -> tensor -> tensor := ###logicalXor###;
 
   @doc Computes the element-wise logical AND of the given input tensors.
   Zeros are treated as false and nonzeros are treated as true;
-  logicalAnd : tensor -> tensor := ###logicalAnd###;
+  logicalAnd : tensor -> tensor -> tensor := ###logicalAnd###;
 
   @doc Computes the element-wise logical OR of the given input tensors.
   Zeros are treated as false and nonzeros are treated as true;
-  logicalOr : tensor -> tensor := ###logicalOr###;
+  logicalOr : tensor -> tensor -> tensor := ###logicalOr###;
 
   @doc `cat dim ts` concatenates `ts` in the given `dim`. All tensors must either
   have the same shape (except in the concatenating dimension) or be empty;
@@ -694,7 +694,7 @@ module Tensor
   flatten : int -> int -> tensor -> tensor := ###flatten###;
 
   @doc `flatten t` flattens `t` by reshaping it into a one-dimensional tensor;
-  flattenAll : int -> int -> tensor -> tensor := ###flattenAll###;
+  flattenAll : tensor -> tensor := ###flattenAll###;
 
   @doc `softShrink lambda t` applies the soft shrinkage function elementwise;
   softShrink : double -> tensor -> tensor := ###softShrink###;
@@ -711,7 +711,7 @@ module Tensor
   unsqueeze : int -> tensor -> tensor := ###unsqueeze###;
 
   @doc `split size dim t` splits `t` into chunks of given `size` if possible;
-  split : int -> int -> tensor -> tensor := ###split###;
+  split : int -> int -> tensor -> array of tensor := ###split###;
 
   @doc `chainMatmul ts` returns the matrix product of the NN 2-D tensors `ts`.
   This product is efficiently computed using the matrix chain order algorithm
