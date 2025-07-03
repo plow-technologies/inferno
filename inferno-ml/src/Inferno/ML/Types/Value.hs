@@ -21,6 +21,7 @@ module Inferno.ML.Types.Value
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Inferno.ML.Types.Value.Compat (customTypes)
@@ -33,6 +34,7 @@ import Inferno.Module.Cast
   )
 import Inferno.Types.Syntax
   ( BaseType (TEnum),
+    Ident,
     ImplType (ImplType),
     InfernoType (TBase),
     TCScheme (ForallTC),
@@ -103,26 +105,22 @@ instance (Pretty x) => FromValue (MlValue x) m ModelName where
     VCustom (VModelName t) -> pure t
     v -> couldNotCast v
 
--- We need a hash for the `device` enum in Inferno in order to create one
--- in the `ToValue` impl
+-- We need a hash for the `device` enum in Inferno in order for functions
+-- to evaluate to an Inferno `device`
 enumDeviceHash :: VCObjectHash
-enumDeviceHash = vcHash $ BuiltinEnumHash deviceTy
-  where
-    typeDevice :: InfernoType
-    typeDevice = TBase . TEnum "device" $ Set.fromList ["cpu", "cuda"]
+enumDeviceHash = hashEnum "device" ["cpu", "cuda"]
 
-    deviceTy :: TCScheme
-    deviceTy = ForallTC [] Set.empty $ ImplType Map.empty typeDevice
-
--- We need a hash for the `dtype` enum in Inferno in order to create one
--- in the `ToValue` impl
+-- We need a hash for the `dtype` enum in Inferno in order for functions
+-- to evaluate to an Inferno `dtype`
 enumDTypeHash :: VCObjectHash
-enumDTypeHash = vcHash $ BuiltinEnumHash dtypeTy
-  where
-    typeDType :: InfernoType
-    typeDType =
-      TBase . TEnum "dtype" $
-        Set.fromList ["int", "float", "double", "bool"]
+enumDTypeHash = hashEnum "dtype" ["int", "float", "double", "bool"]
 
-    dtypeTy :: TCScheme
-    dtypeTy = ForallTC [] Set.empty $ ImplType Map.empty typeDType
+hashEnum :: Text -> [Ident] -> VCObjectHash
+hashEnum name =
+  vcHash
+    . BuiltinEnumHash
+    . ForallTC [] Set.empty
+    . ImplType Map.empty
+    . TBase
+    . TEnum name
+    . Set.fromList
