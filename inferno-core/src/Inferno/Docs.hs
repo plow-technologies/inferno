@@ -1,7 +1,36 @@
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module Inferno.Docs where
 
+import Control.Monad.Catch (MonadThrow)
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.Maybe (fromMaybe)
+import Data.Set (Set)
+import Data.Text (Text)
+import qualified Data.Text as Text
+import Inferno.Infer.Env
+  ( Namespace
+      ( EnumNamespace,
+        OpNamespace,
+        TypeNamespace
+      ),
+  )
+import Inferno.Module.Prelude (ModuleMap, preludeNameToTypeMap)
+import qualified Inferno.Types.Module
+import Inferno.Types.Syntax
+  ( InfernoType,
+    ModuleName,
+    TCScheme,
+    TypeClass,
+    TypeMetadata,
+  )
+import qualified Inferno.Types.Syntax
+import Inferno.Utils.Prettyprinter (renderPretty)
+import Prettyprinter (Pretty)
 import Text.RawString.QQ
 
 docs :: String
@@ -290,3 +319,123 @@ let module F = Foo in
 ```
 
 |]
+
+-- | Create markdown-formatted module docs for all modules in the given
+-- 'ModuleMap', including typeclasses
+mkModuleDocs ::
+  forall m c.
+  ( Pretty c
+  , MonadThrow m
+  , Eq c
+  ) =>
+  ModuleMap m c -> Text
+mkModuleDocs modules =
+  flip Map.foldMapWithKey moduleToNameToTypeMeta $
+    \mModName nameToTypeMeta ->
+      mconcat
+        [ "### Module "
+        , maybe "Base (needs no prefix)" (.unModuleName) mModName
+        , Text.replicate 2 newline
+        , moduleDocs nameToTypeMeta
+        , Text.replicate 2 newline
+        ]
+  where
+    moduleDocs :: Map Namespace (TypeMetadata TCScheme) -> Text
+    moduleDocs =
+      Map.foldMapWithKey $ \name typeMeta -> case name of
+        -- Filter out types and enums:
+        EnumNamespace _ -> mempty
+        TypeNamespace _ -> mempty
+        _ ->
+          mconcat
+            [ "#### "
+            , "`"
+            , renderName name
+            , " : "
+            , renderType typeMeta
+            , "`"
+            , newline
+            , renderDocstring typeMeta
+            , Text.replicate 2 newline
+            , "----"
+            , Text.replicate 2 newline
+            ]
+
+    moduleToNameToTypeMeta ::
+      Map (Maybe ModuleName) (Map Namespace (TypeMetadata TCScheme))
+    moduleToNameToTypeMeta =
+      Map.foldrWithKey foldMods Map.empty $ preludeNameToTypeMap modules
+      where
+        foldMods ::
+          (Maybe ModuleName, Namespace) ->
+          TypeMetadata TCScheme ->
+          Map (Maybe ModuleName) (Map Namespace (TypeMetadata TCScheme)) ->
+          Map (Maybe ModuleName) (Map Namespace (TypeMetadata TCScheme))
+        foldMods (mModName, name) typeMeta m =
+          flip (Map.insert mModName) m
+            . Map.insert name typeMeta
+            . fromMaybe Map.empty
+            $ Map.lookup mModName m
+
+    -- Parenthesize operator names:
+    renderName :: Namespace -> Text
+    renderName = \case
+      OpNamespace i -> mconcat ["(", i.unIdent, ")"]
+      n -> renderPretty n
+
+    -- Print the type signature in a single line:
+    renderType :: TypeMetadata TCScheme -> Text
+    renderType typeMeta = Text.replace newline " " $ renderPretty typeMeta.ty
+
+    -- Render documentation:
+    renderDocstring :: TypeMetadata TCScheme -> Text
+    renderDocstring = fromMaybe mempty . (.docs)
+
+    -- List of all type classes and instantiations:
+    allTypeClassDocs :: Text
+    allTypeClassDocs =
+      mconcat
+        [ "## "
+        , "Type Classes"
+        , newline
+        , renderTypeClasses
+        , newline
+        ]
+      where
+        renderTypeClasses :: Text
+        renderTypeClasses =
+          flip Map.foldMapWithKey typeClasses $
+            \name insts ->
+              mconcat
+                [ "#### "
+                , "`"
+                , name
+                , "`"
+                , newline
+                , Text.intercalate newline (fmap renderInst insts)
+                , Text.replicate 2 newline
+                ]
+
+        renderInst :: [InfernoType] -> Text
+        renderInst typeParams =
+          mconcat
+            [ "- "
+            , "`"
+            , Text.intercalate " " (fmap renderPretty typeParams)
+            , "`"
+            ]
+
+        typeClasses :: Map Text [[InfernoType]]
+        typeClasses = foldr foldTypeClass Map.empty tcSet
+          where
+            tcSet :: Set TypeClass
+            tcSet = foldMap (.moduleTypeClasses) modules
+
+            foldTypeClass ::
+              TypeClass -> Map Text [[InfernoType]] -> Map Text [[InfernoType]]
+            foldTypeClass tc m =
+              flip (Map.insert tc.className) m . (:) tc.params . fromMaybe [] $
+                Map.lookup tc.className m
+
+    newline :: Text
+    newline = "\n"
