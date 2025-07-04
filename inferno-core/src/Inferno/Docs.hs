@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module Inferno.Docs where
 
@@ -329,17 +328,19 @@ mkModuleDocs ::
   , Eq c
   ) =>
   ModuleMap m c -> Text
-mkModuleDocs modules =
-  flip Map.foldMapWithKey moduleToNameToTypeMeta $
-    \mModName nameToTypeMeta ->
-      mconcat
-        [ "### Module "
-        , maybe "Base (needs no prefix)" (.unModuleName) mModName
-        , Text.replicate 2 newline
-        , moduleDocs nameToTypeMeta
-        , Text.replicate 2 newline
-        ]
+mkModuleDocs modules = allModuleDocs <> allTypeClassDocs
   where
+    allModuleDocs :: Text
+    allModuleDocs =
+      flip Map.foldMapWithKey moduleToNameToTypeMeta $
+        \mModName nameToTypeMeta ->
+          mconcat
+            [ "### Module "
+            , maybe "Base (needs no prefix)" (.unModuleName) mModName
+            , Text.replicate 2 newline
+            , moduleDocs nameToTypeMeta
+            , Text.replicate 2 newline
+            ]
     moduleDocs :: Map Namespace (TypeMetadata TCScheme) -> Text
     moduleDocs =
       Map.foldMapWithKey $ \name typeMeta -> case name of
