@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.3 -- 2025-07-03
+* Add `mkPreludeDocs` functionality
+
 ## 0.11.6.2 -- 2025-07-03
 * Add `scalar` typeclass
 
