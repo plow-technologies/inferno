@@ -171,6 +171,26 @@ in
             PrivateTmp = "yes";
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
+            # OOM settings. We don't want the system to slow to a crawl when
+            # it starts consuming too much memory.
+            #
+            # NOTE: This does not use `stop` as the `OOMPolicy` as it would not
+            # restart the server process. We unfortunately need to use `kill`,
+            # i.e. the server receives a `SIGKILL` from the kernel. But the
+            # server will restart afterwards
+            #
+            # Because `inferno-ml-server` and any child processes it may spawn
+            # are basically the only thing running on the system of any importance,
+            # we can reserver a fairly high amount of memory
+            MemoryHigh = "85%";
+            MemoryMax = "95%";
+            MemorySwapMax = "0";
+            OOMPolicy = "kill";
+            # This is to give the process access to the memory usage information
+            # under `/sys/fs/cgroup/...` (for currently unimplemented in-app
+            # memory monitoring)
+            ProtectControlGroups = false;
+            ReadOnlyPaths = [ "/sys/fs/cgroup" ];
           };
         };
 
