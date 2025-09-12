@@ -1133,8 +1133,8 @@ data TraceWarn p
     -- exceptions in that case, but the log is still helpful
     CouldntMoveTensor String
   | -- @inferno-ml-server@ was last killed due to an OOM event; the time at
-    -- restart is recorded if possible
-    OomKilled (Maybe UTCTime)
+    -- restart is recorded
+    OomKilled UTCTime
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)

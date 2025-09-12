@@ -12,9 +12,11 @@ where
 
 import Control.Monad.Catch (throwM)
 import Control.Monad.Except (ExceptT (ExceptT))
+import Control.Monad.Extra (whenJustM)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
+import Data.Time (UTCTime)
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
@@ -78,8 +80,9 @@ main = runServer =<< mkOptions
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
   withConnectionPool cfg.store $ \pool ->
-    withRemoteTracer (cfg ^. #instanceId) pool $ \tracer -> do
+    withRemoteTracer cfg.instanceId pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
+      whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled
       f
         =<< Env cfg tracer pool
           <$> newMVar ()
@@ -87,6 +90,9 @@ runInEnv cfg f =
           <*> newManager defaultManagerSettings
           <*> newIORef mempty
           <*> newIORef Nothing
+  where
+    wasOomKilled :: IO (Maybe UTCTime)
+    wasOomKilled = pure Nothing -- FIXME
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
@@ -97,12 +103,11 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
         . ExceptT
         . try
         . handle toServantErr
-        . handle (logAndRethrowError (env ^. #tracer))
+        . handle (logAndRethrowError env.tracer)
         . runReaderT m
 
     logAndRethrowError :: IOTracer RemoteTrace -> RemoteError -> IO a
-    logAndRethrowError tracer err =
-      traceWith tracer (ErrorTrace err) >> throwM err
+    logAndRethrowError tracer err = traceWith tracer (ErrorTrace err) *> throwM err
 
     toServantErr :: RemoteError -> IO a
     toServantErr = throwM . translateError
