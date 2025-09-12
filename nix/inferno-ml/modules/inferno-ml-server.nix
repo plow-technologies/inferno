@@ -178,28 +178,30 @@ in
             PrivateTmp = "yes";
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
+            StateDirectory = "inferno-ml-server";
+            # Leave breadcrumb for OOM kills so we can check at startup if we
+            # just got killed by OOM; needs to be removed by `inferno-ml-server`
+            # afterwards
+            ExecStopPost =
+              "/bin/sh -c 'test $SERVICE_RESULT = oom-kill && echo $(date -Is) > /var/lib/inferno-ml-server/last-oom'";
             # OOM settings. We don't want the system to slow to a crawl when
             # it starts consuming too much memory. We also omit `MemoryHigh`,
             # as this would just cause the server to slow to a crawl as the
             # kernel starts to reclaim memory from the process (basically causing
             # what we want to avoid)
             #
-            # NOTE: This does not use `stop` as the `OOMPolicy` as it would not
-            # restart the server process. We unfortunately need to use `kill`,
-            # i.e. the server receives a `SIGKILL` from the kernel. But the
-            # server will restart afterwards
-            #
             # Because `inferno-ml-server` and any child processes it may spawn
             # are basically the only thing running on the system of any importance,
             # we can reserver a fairly high amount of memory
             MemoryMax = "90%";
             MemorySwapMax = "0";
-            OOMPolicy = "kill";
+            OOMPolicy = "stop";
             # This is to give the process access to the memory usage information
             # under `/sys/fs/cgroup/...` (for currently unimplemented in-app
             # memory monitoring)
             ProtectControlGroups = false;
             ReadOnlyPaths = [ "/sys/fs/cgroup" ];
+            SupplementaryGroups= "systemd-journal";
           };
         };
 
