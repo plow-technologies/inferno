@@ -183,7 +183,8 @@ in
             # just got killed by OOM; needs to be removed by `inferno-ml-server`
             # afterwards
             ExecStopPost =
-              "/bin/sh -c 'test $SERVICE_RESULT = oom-kill && echo $(date -Is) > /var/lib/inferno-ml-server/last-oom'";
+              "/bin/sh -c 'test $SERVICE_RESULT = oom-kill && echo $(date -u --rfc-3339=seconds)"
+              + " > /var/lib/inferno-ml-server/last-oom'";
             # OOM settings. We don't want the system to slow to a crawl when
             # it starts consuming too much memory. We also omit `MemoryHigh`,
             # as this would just cause the server to slow to a crawl as the
@@ -201,7 +202,7 @@ in
             # memory monitoring)
             ProtectControlGroups = false;
             ReadOnlyPaths = [ "/sys/fs/cgroup" ];
-            SupplementaryGroups= "systemd-journal";
+            SupplementaryGroups = "systemd-journal";
           };
         };
 
