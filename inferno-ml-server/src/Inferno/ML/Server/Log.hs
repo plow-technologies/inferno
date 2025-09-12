@@ -136,7 +136,10 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
         shallPersist :: RemoteTrace -> Bool
         shallPersist = \case
           InfoTrace _ -> False
-          WarnTrace _ -> False
+          -- Having `LevelWarn` traces show up helps with debugging; the
+          -- server does not generate many of these, so it shouldn't overwhelm
+          -- the DB with garbage messages (unlike `LevelInfo`)
+          WarnTrace _ -> True
           ErrorTrace err -> case err of
             CacheSizeExceeded -> False
             NoSuchModel{} -> True
