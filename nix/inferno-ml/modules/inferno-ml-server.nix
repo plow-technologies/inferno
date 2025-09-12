@@ -192,7 +192,7 @@ in
             #
             # Because `inferno-ml-server` and any child processes it may spawn
             # are basically the only thing running on the system of any importance,
-            # we can reserver a fairly high amount of memory
+            # we can reserve a fairly high amount of memory
             MemoryMax = "90%";
             MemorySwapMax = "0";
             OOMPolicy = "stop";
