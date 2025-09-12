@@ -16,10 +16,13 @@ import Control.Monad.Extra (whenJustM)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
-import Data.Time (UTCTime)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text.IO
+import Data.Time (UTCTime, getCurrentTime)
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
+import Inferno.ML.Server.Utils
 import Lens.Micro.Platform
 import Network.HTTP.Client
   ( defaultManagerSettings,
@@ -48,7 +51,9 @@ import Servant
     serve,
     (:<|>) ((:<|>)),
   )
+import Text.Read (readMaybe)
 import UnliftIO.Async (Async, cancel)
+import UnliftIO.Directory (doesPathExist, removeFile)
 import UnliftIO.Exception
   ( Exception (displayException),
     handle,
@@ -92,7 +97,23 @@ runInEnv cfg f =
           <*> newIORef Nothing
   where
     wasOomKilled :: IO (Maybe UTCTime)
-    wasOomKilled = pure Nothing -- FIXME
+    wasOomKilled =
+      doesPathExist lastOomPath >>= \case
+        -- No `oom_kill` was triggered before this server start, so no warning
+        False -> pure Nothing
+        True -> do
+          contents <- Text.unpack . Text.strip <$> Text.IO.readFile lastOomPath
+          -- Fall back to current time if the file contents can't be parsed
+          -- as a `UTCTime`. The time is only used for logging as a convenience
+          time <- maybe getCurrentTime pure $ readMaybe contents
+          -- Remove the breadcrumb, otherwise we will have false positives
+          -- when restarting the server next time if there's not another
+          -- OOM kill event
+          --
+          -- This file is owned by the `inferno` user, which is the same user
+          -- that the server is running as, so we don't need to worry about
+          -- permissions, etc...
+          Just time <$ removeFile lastOomPath
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
