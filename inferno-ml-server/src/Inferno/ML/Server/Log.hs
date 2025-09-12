@@ -6,6 +6,7 @@ module Inferno.ML.Server.Log where
 
 import Control.Exception (displayException)
 import Control.Monad (when)
+import Data.Function ((&))
 import Control.Monad.Reader (runReaderT)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Contravariant (contramap)
@@ -68,6 +69,12 @@ traceRemote = \case
         unwords
           [ "Couldn't move tensor to device"
           , dev
+          ]
+    OomKilled mutc ->
+      Text.pack $
+        unwords
+          [ "Server is restarting from out-of-memory event"
+          , mutc & maybe mempty (("triggered at "  <>) . show)
           ]
     OtherWarn t -> t
   ErrorTrace e -> err . Text.pack $ displayException e

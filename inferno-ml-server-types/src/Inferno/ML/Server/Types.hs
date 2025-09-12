@@ -1132,6 +1132,9 @@ data TraceWarn p
     -- moving a tensor from \"cpu:0\" to \"cuda:0\". We don\'t throw any
     -- exceptions in that case, but the log is still helpful
     CouldntMoveTensor String
+  | -- @inferno-ml-server@ was last killed due to an OOM event; the time at
+    -- restart is recorded if possible
+    OomKilled (Maybe UTCTime)
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
