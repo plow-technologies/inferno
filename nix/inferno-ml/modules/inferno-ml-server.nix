@@ -151,6 +151,13 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
+        # NOTE Since the kernel OOM killer might be invoked by the systemd
+        # service configuration below (which is what we want), we need to make
+        # sure the kernel does NOT panic on OOM for the IMLS process
+        boot.kernel.sysctl = {
+          "vm.panic_on_oom" = 0;
+        };
+
         # FIXME Ideally we should have a system user to run this. However,
         # we are doing some urgent testing and that would require more work.
         # We will fix having this run as `inferno` once we finalize the image
@@ -172,7 +179,10 @@ in
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
             # OOM settings. We don't want the system to slow to a crawl when
-            # it starts consuming too much memory.
+            # it starts consuming too much memory. We also omit `MemoryHigh`,
+            # as this would just cause the server to slow to a crawl as the
+            # kernel starts to reclaim memory from the process (basically causing
+            # what we want to avoid)
             #
             # NOTE: This does not use `stop` as the `OOMPolicy` as it would not
             # restart the server process. We unfortunately need to use `kill`,
@@ -182,8 +192,7 @@ in
             # Because `inferno-ml-server` and any child processes it may spawn
             # are basically the only thing running on the system of any importance,
             # we can reserver a fairly high amount of memory
-            MemoryHigh = "85%";
-            MemoryMax = "95%";
+            MemoryMax = "90%";
             MemorySwapMax = "0";
             OOMPolicy = "kill";
             # This is to give the process access to the memory usage information
