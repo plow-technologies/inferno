@@ -63,6 +63,18 @@ in
                   "Number of seconds for script eval timeout";
               };
 
+              memoryMax = lib.mkOption {
+                type = lib.types.ints.between 1 100;
+                default = 95;
+                description =
+                  lib.mdDoc
+                    ''
+                      Percentage of total system memory the server process is allowed
+                      to consume; after reaching this threshold, the server process is
+                      OOM-killed and restarted
+                    '';
+              };
+
               instanceId = lib.mkOption {
                 type = lib.types.nullOr lib.types.str;
                 default = null;
@@ -194,7 +206,7 @@ in
             # Because `inferno-ml-server` and any child processes it may spawn
             # are basically the only thing running on the system of any importance,
             # we can reserve a fairly high amount of memory
-            MemoryMax = "90%";
+            MemoryMax = "${builtins.toString configuration.memoryMax}%";
             MemorySwapMax = "0";
             OOMPolicy = "stop";
             # This is to give the process access to the memory usage information
