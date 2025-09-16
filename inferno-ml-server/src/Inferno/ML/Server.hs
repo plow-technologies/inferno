@@ -102,6 +102,9 @@ runInEnv cfg f =
         -- No `oom_kill` was triggered before this server start, so no warning
         False -> pure Nothing
         True -> do
+          -- The contents of `/var/lib/inferno-ml-server/last-oom` is just
+          -- the UTC time of when the system process was killed because of
+          -- an OOM event
           contents <- Text.unpack . Text.strip <$> Text.IO.readFile lastOomPath
           -- Fall back to current time if the file contents can't be parsed
           -- as a `UTCTime`. The time is only used for logging as a convenience

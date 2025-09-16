@@ -71,7 +71,9 @@ in
                     ''
                       Percentage of total system memory the server process is allowed
                       to consume; after reaching this threshold, the server process is
-                      OOM-killed and restarted
+                      OOM-killed and restarted. Consider setting this to a fairly
+                      high value, as `inferno-ml-server` is often the only process
+                      consuming significant memory on its instance
                     '';
               };
 
@@ -149,6 +151,8 @@ in
   config = lib.mkIf cfg.enable
     (
       let
+        service = "inferno-ml-server";
+
         configFile = {
           "path" = cfg.configuration;
           "set" = (
@@ -176,13 +180,13 @@ in
         # config
         #
         # See https://github.com/plow-technologies/inferno/issues/151
-        systemd.services.inferno-ml-server = {
-          description = "Start `inferno-ml-server` server";
+        systemd.services.${service} = {
+          description = "Start `${service}` server";
           wantedBy = [ "default.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
           serviceConfig = {
-            ExecStart = "${cfg.package}/bin/inferno-ml-server --config ${configFile}";
+            ExecStart = "${cfg.package}/bin/${service} --config ${configFile}";
             Restart = "always";
             RestartSec = 5;
             User = "inferno";
@@ -190,13 +194,13 @@ in
             PrivateTmp = "yes";
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
-            StateDirectory = "inferno-ml-server";
+            StateDirectory = "${service}";
             # Leave breadcrumb for OOM kills so we can check at startup if we
             # just got killed by OOM; needs to be removed by `inferno-ml-server`
             # afterwards
             ExecStopPost =
               "/bin/sh -c 'test $SERVICE_RESULT = oom-kill && echo $(date -u --rfc-3339=seconds)"
-              + " > /var/lib/inferno-ml-server/last-oom'";
+              + " > /var/lib/${service}/last-oom'";
             # OOM settings. We don't want the system to slow to a crawl when
             # it starts consuming too much memory. We also omit `MemoryHigh`,
             # as this would just cause the server to slow to a crawl as the
