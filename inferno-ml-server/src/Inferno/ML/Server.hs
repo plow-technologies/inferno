@@ -12,12 +12,17 @@ where
 
 import Control.Monad.Catch (throwM)
 import Control.Monad.Except (ExceptT (ExceptT))
+import Control.Monad.Extra (whenJustM)
 import Control.Monad.Reader (ReaderT (runReaderT))
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import Data.Proxy (Proxy (Proxy))
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text.IO
+import Data.Time (UTCTime, getCurrentTime)
 import Inferno.ML.Server.Inference
 import Inferno.ML.Server.Log
 import Inferno.ML.Server.Types
+import Inferno.ML.Server.Utils
 import Lens.Micro.Platform
 import Network.HTTP.Client
   ( defaultManagerSettings,
@@ -46,7 +51,9 @@ import Servant
     serve,
     (:<|>) ((:<|>)),
   )
+import Text.Read (readMaybe)
 import UnliftIO.Async (Async, cancel)
+import UnliftIO.Directory (doesPathExist, removeFile)
 import UnliftIO.Exception
   ( Exception (displayException),
     handle,
@@ -78,8 +85,9 @@ main = runServer =<< mkOptions
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
   withConnectionPool cfg.store $ \pool ->
-    withRemoteTracer (cfg ^. #instanceId) pool $ \tracer -> do
+    withRemoteTracer cfg.instanceId pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
+      whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled
       f
         =<< Env cfg tracer pool
           <$> newMVar ()
@@ -87,6 +95,33 @@ runInEnv cfg f =
           <*> newManager defaultManagerSettings
           <*> newIORef mempty
           <*> newIORef Nothing
+  where
+    -- See if we are restarting from a recent OOM event, i.e. the systemd service
+    -- manager stopped the service because it exceeded its `MemoryMax` and
+    -- the `OOMPolicy` was invoked. This leaves a breadcrumb file in the state
+    -- directory. If it exists, the time when OOM was invoked it returned and
+    -- the file is removed
+    wasOomKilled :: IO (Maybe UTCTime)
+    wasOomKilled =
+      doesPathExist lastOomPath >>= \case
+        -- No `oom_kill` was triggered before this server start, so no warning
+        False -> pure Nothing
+        True -> do
+          -- The contents of `/var/lib/inferno-ml-server/last-oom` is just
+          -- the UTC time of when the system process was killed because of
+          -- an OOM event
+          contents <- Text.unpack . Text.strip <$> Text.IO.readFile lastOomPath
+          -- Fall back to current time if the file contents can't be parsed
+          -- as a `UTCTime`. The time is only used for logging as a convenience
+          time <- maybe getCurrentTime pure $ readMaybe contents
+          -- Remove the breadcrumb, otherwise we will have false positives
+          -- when restarting the server next time if there's not another
+          -- OOM kill event
+          --
+          -- This file is owned by the `inferno` user, which is the same user
+          -- that the server is running as, so we don't need to worry about
+          -- permissions, etc...
+          Just time <$ removeFile lastOomPath
 
 infernoMlRemote :: Env -> Application
 infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
@@ -97,12 +132,11 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
         . ExceptT
         . try
         . handle toServantErr
-        . handle (logAndRethrowError (env ^. #tracer))
+        . handle (logAndRethrowError env.tracer)
         . runReaderT m
 
     logAndRethrowError :: IOTracer RemoteTrace -> RemoteError -> IO a
-    logAndRethrowError tracer err =
-      traceWith tracer (ErrorTrace err) >> throwM err
+    logAndRethrowError tracer err = traceWith tracer (ErrorTrace err) *> throwM err
 
     toServantErr :: RemoteError -> IO a
     toServantErr = throwM . translateError

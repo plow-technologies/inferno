@@ -10,6 +10,7 @@ module Inferno.ML.Server.Utils
     queryStore,
     executeStore,
     withConns,
+    lastOomPath,
   )
 where
 
@@ -73,3 +74,9 @@ firstOrThrow e = maybe (throwM e) pure . (!? 0)
 withConns :: (HasPool r m) => (Connection -> m b) -> m b
 withConns f = view typed >>= \cs -> withRunInIO $ \r -> withResource cs $ r . f
 {-# INLINE withConns #-}
+
+-- | This path is written to as part of the @inferno-ml-server@ @ExecStopPost@
+-- if an OOM kill event is the @SERVICE_RESULT@. This is read at startup to
+-- log a warning if we just restarted the server due to an OOM kill
+lastOomPath :: FilePath
+lastOomPath = "/var/lib/inferno-ml-server/last-oom"

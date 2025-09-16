@@ -63,6 +63,20 @@ in
                   "Number of seconds for script eval timeout";
               };
 
+              memoryMax = lib.mkOption {
+                type = lib.types.ints.between 1 100;
+                default = 95;
+                description =
+                  lib.mdDoc
+                    ''
+                      Percentage of total system memory the server process is allowed
+                      to consume; after reaching this threshold, the server process is
+                      OOM-killed and restarted. Consider setting this to a fairly
+                      high value, as `inferno-ml-server` is often the only process
+                      consuming significant memory on its instance
+                    '';
+              };
+
               instanceId = lib.mkOption {
                 type = lib.types.nullOr lib.types.str;
                 default = null;
@@ -137,6 +151,8 @@ in
   config = lib.mkIf cfg.enable
     (
       let
+        service = "inferno-ml-server";
+
         configFile = {
           "path" = cfg.configuration;
           "set" = (
@@ -151,19 +167,26 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
+        # NOTE Since the kernel OOM killer might be invoked by the systemd
+        # service configuration below (which is what we want), we need to make
+        # sure the kernel does NOT panic on OOM for the IMLS process
+        boot.kernel.sysctl = {
+          "vm.panic_on_oom" = 0;
+        };
+
         # FIXME Ideally we should have a system user to run this. However,
         # we are doing some urgent testing and that would require more work.
         # We will fix having this run as `inferno` once we finalize the image
         # config
         #
         # See https://github.com/plow-technologies/inferno/issues/151
-        systemd.services.inferno-ml-server = {
-          description = "Start `inferno-ml-server` server";
+        systemd.services.${service} = {
+          description = "Start `${service}` server";
           wantedBy = [ "default.target" ];
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
           serviceConfig = {
-            ExecStart = "${cfg.package}/bin/inferno-ml-server --config ${configFile}";
+            ExecStart = "${cfg.package}/bin/${service} --config ${configFile}";
             Restart = "always";
             RestartSec = 5;
             User = "inferno";
@@ -171,6 +194,31 @@ in
             PrivateTmp = "yes";
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
+            StateDirectory = "${service}";
+            # Leave breadcrumb for OOM kills so we can check at startup if we
+            # just got killed by OOM; needs to be removed by `inferno-ml-server`
+            # afterwards
+            ExecStopPost =
+              "/bin/sh -c 'test $SERVICE_RESULT = oom-kill && echo $(date -u --rfc-3339=seconds)"
+              + " > /var/lib/${service}/last-oom'";
+            # OOM settings. We don't want the system to slow to a crawl when
+            # it starts consuming too much memory. We also omit `MemoryHigh`,
+            # as this would just cause the server to slow to a crawl as the
+            # kernel starts to reclaim memory from the process (basically causing
+            # what we want to avoid)
+            #
+            # Because `inferno-ml-server` and any child processes it may spawn
+            # are basically the only thing running on the system of any importance,
+            # we can reserve a fairly high amount of memory
+            MemoryMax = "${builtins.toString configuration.memoryMax}%";
+            MemorySwapMax = "0";
+            OOMPolicy = "stop";
+            # This is to give the process access to the memory usage information
+            # under `/sys/fs/cgroup/...` (for currently unimplemented in-app
+            # memory monitoring)
+            ProtectControlGroups = false;
+            ReadOnlyPaths = [ "/sys/fs/cgroup" ];
+            SupplementaryGroups = "systemd-journal";
           };
         };
 

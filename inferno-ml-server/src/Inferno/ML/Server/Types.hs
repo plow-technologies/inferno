@@ -56,7 +56,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Read as Text.Read
 import Data.Time (UTCTime)
 import Data.UUID (UUID)
-import Data.Word (Word64)
+import Data.Word (Word64, Word8)
 import Data.Yaml (decodeFileThrow)
 import Database.PostgreSQL.Simple
   ( ConnectInfo (ConnectInfo),
@@ -219,10 +219,12 @@ data Config = Config
   -- ^ Configuration for PostgreSQL database
   , instanceId :: InstanceId
   -- ^ The instanceId used for DB logging
+  , memoryMax :: Word8
+  -- ^ The amount of total system memory the server process is allowed to
+  -- consume as a percentage of total memory; must be between 1 and 100
   }
   deriving stock (Show, Eq, Generic)
 
-{- ORMOLU_DISABLE -}
 instance FromJSON Config where
   parseJSON = withObject "Config" $ \o ->
     Config
@@ -231,7 +233,8 @@ instance FromJSON Config where
       <*> o .: "timeout"
       <*> o .:? "log-level" .!= LevelWarn
       <*> (connInfoP =<< o .: "store")
-      <*> (o .:? "instanceId"  .!= NoDbLogging)
+      <*> o .:? "instanceId" .!= NoDbLogging
+      <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
     where
       connInfoP :: Object -> Parser ConnectInfo
       connInfoP o =
@@ -241,7 +244,11 @@ instance FromJSON Config where
           <*> o .: "user"
           <*> o .: "password"
           <*> o .: "database"
-{- ORMOLU_ENABLE -}
+
+      memoryMaxP :: Word8 -> Parser Word8
+      memoryMaxP n
+        | n > 100 || n < 1 = fail "memoryMax must be within bounds 1-100"
+        | otherwise = pure n
 
 data InstanceId
   = InstanceId Text
