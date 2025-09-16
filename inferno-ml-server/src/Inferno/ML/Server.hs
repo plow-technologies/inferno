@@ -96,6 +96,11 @@ runInEnv cfg f =
           <*> newIORef mempty
           <*> newIORef Nothing
   where
+    -- See if we are restarting from a recent OOM event, i.e. the systemd service
+    -- manager stopped the service because it exceeded its `MemoryMax` and
+    -- the `OOMPolicy` was invoked. This leaves a breadcrumb file in the state
+    -- directory. If it exists, the time when OOM was invoked it returned and
+    -- the file is removed
     wasOomKilled :: IO (Maybe UTCTime)
     wasOomKilled =
       doesPathExist lastOomPath >>= \case
