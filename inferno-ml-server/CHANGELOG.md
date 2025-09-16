@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.9.16
+* Log information about most recent OOM event on startup
+
 ## 2025.6.10
 * Updates for introduction of `inferno-ml-compat`
 

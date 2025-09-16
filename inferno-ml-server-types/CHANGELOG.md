@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.20.0
+* Add `OomKilled` warning trace
+
 ## 0.19.0
 * Breaking changes:
   - Rename `VCObjectHashRow` to `VCObjectHashField` and change its DB (de)serialization
