@@ -81,6 +81,7 @@ import Inferno.Module.Prelude.Defs
     neqFun,
     normFun,
     orFun,
+    parseTimeFun,
     piFun,
     powFun,
     randomFun,
@@ -571,6 +572,13 @@ module Time
 
   @doc Format time to string;
   formatTime : time -> text -> text := ###formatTime###;
+
+  @doc `parseTime format str` parses the string input `str` into a `time` value
+  using the provided `format` string. If `str` cannot be parsed according to
+  `format`, then `None` is returned, otherwise `Some time`
+
+  Example: `parseTime "%Y-%m-%d %H:%M:%S" "2025-09-17 07:23:46" == Some (toTime (seconds 1758093826))`;
+  parseTime : time -> text -> option of time := ###!parseTimeFun###;
 
 module Word
 
