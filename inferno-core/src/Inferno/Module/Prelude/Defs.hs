@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.Module.Prelude.Defs where
 
@@ -21,6 +22,7 @@ import Data.Bits
     (.|.),
   )
 import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
+import Data.Function (on)
 import Data.Int (Int64)
 import Data.List (sortOn)
 import Data.List.Extra ((!?))
@@ -120,6 +122,22 @@ formatTime :: CTime -> Text -> Text
 formatTime t f =
   let t1 = posixSecondsToUTCTime $ realToFrac t
    in pack $ Time.Format.formatTime Time.Format.defaultTimeLocale (unpack f) t1
+
+parseTimeFun :: forall c m. (MonadThrow m) => Value c m
+parseTimeFun =
+  VFun $ \case
+    VText fmt ->
+      pure . VFun $ \case
+        VText input -> pure . maybe VEmpty (VOne . toEpochTime) $ parseTime fmt input
+        _ -> throwM $ RuntimeError "parseTime: expecting a time input string"
+    _ -> throwM $ RuntimeError "parseTime: expecting a time format string"
+  where
+    toEpochTime :: UTCTime -> Value c m
+    toEpochTime = VEpochTime . CTime . round . utcTimeToPOSIXSeconds
+
+    parseTime :: Text -> Text -> Maybe UTCTime
+    parseTime =
+      Time.Format.parseTimeM True Time.Format.defaultTimeLocale `on` Text.unpack
 
 randomFun :: (MonadIO m) => Value c m
 randomFun = VFun $ \_ -> VDouble <$> randomIO
