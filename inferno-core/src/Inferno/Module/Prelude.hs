@@ -577,7 +577,10 @@ module Time
   using the provided `format` string. If `str` cannot be parsed according to
   `format`, then `None` is returned, otherwise `Some time`
 
-  Example: `parseTime "%Y-%m-%d %H:%M:%S" "2025-09-17 07:23:46" == Some (toTime (seconds 1758093826))`;
+  Example: `parseTime "%Y-%m-%d %H:%M:%S" "2025-09-17 07:23:46" == Some (toTime (seconds 1758093826))`
+
+  For available format characters, please see the documentation for
+  https://hackage-content.haskell.org/package/time-1.15/docs/Data-Time-Format.html#v:formatTime;
   parseTime : time -> text -> option of time := ###!parseTimeFun###;
 
 module Word
