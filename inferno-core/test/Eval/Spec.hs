@@ -355,6 +355,16 @@ evalTests = describe "evaluate" $
       vTrue
     shouldEvaluateTo "Time.formatTime (Time.toTime (Time.seconds 0)) \"%H:%M:%S\"" $ VText "00:00:00"
     shouldEvaluateTo "Time.formatTime (Time.toTime (Time.seconds 0)) \"%c\"" $ VText "Thu Jan  1 00:00:00 UTC 1970"
+    shouldEvaluateTo "Time.parseTime \"%Y-%m-%d %H:%M:%S\" \"2025-09-17 07:23:46\"" . VOne $
+      VEpochTime 1758093826
+    shouldEvaluateTo "Time.parseTime \"%a, %d %b %Y %H:%M:%S UTC\" \"Fri, 05 May 2000 23:59:59 UTC\"" . VOne $
+      VEpochTime 957571199
+    shouldEvaluateTo "Time.parseTime \"%d/%m/%Y %H:%M\" \"07/01/2014 09:55\"" . VOne $
+      VEpochTime 1389088500
+    shouldEvaluateTo "Time.parseTime \"%Y-%m-%dT%H:%M:%SZ\" \"2025-09-18T10:32:45Z\"" . VOne $
+      VEpochTime 1758191565
+    shouldEvaluateTo "Time.parseTime \"%Y%m%d%H%M%S\" \"19991231235959\"" . VOne $
+      VEpochTime 946684799
     -- Text
     shouldEvaluateTo "Text.append \"hello \" \"world\"" $ VText "hello world"
     shouldEvaluateTo "Text.length \"hello\"" $ VInt 5

@@ -581,7 +581,7 @@ module Time
 
   For available format characters, please see the documentation for
   https://hackage-content.haskell.org/package/time-1.15/docs/Data-Time-Format.html#v:formatTime;
-  parseTime : time -> text -> option of time := ###!parseTimeFun###;
+  parseTime : text -> text -> option of time := ###!parseTimeFun###;
 
 module Word
 
