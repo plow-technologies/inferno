@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.4 -- 2025-09-18
+* Add `Time.parseTime`
+
 ## 0.11.6.3 -- 2025-07-03
 * Add `mkPreludeDocs` functionality
 
