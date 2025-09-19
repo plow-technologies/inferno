@@ -93,6 +93,7 @@ runInEnv cfg f =
           <$> newMVar ()
           <*> newEmptyMVar
           <*> newManager defaultManagerSettings
+          <*> getMemoryMax
           <*> newIORef mempty
           <*> newIORef Nothing
   where
