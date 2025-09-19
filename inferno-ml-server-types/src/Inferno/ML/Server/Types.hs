@@ -1021,6 +1021,13 @@ data RemoteError p m mv
     InfernoError (Id p) VCObjectHash SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
+  | -- | A script evaluation has used too much memory and has been killed
+    -- (in-process), pre-empting systemd OOM
+    MemoryLimitExceeded
+    -- | Limit of memory usage
+    Word64
+    -- | Actual memory usage
+    Word64
   | DbError String
   | ClientError (Id p) String
   | OtherRemoteError Text
@@ -1091,6 +1098,14 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , show $ t `div` 1000000
         , "seconds"
         ]
+    MemoryLimitExceeded limit usage ->
+      unwords
+        [ "Memory usage of evaluator has exceeded limit;"
+        , "limit:"
+        , show limit <> ","
+        , "usage:"
+        , show usage
+        ]
     DbError e ->
       unwords
         [ "Database error:"
@@ -1132,9 +1147,13 @@ data TraceWarn p
     -- moving a tensor from \"cpu:0\" to \"cuda:0\". We don\'t throw any
     -- exceptions in that case, but the log is still helpful
     CouldntMoveTensor String
-  | -- @inferno-ml-server@ was last killed due to an OOM event; the time at
+  | -- | @inferno-ml-server@ was last killed due to an OOM event; the time at
     -- restart is recorded
     OomKilled UTCTime
+  | -- | Memory monitoring will not work due to e.g. missing cgroup information
+    CantMonitorMemory
+    -- | Details
+    Text
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)

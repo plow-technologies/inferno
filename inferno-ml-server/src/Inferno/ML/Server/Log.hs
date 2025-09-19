@@ -76,6 +76,12 @@ traceRemote = \case
           , "triggered at"
           , show time
           ]
+    CantMonitorMemory details ->
+      Text.unwords
+        [ details <> ","
+        , "cannot monitor memory usage;"
+        , "running action without memory monitoring"
+        ]
     OtherWarn t -> t
   ErrorTrace e -> err . Text.pack $ displayException e
   where
@@ -157,9 +163,10 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
             InfernoError{} -> True
             NoBridgeSaved{} -> True
             ScriptTimeout{} -> True
+            MemoryLimitExceeded{} -> True
             DbError{} -> True
             ClientError{} -> True
-            OtherRemoteError{} -> False
+            OtherRemoteError{} -> True
 
         printMessage :: Message -> Either Text Text
         printMessage (Message level stream) = case stream of

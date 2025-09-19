@@ -163,6 +163,7 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
             e@InfernoError{} -> errWith err500 e
             e@NoBridgeSaved{} -> errWith err500 e
             e@ScriptTimeout{} -> errWith err500 e
+            e@MemoryLimitExceeded{} -> errWith err500 e
             e@DbError{} -> errWith err500 e
             e@ClientError{} -> errWith err500 e
 
