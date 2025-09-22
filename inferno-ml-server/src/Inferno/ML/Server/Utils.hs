@@ -178,8 +178,10 @@ withMemoryMonitor f =
               -- the OOM killer is likely to be invoked. This throws an exception,
               -- which propagates to the calling thread, which also includes the
               -- `RemoteM` effect in its child scope, i.e. also killing it
-              when (current >= limit) . throwRemoteError $
-                MemoryLimitExceeded memMax current
+              when (current >= limit) $
+                let err :: RemoteError
+                    err = MemoryLimitExceeded memMax current
+                in logError err *> throwRemoteError err
           -- Wait 200ms
           threadDelay 200000
           where
@@ -210,11 +212,11 @@ withMemoryMonitor f =
           fromMaybe ((OtherRemoteError . Text.pack . displayException) e) $
             fromException e
 
-        -- This is the limit for memory usage in bytes, i.e. 95% of `MemoryMax`.
+        -- This is the limit for memory usage in bytes, i.e. 98% of `MemoryMax`.
         -- If we hit this threshold is is likely we will exceed the maximum and
         -- the thread is killed
         limit :: Word64
-        limit = round @Float $ realToFrac memMax * 0.95
+        limit = round @Float $ realToFrac memMax * 0.98
 
         memoryCurrentPath :: FilePath
         memoryCurrentPath = cgroupPath </> "memory.current"
