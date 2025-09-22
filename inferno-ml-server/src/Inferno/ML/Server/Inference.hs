@@ -181,7 +181,10 @@ runInferenceParamWithEnv ::
   ScriptEnv ->
   RemoteM (WriteStream IO)
 runInferenceParamWithEnv ipid uuid senv =
-  withTimeoutMillis $ \t -> do
+  -- This enforces that the script will finish execution within its given
+  -- time limit (`withTimeoutMillis`) and that it will not consume up to or
+  -- beyond the `MemoryMax` defined in its systemd service configuration
+  withMemoryMonitor . withTimeoutMillis $ \t -> do
     logInfo $ RunningInference ipid t
     -- Clear the "console" before running the script, so any calls to
     -- `Print.print` will write to a fresh console

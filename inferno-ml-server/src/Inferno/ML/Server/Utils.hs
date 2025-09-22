@@ -20,11 +20,13 @@ import Control.Monad (forever, void, (<=<))
 import Control.Monad.Catch (Exception, MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as ByteString.Char8
 import Data.Generics.Labels ()
 import Data.Generics.Product (HasType (typed))
 import Data.Maybe (fromMaybe)
 import Data.Pool (Pool, withResource)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Vector (Vector, (!?))
 import Data.Word (Word64)
@@ -42,6 +44,11 @@ import Inferno.ML.Server.Types
 import Inferno.VersionControl.Types (VCObjectHash)
 import Lens.Micro.Platform (view)
 import System.FilePath ((</>))
+import System.IO.Error
+  ( isEOFError,
+    isIllegalOperation,
+    isResourceVanishedError,
+  )
 import UnliftIO (MonadUnliftIO (withRunInIO))
 import UnliftIO.Async (cancel, waitCatch, withAsync)
 import UnliftIO.Concurrent (threadDelay)
@@ -49,6 +56,7 @@ import UnliftIO.Directory (doesPathExist)
 import UnliftIO.Exception
   ( SomeException,
     catch,
+    catchJust,
     displayException,
     fromException,
   )
@@ -105,7 +113,7 @@ withConns f = view typed >>= \cs -> withRunInIO $ \r -> withResource cs $ r . f
 -- NOTE: If the cgroup @memory.max@ information is missing or unreadable at the
 -- time of server start, the provided @RemoteM@ action is run /without/ memory
 -- monitoring and a warning is logged
-withMemoryMonitor :: RemoteM () -> RemoteM ()
+withMemoryMonitor :: forall a. RemoteM a -> RemoteM a
 withMemoryMonitor f =
   view #memoryMax >>= \case
     -- This means that the `memory.max` cgroup information was missing or
@@ -113,14 +121,10 @@ withMemoryMonitor f =
     -- action without memory monitoring. Note that we still have the systemd
     -- OOM policy as a backup so the action will still be killed, but it's not
     -- as graceful (i.e. either way we can't exceed the limit)
-    Nothing ->
-      (logWarn . CantMonitorMemory) "Server `memory.max` missing or unreadable"
-        *> f
+    Nothing -> logCantMonitor "Server `memory.max` missing or unreadable" *> f
     Just memMax ->
       doesPathExist memoryCurrentPath >>= \case
-        False ->
-          (logWarn . CantMonitorMemory) "Server `memory.current` missing"
-            *> f
+        False -> logCantMonitor "Server `memory.current` missing" *> f
         True ->
           -- Open handle to `$CGROUP/memory.current` so we don't open the same
           -- file constantly. The `Handle` will be read into a `ByteString` and
@@ -139,31 +143,47 @@ withMemoryMonitor f =
         monitor ::
           -- Open (read-only) file handle to `$CGROUP/memory.current`, which
           -- we will try to read into bytes. Note that this handle is obtained
-          -- from `withFile` above, which will close it upon completion or any
-          -- exceptions
+          -- from `withFile` above, which will close it upon completion or
+          -- exception
           Handle ->
-          RemoteM ()
+          RemoteM a
         monitor h = forever $ do
           -- Seek back to beginning of handle to avoid EOF issues when reading
           -- from it into a bytestring and parsing out the `Word64`
           hSeek h AbsoluteSeek 0
           -- Try to read the current memory usage in bytes from the handle
-          readHandle >>= \case
+          readMemoryCurrent >>= \case
             -- In this case, we will just log a warning; we don't want to kill
             -- the thread because we are going to try again shortly anyway
             Nothing ->
               logWarn . CantMonitorMemory $ "Server `memory.current` unreadable"
             -- FIXME Add cancellation logic here
             Just current ->
-              logInfo $ OtherInfo $ "Current memory: " <> tshow current
+              logWarn . OtherWarn $ "Current memory: " <> tshow current
           -- Wait 200ms
           threadDelay 200000
           where
             -- Try to read the `Word64` (memory in bytes) from the open file handle
-            readHandle :: RemoteM (Maybe Word64)
-            readHandle =
-              fmap fst . ByteString.Char8.readWord64
-                <$> liftIO (ByteString.Char8.hGetLine h)
+            readMemoryCurrent :: RemoteM (Maybe Word64)
+            readMemoryCurrent =
+              maybe Nothing (fmap fst . ByteString.Char8.readWord64)
+                <$> mreadHandle
+              where
+                -- Try reading the open handle into a `ByteString`, with
+                -- consideration for possible `IOError`s that might arise
+                mreadHandle :: RemoteM (Maybe ByteString)
+                mreadHandle =
+                  liftIO
+                    . catchJust select (fmap Just (ByteString.Char8.hGetLine h))
+                    . const
+                    $ pure Nothing
+                  where
+                    select :: IOError -> Maybe ()
+                    select e
+                      | isEOFError e = Just ()
+                      | isIllegalOperation e = Just ()
+                      | isResourceVanishedError e = Just ()
+                      | otherwise = Nothing
 
         toRemoteError :: SomeException -> RemoteError
         toRemoteError e =
@@ -176,6 +196,9 @@ withMemoryMonitor f =
 
         memoryCurrentPath :: FilePath
         memoryCurrentPath = cgroupPath </> "memory.current"
+  where
+    logCantMonitor :: Text -> RemoteM ()
+    logCantMonitor = logWarn . CantMonitorMemory
 
 -- | Get the maximum memory in bytes that the server process can use according
 -- to its systemd policy. Note:
