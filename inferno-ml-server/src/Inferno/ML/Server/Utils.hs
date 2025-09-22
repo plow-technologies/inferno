@@ -16,7 +16,7 @@ module Inferno.ML.Server.Utils
   )
 where
 
-import Control.Monad (forever, void, (<=<))
+import Control.Monad (forever, void, when, (<=<))
 import Control.Monad.Catch (Exception, MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader)
@@ -50,7 +50,7 @@ import System.IO.Error
     isResourceVanishedError,
   )
 import UnliftIO (MonadUnliftIO (withRunInIO))
-import UnliftIO.Async (cancel, waitCatch, withAsync)
+import UnliftIO.Async (cancel, waitCatch, withAsync, link)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Directory (doesPathExist)
 import UnliftIO.Exception
@@ -113,6 +113,18 @@ withConns f = view typed >>= \cs -> withRunInIO $ \r -> withResource cs $ r . f
 -- NOTE: If the cgroup @memory.max@ information is missing or unreadable at the
 -- time of server start, the provided @RemoteM@ action is run /without/ memory
 -- monitoring and a warning is logged
+--
+-- Even without the active monitor below, if the entire server process exceeds
+-- @MemoryMax@ it will be stopped and restarted. However, it\'s preferable to
+-- stop a single action within the server and keep the server running rather
+-- than stopping and re-starting the entire process. First, we can still service
+-- other endpoints, e.g. @/status@. Second, we can return a more meaningful
+-- error message
+--
+-- NOTE: This is really only meant to be used with the script evaluator, which
+-- is the only server endpoint that can consume a significant amount of memory.
+-- But it\'s easier\/cleaner to add this as a CPS-style wrapper without including
+-- the logic directly inside the script evaluator
 withMemoryMonitor :: forall a. RemoteM a -> RemoteM a
 withMemoryMonitor f =
   view #memoryMax >>= \case
@@ -130,7 +142,11 @@ withMemoryMonitor f =
           -- file constantly. The `Handle` will be read into a `ByteString` and
           -- parsed into a `Word64`
           withFile memoryCurrentPath ReadMode $ \h ->
-            withAsync (monitor h) $ \mon ->
+            withAsync (monitor h) $ \mon -> do
+              -- Need to ensure that any exception from the monitor thread
+              -- are linked here, because an exception is thrown when the
+              -- memory usage limit is reached
+              link mon
               withAsync f $
                 ((cancel mon *>) . either (throwM . toRemoteError) pure)
                   <=< waitCatch
@@ -157,9 +173,13 @@ withMemoryMonitor f =
             -- the thread because we are going to try again shortly anyway
             Nothing ->
               logWarn . CantMonitorMemory $ "Server `memory.current` unreadable"
-            -- FIXME Add cancellation logic here
             Just current ->
-              logWarn . OtherWarn $ "Current memory: " <> tshow current
+              -- If the current >= limit, then we have reached a threshold where
+              -- the OOM killer is likely to be invoked. This throws an exception,
+              -- which propagates to the calling thread, which also includes the
+              -- `RemoteM` effect in its child scope, i.e. also killing it
+              when (current >= limit) . throwRemoteError $
+                MemoryLimitExceeded memMax current
           -- Wait 200ms
           threadDelay 200000
           where
@@ -190,9 +210,11 @@ withMemoryMonitor f =
           fromMaybe ((OtherRemoteError . Text.pack . displayException) e) $
             fromException e
 
-        -- FIXME Multiply by percentage of max to get limit
-        _limit :: Word64
-        _limit = undefined memMax
+        -- This is the limit for memory usage in bytes, i.e. 95% of `MemoryMax`.
+        -- If we hit this threshold is is likely we will exceed the maximum and
+        -- the thread is killed
+        limit :: Word64
+        limit = round @Float $ realToFrac memMax * 0.95
 
         memoryCurrentPath :: FilePath
         memoryCurrentPath = cgroupPath </> "memory.current"
