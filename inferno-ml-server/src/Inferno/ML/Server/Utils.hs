@@ -110,7 +110,9 @@ withMemoryMonitor f =
   view #memoryMax >>= \case
     -- This means that the `memory.max` cgroup information was missing or
     -- unreadable when starting the server; in that case we just perform the
-    -- action without memory monitoring
+    -- action without memory monitoring. Note that we still have the systemd
+    -- OOM policy as a backup so the action will still be killed, but it's not
+    -- as graceful (i.e. either way we can't exceed the limit)
     Nothing ->
       (logWarn . CantMonitorMemory) "Server `memory.max` missing or unreadable"
         *> f
@@ -129,24 +131,39 @@ withMemoryMonitor f =
                 ((cancel mon *>) . either (throwM . toRemoteError) pure)
                   <=< waitCatch
       where
-        monitor :: Handle -> RemoteM ()
+        -- Thread to monitor memory usage by reading `$CGROUP/memory.current`
+        -- and comparing it to `memory.max` (which is stored in the `Env`).
+        -- Once the current memory usage gets close enough to the maximum,
+        -- `MemoryLimitExceeded` is raised; this propagates to the main thread
+        -- and the action running concurrently
+        monitor ::
+          -- Open (read-only) file handle to `$CGROUP/memory.current`, which
+          -- we will try to read into bytes. Note that this handle is obtained
+          -- from `withFile` above, which will close it upon completion or any
+          -- exceptions
+          Handle ->
+          RemoteM ()
         monitor h = forever $ do
           -- Seek back to beginning of handle to avoid EOF issues when reading
           -- from it into a bytestring and parsing out the `Word64`
           hSeek h AbsoluteSeek 0
           -- Try to read the current memory usage in bytes from the handle
-          (liftIO (ByteString.Char8.hGetLine h) >>=)
-            . (. ByteString.Char8.readWord64)
-            $ \case
-              -- In this case, we will just log a warning; we don't want to kill
-              -- the thread because we are going to try again shortly anyway
-              Nothing ->
-                logWarn . CantMonitorMemory $ "Server `memory.current` unreadable"
-              -- FIXME Add cancellation logic here
-              Just (current, _) ->
-                logInfo $ OtherInfo $ "Current memory: " <> tshow current
+          readHandle >>= \case
+            -- In this case, we will just log a warning; we don't want to kill
+            -- the thread because we are going to try again shortly anyway
+            Nothing ->
+              logWarn . CantMonitorMemory $ "Server `memory.current` unreadable"
+            -- FIXME Add cancellation logic here
+            Just current ->
+              logInfo $ OtherInfo $ "Current memory: " <> tshow current
           -- Wait 200ms
           threadDelay 200000
+          where
+            -- Try to read the `Word64` (memory in bytes) from the open file handle
+            readHandle :: RemoteM (Maybe Word64)
+            readHandle =
+              fmap fst . ByteString.Char8.readWord64
+                <$> liftIO (ByteString.Char8.hGetLine h)
 
         toRemoteError :: SomeException -> RemoteError
         toRemoteError e =
