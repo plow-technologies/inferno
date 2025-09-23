@@ -1100,7 +1100,7 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         ]
     MemoryLimitExceeded limit usage ->
       unwords
-        [ "Memory usage of evaluator has exceeded limit;"
+        [ "Memory usage of script evaluator has exceeded limit;"
         , "limit:"
         , show limit <> ","
         , "usage:"

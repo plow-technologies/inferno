@@ -16,7 +16,7 @@ module Inferno.ML.Server.Utils
   )
 where
 
-import Control.Monad (forever, void, when, (<=<))
+import Control.Monad (forever, void, when)
 import Control.Monad.Catch (Exception, MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (MonadReader)
@@ -50,7 +50,7 @@ import System.IO.Error
     isResourceVanishedError,
   )
 import UnliftIO (MonadUnliftIO (withRunInIO))
-import UnliftIO.Async (cancel, waitCatch, withAsync, link)
+import UnliftIO.Async (cancel, waitEitherCatch, withAsync)
 import UnliftIO.Concurrent (threadDelay)
 import UnliftIO.Directory (doesPathExist)
 import UnliftIO.Exception
@@ -142,14 +142,27 @@ withMemoryMonitor f =
           -- file constantly. The `Handle` will be read into a `ByteString` and
           -- parsed into a `Word64`
           withFile memoryCurrentPath ReadMode $ \h ->
-            withAsync (monitor h) $ \mon -> do
-              -- Need to ensure that any exception from the monitor thread
-              -- are linked here, because an exception is thrown when the
-              -- memory usage limit is reached
-              link mon
-              withAsync f $
-                ((cancel mon *>) . either (throwM . toRemoteError) pure)
-                  <=< waitCatch
+            withAsync (monitor h) $ \mon ->
+              withAsync f $ \inner ->
+                waitEitherCatch mon inner >>= \case
+                  -- Here the monitor has failed, i.e. thrown an exception, so
+                  -- cancel `f` and re-throw the exception
+                  Left (Left e) -> do
+                    cancel inner
+                    throwRemoteError $ toRemoteError e
+                  -- Should never happen; monitor runs in infinite loop until it
+                  -- throws an exception
+                  Left (Right _) ->
+                    throwRemoteError $
+                      OtherRemoteError "Memory monitor terminated abnormally"
+                  -- Here `f` has failed, so cancel the monitor thread and
+                  -- re-throw. This would be a normal failure from the
+                  -- script evaluator, not due to memory usage
+                  Right (Left e) -> do
+                    cancel mon
+                    throwRemoteError $ toRemoteError e
+                  -- `f` has succeeded
+                  Right (Right x) -> x <$ cancel mon
       where
         -- Thread to monitor memory usage by reading `$CGROUP/memory.current`
         -- and comparing it to `memory.max` (which is stored in the `Env`).
@@ -179,9 +192,7 @@ withMemoryMonitor f =
               -- which propagates to the calling thread, which also includes the
               -- `RemoteM` effect in its child scope, i.e. also killing it
               when (current >= limit) $
-                let err :: RemoteError
-                    err = MemoryLimitExceeded memMax current
-                in logError err *> throwRemoteError err
+                throwRemoteError $ MemoryLimitExceeded memMax current
           -- Wait 200ms
           threadDelay 200000
           where
