@@ -86,6 +86,7 @@ library
     , template-haskell
     , text
     , time
+    , unix
     , unliftio
     , uuid
     , vector
