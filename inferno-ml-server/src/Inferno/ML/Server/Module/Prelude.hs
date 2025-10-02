@@ -366,7 +366,10 @@ toDeviceIO device t0 =
       -- move a tensor to `cuda:0` when only `cpu` is available). So in this case
       -- a warning is logged (in the script evaluator) and the original tensor is
       -- returned
-      | isJust $ fromException @ErrorCall e -> pure $ Right t0
+      --
+      -- Note that `Left` here indicates that the tensor was NOT moved, and a
+      -- warning will be logged from script evaluator
+      | isJust $ fromException @ErrorCall e -> pure $ Left t0
       | otherwise ->
           throwM . RuntimeError $
             unwords
