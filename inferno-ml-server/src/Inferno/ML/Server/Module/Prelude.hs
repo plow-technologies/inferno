@@ -20,6 +20,7 @@ import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
+import Data.Maybe (isJust)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Tuple.Extra ((&&&))
@@ -56,7 +57,12 @@ import Prettyprinter.Render.Text (renderStrict)
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
 import qualified Torch (toDevice)
-import UnliftIO.Exception (handle)
+import UnliftIO.Exception
+  ( displayException,
+    evaluate,
+    fromException,
+    tryAny,
+  )
 import UnliftIO.IORef (atomicModifyIORef')
 
 -- | Contains primitives for use in bridge prelude, including those to read\/write
@@ -342,17 +348,32 @@ serverMlPrelude =
 -- the tensor to the new device, i.e. the original tensor is returned;
 -- `Right Tensor` is the successfully moved new tensor
 toDeviceIO :: Device -> Tensor -> IO (Either Tensor Tensor)
-toDeviceIO device t1 = handle handler $ t2 `seq` pure (Right t2)
-  where
-    -- If the `error` occurs, the original tensor is returned
-    handler :: ErrorCall -> IO (Either Tensor Tensor)
-    handler = const . pure $ Left t1
-
-    -- The potentialy moved tensor. If the requested device is not available,
-    -- i.e. moving to CUDA on a CPU-only device, this "pure" function will
-    -- throw an `error`
-    t2 :: Tensor
-    t2 = Torch.toDevice device t1
+toDeviceIO device t0 =
+  -- Catch any synchronous exceptions here and then inspect them. Note we need
+  -- to `evaluate` the "pure" `Torch.toDevice` to surface impure exceptions
+  -- (any `error` call)
+  --
+  -- It would be nice to use `tryAnyDeep` here but `Tensor` does not have an
+  -- `NFData` instance
+  tryAny (evaluate (Torch.toDevice device t0)) >>= \case
+    -- The moved tensor. If the requested device is not available, e.g. moving
+    -- to CUDA on a CPU-only device, this "pure" function will throw an `error`
+    -- and we will hit the first `Left` case below
+    Right t1 -> pure $ Right t1
+    Left e
+      -- If the `error` occurs, the original tensor is returned. This is because
+      -- Hasktorch will `error` when the device is not correct (e.g. trying to
+      -- move a tensor to `cuda:0` when only `cpu` is available). So in this case
+      -- a warning is logged (in the script evaluator) and the original tensor is
+      -- returned
+      | isJust $ fromException @ErrorCall e -> pure $ Right t0
+      | otherwise ->
+          throwM . RuntimeError $
+            unwords
+              [ "Exception when moving tensor to device"
+              , show device <> ":"
+              , displayException e
+              ]
 
 -- | Provided with implementations for @print@ and @printWith@, creates a
 -- @Print@ module with effects for printing to the \"console\"
