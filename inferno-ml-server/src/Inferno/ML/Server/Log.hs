@@ -146,7 +146,12 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
           -- Having `LevelWarn` traces show up helps with debugging; the
           -- server does not generate many of these, so it shouldn't overwhelm
           -- the DB with garbage messages (unlike `LevelInfo`)
-          WarnTrace _ -> True
+          WarnTrace warn -> case warn of
+            CouldntMoveTensor{} -> True
+            OomKilled{} -> True
+            OtherWarn{} -> True
+            -- This one is not really necessary for debugging
+            CancelingInference{} -> False
           ErrorTrace err -> case err of
             CacheSizeExceeded -> False
             NoSuchModel{} -> True

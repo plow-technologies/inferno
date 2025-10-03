@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.10.3
+* Catch/rethrow any synchronous exceptions from `toDeviceIO`
+
 ## 2025.9.16
 * Log information about most recent OOM event on startup
 
