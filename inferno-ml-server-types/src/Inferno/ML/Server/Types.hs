@@ -1025,8 +1025,8 @@ data RemoteError p m mv
   | -- | A script evaluation has used too much memory and has been killed
     -- (in-process), pre-empting systemd OOM
     MemoryLimitExceeded
-    -- | Actual memory usage at time of exception
-    Word64
+      -- | Actual memory usage at time of exception
+      Word64
   | DbError String
   | ClientError (Id p) String
   | OtherRemoteError Text
