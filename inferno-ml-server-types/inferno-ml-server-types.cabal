@@ -44,6 +44,7 @@ library
     , base
     , base64-bytestring
     , bytestring
+    , byteunits
     , conduit
     , containers
     , cryptonite

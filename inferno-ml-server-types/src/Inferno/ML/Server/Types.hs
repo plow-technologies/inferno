@@ -29,6 +29,7 @@ import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64.URL
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import qualified Data.ByteUnits as ByteUnits
 import Data.Char (chr)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed))
@@ -1024,9 +1025,7 @@ data RemoteError p m mv
   | -- | A script evaluation has used too much memory and has been killed
     -- (in-process), pre-empting systemd OOM
     MemoryLimitExceeded
-    -- | Limit of memory usage
-    Word64
-    -- | Actual memory usage
+    -- | Actual memory usage at time of exception
     Word64
   | DbError String
   | ClientError (Id p) String
@@ -1098,13 +1097,17 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , show $ t `div` 1000000
         , "seconds"
         ]
-    MemoryLimitExceeded limit usage ->
+    MemoryLimitExceeded usage ->
       unwords
-        [ "Memory usage of script evaluator has exceeded limit;"
-        , "limit:"
-        , show limit <> ","
-        , "usage:"
-        , show usage
+        [ "Memory usage of script evaluator has exceeded limit,"
+        , "script evaluation memory usage:"
+        , -- This is to make the error more user-friendly. Instead of seeing
+          -- the actual bytes as a `Word64`, this will produce a nicer
+          -- `"... GB"` string (potentially fractional)
+          ByteUnits.getShortHand $
+            ByteUnits.convertByteUnit
+              (ByteUnits.ByteValue (realToFrac usage) ByteUnits.Bytes)
+              ByteUnits.GigaBytes
         ]
     DbError e ->
       unwords

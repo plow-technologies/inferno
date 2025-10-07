@@ -1,5 +1,6 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Inferno.ML.Server.Utils
@@ -164,7 +165,7 @@ withMemoryMonitor f =
                     -- don't get restarted by systemd. However, here we can send
                     -- the response with a clear body describing the problem and
                     -- release the memory by killing the process
-                    scheduleSelfRestart 500000 1
+                    scheduleSelfRestart 500_000 1
                     throwRemoteError $ toRemoteError e
                   -- Should never happen; monitor runs in infinite loop until it
                   -- throws an exception
@@ -207,11 +208,10 @@ withMemoryMonitor f =
               -- the OOM killer is likely to be invoked. This throws an exception,
               -- which propagates to the calling thread, which also includes the
               -- `RemoteM` effect in its child scope, i.e. also killing it
-              when (current >= limit) $
-                throwRemoteError $
-                  MemoryLimitExceeded memMax current
+              when (current >= limit) . throwRemoteError $
+                MemoryLimitExceeded current
           -- Wait 200ms
-          threadDelay 200000
+          threadDelay 200_000
           where
             -- Try to read the `Word64` (memory in bytes) from the open file handle
             readMemoryCurrent :: RemoteM (Maybe Word64)

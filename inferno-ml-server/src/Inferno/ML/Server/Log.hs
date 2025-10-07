@@ -156,6 +156,7 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
             CouldntMoveTensor{} -> True
             OomKilled{} -> True
             OtherWarn{} -> True
+            CantMonitorMemory{} -> True
             -- This one is not really necessary for debugging
             CancelingInference{} -> False
           ErrorTrace err -> case err of
