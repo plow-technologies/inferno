@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.21.0
+* Add `MemoryLimitExceeded` error ctor for OOM threshold breach
+
 ## 0.20.0
 * Add `OomKilled` warning trace
 
