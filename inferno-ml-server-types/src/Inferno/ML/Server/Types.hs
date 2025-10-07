@@ -1155,8 +1155,8 @@ data TraceWarn p
     OomKilled UTCTime
   | -- | Memory monitoring will not work due to e.g. missing cgroup information
     CantMonitorMemory
-    -- | Details
-    Text
+      -- | Details
+      Text
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)
