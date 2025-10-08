@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.10.7
+* Add in-process memory monitor for OOM threshold
+
 ## 2025.10.3
 * Catch/rethrow any synchronous exceptions from `toDeviceIO`
 

@@ -29,6 +29,7 @@ import Data.Bool (bool)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Base64.URL as Base64.URL
 import qualified Data.ByteString.Char8 as ByteString.Char8
+import qualified Data.ByteUnits as ByteUnits
 import Data.Char (chr)
 import Data.Data (Typeable)
 import Data.Generics.Product (HasType (typed))
@@ -1021,6 +1022,11 @@ data RemoteError p m mv
     InfernoError (Id p) VCObjectHash SomeInfernoError
   | NoBridgeSaved (Id p)
   | ScriptTimeout (Id p) Int
+  | -- | A script evaluation has used too much memory and has been killed
+    -- (in-process), pre-empting systemd OOM
+    MemoryLimitExceeded
+      -- | Actual memory usage at time of exception
+      Word64
   | DbError String
   | ClientError (Id p) String
   | OtherRemoteError Text
@@ -1091,6 +1097,18 @@ instance (Typeable p, Typeable m, Typeable mv) => Exception (RemoteError p m mv)
         , show $ t `div` 1000000
         , "seconds"
         ]
+    MemoryLimitExceeded usage ->
+      unwords
+        [ "Memory usage of script evaluator has exceeded limit,"
+        , "script evaluation memory usage:"
+        , -- This is to make the error more user-friendly. Instead of seeing
+          -- the actual bytes as a `Word64`, this will produce a nicer
+          -- `"... GB"` string (potentially fractional)
+          ByteUnits.getShortHand $
+            ByteUnits.convertByteUnit
+              (ByteUnits.ByteValue (realToFrac usage) ByteUnits.Bytes)
+              ByteUnits.GigaBytes
+        ]
     DbError e ->
       unwords
         [ "Database error:"
@@ -1132,9 +1150,13 @@ data TraceWarn p
     -- moving a tensor from \"cpu:0\" to \"cuda:0\". We don\'t throw any
     -- exceptions in that case, but the log is still helpful
     CouldntMoveTensor String
-  | -- @inferno-ml-server@ was last killed due to an OOM event; the time at
+  | -- | @inferno-ml-server@ was last killed due to an OOM event; the time at
     -- restart is recorded
     OomKilled UTCTime
+  | -- | Memory monitoring will not work due to e.g. missing cgroup information
+    CantMonitorMemory
+      -- | Details
+      Text
   | OtherWarn Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (ToJSON, FromJSON)

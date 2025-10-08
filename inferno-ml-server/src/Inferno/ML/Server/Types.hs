@@ -132,6 +132,11 @@ data Env = Env
           Async (Maybe (Types.WriteStream IO))
         )
   , manager :: Manager
+  , -- Maximum memory in bytes that the server process is allowed to use; if
+    -- this is `Nothing`, the cgroup information does not exist or is not
+    -- readable as bytes. In this case, no in-process memory monitoring will
+    -- be used
+    memoryMax :: Maybe Word64
   , -- Prints to the console. This is cleared before every script evaluation
     console :: IORef (Seq Text)
   , -- The interpreter needs to be updated if the bridge info changes,
