@@ -1131,6 +1131,62 @@ data RemoteTrace p m mv
   deriving anyclass (ToJSON, FromJSON)
   deriving (FromField, ToField) via Aeson (RemoteTrace p m mv)
 
+showTrace ::
+  ( Typeable p
+  , Typeable m
+  , Typeable mv
+  ) =>
+  RemoteTrace p m mv -> Text
+showTrace = \case
+  InfoTrace i -> case i of
+    StartingServer -> "Starting `inferno-ml-server`"
+    RunningInference ipid t ->
+      Text.unwords
+        [ "Running inference param:"
+        , tshow ipid <> ","
+        , "with timeout:"
+        , tshow $ t `div` 1000000
+        , "(seconds)"
+        ]
+    EvaluatingParam s ->
+      Text.unwords
+        [ "Evaluating inferno script for parameter:"
+        , tshow s
+        ]
+    CopyingModel m ->
+      Text.unwords
+        [ "Copying model to cache:"
+        , tshow m
+        ]
+    OtherInfo t -> t
+  WarnTrace w -> case w of
+    CancelingInference i ->
+      Text.unwords
+        [ "Canceling inference job for param:"
+        , tshow i
+        ]
+    CouldntMoveTensor dev ->
+      Text.pack $
+        unwords
+          [ "Couldn't move tensor to device"
+          , dev
+          ]
+    OomKilled time ->
+      Text.pack $
+        unwords
+          [ "Server is restarting from out-of-memory event"
+          , "triggered at"
+          , show time
+          ]
+    CantMonitorMemory details ->
+      Text.unwords
+        [ details <> ","
+        , "cannot monitor memory usage;"
+        , "running action without memory monitoring"
+        ]
+    OtherWarn t -> t
+  ErrorTrace e -> Text.pack $ displayException e
+
 data TraceInfo p mv
   = StartingServer
   | RunningInference (Id p) Int
