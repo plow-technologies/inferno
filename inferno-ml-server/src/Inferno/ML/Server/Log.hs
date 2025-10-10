@@ -105,6 +105,7 @@ withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
             RunningInference{} -> True
             EvaluatingParam{} -> True
             OtherInfo{} -> True
+            ExternalTrace{} -> True
           -- Having `LevelWarn` traces show up helps with debugging; the
           -- server does not generate many of these, so it shouldn't overwhelm
           -- the DB with garbage messages (unlike `LevelInfo`)
