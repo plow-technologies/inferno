@@ -1189,6 +1189,17 @@ showTrace = \case
     OtherWarn t -> t
   ErrorTrace e -> Text.pack $ displayException e
 
+showTraceWithLevel ::
+  ( Typeable p
+  , Typeable m
+  , Typeable mv
+  ) =>
+  RemoteTrace p m mv -> Text
+showTraceWithLevel = \case
+  i@InfoTrace{} -> "INFO: " <> showTrace i
+  w@WarnTrace{} -> "WARN: " <> showTrace w
+  e@ErrorTrace{} -> "ERROR: " <> showTrace e
+
 data TraceInfo p mv
   = StartingServer
   | RunningInference (Id p) Int
