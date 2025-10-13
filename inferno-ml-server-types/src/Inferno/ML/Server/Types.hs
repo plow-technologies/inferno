@@ -1159,8 +1159,9 @@ showTrace = \case
         , tshow m
         ]
     OtherInfo t -> t
-    -- Note this will not actually be logged by the server
-    ExternalTrace t -> t
+    -- Note this will not actually be logged by the server, but is useful for
+    -- DB tracing
+    ExternalTrace t -> "(external) " <> t
   WarnTrace w -> case w of
     CancelingInference i ->
       Text.unwords
@@ -1196,9 +1197,9 @@ showTraceWithLevel ::
   ) =>
   RemoteTrace p m mv -> Text
 showTraceWithLevel = \case
-  i@InfoTrace{} -> "INFO: " <> showTrace i
-  w@WarnTrace{} -> "WARN: " <> showTrace w
-  e@ErrorTrace{} -> "ERROR: " <> showTrace e
+  i@InfoTrace{} -> "[INFO] " <> showTrace i
+  w@WarnTrace{} -> "[WARN] " <> showTrace w
+  e@ErrorTrace{} -> "[ERROR] " <> showTrace e
 
 data TraceInfo p mv
   = StartingServer
