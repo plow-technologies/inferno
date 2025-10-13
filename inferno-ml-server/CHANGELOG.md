@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.10.13
+* Persist more traces and lower default log level
+
 ## 2025.10.7
 * Add in-process memory monitor for OOM threshold
 

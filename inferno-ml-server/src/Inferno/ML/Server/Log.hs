@@ -4,19 +4,14 @@
 
 module Inferno.ML.Server.Log where
 
-import Control.Exception (displayException)
 import Control.Monad (when)
 import Control.Monad.Reader (runReaderT)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Contravariant (contramap)
 import Data.Pool (Pool)
 import Data.Text (Text)
-import qualified Data.Text as Text
 import qualified Data.Text.Encoding as T
-import Data.Time (getCurrentTime)
-import Database.PostgreSQL.Simple
-  ( Connection,
-  )
+import Database.PostgreSQL.Simple (Connection)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import GHC.Generics (Generic)
 import Inferno.ML.Server.Types
@@ -36,54 +31,9 @@ import UnliftIO.IO (Handle, stderr, stdout)
 
 traceRemote :: RemoteTrace -> Message
 traceRemote = \case
-  InfoTrace i -> info $ case i of
-    StartingServer -> "Starting `inferno-ml-server`"
-    RunningInference ipid t ->
-      Text.unwords
-        [ "Running inference param:"
-        , tshow ipid <> ","
-        , "with timeout:"
-        , tshow $ t `div` 1000000
-        , "(seconds)"
-        ]
-    EvaluatingParam s ->
-      Text.unwords
-        [ "Evaluating inferno script for parameter:"
-        , tshow s
-        ]
-    CopyingModel m ->
-      Text.unwords
-        [ "Copying model to cache:"
-        , tshow m
-        ]
-    OtherInfo t -> t
-  WarnTrace w -> warn $ case w of
-    CancelingInference i ->
-      Text.unwords
-        [ "Canceling inference job for param:"
-        , tshow i
-        ]
-    CouldntMoveTensor dev ->
-      Text.pack $
-        unwords
-          [ "Couldn't move tensor to device"
-          , dev
-          ]
-    OomKilled time ->
-      Text.pack $
-        unwords
-          [ "Server is restarting from out-of-memory event"
-          , "triggered at"
-          , show time
-          ]
-    CantMonitorMemory details ->
-      Text.unwords
-        [ details <> ","
-        , "cannot monitor memory usage;"
-        , "running action without memory monitoring"
-        ]
-    OtherWarn t -> t
-  ErrorTrace e -> err . Text.pack $ displayException e
+  i@InfoTrace{} -> info $ showTrace i
+  w@WarnTrace{} -> warn $ showTrace w
+  e@ErrorTrace{} -> err $ showTrace e
   where
     info, err, warn :: Text -> Message
     info = Message LevelInfo . Stdout
@@ -107,10 +57,10 @@ withRemoteTracer ::
   Pool Connection ->
   (IOTracer RemoteTrace -> m a) ->
   m a
-withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
+withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
   \tso tse -> do
-    mInstanceId <- case instanceId of
-      InstanceId instanceId' -> pure $ Just instanceId'
+    mInstanceId <- case instanceIdOpt of
+      InstanceId instanceId -> pure $ Just instanceId
       Auto -> Just <$> queryInstanceId
       NoDbLogging -> pure Nothing
     f $ mkRemoteTracer mInstanceId tso tse
@@ -132,23 +82,30 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
       IOTracer $ consoleTracer <> maybe mempty databaseTracer mInstanceId
       where
         databaseTracer :: forall m'. (MonadIO m') => Text -> Tracer m' RemoteTrace
-        databaseTracer instanceId' = Tracer $ \t ->
-          when (shallPersist t) $
-            liftIO $ do
-              ts <- getCurrentTime
-              flip runReaderT pool $
-                executeStore
-                  [sql|INSERT INTO traces (instance_id, ts, trace) VALUES (?, ?, ?)|]
-                  (instanceId', ts, t)
+        databaseTracer instanceId = Tracer $ \t ->
+          when (shallPersist t) . liftIO . flip runReaderT pool $
+            executeStore
+              [sql|INSERT INTO traces (instance_id, ts, trace) VALUES (?, now(), ?)|]
+              (instanceId, t)
 
         consoleTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
         consoleTracer =
           contramap (printMessage . traceRemote) $
             withEitherTracer traceStdout traceStderr
 
+        -- We want essentially the entire process traced so that the traces
+        -- can be recovered later and make the inference script evaluation process
+        -- clear to the end user
         shallPersist :: RemoteTrace -> Bool
         shallPersist = \case
-          InfoTrace _ -> False
+          InfoTrace info -> case info of
+            -- This one is not necessary for the user
+            CopyingModel{} -> False
+            StartingServer{} -> True
+            RunningInference{} -> True
+            EvaluatingParam{} -> True
+            OtherInfo{} -> True
+            ExternalTrace{} -> True
           -- Having `LevelWarn` traces show up helps with debugging; the
           -- server does not generate many of these, so it shouldn't overwhelm
           -- the DB with garbage messages (unlike `LevelInfo`)

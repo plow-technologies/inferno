@@ -236,7 +236,9 @@ instance FromJSON Config where
       <$> o .: "port"
       <*> o .: "cache"
       <*> o .: "timeout"
-      <*> o .:? "log-level" .!= LevelWarn
+      -- We generally want the entire process traced, so `LevelInfo` is used
+      -- as the default if `log-level` is not specified in the config
+      <*> o .:? "log-level" .!= LevelInfo
       <*> (connInfoP =<< o .: "store")
       <*> o .:? "instanceId" .!= NoDbLogging
       <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
