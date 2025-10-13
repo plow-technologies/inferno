@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.22.0
+* Add `ExternalTrace` and `showTrace` functions
+
 ## 0.21.0
 * Add `MemoryLimitExceeded` error ctor for OOM threshold breach
 
