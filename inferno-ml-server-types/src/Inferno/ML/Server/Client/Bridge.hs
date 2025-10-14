@@ -8,7 +8,7 @@ import Data.Aeson (ToJSON)
 import Data.Data (Proxy (Proxy))
 import Data.Int (Int64)
 import Inferno.ML.Server.Types
-import Servant ((:<|>) (..))
+import Servant ((:<|>) ((:<|>)))
 import Servant.Client.Streaming (ClientM, client)
 import Web.HttpApiData (ToHttpApiData)
 

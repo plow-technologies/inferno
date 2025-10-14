@@ -14,7 +14,11 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
-module Inferno.ML.Server.Types where
+module Inferno.ML.Server.Types
+  ( module Inferno.ML.Server.Types,
+    module Inferno.ML.Server.Types.PerServer,
+  )
+where
 
 import Conduit (ConduitT)
 import Control.Applicative (asum, optional)
@@ -70,6 +74,7 @@ import Database.PostgreSQL.Simple.Types
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
+import Inferno.ML.Server.Types.PerServer
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash (VCObjectHash),
