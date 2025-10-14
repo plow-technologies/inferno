@@ -288,7 +288,7 @@ cgroupPath = "/sys/fs/cgroup/system.slice/inferno-ml-server.service"
 -- if an OOM kill event is the @SERVICE_RESULT@. This is read at startup to
 -- log a warning if we just restarted the server due to an OOM kill
 lastOomPath :: FilePath
-lastOomPath = "/var/lib/inferno-ml-server/last-oom"
+lastOomPath = infernoMlStateDirectory </> "last-oom"
 
 -- | Force a restart of the entire server process internally. This forks a
 -- thread that waits for the given amount of microseconds before exiting

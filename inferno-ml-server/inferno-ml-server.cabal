@@ -103,6 +103,26 @@ executable inferno-ml-server
   default-language: Haskell2010
   build-depends:    inferno-ml-server
 
+executable inferno-ml-configure
+  import:         common
+  main-is:        Configure.hs
+  hs-source-dirs: exe
+  ghc-options:    -threaded -rtsopts -main-is Dummy
+  build-depends:
+    , aeson
+    , base
+    , conduit
+    , filepath
+    , http-types
+    , inferno-ml-server-types
+    , microlens-platform
+    , mtl
+    , servant-server
+    , unliftio
+    , wai
+    , wai-logger
+    , warp
+
 executable tests
   import:         common
   main-is:        Main.hs

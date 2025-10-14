@@ -1261,3 +1261,8 @@ genMUtc = oneof [Just <$> genUtc, pure Nothing]
 genUtc :: Gen UTCTime
 genUtc =
   posixSecondsToUTCTime . realToFrac <$> chooseInt (1420000000, 1720000000)
+
+-- | State directory for various Inferno ML things, including OOM breadcrumb,
+-- per-server config, etc...
+infernoMlStateDirectory :: FilePath
+infernoMlStateDirectory = "/var/lib/inferno-ml-server"
