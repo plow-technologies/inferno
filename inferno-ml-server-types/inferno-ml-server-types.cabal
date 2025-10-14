@@ -36,6 +36,7 @@ library
     Inferno.ML.Server.Client
     Inferno.ML.Server.Client.Bridge
     Inferno.ML.Server.Types
+    Inferno.ML.Server.Types.PerServer
 
   hs-source-dirs:  src
   build-depends:
