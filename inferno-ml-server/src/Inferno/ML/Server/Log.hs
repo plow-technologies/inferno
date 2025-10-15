@@ -1,4 +1,3 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -13,8 +12,8 @@ import Data.Text (Text)
 import qualified Data.Text.Encoding as T
 import Database.PostgreSQL.Simple (Connection)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
-import GHC.Generics (Generic)
 import Inferno.ML.Server.Types
+import Inferno.ML.Server.Types.Log
 import Inferno.ML.Server.Utils (executeStore)
 import qualified Network.HTTP.Client as HTTP
 import Plow.Logging
@@ -22,12 +21,11 @@ import Plow.Logging
     Tracer (Tracer),
     withEitherTracer,
   )
-import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelInfo, LevelWarn),
   )
 import UnliftIO (MonadIO, MonadUnliftIO, liftIO)
-import UnliftIO.IO (Handle, stderr, stdout)
+import UnliftIO.IO (stderr, stdout)
 
 traceRemote :: RemoteTrace -> Message
 traceRemote = \case
@@ -39,16 +37,6 @@ traceRemote = \case
     info = Message LevelInfo . Stdout
     err = Message LevelError . Stderr
     warn = Message LevelWarn . Stderr
-
--- | A single logging message
-data Message = Message LogLevel (StdStream Text)
-  deriving stock (Show, Eq, Generic)
-
--- | Standard output streams
-data StdStream a
-  = Stdout a
-  | Stderr a
-  deriving stock (Show, Eq, Generic)
 
 withRemoteTracer ::
   forall m a.
@@ -65,17 +53,6 @@ withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
       NoDbLogging -> pure Nothing
     f $ mkRemoteTracer mInstanceId tso tse
   where
-    withAsyncHandleIOTracers ::
-      (MonadUnliftIO m) =>
-      Handle ->
-      Handle ->
-      (IOTracer Text -> IOTracer Text -> m a) ->
-      m a
-    withAsyncHandleIOTracers h1 h2 g = withAsyncHandleTracer h1 100 inner
-      where
-        inner :: IOTracer Text -> m a
-        inner = withAsyncHandleTracer h2 100 . g
-
     mkRemoteTracer ::
       Maybe Text -> IOTracer Text -> IOTracer Text -> IOTracer RemoteTrace
     mkRemoteTracer mInstanceId (IOTracer traceStdout) (IOTracer traceStderr) =
@@ -130,17 +107,6 @@ withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
             DbError{} -> True
             ClientError{} -> True
             OtherRemoteError{} -> True
-
-        printMessage :: Message -> Either Text Text
-        printMessage (Message level stream) = case stream of
-          Stderr t -> printWithLevel Right t
-          Stdout t
-            | level `elem` [LevelWarn, LevelError] -> printWithLevel Right t
-            | otherwise -> printWithLevel Left t
-          where
-            printWithLevel ::
-              (Text -> Either Text Text) -> Text -> Either Text Text
-            printWithLevel ctor = ctor . (mconcat ["[", tshow level, "] "] <>)
 
 -- | Retrieve EC2 instance id from EC2 environment. See
 -- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html

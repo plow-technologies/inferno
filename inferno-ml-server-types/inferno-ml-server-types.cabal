@@ -37,6 +37,7 @@ library
     Inferno.ML.Server.Client.Bridge
     Inferno.ML.Server.Client.PerServer
     Inferno.ML.Server.Types
+    Inferno.ML.Server.Types.Log
     Inferno.ML.Server.Types.PerServer
 
   hs-source-dirs:  src
@@ -59,6 +60,8 @@ library
     , inferno-vc
     , iproute
     , microlens-platform
+    , plow-log
+    , plow-log-async
     , postgresql-simple
     , QuickCheck
     , quickcheck-arbitrary-adt
@@ -69,5 +72,6 @@ library
     , text
     , time
     , unix
+    , unliftio
     , uuid
     , vector
