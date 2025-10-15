@@ -9,22 +9,22 @@
 -- from the general, universal settings for Inferno ML images
 module Inferno.ML.Server.Types.PerServer where
 
-import Data.Maybe (fromMaybe)
-import Data.Char (toLower)
 import Data.Aeson
   ( FromJSON (parseJSON),
     Object,
     ToJSON (toJSON),
     object,
     withObject,
-    (.=),
     (.:),
     (.:?),
+    (.=),
   )
 import Data.Aeson.Types (Parser)
+import Data.Char (toLower)
+import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Plow.Logging.Message (LogLevel (LevelInfo, LevelWarn, LevelError))
+import Plow.Logging.Message (LogLevel (LevelError, LevelInfo, LevelWarn))
 import Servant
   ( Get,
     JSON,
@@ -70,7 +70,6 @@ instance FromJSON PerServerConfig where
         "warn" -> pure LevelWarn
         "error" -> pure LevelError
         _ -> Nothing
-
 
 instance ToJSON PerServerConfig where
   toJSON cfg =

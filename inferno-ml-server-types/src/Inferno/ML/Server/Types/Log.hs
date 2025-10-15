@@ -7,8 +7,8 @@ module Inferno.ML.Server.Types.Log where
 import Data.Text (Text)
 import qualified Data.Text as Text
 import GHC.Generics (Generic)
-import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging (IOTracer)
+import Plow.Logging.Async (withAsyncHandleTracer)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelWarn),
   )
