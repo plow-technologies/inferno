@@ -115,10 +115,13 @@ executable inferno-ml-configure
     , conduit
     , exceptions
     , filepath
+    , generic-lens
     , http-types
     , inferno-ml-server-types
     , microlens-platform
     , mtl
+    , plow-log
+    , plow-log-async
     , servant-server
     , text
     , unliftio
