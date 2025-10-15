@@ -111,13 +111,16 @@ executable inferno-ml-configure
   build-depends:
     , aeson
     , base
+    , bytestring
     , conduit
+    , exceptions
     , filepath
     , http-types
     , inferno-ml-server-types
     , microlens-platform
     , mtl
     , servant-server
+    , text
     , unliftio
     , wai
     , wai-logger
