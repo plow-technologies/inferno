@@ -38,7 +38,6 @@ import Data.Aeson
     withText,
     (.!=),
     (.:),
-    (.:?),
   )
 import Data.Aeson.Types (Parser)
 import qualified Data.Bits as Bits
@@ -230,8 +229,6 @@ data GlobalConfig = GlobalConfig
   -- ^ Timeout for script evaluation
   --
   -- NOTE: Timeout is in seconds, not milliseconds
-  , logLevel :: LogLevel
-  -- ^ Minimum log level; logs below this level will be ignored
   , store :: ConnectInfo
   -- ^ Configuration for PostgreSQL database
   , memoryMax :: Word8
@@ -246,9 +243,6 @@ instance FromJSON GlobalConfig where
       <$> o .: "port"
       <*> o .: "cache"
       <*> o .: "timeout"
-      -- We generally want the entire process traced, so `LevelInfo` is used
-      -- as the default if `log-level` is not specified in the config
-      <*> o .:? "log-level" .!= LevelInfo
       <*> (connInfoP =<< o .: "store")
       <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
     where
@@ -337,7 +331,7 @@ logTrace t =
     (`traceWith` t) =<< view #tracer
   where
     shouldLog :: RemoteM Bool
-    shouldLog = (traceLevel t >=) <$> view (#config . #global . #logLevel)
+    shouldLog = (traceLevel t >=) <$> view (#config . #perServer . #logLevel)
 
 logInfo :: TraceInfo InferenceParam ModelVersion -> RemoteM ()
 logInfo = logTrace . InfoTrace

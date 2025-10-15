@@ -9,9 +9,17 @@
 -- from the general, universal settings for Inferno ML images
 module Inferno.ML.Server.Types.PerServer where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson
+  ( FromJSON (parseJSON),
+    ToJSON,
+    withObject,
+    (.!=),
+    (.:),
+    (.:?),
+  )
 import Data.Text (Text)
 import GHC.Generics (Generic)
+import Plow.Logging.Message (LogLevel (LevelInfo))
 import Servant
   ( Get,
     JSON,
@@ -28,10 +36,18 @@ type PerServerAPI =
   "inferno-ml" :> "configure" :> "set" :> ReqBody '[JSON] PerServerConfig :> Post '[JSON] ()
     :<|> "inferno-ml" :> "configure" :> "get" :> Get '[JSON] PerServerConfig
 
-newtype PerServerConfig = PerServerConfig
+data PerServerConfig = PerServerConfig
   { instanceId :: Text
   -- ^ ID of the instance that @inferno-ml-server@ is running on. This is
   -- needed for tracing to the DB
+  , logLevel :: LogLevel
+  -- ^ Minimum log level for this instance
   }
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (ToJSON)
+
+instance FromJSON PerServerConfig where
+  parseJSON = withObject "PerServerConfig" $ \o ->
+    PerServerConfig
+      <$> o .: "instance-id"
+      <*> o .:? "log-level" .!= LevelInfo

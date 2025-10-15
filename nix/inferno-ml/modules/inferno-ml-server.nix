@@ -89,6 +89,8 @@ in
                   '';
               };
 
+              # TODO Deprecate this as well; can just use the state directory
+              # for it
               cache = lib.mkOption {
                 description = lib.mdDoc ''
                   Options for the cache itself
@@ -249,6 +251,7 @@ in
             ExecStart = "${pkgs.inferno-ml-configure}/bin/inferno-ml-configure";
             Restart = "always";
             RestartSec = 5;
+            # Intentionally run as the same user as `inferno-ml-server`
             User = user;
             Group = user;
             PrivateTmp = "yes";
