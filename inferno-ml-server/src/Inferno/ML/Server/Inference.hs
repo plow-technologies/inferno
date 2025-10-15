@@ -215,7 +215,7 @@ runInferenceParamWithEnv ipid uuid senv =
       -- will not have been initialized yet. After that, it will be reused
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
-      cache <- view $ #config . #cache
+      cache <- view $ #config . #global . #cache
       t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
       -- can find the models using relative paths (otherwise the AST would
@@ -370,7 +370,7 @@ runInferenceParamWithEnv ipid uuid senv =
     -- milliseconds, for use with `timeout`; then execute the action
     withTimeoutMillis :: (Int -> RemoteM b) -> RemoteM b
     withTimeoutMillis =
-      (view (#config . #timeout) >>=)
+      (view (#config . #global . #timeout) >>=)
         . (. (* 1_000_000) . fromIntegral)
 
     withEvaluationInfo :: RemoteM a -> RemoteM a

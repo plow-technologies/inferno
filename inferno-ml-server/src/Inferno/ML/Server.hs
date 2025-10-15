@@ -68,9 +68,11 @@ import UnliftIO.MVar
   )
 
 main :: IO ()
-main = runServer =<< mkOptions
+main =
+  -- FIXME Also decode per-server config
+  runServer =<< undefined
   where
-    runServer :: GlobalConfig -> IO ()
+    runServer :: Config -> IO ()
     runServer cfg = runInEnv cfg $ run . infernoMlRemote
       where
         run :: Application -> IO ()
@@ -79,14 +81,14 @@ main = runServer =<< mkOptions
         mkSettings :: (Request -> Status -> Maybe Integer -> IO ()) -> Settings
         mkSettings logger =
           defaultSettings
-            & setPort (fromIntegral cfg.port)
+            & setPort (fromIntegral cfg.global.port)
             & setLogger logger
 
-runInEnv :: GlobalConfig -> (Env -> IO ()) -> IO ()
+runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
-  withConnectionPool cfg.store $ \pool ->
+  withConnectionPool cfg.global.store $ \pool ->
     -- FIXME Add instance ID from per-server config
-    withRemoteTracer undefined pool $ \tracer -> do
+    withRemoteTracer cfg.perServer.instanceId pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
       whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled
       f

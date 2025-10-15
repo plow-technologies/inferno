@@ -31,7 +31,7 @@ import Data.Aeson
     Object,
     ToJSON (toJSON),
     ToJSONKey,
-    Value (Null, String),
+    Value (String),
     defaultOptions,
     genericParseJSON,
     withObject,
@@ -118,7 +118,7 @@ import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 type RemoteM = ReaderT Env IO
 
 data Env = Env
-  { config :: GlobalConfig
+  { config :: Config
   , tracer :: IOTracer RemoteTrace
   , store :: Pool Connection
   , -- Lock for starting inference evaluation
@@ -211,6 +211,15 @@ data EntityIdType
   | GId
   deriving stock (Show, Eq, Generic, Typeable)
 
+-- | The full configuration for the @inferno-ml-server@ instance, including
+-- both global options from the NixOS modules and per-server configuration
+-- set by the @inferno-ml-configure@ service
+data Config = Config
+  { global :: GlobalConfig
+  , perServer :: PerServerConfig
+  }
+  deriving stock (Show, Eq, Generic)
+
 -- | These are configuration options that are set globally, for all @inferno-ml-server@
 -- instances, using NixOS module configuration. It is combined with the @PerServerConfig@
 -- to create a complete configuration
@@ -257,6 +266,8 @@ instance FromJSON GlobalConfig where
         | n > 100 || n < 1 = fail "memoryMax must be within bounds 1-100"
         | otherwise = pure n
 
+-- | CLI options for @inferno-ml-server@. Currently only parses the path to the
+-- global configuration generated via NixOS modules
 mkOptions :: IO GlobalConfig
 mkOptions = decodeFileThrow =<< p
   where
@@ -326,7 +337,7 @@ logTrace t =
     (`traceWith` t) =<< view #tracer
   where
     shouldLog :: RemoteM Bool
-    shouldLog = (traceLevel t >=) <$> view (#config . #logLevel)
+    shouldLog = (traceLevel t >=) <$> view (#config . #global . #logLevel)
 
 logInfo :: TraceInfo InferenceParam ModelVersion -> RemoteM ()
 logInfo = logTrace . InfoTrace
