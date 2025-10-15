@@ -6,9 +6,9 @@ module Configure (main) where
 
 import Control.Monad.Catch (throwM)
 import Control.Monad.Except (ExceptT (ExceptT))
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader (ReaderT (runReaderT))
-import Data.Aeson (encode)
-import Data.ByteString (ByteString)
+import Data.Aeson (eitherDecodeFileStrict, encode)
 import qualified Data.ByteString.Lazy.Char8 as ByteString.Lazy.Char8
 import qualified Data.Text as Text
 import Inferno.ML.Server.Client.PerServer (api)
@@ -35,6 +35,7 @@ import Servant
     (:<|>) ((:<|>)),
   )
 import System.FilePath ((</>))
+import UnliftIO.Directory (doesPathExist)
 import UnliftIO.Exception
   ( Exception (displayException),
     SomeException,
@@ -69,13 +70,15 @@ main = runServer
           Handler
             . ExceptT
             . try
-            . flip catchAny toServantErr
+            . flip catchAny logThenToServantErr
             . runReaderT m
 
         -- Make sure that relevant exceptions appear in body of response,
         -- otherwise we'll get generic Warp "Something went wrong"
-        toServantErr :: SomeException -> IO a
-        toServantErr e =
+        logThenToServantErr :: SomeException -> IO a
+        logThenToServantErr e = do
+          -- FIXME Trace error here
+          --
           throwM $
             err500
               { errBody =
@@ -92,13 +95,19 @@ setPerServerConfig :: PerServerConfig -> PerServerM ()
 setPerServerConfig cfg = flip catchAny (throwM . CouldntSetConfig cfg) $ do
   -- FIXME Trace here for setting config
   --
-  writeBinaryFileDurableAtomic perServerConfigPath asBinary
-  where
-    asBinary :: ByteString
-    asBinary = ByteString.Lazy.Char8.toStrict $ encode cfg
+  writeBinaryFileDurableAtomic perServerConfigPath
+    . ByteString.Lazy.Char8.toStrict
+    $ encode cfg
 
 getPerServerConfig :: PerServerM PerServerConfig
-getPerServerConfig = undefined
+getPerServerConfig = do
+  -- FIXME Trace here for getting config
+  --
+  doesPathExist perServerConfigPath >>= \case
+    False -> throwM NoConfigSet
+    True ->
+      either (throwM . CouldntDecodeConfig) pure
+        =<< liftIO (eitherDecodeFileStrict perServerConfigPath)
 
 type PerServerM = ReaderT PerServerEnv IO
 
@@ -107,6 +116,8 @@ newtype PerServerEnv = PerServerEnv ()
 
 data PerServerError
   = CouldntSetConfig PerServerConfig SomeException
+  | NoConfigSet
+  | CouldntDecodeConfig String
   deriving stock (Show)
 
 instance Exception PerServerError where
@@ -118,6 +129,12 @@ instance Exception PerServerError where
         , "failed" <> ","
         , "original exception:"
         , displayException e
+        ]
+    NoConfigSet -> "No per-server configuration file exists"
+    CouldntDecodeConfig s ->
+      unwords
+        [ "Failed to decode per-server configuration file:"
+        , s
         ]
 
 perServerConfigPath :: FilePath
