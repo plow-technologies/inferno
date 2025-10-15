@@ -1,4 +1,4 @@
-{ self, inputs, ... }:
+{ inputs, ... }:
 
 {
   perSystem =
@@ -44,6 +44,13 @@
             parse-and-save = cpu.components.exes.parse-and-save;
             dummy-bridge = cpu.components.exes.dummy-bridge;
           };
+
+        inferno-ml-configure =
+          let
+            inherit (inferno.versions.${defaultCompiler}.hsPkgs)
+              inferno-ml-server;
+          in
+          inferno-ml-server.components.exes.inferno-ml-configure;
       };
     };
 }

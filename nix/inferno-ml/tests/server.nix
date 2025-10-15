@@ -17,6 +17,24 @@ pkgs.nixosTest {
       ../images/common/qcow2.nix
     ];
 
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 5432;
+        guest.port = 5432;
+      }
+      {
+        from = "host";
+        host.port = 8080;
+        guest.port = 8080;
+      }
+      {
+        from = "host";
+        host.port = 8081;
+        guest.port = 8081;
+      }
+    ];
+
     environment.systemPackages = [
       pkgs.postgresql
       (
