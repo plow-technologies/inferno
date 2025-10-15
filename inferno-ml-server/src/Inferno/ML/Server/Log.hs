@@ -5,17 +5,14 @@ module Inferno.ML.Server.Log where
 
 import Control.Monad (when)
 import Control.Monad.Reader (runReaderT)
-import qualified Data.ByteString.Lazy as LBS
 import Data.Functor.Contravariant (contramap)
 import Data.Pool (Pool)
 import Data.Text (Text)
-import qualified Data.Text.Encoding as T
 import Database.PostgreSQL.Simple (Connection)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Types.Log
 import Inferno.ML.Server.Utils (executeStore)
-import qualified Network.HTTP.Client as HTTP
 import Plow.Logging
   ( IOTracer (IOTracer),
     Tracer (Tracer),
@@ -41,30 +38,29 @@ traceRemote = \case
 withRemoteTracer ::
   forall m a.
   (MonadUnliftIO m) =>
-  InstanceId ->
+  -- | Instance ID of the @inferno-ml-server@ instance
+  Text ->
   Pool Connection ->
   (IOTracer RemoteTrace -> m a) ->
   m a
-withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
-  \tso tse -> do
-    mInstanceId <- case instanceIdOpt of
-      InstanceId instanceId -> pure $ Just instanceId
-      Auto -> Just <$> queryInstanceId
-      NoDbLogging -> pure Nothing
-    f $ mkRemoteTracer mInstanceId tso tse
+withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
+  \tso tse ->
+    f $ mkRemoteTracer tso tse
   where
-    mkRemoteTracer ::
-      Maybe Text -> IOTracer Text -> IOTracer Text -> IOTracer RemoteTrace
-    mkRemoteTracer mInstanceId (IOTracer traceStdout) (IOTracer traceStderr) =
-      IOTracer $ consoleTracer <> maybe mempty databaseTracer mInstanceId
+    mkRemoteTracer :: IOTracer Text -> IOTracer Text -> IOTracer RemoteTrace
+    mkRemoteTracer (IOTracer traceStdout) (IOTracer traceStderr) =
+      IOTracer $ consoleTracer <> databaseTracer
       where
-        databaseTracer :: forall m'. (MonadIO m') => Text -> Tracer m' RemoteTrace
-        databaseTracer instanceId = Tracer $ \t ->
+        -- Traces to the DB with the instance ID of the `inferno-ml-server`
+        -- instance
+        databaseTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
+        databaseTracer = Tracer $ \t ->
           when (shallPersist t) . liftIO . flip runReaderT pool $
             executeStore
-              [sql|INSERT INTO traces (instance_id, ts, trace) VALUES (?, now(), ?)|]
+              [sql|INSERT INTO traces VALUES (?, now(), ?)|]
               (instanceId, t)
 
+        -- Prints traces directly to stdout/stderr
         consoleTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
         consoleTracer =
           contramap (printMessage . traceRemote) $
@@ -107,11 +103,3 @@ withRemoteTracer instanceIdOpt pool f = withAsyncHandleIOTracers stdout stderr $
             DbError{} -> True
             ClientError{} -> True
             OtherRemoteError{} -> True
-
--- | Retrieve EC2 instance id from EC2 environment. See
--- https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instancedata-data-retrieval.html
-queryInstanceId :: (MonadIO m) => m Text
-queryInstanceId = liftIO $ do
-  req <- HTTP.parseRequest "http://169.254.169.254/latest/meta-data/instance-id"
-  mgr <- HTTP.newManager HTTP.defaultManagerSettings
-  T.decodeUtf8Lenient . LBS.toStrict . HTTP.responseBody <$> HTTP.httpLbs req mgr

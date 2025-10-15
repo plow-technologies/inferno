@@ -118,7 +118,7 @@ import qualified "inferno-ml-server-types" Inferno.ML.Server.Types as Types
 type RemoteM = ReaderT Env IO
 
 data Env = Env
-  { config :: Config
+  { config :: GlobalConfig
   , tracer :: IOTracer RemoteTrace
   , store :: Pool Connection
   , -- Lock for starting inference evaluation
@@ -145,7 +145,7 @@ data Env = Env
   }
   deriving stock (Generic)
 
--- | Config for caching ML models to be used with Inferno scripts. When a script
+-- | GlobalConfig for caching ML models to be used with Inferno scripts. When a script
 -- uses @ML.loadModel@, models will be copied from the DB and saved to the cache
 -- directory. Once the 'maxSize' has been exceeded, least-recently-used cached
 -- models will be removed
@@ -211,7 +211,10 @@ data EntityIdType
   | GId
   deriving stock (Show, Eq, Generic, Typeable)
 
-data Config = Config
+-- | These are configuration options that are set globally, for all @inferno-ml-server@
+-- instances, using NixOS module configuration. It is combined with the @PerServerConfig@
+-- to create a complete configuration
+data GlobalConfig = GlobalConfig
   { port :: Word64
   , cache :: ModelCache
   , timeout :: Word64
@@ -222,17 +225,15 @@ data Config = Config
   -- ^ Minimum log level; logs below this level will be ignored
   , store :: ConnectInfo
   -- ^ Configuration for PostgreSQL database
-  , instanceId :: InstanceId
-  -- ^ The instanceId used for DB logging
   , memoryMax :: Word8
   -- ^ The amount of total system memory the server process is allowed to
   -- consume as a percentage of total memory; must be between 1 and 100
   }
   deriving stock (Show, Eq, Generic)
 
-instance FromJSON Config where
-  parseJSON = withObject "Config" $ \o ->
-    Config
+instance FromJSON GlobalConfig where
+  parseJSON = withObject "GlobalConfig" $ \o ->
+    GlobalConfig
       <$> o .: "port"
       <*> o .: "cache"
       <*> o .: "timeout"
@@ -240,7 +241,6 @@ instance FromJSON Config where
       -- as the default if `log-level` is not specified in the config
       <*> o .:? "log-level" .!= LevelInfo
       <*> (connInfoP =<< o .: "store")
-      <*> o .:? "instanceId" .!= NoDbLogging
       <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
     where
       connInfoP :: Object -> Parser ConnectInfo
@@ -257,24 +257,7 @@ instance FromJSON Config where
         | n > 100 || n < 1 = fail "memoryMax must be within bounds 1-100"
         | otherwise = pure n
 
-data InstanceId
-  = InstanceId Text
-  | Auto
-  | NoDbLogging
-  deriving stock (Show, Eq, Generic)
-
-instance ToJSON InstanceId where
-  toJSON Auto = String "auto"
-  toJSON (InstanceId x) = String x
-  toJSON NoDbLogging = Null
-
-instance FromJSON InstanceId where
-  parseJSON Null = pure NoDbLogging
-  parseJSON (String "auto") = pure Auto
-  parseJSON (String x) = pure (InstanceId x)
-  parseJSON _ = fail "Invalid InstanceId. Expected \"auto\", an instance-id or Null"
-
-mkOptions :: IO Config
+mkOptions :: IO GlobalConfig
 mkOptions = decodeFileThrow =<< p
   where
     p :: IO FilePath

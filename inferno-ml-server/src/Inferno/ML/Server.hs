@@ -70,7 +70,7 @@ import UnliftIO.MVar
 main :: IO ()
 main = runServer =<< mkOptions
   where
-    runServer :: Config -> IO ()
+    runServer :: GlobalConfig -> IO ()
     runServer cfg = runInEnv cfg $ run . infernoMlRemote
       where
         run :: Application -> IO ()
@@ -82,10 +82,11 @@ main = runServer =<< mkOptions
             & setPort (fromIntegral cfg.port)
             & setLogger logger
 
-runInEnv :: Config -> (Env -> IO ()) -> IO ()
+runInEnv :: GlobalConfig -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
   withConnectionPool cfg.store $ \pool ->
-    withRemoteTracer cfg.instanceId pool $ \tracer -> do
+    -- FIXME Add instance ID from per-server config
+    withRemoteTracer undefined pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
       whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled
       f
@@ -151,21 +152,20 @@ infernoMlRemote env = serve api $ hoistServer api (`toHandler` env) server
             }
 
         translateError :: RemoteError -> ServerError
-        translateError =
-          \case
-            e@OtherRemoteError{} -> errWith err500 e
-            e@CacheSizeExceeded{} -> errWith err400 e
-            e@NoSuchModel{} -> errWith err404 e
-            e@NoSuchParameter{} -> errWith err404 e
-            e@NoSuchScript{} -> errWith err404 e
-            e@InvalidScript{} -> errWith err400 e
-            e@InvalidOutput{} -> errWith err400 e
-            e@InfernoError{} -> errWith err500 e
-            e@NoBridgeSaved{} -> errWith err500 e
-            e@ScriptTimeout{} -> errWith err500 e
-            e@MemoryLimitExceeded{} -> errWith err500 e
-            e@DbError{} -> errWith err500 e
-            e@ClientError{} -> errWith err500 e
+        translateError = \case
+          e@OtherRemoteError{} -> errWith err500 e
+          e@CacheSizeExceeded{} -> errWith err400 e
+          e@NoSuchModel{} -> errWith err404 e
+          e@NoSuchParameter{} -> errWith err404 e
+          e@NoSuchScript{} -> errWith err404 e
+          e@InvalidScript{} -> errWith err400 e
+          e@InvalidOutput{} -> errWith err400 e
+          e@InfernoError{} -> errWith err500 e
+          e@NoBridgeSaved{} -> errWith err500 e
+          e@ScriptTimeout{} -> errWith err500 e
+          e@MemoryLimitExceeded{} -> errWith err500 e
+          e@DbError{} -> errWith err500 e
+          e@ClientError{} -> errWith err500 e
 
 api :: Proxy InfernoMlServerAPI
 api = Proxy
