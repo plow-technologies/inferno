@@ -48,11 +48,12 @@ main =
   getArgs >>= \case
     cfg : args ->
       (`runInEnv` runTests args)
-        -- Silence logs
-        =<< either throwString (pure . set #logLevel LevelWarn)
-        =<< eitherDecodeFileStrict @Config cfg
+        =<< either throwString (pure . (`Config` perServerConfig))
+        =<< eitherDecodeFileStrict @GlobalConfig cfg
     _ -> throwString "Missing path to configuration file"
   where
+    perServerConfig :: PerServerConfig
+    perServerConfig = PerServerConfig "dummy" LevelWarn
     runTests :: [String] -> Env -> IO ()
     runTests args env = withArgs args . Hspec.hspec $ do
       mkDbSpec env
@@ -62,7 +63,7 @@ mkCacheSpec :: Env -> Spec
 mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
   Hspec.it "caches a model" . cdCache $ do
     cacheModel
-    dir <- listDirectory env.config.cache.path
+    dir <- listDirectory env.config.global.cache.path
     dir `Hspec.shouldMatchList` [mnistV1Path]
     contents <- ByteString.readFile mnistV1Path
     ByteString.length contents `Hspec.shouldBe` mnistV1Size
@@ -77,7 +78,7 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
     cacheModel =
       void . flip runReaderT env $
         (`getAndCacheModels` modelsWithIdents)
-          =<< view (#config . #cache)
+          =<< view (#config . #global . #cache)
 
     clearCache :: IO ()
     clearCache =
@@ -87,7 +88,7 @@ mkCacheSpec env = Hspec.before_ clearCache . Hspec.describe "Model cache" $ do
           =<< getCurrentDirectory
 
     cdCache :: IO a -> IO a
-    cdCache = withCurrentDirectory env.config.cache.path
+    cdCache = withCurrentDirectory env.config.global.cache.path
 
 modelsWithIdents :: Models (Id ModelVersion)
 modelsWithIdents = Map.singleton "dummy" mnistV1
