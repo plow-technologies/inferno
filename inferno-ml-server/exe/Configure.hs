@@ -66,7 +66,7 @@ main = withTracer runServer
   where
     runServer :: IOTracer Message -> IO ()
     runServer tracer = do
-      traceWith tracer $ infoTrace "Starting `inferno-ml-configure`"
+      traceWith tracer $ infoMsg "Starting `inferno-ml-configure`"
       withEnv tracer $ run . configureServer
       where
         run :: Application -> IO ()
@@ -96,7 +96,7 @@ main = withTracer runServer
         -- otherwise we'll get generic Warp "Something went wrong"
         logThenToServantErr :: SomeException -> IO a
         logThenToServantErr e = do
-          traceWith env.tracer $ exceptionTrace e
+          traceWith env.tracer $ exceptionMsg e
           -- All of the current exceptions can be treated as 500s for simplicity's
           -- sake
           throwM $
@@ -113,14 +113,14 @@ main = withTracer runServer
 
 setPerServerConfig :: PerServerConfig -> PerServerM ()
 setPerServerConfig cfg = flip catchAny (throwM . CouldntSetConfig cfg) $ do
-  trace $ infoTrace "Setting per-server configuration"
+  trace $ infoMsg "Setting per-server configuration"
   writeBinaryFileDurableAtomic perServerConfigPath
     . ByteString.Lazy.Char8.toStrict
     $ encode cfg
 
 getPerServerConfig :: PerServerM PerServerConfig
 getPerServerConfig = do
-  trace $ infoTrace "Attempting to get per-server configuration (if any)"
+  trace $ infoMsg "Attempting to get per-server configuration (if any)"
   doesPathExist perServerConfigPath >>= \case
     False -> throwM NoConfigSet
     True ->
@@ -174,8 +174,8 @@ withTracer f = withAsyncHandleIOTracers stdout stderr $ \out err ->
 trace :: Message -> PerServerM ()
 trace msg = (`traceWith` msg) =<< view #tracer
 
-infoTrace :: Text -> Message
-infoTrace = Message LevelInfo . Stdout
+infoMsg :: Text -> Message
+infoMsg = Message LevelInfo . Stdout
 
-exceptionTrace :: (Exception e) => e -> Message
-exceptionTrace = Message LevelError . Stderr . Text.pack . displayException
+exceptionMsg :: (Exception e) => e -> Message
+exceptionMsg = Message LevelError . Stderr . Text.pack . displayException

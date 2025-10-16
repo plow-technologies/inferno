@@ -179,7 +179,7 @@ in
         # Warn for removing `configuration.instanceId`, as it's not used anymore.
         # Any non-default (`null`) value means it's been set
         warnings = lib.optional (cfg.configuration.instanceId != null)
-          "Option `instanceId` is deprecated and ignored; please remove it.";
+          "Option `inferno-ml-server.instanceId` is deprecated and ignored; please remove it.";
 
         # NOTE Since the kernel OOM killer might be invoked by the systemd
         # service configuration below (which is what we want), we need to make
