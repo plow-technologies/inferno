@@ -44,7 +44,8 @@ type PerServerAPI =
 data PerServerConfig = PerServerConfig
   { instanceId :: Text
   -- ^ ID of the instance that @inferno-ml-server@ is running on. This is
-  -- needed for tracing to the DB
+  -- needed for tracing to the DB. In real-world cases this will be an EC2
+  -- instance ID
   , logLevel :: LogLevel
   -- ^ Minimum log level for this instance
   }

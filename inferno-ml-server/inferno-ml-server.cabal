@@ -107,21 +107,18 @@ executable inferno-ml-configure
   import:         common
   main-is:        Configure.hs
   hs-source-dirs: exe
-  ghc-options:    -threaded -rtsopts -main-is Dummy
+  ghc-options:    -threaded -rtsopts -main-is Configure
   build-depends:
     , aeson
     , base
     , bytestring
-    , conduit
     , exceptions
-    , filepath
     , generic-lens
     , http-types
     , inferno-ml-server-types
     , microlens-platform
     , mtl
     , plow-log
-    , plow-log-async
     , servant-server
     , text
     , unliftio

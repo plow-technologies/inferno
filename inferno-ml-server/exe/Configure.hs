@@ -50,7 +50,6 @@ import Servant
     serve,
     (:<|>) ((:<|>)),
   )
-import System.FilePath ((</>))
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Directory (doesPathExist)
 import UnliftIO.Exception
@@ -180,6 +179,3 @@ infoTrace = Message LevelInfo . Stdout
 
 exceptionTrace :: (Exception e) => e -> Message
 exceptionTrace = Message LevelError . Stderr . Text.pack . displayException
-
-perServerConfigPath :: FilePath
-perServerConfigPath = infernoMlStateDirectory </> "per-server-config.json"

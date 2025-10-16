@@ -68,9 +68,7 @@ import UnliftIO.MVar
   )
 
 main :: IO ()
-main =
-  -- FIXME Also decode per-server config
-  runServer =<< undefined
+main = runServer =<< getConfig
   where
     runServer :: Config -> IO ()
     runServer cfg = runInEnv cfg $ run . infernoMlRemote
@@ -83,6 +81,9 @@ main =
           defaultSettings
             & setPort (fromIntegral cfg.global.port)
             & setLogger logger
+
+    getConfig :: IO Config
+    getConfig = Config <$> getGlobalConfig <*> getPerServerConfig
 
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =

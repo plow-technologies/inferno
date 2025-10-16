@@ -101,6 +101,7 @@ import Servant
     (:>),
   )
 import Servant.Conduit ()
+import System.FilePath ((</>))
 import System.Posix (EpochTime)
 import Test.QuickCheck
   ( Arbitrary (arbitrary),
@@ -1266,3 +1267,6 @@ genUtc =
 -- per-server config, etc...
 infernoMlStateDirectory :: FilePath
 infernoMlStateDirectory = "/var/lib/inferno-ml-server"
+
+perServerConfigPath :: FilePath
+perServerConfigPath = infernoMlStateDirectory </> "per-server-config.json"

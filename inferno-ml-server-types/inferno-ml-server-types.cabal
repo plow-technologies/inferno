@@ -52,6 +52,7 @@ library
     , containers
     , cryptonite
     , deepseq
+    , filepath
     , generic-lens
     , hashable
     , http-api-data

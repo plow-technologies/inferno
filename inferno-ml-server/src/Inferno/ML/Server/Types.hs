@@ -95,7 +95,8 @@ import Plow.Logging.Message
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async, MonadUnliftIO)
-import UnliftIO.Exception (bracket)
+import UnliftIO.Directory (doesPathExist)
+import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
@@ -262,8 +263,8 @@ instance FromJSON GlobalConfig where
 
 -- | CLI options for @inferno-ml-server@. Currently only parses the path to the
 -- global configuration generated via NixOS modules
-mkOptions :: IO GlobalConfig
-mkOptions = decodeFileThrow =<< p
+getGlobalConfig :: IO GlobalConfig
+getGlobalConfig = decodeFileThrow =<< p
   where
     p :: IO FilePath
     p = Options.execParser opts
@@ -279,6 +280,17 @@ mkOptions = decodeFileThrow =<< p
           Options.strOption $
             Options.long "config"
               <> Options.metavar "FILEPATH"
+
+-- | Tries to decode the per-server configuration for this particular
+-- @inferno-ml-server@ instance. If no per-server config has been created,
+-- or if it is not parseable, an exception is raised
+getPerServerConfig :: IO PerServerConfig
+getPerServerConfig =
+  doesPathExist perServerConfigPath >>= \case
+    True -> decodeFileThrow perServerConfigPath
+    False ->
+      throwString
+        "no per-server configuration exists for this server; exiting"
 
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata

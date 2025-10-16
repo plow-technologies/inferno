@@ -36,7 +36,6 @@ traceRemote = \case
     warn = Message LevelWarn . Stderr
 
 withRemoteTracer ::
-  forall m a.
   (MonadUnliftIO m) =>
   -- | Instance ID of the @inferno-ml-server@ instance
   Text ->
@@ -53,7 +52,7 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
       where
         -- Traces to the DB with the instance ID of the `inferno-ml-server`
         -- instance
-        databaseTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
+        databaseTracer :: (MonadIO m) => Tracer m RemoteTrace
         databaseTracer = Tracer $ \t ->
           when (shallPersist t) . liftIO . flip runReaderT pool $
             executeStore
@@ -61,7 +60,7 @@ withRemoteTracer instanceId pool f = withAsyncHandleIOTracers stdout stderr $
               (instanceId, t)
 
         -- Prints traces directly to stdout/stderr
-        consoleTracer :: forall m'. (MonadIO m') => Tracer m' RemoteTrace
+        consoleTracer :: forall m. (MonadIO m) => Tracer m RemoteTrace
         consoleTracer =
           contramap (printMessage . traceRemote) $
             withEitherTracer traceStdout traceStderr
