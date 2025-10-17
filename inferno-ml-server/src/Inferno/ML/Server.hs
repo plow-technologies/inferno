@@ -88,7 +88,6 @@ main = runServer =<< getConfig
 runInEnv :: Config -> (Env -> IO ()) -> IO ()
 runInEnv cfg f =
   withConnectionPool cfg.global.store $ \pool ->
-    -- FIXME Add instance ID from per-server config
     withRemoteTracer cfg.perServer.instanceId pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
       whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled

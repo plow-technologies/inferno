@@ -139,7 +139,7 @@ pkgs.nixosTest {
         }
       )
       (
-        # Writes a fake per-server config to the Inferno ML state directory; a
+        # Writes a dummy per-server config to the Inferno ML state directory; a
         # per-server config of some sort is required for `inferno-ml-server` to run
         pkgs.writeShellApplication {
           name = "write-per-server-config";
