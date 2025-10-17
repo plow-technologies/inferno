@@ -274,8 +274,7 @@
               _: prev: {
                 inherit (self.legacyPackages.${prev.system})
                   inferno-ml-server
-                  inferno-ml-configure
-                ;
+                  inferno-ml-configure;
               }
             )
           ];
