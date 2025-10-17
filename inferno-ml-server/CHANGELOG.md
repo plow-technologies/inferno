@@ -1,5 +1,9 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.10.17
+* Add `inferno-ml-configure` service
+* Require `PerServerConfig` when starting server
+
 ## 2025.10.13
 * Persist more traces and lower default log level
 

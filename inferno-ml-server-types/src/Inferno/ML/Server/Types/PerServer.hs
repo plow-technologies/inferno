@@ -7,6 +7,9 @@
 -- | These are type definitions for per-server settings, i.e. settings we only
 -- want applied to a single instance of an Inferno ML server. This is separate
 -- from the general, universal settings for Inferno ML images
+--
+-- For the actual implementation of this small service, see
+-- @inferno-ml-server/exe/Configure.hs@, i.e. @inferno-ml-server:exe:inferno-ml-configure@
 module Inferno.ML.Server.Types.PerServer where
 
 import Data.Aeson
@@ -50,7 +53,8 @@ data PerServerConfig = PerServerConfig
   -- needed for tracing to the DB. In real-world cases this will be an EC2
   -- instance ID
   , logLevel :: LogLevel
-  -- ^ Minimum log level for this instance
+  -- ^ Minimum log level for this instance. Anything below this level will
+  -- not be logged
   }
   deriving stock (Show, Eq, Generic)
 
