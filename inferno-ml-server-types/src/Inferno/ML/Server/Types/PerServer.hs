@@ -11,18 +11,19 @@ module Inferno.ML.Server.Types.PerServer where
 
 import Data.Aeson
   ( FromJSON (parseJSON),
-    Object,
     ToJSON (toJSON),
+    Value,
     object,
     withObject,
+    withText,
     (.:),
     (.:?),
     (.=),
   )
 import Data.Aeson.Types (Parser)
 import Data.Char (toLower)
-import Data.Maybe (fromMaybe)
 import Data.Text (Text)
+import qualified Data.Text as Text
 import GHC.Generics (Generic)
 import Plow.Logging.Message
   ( LogLevel (LevelDebug, LevelError, LevelInfo, LevelWarn),
@@ -57,28 +58,52 @@ instance FromJSON PerServerConfig where
   parseJSON = withObject "PerServerConfig" $ \o ->
     PerServerConfig
       <$> o .: "instance-id"
-      <*> fmap (fromMaybe LevelInfo) (logLevelP o)
-    where
-      logLevelP :: Object -> Parser (Maybe LogLevel)
-      logLevelP o =
-        o .:? "log-level" >>= \case
-          Just i@"debug" -> pure $ toLogLevel i
-          Just i@"info" -> pure $ toLogLevel i
-          Just i@"warn" -> pure $ toLogLevel i
-          Just i@"error" -> pure $ toLogLevel i
-          _ -> pure Nothing
-
-      toLogLevel :: Text -> Maybe LogLevel
-      toLogLevel = \case
-        "debug" -> pure LevelDebug
-        "info" -> pure LevelInfo
-        "warn" -> pure LevelWarn
-        "error" -> pure LevelError
-        _ -> Nothing
+      <*> (maybe (pure LevelInfo) decodeLogLevel =<< o .:? "log-level")
 
 instance ToJSON PerServerConfig where
   toJSON cfg =
     object
       [ "instance-id" .= cfg.instanceId
-      , "log-level" .= toJSON (fmap toLower (show cfg.logLevel))
+      , "log-level" .= encodeLogLevel cfg.logLevel
       ]
+
+-- | The JSON (de)serialization of 'LogLevel' appears to be broken, with what
+-- seems to be a generically derived @ToJSON@ instance (encoded as an @Object@)
+-- but a @FromJSON@ instance that expects an Aeson @String@. This provides a
+-- working parser.
+--
+-- Example of broken 'LogLevel' serde:
+--
+-- >>> encode LevelInfo
+-- "{\"tag\":\"LevelInfo\"}"
+--
+-- >>> eitherDecode @LogLevel it
+-- Left "Error in $: parsing LogLevel failed, expected String, but encountered Object"
+--
+-- Whereas:
+--
+-- >>> encodeLogLevel LevelInfo
+-- String "info"
+--
+-- >>> parseEither decodeLogLevel it
+-- Right INFO
+--
+-- NOTE: For the sake of simplicity and round-tripping with 'encodeLogLevel',
+-- @LevelOther@ is not supported
+decodeLogLevel :: Value -> Parser LogLevel
+decodeLogLevel = withText "LogLevel" $ \case
+  "debug" -> pure LevelDebug
+  "info" -> pure LevelInfo
+  "warn" -> pure LevelWarn
+  "error" -> pure LevelError
+  t ->
+    fail $
+      unwords
+        [ "Unrecognized log level:"
+        , Text.unpack t
+        , "(note: `LevelOther` not supported)"
+        ]
+
+-- | See 'decodeLogLevel'
+encodeLogLevel :: LogLevel -> Value
+encodeLogLevel = toJSON . fmap toLower . show
