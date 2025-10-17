@@ -24,7 +24,9 @@ import Data.Char (toLower)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Plow.Logging.Message (LogLevel (LevelError, LevelInfo, LevelWarn))
+import Plow.Logging.Message
+  ( LogLevel (LevelDebug, LevelError, LevelInfo, LevelWarn),
+  )
 import Servant
   ( Get,
     JSON,
@@ -60,6 +62,7 @@ instance FromJSON PerServerConfig where
       logLevelP :: Object -> Parser (Maybe LogLevel)
       logLevelP o =
         o .:? "log-level" >>= \case
+          Just i@"debug" -> pure $ toLogLevel i
           Just i@"info" -> pure $ toLogLevel i
           Just i@"warn" -> pure $ toLogLevel i
           Just i@"error" -> pure $ toLogLevel i
@@ -67,6 +70,7 @@ instance FromJSON PerServerConfig where
 
       toLogLevel :: Text -> Maybe LogLevel
       toLogLevel = \case
+        "debug" -> pure LevelDebug
         "info" -> pure LevelInfo
         "warn" -> pure LevelWarn
         "error" -> pure LevelError
