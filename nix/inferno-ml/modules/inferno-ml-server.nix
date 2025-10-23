@@ -81,9 +81,16 @@ in
                 type = lib.types.nullOr lib.types.str;
                 default = null;
                 description = lib.mdDoc
-                  "The instance-id for DB logs. Use 'auto' to introspect it from EC2, null for no DB logging";
+                  ''
+                    WARNING: Deprecated; this option has not effect.
+
+                    The instance-id for DB logs. Use 'auto' to introspect it
+                    from EC2, null for no DB logging
+                  '';
               };
 
+              # TODO Deprecate this as well; can just use the state directory
+              # for it
               cache = lib.mkOption {
                 description = lib.mdDoc ''
                   Options for the cache itself
@@ -153,6 +160,8 @@ in
       let
         service = "inferno-ml-server";
 
+        user = "inferno";
+
         configFile = {
           "path" = cfg.configuration;
           "set" = (
@@ -167,6 +176,11 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
+        # Warn for removing `configuration.instanceId`, as it's not used anymore.
+        # Any non-default (`null`) value means it's been set
+        warnings = lib.optional (cfg.configuration.instanceId != null)
+          "Option `inferno-ml-server.instanceId` is deprecated and ignored; please remove it.";
+
         # NOTE Since the kernel OOM killer might be invoked by the systemd
         # service configuration below (which is what we want), we need to make
         # sure the kernel does NOT panic on OOM for the IMLS process
@@ -174,6 +188,8 @@ in
           "vm.panic_on_oom" = 0;
         };
 
+        # This is the main service that runs `inferno-ml-server`
+        #
         # FIXME Ideally we should have a system user to run this. However,
         # we are doing some urgent testing and that would require more work.
         # We will fix having this run as `inferno` once we finalize the image
@@ -183,14 +199,15 @@ in
         systemd.services.${service} = {
           description = "Start `${service}` server";
           wantedBy = [ "default.target" ];
-          after = [ "network-online.target" ];
+          after = [ "network-online.target" "inferno-ml-configure.service" ];
           wants = [ "network-online.target" ];
+          requires = [ "inferno-ml-configure.service" ];
           serviceConfig = {
             ExecStart = "${cfg.package}/bin/${service} --config ${configFile}";
             Restart = "always";
             RestartSec = 5;
-            User = "inferno";
-            Group = "inferno";
+            User = user;
+            Group = user;
             PrivateTmp = "yes";
             ProtectDevices = "yes";
             NoNewPrivileges = "yes";
@@ -222,7 +239,37 @@ in
           };
         };
 
-        networking.firewall.allowedTCPPorts = [ configuration.port ];
+        # This is the supplementary service that `inferno-ml-server` depends on
+        # for its per-server configuration
+        systemd.services.inferno-ml-configure = {
+          description = "Start `inferno-ml-configure` server";
+          wantedBy = [ "default.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
+          requires = [ "inferno-ml-configure.service" ];
+          serviceConfig = {
+            ExecStart = "${pkgs.inferno-ml-configure}/bin/inferno-ml-configure";
+            Restart = "always";
+            RestartSec = 5;
+            # Intentionally run as the same user as `inferno-ml-server`
+            User = user;
+            Group = user;
+            PrivateTmp = "yes";
+            ProtectDevices = "yes";
+            NoNewPrivileges = "yes";
+            # This is intentionally a shared state directory with `inferno-ml-server`
+            # as they are running under the same user. `inferno-ml-configure` will
+            # write the per-server configuration under this directory, and
+            # `inferno-ml-server` will read from it
+            StateDirectory = "${service}";
+          };
+        };
+
+        networking.firewall.allowedTCPPorts = [
+          configuration.port
+          # This is the (non-configurable) port for `inferno-ml-configure`
+          8081
+        ];
 
         # Make sure that the cache directory exists and belongs to the correct user
         # and group. This could also be done in the systemd service definition, but

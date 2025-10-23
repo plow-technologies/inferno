@@ -31,14 +31,13 @@ import Data.Aeson
     Object,
     ToJSON (toJSON),
     ToJSONKey,
-    Value (Null, String),
+    Value (String),
     defaultOptions,
     genericParseJSON,
     withObject,
     withText,
     (.!=),
     (.:),
-    (.:?),
   )
 import Data.Aeson.Types (Parser)
 import qualified Data.Bits as Bits
@@ -96,7 +95,8 @@ import Plow.Logging.Message
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async, MonadUnliftIO)
-import UnliftIO.Exception (bracket)
+import UnliftIO.Directory (doesPathExist)
+import UnliftIO.Exception (bracket, throwString)
 import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
@@ -145,7 +145,7 @@ data Env = Env
   }
   deriving stock (Generic)
 
--- | Config for caching ML models to be used with Inferno scripts. When a script
+-- | GlobalConfig for caching ML models to be used with Inferno scripts. When a script
 -- uses @ML.loadModel@, models will be copied from the DB and saved to the cache
 -- directory. Once the 'maxSize' has been exceeded, least-recently-used cached
 -- models will be removed
@@ -211,36 +211,40 @@ data EntityIdType
   | GId
   deriving stock (Show, Eq, Generic, Typeable)
 
+-- | The full configuration for the @inferno-ml-server@ instance, including
+-- both global options from the NixOS modules and per-server configuration
+-- set by the @inferno-ml-configure@ service
 data Config = Config
+  { global :: GlobalConfig
+  , perServer :: PerServerConfig
+  }
+  deriving stock (Show, Eq, Generic)
+
+-- | These are configuration options that are set globally, for all @inferno-ml-server@
+-- instances, using NixOS module configuration. It is combined with the @PerServerConfig@
+-- to create a complete configuration
+data GlobalConfig = GlobalConfig
   { port :: Word64
   , cache :: ModelCache
   , timeout :: Word64
   -- ^ Timeout for script evaluation
   --
   -- NOTE: Timeout is in seconds, not milliseconds
-  , logLevel :: LogLevel
-  -- ^ Minimum log level; logs below this level will be ignored
   , store :: ConnectInfo
   -- ^ Configuration for PostgreSQL database
-  , instanceId :: InstanceId
-  -- ^ The instanceId used for DB logging
   , memoryMax :: Word8
   -- ^ The amount of total system memory the server process is allowed to
   -- consume as a percentage of total memory; must be between 1 and 100
   }
   deriving stock (Show, Eq, Generic)
 
-instance FromJSON Config where
-  parseJSON = withObject "Config" $ \o ->
-    Config
+instance FromJSON GlobalConfig where
+  parseJSON = withObject "GlobalConfig" $ \o ->
+    GlobalConfig
       <$> o .: "port"
       <*> o .: "cache"
       <*> o .: "timeout"
-      -- We generally want the entire process traced, so `LevelInfo` is used
-      -- as the default if `log-level` is not specified in the config
-      <*> o .:? "log-level" .!= LevelInfo
       <*> (connInfoP =<< o .: "store")
-      <*> o .:? "instanceId" .!= NoDbLogging
       <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
     where
       connInfoP :: Object -> Parser ConnectInfo
@@ -257,25 +261,10 @@ instance FromJSON Config where
         | n > 100 || n < 1 = fail "memoryMax must be within bounds 1-100"
         | otherwise = pure n
 
-data InstanceId
-  = InstanceId Text
-  | Auto
-  | NoDbLogging
-  deriving stock (Show, Eq, Generic)
-
-instance ToJSON InstanceId where
-  toJSON Auto = String "auto"
-  toJSON (InstanceId x) = String x
-  toJSON NoDbLogging = Null
-
-instance FromJSON InstanceId where
-  parseJSON Null = pure NoDbLogging
-  parseJSON (String "auto") = pure Auto
-  parseJSON (String x) = pure (InstanceId x)
-  parseJSON _ = fail "Invalid InstanceId. Expected \"auto\", an instance-id or Null"
-
-mkOptions :: IO Config
-mkOptions = decodeFileThrow =<< p
+-- | CLI options for @inferno-ml-server@. Currently only parses the path to the
+-- global configuration generated via NixOS modules
+getGlobalConfig :: IO GlobalConfig
+getGlobalConfig = decodeFileThrow =<< p
   where
     p :: IO FilePath
     p = Options.execParser opts
@@ -291,6 +280,17 @@ mkOptions = decodeFileThrow =<< p
           Options.strOption $
             Options.long "config"
               <> Options.metavar "FILEPATH"
+
+-- | Tries to decode the per-server configuration for this particular
+-- @inferno-ml-server@ instance. If no per-server config has been created,
+-- or if it is not parseable, an exception is raised
+getPerServerConfig :: IO PerServerConfig
+getPerServerConfig =
+  doesPathExist perServerConfigPath >>= \case
+    True -> decodeFileThrow perServerConfigPath
+    False ->
+      throwString
+        "no per-server configuration exists for this server; exiting"
 
 -- | Metadata for Inferno scripts
 data ScriptMetadata = ScriptMetadata
@@ -343,7 +343,7 @@ logTrace t =
     (`traceWith` t) =<< view #tracer
   where
     shouldLog :: RemoteM Bool
-    shouldLog = (traceLevel t >=) <$> view (#config . #logLevel)
+    shouldLog = (traceLevel t >=) <$> view (#config . #perServer . #logLevel)
 
 logInfo :: TraceInfo InferenceParam ModelVersion -> RemoteM ()
 logInfo = logTrace . InfoTrace

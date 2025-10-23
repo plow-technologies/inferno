@@ -1,6 +1,6 @@
 cabal-version: 2.4
 name:          inferno-ml-server-types
-version:       0.22.0
+version:       0.23.0
 synopsis:      Types for Inferno ML server
 description:   Types for Inferno ML server
 homepage:      https://github.com/plow-technologies/inferno.git#readme
@@ -35,7 +35,10 @@ library
   exposed-modules:
     Inferno.ML.Server.Client
     Inferno.ML.Server.Client.Bridge
+    Inferno.ML.Server.Client.PerServer
     Inferno.ML.Server.Types
+    Inferno.ML.Server.Types.Log
+    Inferno.ML.Server.Types.PerServer
 
   hs-source-dirs:  src
   build-depends:
@@ -49,6 +52,7 @@ library
     , containers
     , cryptonite
     , deepseq
+    , filepath
     , generic-lens
     , hashable
     , http-api-data
@@ -57,6 +61,8 @@ library
     , inferno-vc
     , iproute
     , microlens-platform
+    , plow-log
+    , plow-log-async
     , postgresql-simple
     , QuickCheck
     , quickcheck-arbitrary-adt
@@ -67,5 +73,6 @@ library
     , text
     , time
     , unix
+    , unliftio
     , uuid
     , vector

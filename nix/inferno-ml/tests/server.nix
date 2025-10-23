@@ -17,6 +17,24 @@ pkgs.nixosTest {
       ../images/common/qcow2.nix
     ];
 
+    virtualisation.forwardPorts = [
+      {
+        from = "host";
+        host.port = 5432;
+        guest.port = 5432;
+      }
+      {
+        from = "host";
+        host.port = 8080;
+        guest.port = 8080;
+      }
+      {
+        from = "host";
+        host.port = 8081;
+        guest.port = 8081;
+      }
+    ];
+
     environment.systemPackages = [
       pkgs.postgresql
       (
@@ -121,6 +139,18 @@ pkgs.nixosTest {
         }
       )
       (
+        # Writes a dummy per-server config to the Inferno ML state directory; a
+        # per-server config of some sort is required for `inferno-ml-server` to run
+        pkgs.writeShellApplication {
+          name = "write-per-server-config";
+          runtimeInputs = with pkgs; [ curl ];
+          text = ''
+            curl --fail --json '{"instance-id": "i-aaaaaaaaaaaaaaaaa"}' \
+              localhost:8081/inferno-ml/configure/set
+          '';
+        }
+      )
+      (
         pkgs.writeShellApplication {
           name = "run-inference-client-test";
           runtimeInputs = with pkgs; [ inferno-ml-server.test-client ];
@@ -219,6 +249,8 @@ pkgs.nixosTest {
       'psql -U inferno -d inferno -f ${../migrations/v1-create-tables.sql} -v "ON_ERROR_STOP=1"'
     )
     node.succeed('insert-mnist-model')
+    node.wait_for_unit("inferno-ml-configure.service")
+    node.wait_until_succeeds('write-per-server-config', timeout=30)
     node.wait_for_unit("inferno-ml-server.service")
     node.wait_until_succeeds('curl --fail localhost:8080/status', timeout=30)
 

@@ -254,7 +254,8 @@
                 inherit (self.legacyPackages.${prev.system}.hsPkgs)
                   inferno-core;
                 inherit (self.legacyPackages.${prev.system})
-                  inferno-ml-server;
+                  inferno-ml-server
+                  inferno-ml-configure;
               }
             )
             (import ./nix/overlays/deepspeed.nix)
@@ -272,7 +273,8 @@
             (
               _: prev: {
                 inherit (self.legacyPackages.${prev.system})
-                  inferno-ml-server;
+                  inferno-ml-server
+                  inferno-ml-configure;
               }
             )
           ];

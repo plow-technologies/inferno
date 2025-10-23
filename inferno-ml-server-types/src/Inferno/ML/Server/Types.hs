@@ -14,7 +14,11 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
-module Inferno.ML.Server.Types where
+module Inferno.ML.Server.Types
+  ( module Inferno.ML.Server.Types,
+    module Inferno.ML.Server.Types.PerServer,
+  )
+where
 
 import Conduit (ConduitT)
 import Control.Applicative (asum, optional)
@@ -70,6 +74,7 @@ import Database.PostgreSQL.Simple.Types
 import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
+import Inferno.ML.Server.Types.PerServer
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash (VCObjectHash),
@@ -96,6 +101,7 @@ import Servant
     (:>),
   )
 import Servant.Conduit ()
+import System.FilePath ((</>))
 import System.Posix (EpochTime)
 import Test.QuickCheck
   ( Arbitrary (arbitrary),
@@ -1256,3 +1262,11 @@ genMUtc = oneof [Just <$> genUtc, pure Nothing]
 genUtc :: Gen UTCTime
 genUtc =
   posixSecondsToUTCTime . realToFrac <$> chooseInt (1420000000, 1720000000)
+
+-- | State directory for various Inferno ML things, including OOM breadcrumb,
+-- per-server config, etc...
+infernoMlStateDirectory :: FilePath
+infernoMlStateDirectory = "/var/lib/inferno-ml-server"
+
+perServerConfigPath :: FilePath
+perServerConfigPath = infernoMlStateDirectory </> "per-server-config.json"
