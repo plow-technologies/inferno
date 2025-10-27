@@ -206,6 +206,7 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , glu :: Int -> tensor -> tensor
   , view :: [Int] -> tensor -> tensor
   , repeat :: [Int] -> tensor -> tensor
+  , roll :: tensor -> Int -> Int -> tensor
   }
   deriving (Generic)
 
@@ -739,6 +740,12 @@ module Tensor
   `t` along each dimension;
   repeat : array of int -> tensor -> tensor := ###repeat###;
 
+  @doc `roll t shift dim` rolls the tensor `t` along the given dimension `dim`.
+  Elements that are shifted beyond the last position are re-introduced at the first
+  position. `shift` specifies the number of places by which the elements of the
+  tensor are shifted;
+  roll : tensor -> int -> int -> tensor := ###roll###;
+
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
@@ -895,6 +902,7 @@ mkUnboundModule =
           , glu = unbound
           , view = unbound
           , repeat = unbound
+          , roll = unbound
           }
     , properties =
         MkPropertyFuns

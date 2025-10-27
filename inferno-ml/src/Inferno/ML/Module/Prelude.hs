@@ -58,6 +58,7 @@ import Torch
 import qualified Torch
 import qualified Torch.DType as DType
 import qualified Torch.Functional
+import qualified Torch.Functional.Internal
 import qualified Torch.Script
 import qualified Torch.Tensor as Tensor
 
@@ -294,6 +295,9 @@ defaultMlModule =
           , glu = Torch.glu . Dim
           , view = Torch.view
           , repeat = Torch.repeat
+          , -- NOTE: `roll` is not re-exported publicly from `Torch.Functional` for
+            -- some unknown reason, so we need to import it from `Torch.Functional.Internal`
+            roll = Torch.Functional.Internal.roll
           }
     , properties =
         MkPropertyFuns
