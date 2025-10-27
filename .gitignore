@@ -29,3 +29,5 @@ result*
 data/
 .nixos-test-history
 *.sw?
+/**/CLAUDE.md
+.slop/
