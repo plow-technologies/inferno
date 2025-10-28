@@ -645,6 +645,12 @@ textLength = fromIntegral . Text.length
 stripText :: Text -> Text
 stripText = Text.strip
 
+toUpperText :: Text -> Text
+toUpperText = Text.toUpper
+
+toLowerText :: Text -> Text
+toLowerText = Text.toLower
+
 textSplitAt :: (MonadThrow m) => Value c m
 textSplitAt =
   VFun $ \case

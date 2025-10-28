@@ -109,6 +109,8 @@ import Inferno.Module.Prelude.Defs
     timeIntervalFun,
     timeToInt,
     toBCDFun,
+    toLowerText,
+    toUpperText,
     toWord16Fun,
     toWord32Fun,
     toWord64Fun,
@@ -520,6 +522,12 @@ module Text
   length : text -> int := ###textLength###;
 
   strip : text -> text := ###stripText###;
+
+  @doc Converts text to uppercase;
+  toUpper : text -> text := ###toUpperText###;
+
+  @doc Converts text to lowercase;
+  toLower : text -> text := ###toLowerText###;
 
   splitAt : int -> text -> (text, text) := ###!textSplitAt###;
 
