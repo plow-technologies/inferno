@@ -343,20 +343,8 @@ defaultMlModule =
             quantile =
               VFun $ \case
                 VCustom (VTensor t) -> pure . VFun $ \case
-                  VCustom (VTensor q) -> pure . VFun $ \case
-                    VInt (fromIntegral -> dim) -> pure . VFun $ \case
-                      VEnum h keep
-                        | h == enumBoolHash ->
-                            let keepdim :: Bool
-                                keepdim = keep == "true"
-                             in pure . VFun $ \case
-                                  VEnum _ interp ->
-                                    VCustom . VTensor . Torch.Functional.Internal.quantile_ttlbs t q dim keepdim
-                                      <$> getInterpolation interp
-                                  _ -> throwM $ RuntimeError "quantile: expected interpolation enum"
-                        | otherwise -> throwM $ RuntimeError "quantile: expected keepdim bool enum"
-                      _ -> throwM $ RuntimeError "quantile: expected keepdim bool enum"
-                    _ -> throwM $ RuntimeError "quantile: expected dim int"
+                  VCustom (VTensor q) ->
+                    pure $ gquantile "quantile" t Torch.Functional.Internal.quantile_ttlbs q
                   _ -> throwM $ RuntimeError "quantile: expected quantile tensor"
                 _ -> throwM $ RuntimeError "quantile: expected input tensor"
           , -- NOTE: `dquantile` uses `quantile_tdlbs` from `Torch.Functional.Internal`
@@ -364,24 +352,38 @@ defaultMlModule =
             dquantile =
               VFun $ \case
                 VCustom (VTensor t) -> pure . VFun $ \case
-                  VDouble q -> pure . VFun $ \case
-                    VInt (fromIntegral -> dim) -> pure . VFun $ \case
-                      VEnum h keep
-                        | h == enumBoolHash ->
-                            let keepdim :: Bool
-                                keepdim = keep == "true"
-                             in pure . VFun $ \case
-                                  VEnum _ interp ->
-                                    VCustom . VTensor . Torch.Functional.Internal.quantile_tdlbs t q dim keepdim
-                                      <$> getInterpolation interp
-                                  _ -> throwM $ RuntimeError "dquantile: expected interpolation enum"
-                        | otherwise -> throwM $ RuntimeError "dquantile: expected keepdim bool enum"
-                      _ -> throwM $ RuntimeError "dquantile: expected keepdim bool enum"
-                    _ -> throwM $ RuntimeError "dquantile: expected dim int"
+                  VDouble q ->
+                    pure $ gquantile "dquantile" t Torch.Functional.Internal.quantile_tdlbs q
                   _ -> throwM $ RuntimeError "dquantile: expected quantile double"
                 _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }
     }
+  where
+    -- Generic quantile implementation that works for both tensor and double
+    -- quantile values, in PyTorch of course `quantile` just uses duck typing
+    -- for the q value
+    gquantile ::
+      String ->
+      Tensor ->
+      (Tensor -> q -> Int -> Bool -> String -> Tensor) ->
+      q ->
+      Value (MlValue x) m
+    gquantile funName t f q =
+      VFun $ \case
+        VInt (fromIntegral -> dim) -> pure . VFun $ \case
+          VEnum h keep
+            | h == enumBoolHash ->
+                pure . VFun $ \case
+                  VEnum _ interp ->
+                    VCustom . VTensor . f t q dim (keep == "true")
+                      <$> getInterpolation interp
+                  _ -> throwRuntimeError "expected interpolation enum"
+            | otherwise -> throwRuntimeError "expected keepdim bool enum"
+          _ -> throwRuntimeError "expected keepdim bool enum"
+        _ -> throwRuntimeError "expected dim int"
+      where
+        throwRuntimeError :: (MonadThrow m) => String -> m a
+        throwRuntimeError msg = throwM . RuntimeError $ funName <> ": " <> msg
 
 withDType ::
   (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m
