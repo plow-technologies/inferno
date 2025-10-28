@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Inferno.ML.Module.Prelude
   ( MlModule,
@@ -34,12 +35,13 @@ import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
+import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEnum, VFun),
+    Value (VArray, VCustom, VEnum, VFun, VInt),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
 import Prettyprinter (Pretty)
@@ -335,6 +337,28 @@ defaultMlModule =
                     throwM . RuntimeError $
                       "device: recevied unexpected device " <> show d
                 _ -> throwM . RuntimeError $ "device: expected a tensor"
+          , -- NOTE: `quantile` is not re-exported publicly from `Torch.Functional`
+            -- (similar to `roll`), so we need to import `quantile_ttlbs` from
+            -- `Torch.Functional.Internal`
+            quantile =
+              VFun $ \case
+                VCustom (VTensor t) -> pure . VFun $ \case
+                  VCustom (VTensor q) -> pure . VFun $ \case
+                    VInt (fromIntegral -> dim) -> pure . VFun $ \case
+                      VEnum h keep
+                        | h == enumBoolHash ->
+                            let keepdim :: Bool
+                                keepdim = keep == "true"
+                             in pure . VFun $ \case
+                                  VEnum _ interp ->
+                                    VCustom . VTensor . Torch.Functional.Internal.quantile_ttlbs t q dim keepdim
+                                      <$> getInterpolation interp
+                                  _ -> throwM $ RuntimeError "quantile: expected interpolation enum"
+                        | otherwise -> throwM $ RuntimeError "quantile: expected keepdim bool enum"
+                      _ -> throwM $ RuntimeError "quantile: expected keepdim bool enum"
+                    _ -> throwM $ RuntimeError "quantile: expected dim int"
+                  _ -> throwM $ RuntimeError "quantile: expected quantile tensor"
+                _ -> throwM $ RuntimeError "quantile: expected input tensor"
           }
     }
 
@@ -373,6 +397,24 @@ getDevice = \case
         , "unknown device"
         , show s <> ";"
         , "expected one of {#cpu,#cuda}"
+        ]
+
+-- | Get the interpolation mode string from an Inferno @interpolation@ enum.
+-- This returns a @String@ as it is what Hasktorch expects
+getInterpolation :: (MonadThrow m) => Ident -> m String
+getInterpolation = \case
+  "linear" -> pure "linear"
+  "lower" -> pure "lower"
+  "higher" -> pure "higher"
+  "nearest" -> pure "nearest"
+  "midpoint" -> pure "midpoint"
+  s ->
+    throwM . RuntimeError $
+      unwords
+        [ "quantile:"
+        , "unknown interpolation"
+        , show s <> ";"
+        , "expected one of {#linear, #lower, #higher, #nearest, #midpoint}"
         ]
 
 asTensorFun ::

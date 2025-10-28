@@ -220,6 +220,11 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   , dim :: tensor -> Int
   , dtype :: Value (MlValue tensor model mname x) m
   , device :: Value (MlValue tensor model mname x) m
+  -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
+  -- because it needs to be effectful in order to convert the interpolation enum to
+  -- a `String`. It's easier to put it here rather than convert all of `MkFunctionalFuns`
+  -- to `Value (MlValue tensor model mname x) m` and lift everything
+  , quantile :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -269,6 +274,8 @@ module ML
   enum dtype := #int | #float | #double | #bool;
 
   enum device := #cpu | #cuda;
+
+  enum nterpolation := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModel###;
@@ -331,6 +338,19 @@ module Tensor
 
   @doc Returns the data type of the input tensor;
   dtype : tensor -> dtype{#int, #float, #double, #bool} := ###!dtype###;
+
+  @doc `quantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
+  along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
+  dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
+  specified by `interp`;
+  quantile :
+    tensor
+    -> tensor
+    -> int
+    -> bool{#true, #false}
+    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> tensor
+    := ###!quantile###;
 
   @doc Returns the mean value of all elements in the input tensor;
   mean : tensor -> tensor := ###mean###;
@@ -912,6 +932,7 @@ mkUnboundModule =
           , dim = unbound
           , dtype = unbound
           , device = unbound
+          , quantile = unbound
           }
     }
   where
