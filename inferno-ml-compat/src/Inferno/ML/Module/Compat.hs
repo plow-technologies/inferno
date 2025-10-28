@@ -225,6 +225,8 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   -- a `String`. It's easier to put it here rather than convert all of `MkFunctionalFuns`
   -- to `Value (MlValue tensor model mname x) m` and lift everything
   , quantile :: Value (MlValue tensor model mname x) m
+  -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
+  , dquantile :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -351,6 +353,19 @@ module Tensor
     -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!quantile###;
+
+  @doc `dquantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
+  along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
+  dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
+  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`;
+  dquantile :
+    tensor
+    -> double
+    -> int
+    -> bool{#true, #false}
+    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> tensor
+    := ###!dquantile###;
 
   @doc Returns the mean value of all elements in the input tensor;
   mean : tensor -> tensor := ###mean###;
@@ -933,6 +948,7 @@ mkUnboundModule =
           , dtype = unbound
           , device = unbound
           , quantile = unbound
+          , dquantile = unbound
           }
     }
   where

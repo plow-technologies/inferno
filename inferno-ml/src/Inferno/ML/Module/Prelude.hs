@@ -41,7 +41,7 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEnum, VFun, VInt),
+    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
 import Prettyprinter (Pretty)
@@ -359,6 +359,27 @@ defaultMlModule =
                     _ -> throwM $ RuntimeError "quantile: expected dim int"
                   _ -> throwM $ RuntimeError "quantile: expected quantile tensor"
                 _ -> throwM $ RuntimeError "quantile: expected input tensor"
+          , -- NOTE: `dquantile` uses `quantile_tdlbs` from `Torch.Functional.Internal`
+            -- for the same reason as `quantile`
+            dquantile =
+              VFun $ \case
+                VCustom (VTensor t) -> pure . VFun $ \case
+                  VDouble q -> pure . VFun $ \case
+                    VInt (fromIntegral -> dim) -> pure . VFun $ \case
+                      VEnum h keep
+                        | h == enumBoolHash ->
+                            let keepdim :: Bool
+                                keepdim = keep == "true"
+                             in pure . VFun $ \case
+                                  VEnum _ interp ->
+                                    VCustom . VTensor . Torch.Functional.Internal.quantile_tdlbs t q dim keepdim
+                                      <$> getInterpolation interp
+                                  _ -> throwM $ RuntimeError "dquantile: expected interpolation enum"
+                        | otherwise -> throwM $ RuntimeError "dquantile: expected keepdim bool enum"
+                      _ -> throwM $ RuntimeError "dquantile: expected keepdim bool enum"
+                    _ -> throwM $ RuntimeError "dquantile: expected dim int"
+                  _ -> throwM $ RuntimeError "dquantile: expected quantile double"
+                _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }
     }
 
