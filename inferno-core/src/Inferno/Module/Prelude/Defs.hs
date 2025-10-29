@@ -21,6 +21,7 @@ import Data.Bits
     (.&.),
     (.|.),
   )
+import qualified Data.ByteString as ByteString
 import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
 import Data.Function (on)
 import Data.Int (Int64)
@@ -29,6 +30,7 @@ import Data.List.Extra ((!?))
 import Data.Ord (comparing)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text.Encoding
 import Data.Time.Calendar (Day, addGregorianMonthsClip, addGregorianYearsClip, fromGregorian, toGregorian)
 import Data.Time.Clock (DiffTime, UTCTime (..), diffTimeToPicoseconds, picosecondsToDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
@@ -650,6 +652,21 @@ toUpperText = Text.toUpper
 
 toLowerText :: Text -> Text
 toLowerText = Text.toLower
+
+-- | Encode text as UTF-8 bytes. Returns an array of @Word16@ values representing
+-- the UTF-8 byte sequence. Note: We use @Word16@ instead of @Word8@ because Inferno
+-- does not support @Word8@, and it is not feasible to add support at this time.
+encodeUtf8Text :: Text -> [Word16]
+encodeUtf8Text =
+  fmap fromIntegral . ByteString.unpack . Text.Encoding.encodeUtf8
+
+-- | Decode UTF-8 bytes to text. Takes an array of @Word16@ values (each representing
+-- a byte) and converts them to text. Uses lenient decoding to handle invalid UTF-8
+-- sequences gracefully. Note: We use @Word16@ instead of @Word8@ because Inferno does
+-- not support @Word8@, and it is not feasible to add support at this time.
+decodeUtf8Text :: [Word16] -> Text
+decodeUtf8Text =
+  Text.Encoding.decodeUtf8Lenient . ByteString.pack . fmap fromIntegral
 
 textSplitAt :: (MonadThrow m) => Value c m
 textSplitAt =

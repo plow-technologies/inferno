@@ -38,9 +38,11 @@ import Inferno.Module.Prelude.Defs
     dayFun,
     daysBeforeFun,
     daysFun,
+    decodeUtf8Text,
     divFun,
     doubleToInt,
     dropWhileFun,
+    encodeUtf8Text,
     enumFromToInt64,
     eqFun,
     expFun,
@@ -530,6 +532,17 @@ module Text
   toLower : text -> text := ###toLowerText###;
 
   splitAt : int -> text -> (text, text) := ###!textSplitAt###;
+
+  @doc Encode text as UTF-8 bytes. Returns an array of `word16` values representing
+  the UTF-8 byte sequence. Each `word16` represents one byte (0-255). Note: We use
+  `word16` instead of `word8` because Inferno does not currently support `word8`.;
+  encodeUtf8 : text -> array of word16 := ###encodeUtf8Text###;
+
+  @doc Decode UTF-8 bytes to text. Takes an array of `word16` values
+  (each representing a byte, 0-255) and converts them to text. Uses lenient
+  decoding to handle invalid UTF-8 sequences gracefully. Note: We use `word16`
+  instead of `word8` because Inferno does not currently support `word8`.;
+  decodeUtf8 : array of word16 -> text := ###decodeUtf8Text###;
 
 module Time
 
