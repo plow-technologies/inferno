@@ -550,6 +550,27 @@ zipFun = VFun $ \case
       _ -> throwM $ RuntimeError "zip: expecting an array"
   _ -> throwM $ RuntimeError "zip: expecting an array"
 
+zipWithFun :: forall c m. (MonadThrow m) => Value c m
+zipWithFun =
+  VFun $ \case
+    VFun f ->
+      pure . VFun $ \case
+        VArray xs ->
+          pure . VFun $ \case
+            VArray ys -> VArray <$> applyZipWith f xs ys
+            _ -> throwM $ RuntimeError "zipWith: expecting an array"
+        _ -> throwM $ RuntimeError "zipWith: expecting an array"
+    _ -> throwM $ RuntimeError "zipWith: expecting a function"
+  where
+    applyZipWith ::
+      (Value c m -> m (Value c m)) -> [Value c m] -> [Value c m] -> m [Value c m]
+    applyZipWith _ [] _ = pure mempty
+    applyZipWith _ _ [] = pure mempty
+    applyZipWith f (x : xs) (y : ys) =
+      f x >>= \case
+        VFun g -> (:) <$> g y <*> applyZipWith f xs ys
+        _ -> throwM $ RuntimeError "zipWith: expecting a pair-wise function"
+
 lengthFun :: (MonadThrow m) => Value c m
 lengthFun =
   VFun $ \case

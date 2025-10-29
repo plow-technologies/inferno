@@ -129,6 +129,7 @@ import Inferno.Module.Prelude.Defs
     yearsBeforeFun,
     zeroFun,
     zipFun,
+    zipWithFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -813,5 +814,11 @@ module Base
 
   @doc Zip two arrays into a array of tuples/pairs. If one input array is shorter than the other, excess elements of the longer array are discarded. `zip [1, 2] ['a', 'b'] == [(1,'a'),(2,'b')]`;
   zip : forall 'a 'b. array of 'a -> array of 'b -> array of ('a, 'b) := ###!zipFun###;
+
+  @doc `zipWith f xs ys` zips two arrays together by applying the pair-wise
+  function `f` to corresponding elements. If one input array is shorter than the
+  other, excess elements of the longer array are discarded.
+  Example: `zipWith (+) [1, 2, 3] [4, 5, 6] == [5, 7, 9]`;
+  zipWith : forall 'a 'b 'c. ('a -> 'b -> 'c) -> array of 'a -> array of 'b -> array of 'c := ###!zipWithFun###;
 
 |]
