@@ -426,6 +426,14 @@ takeFun =
       _ -> throwM $ RuntimeError "take: expecting an array"
     _ -> throwM $ RuntimeError "take: expecting an int"
 
+dropFun :: (MonadThrow m) => Value c m
+dropFun =
+  VFun $ \case
+    VInt n -> pure . VFun $ \case
+      VArray vs -> pure . VArray . flip drop vs $ fromIntegral n
+      _ -> throwM $ RuntimeError "drop: expecting an array"
+    _ -> throwM $ RuntimeError "drop: expecting an int"
+
 takeWhileFun :: (MonadThrow m) => Value c m
 takeWhileFun =
   VFun $ \case

@@ -41,6 +41,7 @@ import Inferno.Module.Prelude.Defs
     decodeUtf8Text,
     divFun,
     doubleToInt,
+    dropFun,
     dropWhileFun,
     encodeUtf8Text,
     enumFromToInt64,
@@ -515,6 +516,10 @@ module Array
   @doc `Array.take n xs` returns the first `n` elements of `xs`.
   If `n` is greater than the length of `xs`, returns `xs`.;
   take : forall 'a. int -> array of 'a -> array of 'a := ###!takeFun###;
+
+  @doc `Array.drop n xs` returns `xs` with the first `n` elements removed.
+  If `n` is greater than the length of `xs`, returns the empty array.;
+  drop : forall 'a. int -> array of 'a -> array of 'a := ###!dropFun###;
 
   @doc `Array.takeWhile`, applied to a predicate `p` and a list `xs`, returns the longest prefix (possibly empty) of `xs` of elements that satisfy `p`;
   takeWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!takeWhileFun###;
