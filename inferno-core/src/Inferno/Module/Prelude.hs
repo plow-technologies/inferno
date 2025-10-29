@@ -102,6 +102,7 @@ import Inferno.Module.Prelude.Defs
     stripText,
     subFun,
     sumFun,
+    takeFun,
     takeWhileFun,
     tanFun,
     tanhFun,
@@ -510,6 +511,10 @@ module Array
 
   @doc `Array.reverse xs` returns the elements of `xs` in reverse order;
   reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
+
+  @doc `Array.take n xs` returns the first `n` elements of `xs`.
+  If `n` is greater than the length of `xs`, returns `xs`.;
+  take : forall 'a. int -> array of 'a -> array of 'a := ###!takeFun###;
 
   @doc `Array.takeWhile`, applied to a predicate `p` and a list `xs`, returns the longest prefix (possibly empty) of `xs` of elements that satisfy `p`;
   takeWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!takeWhileFun###;

@@ -418,6 +418,14 @@ reverseFun =
     VArray vs -> pure $ VArray $ reverse vs
     _ -> throwM $ RuntimeError "reverse: expecting an array"
 
+takeFun :: (MonadThrow m) => Value c m
+takeFun =
+  VFun $ \case
+    VInt n -> pure . VFun $ \case
+      VArray vs -> pure . VArray . flip take vs $ fromIntegral n
+      _ -> throwM $ RuntimeError "take: expecting an array"
+    _ -> throwM $ RuntimeError "take: expecting an int"
+
 takeWhileFun :: (MonadThrow m) => Value c m
 takeWhileFun =
   VFun $ \case
