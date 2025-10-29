@@ -47,6 +47,7 @@ import Inferno.Module.Prelude.Defs
     enumFromToInt64,
     eqFun,
     expFun,
+    filterFun,
     floorFun,
     foldlFun,
     foldrFun,
@@ -520,6 +521,10 @@ module Array
   @doc `Array.drop n xs` returns `xs` with the first `n` elements removed.
   If `n` is greater than the length of `xs`, returns the empty array.;
   drop : forall 'a. int -> array of 'a -> array of 'a := ###!dropFun###;
+
+  @doc `Array.filter p xs` returns an array containing only the elements of `xs`
+  that satisfy the predicate `p`;
+  filter : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!filterFun###;
 
   @doc `Array.takeWhile`, applied to a predicate `p` and a list `xs`, returns the longest prefix (possibly empty) of `xs` of elements that satisfy `p`;
   takeWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!takeWhileFun###;

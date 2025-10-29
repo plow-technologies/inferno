@@ -434,6 +434,25 @@ dropFun =
       _ -> throwM $ RuntimeError "drop: expecting an array"
     _ -> throwM $ RuntimeError "drop: expecting an int"
 
+filterFun :: forall c m. (MonadThrow m) => Value c m
+filterFun =
+  VFun $ \case
+    VFun p ->
+      pure . VFun $ \case
+        VArray vs -> VArray <$> applyFilter p vs
+        _ -> throwM $ RuntimeError "filter: expecting an array"
+    _ -> throwM $ RuntimeError "filter: expecting a function"
+  where
+    applyFilter :: (Value c m -> m (Value c m)) -> [Value c m] -> m [Value c m]
+    applyFilter _ [] = pure mempty
+    applyFilter p (x : xs) =
+      p x >>= \case
+        VEnum h "true"
+          | h == enumBoolHash -> (x :) <$> applyFilter p xs
+        VEnum h "false"
+          | h == enumBoolHash -> applyFilter p xs
+        _ -> throwM $ RuntimeError "filter: expecting predicate to return a bool"
+
 takeWhileFun :: (MonadThrow m) => Value c m
 takeWhileFun =
   VFun $ \case
