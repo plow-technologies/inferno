@@ -274,6 +274,18 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "open Time in Array.sum [seconds 2, hours 5]" $ VEpochTime 18002
     shouldEvaluateTo "Array.reverse []" $ VArray []
     shouldEvaluateTo "Array.reverse [1.0, 2.0, 4.0, 8.0]" $ VArray (map VDouble [8, 4, 2, 1])
+    shouldEvaluateTo "Array.take 0 [1, 2, 3]" $ VArray []
+    shouldEvaluateTo "Array.take 2 [1, 2, 3, 4]" . VArray $ VDouble <$> [1, 2]
+    shouldEvaluateTo "Array.take 5 [1, 2, 3]" . VArray $ VDouble <$> [1, 2, 3]
+    shouldEvaluateTo "Array.take 3 []" $ VArray []
+    shouldEvaluateTo "Array.drop 0 [1, 2, 3]" . VArray $ VDouble <$> [1, 2, 3]
+    shouldEvaluateTo "Array.drop 2 [1, 2, 3, 4]" . VArray $ VDouble <$> [3, 4]
+    shouldEvaluateTo "Array.drop 5 [1, 2, 3]" $ VArray []
+    shouldEvaluateTo "Array.drop 3 []" $ VArray []
+    shouldEvaluateTo "Array.filter (fun x -> x > 2) [1, 2, 3, 4]" . VArray $ VDouble <$> [3, 4]
+    shouldEvaluateTo "Array.filter (fun x -> x > 0) [1, 2, 3]" . VArray $ VDouble <$> [1, 2, 3]
+    shouldEvaluateTo "Array.filter (fun x -> x > 10) [1, 2, 3]" $ VArray []
+    shouldEvaluateTo "Array.filter (fun x -> x > 0) []" $ VArray []
     shouldEvaluateTo "Array.cons 3 [1, 2] == [3, 1, 2]" vTrue
     shouldEvaluateTo "Array.uncons [1, 2, 3] == Some (1, [2, 3])" vTrue
     shouldEvaluateTo "Array.takeWhile (fun x -> x < 3) [1,2,3,4,1,2,3,4] == [1, 2]" vTrue
@@ -370,6 +382,15 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Text.length \"hello\"" $ VInt 5
     shouldEvaluateTo "Text.strip \" hello \"" $ VText "hello"
     shouldEvaluateTo "Text.splitAt 5 \"hello world\"" $ VTuple [VText "hello", VText " world"]
+    shouldEvaluateTo "Text.toUpper \"hello\"" $ VText "HELLO"
+    shouldEvaluateTo "Text.toUpper \"HELLO\"" $ VText "HELLO"
+    shouldEvaluateTo "Text.toUpper \"HeLLo\"" $ VText "HELLO"
+    shouldEvaluateTo "Text.toLower \"HELLO\"" $ VText "hello"
+    shouldEvaluateTo "Text.toLower \"hello\"" $ VText "hello"
+    shouldEvaluateTo "Text.toLower \"HeLLo\"" $ VText "hello"
+    shouldEvaluateTo "Text.encodeUtf8 \"hi\"" $ VArray [VWord16 104, VWord16 105]
+    shouldEvaluateTo "Text.decodeUtf8 (Array.map Word.toWord16 [104, 105])" $ VText "hi"
+    shouldEvaluateTo "Text.decodeUtf8 (Text.encodeUtf8 \"hello\")" $ VText "hello"
     -- Array indexing
     shouldEvaluateTo "Array.get [0, 1, 2] 0" $ VDouble 0
     shouldEvaluateTo "Array.get [0, 1, 2] 1" $ VDouble 1
@@ -408,6 +429,11 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "zip [1, 2] [\"a\"] == [(1,\"a\")]" vTrue
     shouldEvaluateTo "zip [] [1, 2] == []" vTrue
     shouldEvaluateTo "zip [1, 2] [] == []" vTrue
+    shouldEvaluateTo "zipWith (+) [1, 2, 3] [4, 5, 6]" . VArray $ VDouble <$> [5, 7, 9]
+    shouldEvaluateTo "zipWith (+) [1, 2] [3, 4, 5]" . VArray $ VDouble <$> [4, 6]
+    shouldEvaluateTo "zipWith (+) [1, 2, 3] [4, 5]" . VArray $ VDouble <$> [5, 7]
+    shouldEvaluateTo "zipWith (+) [] [1, 2]" $ VArray []
+    shouldEvaluateTo "zipWith (+) [1, 2] []" $ VArray []
     -- Records
     shouldEvaluateTo "let r = {x = 2; y = 3} in r.x" $ VDouble 2
     shouldEvaluateTo "let r = {x = 2; y = 3} in r.y" $ VDouble 3
