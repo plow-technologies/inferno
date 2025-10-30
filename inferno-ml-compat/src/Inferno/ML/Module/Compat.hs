@@ -222,7 +222,8 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   , device :: Value (MlValue tensor model mname x) m
   , -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
     -- because it needs to be effectful in order to convert the interpolation enum to
-    -- a `String`. It's easier to put it here rather than change `MkFunctionalFuns`
+    -- a `String`. It's easier to put it here rather than convert all of `MkFunctionalFuns`
+    -- to `Value (MlValue tensor model mname x) m` and lift everything
     quantile :: Value (MlValue tensor model mname x) m
   , -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
     dquantile :: Value (MlValue tensor model mname x) m
@@ -272,15 +273,11 @@ mkMlModule mk =
 
 module ML
 
-  @doc Tensor data type;
   enum dtype := #int | #float | #double | #bool;
 
-  @doc Device on which a tensor is allocated;
   enum device := #cpu | #cuda;
 
-  @doc Quantile interpolation method. Can't be named `interpolation` or `interp`,
-  the most natural choices, due to issues with Inferno's parser;
-  enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
+  enum nterpolation := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModel###;
@@ -317,12 +314,28 @@ module ML
 
   asDouble : tensor -> double := ###asDouble###;
 
+  @doc Converts a 1-dimensional tensor to an array. The scalar type `'a` that the
+  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
+  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
+  and `Bool` tensors resolve to `bool{#true, #false}`;
   asArray1 : forall 'a. {requires scalar on 'a} => tensor -> array of 'a := ###!asArray1###;
 
+  @doc Converts a 2-dimensional tensor to a nested array. The scalar type `'a` that the
+  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
+  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
+  and `Bool` tensors resolve to `bool{#true, #false}`;
   asArray2 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of 'a) := ###!asArray2###;
 
+  @doc Converts a 3-dimensional tensor to a nested array. The scalar type `'a` that the
+  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
+  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
+  and `Bool` tensors resolve to `bool{#true, #false}`;
   asArray3 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of 'a)) := ###!asArray3###;
 
+  @doc Converts a 4-dimensional tensor to a nested array. The scalar type `'a` that the
+  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
+  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
+  and `Bool` tensors resolve to `bool{#true, #false}`;
   asArray4 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of (array of 'a))) := ###!asArray4###;
 
 module Tensor
@@ -353,22 +366,20 @@ module Tensor
     -> tensor
     -> int
     -> bool{#true, #false}
-    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
+    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!quantile###;
 
   @doc `dquantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
   along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
   dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
-  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`.
-
-  NOTE: The `q` quantile value MUST be in the range 0-1!;
+  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`;
   dquantile :
     tensor
     -> double
     -> int
     -> bool{#true, #false}
-    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
+    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!dquantile###;
 
