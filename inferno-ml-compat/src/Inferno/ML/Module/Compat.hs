@@ -92,9 +92,9 @@ data MkConversionFuns m tensor model mname x = MkConversionFuns
   , asTensor4 :: Value (MlValue tensor model mname x) m
   , asDouble :: tensor -> Double
   , asArray1 :: Value (MlValue tensor model mname x) m
-  , asArray2 :: tensor -> [[Double]]
-  , asArray3 :: tensor -> [[[Double]]]
-  , asArray4 :: tensor -> [[[[Double]]]]
+  , asArray2 :: Value (MlValue tensor model mname x) m
+  , asArray3 :: Value (MlValue tensor model mname x) m
+  , asArray4 :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -319,11 +319,11 @@ module ML
 
   asArray1 : forall 'a. {requires scalar on 'a} => tensor -> array of 'a := ###!asArray1###;
 
-  asArray2 : tensor -> array of (array of double) := ###asArray2###;
+  asArray2 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of 'a) := ###!asArray2###;
 
-  asArray3 : tensor -> array of (array of (array of double)) := ###asArray3###;
+  asArray3 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of 'a)) := ###!asArray3###;
 
-  asArray4 : tensor -> array of (array of (array of (array of double))) := ###asArray4###;
+  asArray4 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of (array of 'a))) := ###!asArray4###;
 
 module Tensor
   @doc Returns the total number of elements in the input tensor;
