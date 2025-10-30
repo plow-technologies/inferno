@@ -181,7 +181,37 @@ defaultMlModule =
           , asTensor3 = asTensorFun "asTensor3" $ Proxy @[[[Double]]]
           , asTensor4 = asTensorFun "asTensor4" $ Proxy @[[[[Double]]]]
           , asDouble = Torch.asValue . Torch.toType DType.Double
-          , asArray1 = Torch.asValue . Torch.toType DType.Double
+          , asArray1 =
+              VFun $ \case
+                VCustom (VTensor t) -> case Torch.dtype t of
+                  DType.Int64 ->
+                    pure
+                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
+                      . Left
+                      $ Torch.asValue @[Int] t
+                  DType.Double ->
+                    pure
+                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
+                      . Right
+                      . Left
+                      $ Torch.asValue @[Double] t
+                  -- Here we need to convert the tensor from floats to doubles,
+                  -- since Inferno doesn't have a float type
+                  DType.Float ->
+                    pure
+                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
+                      . Right
+                      . Left
+                      . Torch.asValue @[Double]
+                      $ Torch.toType DType.Double t
+                  DType.Bool ->
+                    pure
+                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
+                      . Right
+                      . Right
+                      $ Torch.asValue @[Bool] t
+                  dt -> throwM $ RuntimeError $ "asArray1: unsupported dtype " <> show dt
+                _ -> throwM $ RuntimeError "asArray1: expected a tensor"
           , asArray2 = Torch.asValue . Torch.toType DType.Double
           , asArray3 = Torch.asValue . Torch.toType DType.Double
           , asArray4 = Torch.asValue . Torch.toType DType.Double

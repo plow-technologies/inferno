@@ -91,7 +91,7 @@ data MkConversionFuns m tensor model mname x = MkConversionFuns
   , asTensor3 :: Value (MlValue tensor model mname x) m
   , asTensor4 :: Value (MlValue tensor model mname x) m
   , asDouble :: tensor -> Double
-  , asArray1 :: tensor -> [Double]
+  , asArray1 :: Value (MlValue tensor model mname x) m
   , asArray2 :: tensor -> [[Double]]
   , asArray3 :: tensor -> [[[Double]]]
   , asArray4 :: tensor -> [[[[Double]]]]
@@ -317,7 +317,7 @@ module ML
 
   asDouble : tensor -> double := ###asDouble###;
 
-  asArray1 : tensor -> array of double := ###asArray1###;
+  asArray1 : forall 'a. {requires scalar on 'a} => tensor -> array of 'a := ###!asArray1###;
 
   asArray2 : tensor -> array of (array of double) := ###asArray2###;
 
