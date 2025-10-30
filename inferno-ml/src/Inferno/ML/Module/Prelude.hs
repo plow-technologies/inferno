@@ -181,130 +181,10 @@ defaultMlModule =
           , asTensor3 = asTensorFun "asTensor3" $ Proxy @[[[Double]]]
           , asTensor4 = asTensorFun "asTensor4" $ Proxy @[[[[Double]]]]
           , asDouble = Torch.asValue . Torch.toType DType.Double
-          , asArray1 =
-              VFun $ \case
-                VCustom (VTensor t) -> case Torch.dtype t of
-                  DType.Int64 ->
-                    pure
-                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
-                      . Left
-                      $ Torch.asValue @[Int] t
-                  DType.Double ->
-                    pure
-                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
-                      . Right
-                      . Left
-                      $ Torch.asValue @[Double] t
-                  -- Here we need to convert the tensor from floats to doubles,
-                  -- since Inferno doesn't have a float type
-                  DType.Float ->
-                    pure
-                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
-                      . Right
-                      . Left
-                      . Torch.asValue @[Double]
-                      $ Torch.toType DType.Double t
-                  DType.Bool ->
-                    pure
-                      . toValue @_ @_ @(Either3 [Int] [Double] [Bool])
-                      . Right
-                      . Right
-                      $ Torch.asValue @[Bool] t
-                  dt -> throwM $ RuntimeError $ "asArray1: unsupported dtype " <> show dt
-                _ -> throwM $ RuntimeError "asArray1: expected a tensor"
-          , asArray2 =
-              VFun $ \case
-                VCustom (VTensor t) -> case Torch.dtype t of
-                  DType.Int64 ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[Int]] [[Double]] [[Bool]])
-                      . Left
-                      $ Torch.asValue @[[Int]] t
-                  DType.Double ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[Int]] [[Double]] [[Bool]])
-                      . Right
-                      . Left
-                      $ Torch.asValue @[[Double]] t
-                  -- Here we need to convert the tensor from floats to doubles,
-                  -- since Inferno doesn't have a float type
-                  DType.Float ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[Int]] [[Double]] [[Bool]])
-                      . Right
-                      . Left
-                      . Torch.asValue @[[Double]]
-                      $ Torch.toType DType.Double t
-                  DType.Bool ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[Int]] [[Double]] [[Bool]])
-                      . Right
-                      . Right
-                      $ Torch.asValue @[[Bool]] t
-                  dt -> throwM $ RuntimeError $ "asArray2: unsupported dtype " <> show dt
-                _ -> throwM $ RuntimeError "asArray2: expected a tensor"
-          , asArray3 =
-              VFun $ \case
-                VCustom (VTensor t) -> case Torch.dtype t of
-                  DType.Int64 ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[Int]]] [[[Double]]] [[[Bool]]])
-                      . Left
-                      $ Torch.asValue @[[[Int]]] t
-                  DType.Double ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[Int]]] [[[Double]]] [[[Bool]]])
-                      . Right
-                      . Left
-                      $ Torch.asValue @[[[Double]]] t
-                  -- Here we need to convert the tensor from floats to doubles,
-                  -- since Inferno doesn't have a float type
-                  DType.Float ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[Int]]] [[[Double]]] [[[Bool]]])
-                      . Right
-                      . Left
-                      . Torch.asValue @[[[Double]]]
-                      $ Torch.toType DType.Double t
-                  DType.Bool ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[Int]]] [[[Double]]] [[[Bool]]])
-                      . Right
-                      . Right
-                      $ Torch.asValue @[[[Bool]]] t
-                  dt -> throwM $ RuntimeError $ "asArray3: unsupported dtype " <> show dt
-                _ -> throwM $ RuntimeError "asArray3: expected a tensor"
-          , asArray4 =
-              VFun $ \case
-                VCustom (VTensor t) -> case Torch.dtype t of
-                  DType.Int64 ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[[Int]]]] [[[[Double]]]] [[[[Bool]]]])
-                      . Left
-                      $ Torch.asValue @[[[[Int]]]] t
-                  DType.Double ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[[Int]]]] [[[[Double]]]] [[[[Bool]]]])
-                      . Right
-                      . Left
-                      $ Torch.asValue @[[[[Double]]]] t
-                  -- Here we need to convert the tensor from floats to doubles,
-                  -- since Inferno doesn't have a float type
-                  DType.Float ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[[Int]]]] [[[[Double]]]] [[[[Bool]]]])
-                      . Right
-                      . Left
-                      . Torch.asValue @[[[[Double]]]]
-                      $ Torch.toType DType.Double t
-                  DType.Bool ->
-                    pure
-                      . toValue @_ @_ @(Either3 [[[[Int]]]] [[[[Double]]]] [[[[Bool]]]])
-                      . Right
-                      . Right
-                      $ Torch.asValue @[[[[Bool]]]] t
-                  dt -> throwM $ RuntimeError $ "asArray4: unsupported dtype " <> show dt
-                _ -> throwM $ RuntimeError "asArray4: expected a tensor"
+          , asArray1 = asArrayFun "asArray1" (Proxy @[Int]) (Proxy @[Double]) (Proxy @[Bool])
+          , asArray2 = asArrayFun "asArray2" (Proxy @[[Int]]) (Proxy @[[Double]]) (Proxy @[[Bool]])
+          , asArray3 = asArrayFun "asArray3" (Proxy @[[[Int]]]) (Proxy @[[[Double]]]) (Proxy @[[[Bool]]])
+          , asArray4 = asArrayFun "asArray4" (Proxy @[[[[Int]]]]) (Proxy @[[[[Double]]]]) (Proxy @[[[[Bool]]]])
           }
     , functional =
         Compat.MkFunctionalFuns
@@ -577,6 +457,54 @@ asTensorFun funName _proxy =
     VFun $
       fmap (VCustom . VTensor . Torch.toType dtype . Torch.asTensor @a)
         . fromValue
+
+asArrayFun ::
+  forall i d b x m.
+  ( MonadThrow m
+  , TensorLike i
+  , TensorLike d
+  , TensorLike b
+  , ToValue (MlValue x) m (Either3 i d b)
+  ) =>
+  String ->
+  -- | Type witness for the integer array type (e.g., @[Int]@, @[[Int]]@)
+  Proxy i ->
+  -- | Type witness for the double array type (e.g., @[Double]@, @[[Double]]@)
+  Proxy d ->
+  -- | Type witness for the boolean array type (e.g., @[Bool]@, @[[Bool]]@)
+  Proxy b ->
+  Value (MlValue x) m
+asArrayFun funName _ _ _ =
+  VFun $ \case
+    VCustom (VTensor t) -> case Torch.dtype t of
+      DType.Int64 ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Left
+          $ Torch.asValue @i t
+      DType.Double ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Left
+          $ Torch.asValue @d t
+      -- Here we need to convert the tensor from floats to doubles,
+      -- since Inferno doesn't have a float type
+      DType.Float ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Left
+          . Torch.asValue @d
+          $ Torch.toType DType.Double t
+      DType.Bool ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Right
+          $ Torch.asValue @b t
+      dt -> throwM $ RuntimeError $ funName <> ": unsupported dtype " <> show dt
+    _ -> throwM $ RuntimeError $ funName <> ": expected a tensor"
 
 -- Lifts Hasktorch's `forward` to `IO` (via `evaluate`) so we can catch
 -- any `CppStdException`s in case the Torchscript interpreter fails;
