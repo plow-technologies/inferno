@@ -352,8 +352,11 @@ defaultMlModule =
             dquantile =
               VFun $ \case
                 VCustom (VTensor t) -> pure . VFun $ \case
-                  VDouble q ->
-                    pure $ gquantile "dquantile" t Torch.Functional.Internal.quantile_tdlbs q
+                  VDouble q
+                    | q >= 0 && q <= 1 ->
+                        pure $ gquantile "dquantile" t Torch.Functional.Internal.quantile_tdlbs q
+                    | otherwise ->
+                        throwM . RuntimeError $ "dquantile: quantile value must be between 0 and 1, got " <> show q
                   _ -> throwM $ RuntimeError "dquantile: expected quantile double"
                 _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }

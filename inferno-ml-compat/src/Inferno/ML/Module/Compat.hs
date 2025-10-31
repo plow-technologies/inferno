@@ -360,7 +360,9 @@ module Tensor
   @doc `dquantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
   along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
   dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
-  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`;
+  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`.
+
+  NOTE: The `q` quantile value MUST be in the range 0-1!;
   dquantile :
     tensor
     -> double
