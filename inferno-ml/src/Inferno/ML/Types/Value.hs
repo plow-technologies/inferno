@@ -1,8 +1,10 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE PatternSynonyms #-}
 
 module Inferno.ML.Types.Value
@@ -11,6 +13,7 @@ module Inferno.ML.Types.Value
     pattern VModel,
     pattern VModelName,
     pattern VExtended,
+    Model (Model, script, name),
     ModelName (ModelName),
     enumDeviceHash,
     enumDTypeHash,
@@ -46,14 +49,20 @@ import Torch
     Tensor,
   )
 
-type MlValue x = Compat.MlValue Tensor ScriptModule ModelName x
+type MlValue x = Compat.MlValue Tensor Model ModelName x
+
+data Model = Model
+  { script :: ScriptModule
+  , name :: ModelName
+  }
+  deriving stock (Show, Generic)
 
 {-# COMPLETE VTensor, VModel, VModelName, VExtended #-}
 
 pattern VTensor :: Tensor -> MlValue x
 pattern VTensor t = Compat.VTensor t
 
-pattern VModel :: ScriptModule -> MlValue x
+pattern VModel :: Model -> MlValue x
 pattern VModel m = Compat.VModel m
 
 pattern VModelName :: ModelName -> MlValue x
@@ -88,10 +97,10 @@ instance (Pretty x) => FromValue (MlValue x) m Tensor where
     VCustom (VTensor t) -> pure t
     v -> couldNotCast v
 
-instance ToValue (MlValue x) m ScriptModule where
+instance ToValue (MlValue x) m Model where
   toValue = VCustom . VModel
 
-instance (Pretty x) => FromValue (MlValue x) m ScriptModule where
+instance (Pretty x) => FromValue (MlValue x) m Model where
   fromValue = \case
     VCustom (VModel t) -> pure t
     v -> couldNotCast v

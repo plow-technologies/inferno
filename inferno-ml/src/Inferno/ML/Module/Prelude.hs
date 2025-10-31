@@ -1,4 +1,6 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,6 +26,7 @@ import Control.Monad.Catch
     try,
   )
 import Control.Monad.Extra (concatMapM)
+import qualified Inferno.ML.Types.Value
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (bool)
 import Data.Functor ((<&>))
@@ -35,6 +38,15 @@ import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
+  ( Model (Model),
+    ModelName (ModelName),
+    MlValue,
+    enumDeviceHash,
+    enumDTypeHash,
+    pattern VModel,
+    pattern VModelName,
+    pattern VTensor,
+  )
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
@@ -65,7 +77,7 @@ import qualified Torch.Script
 import qualified Torch.Tensor as Tensor
 
 -- | A @MkMlModule@ implementation that depends on Hasktorch types
-type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
+type MlModule m x = Compat.MkMlModule m Tensor Model ModelName x
 
 -- | The default @ML@ Inferno module generator which depends on Hasktorch.
 -- Applying @mkMlModule@ will create the @ML@ module with these primitive
@@ -84,14 +96,16 @@ defaultMlModule =
         Compat.MkModelFuns
           { loadModel =
               VFun $ \case
-                VCustom (VModelName (ModelName mn)) ->
+                VCustom (VModelName name@(ModelName mn)) ->
                   either
                     (throwM . RuntimeError . displayException)
-                    (pure . VCustom . VModel)
-                    =<< liftIO (try @_ @SomeException loadModel)
+                    -- This retains the model name for later use, it is especially
+                    -- helpful for debugging `forward` errors
+                    (pure . VCustom . VModel . (`Model` name))
+                    =<< liftIO (try @_ @SomeException loadScriptModule)
                   where
-                    loadModel :: IO ScriptModule
-                    loadModel = Torch.Script.loadScript WithoutRequiredGrad mn
+                    loadScriptModule :: IO ScriptModule
+                    loadScriptModule = Torch.Script.loadScript WithoutRequiredGrad mn
                 _ -> throwM $ RuntimeError "Expected a modelName"
           , forward =
               let
@@ -99,14 +113,14 @@ defaultMlModule =
                 expectedTensors = RuntimeError "expected an array of tensors"
                in
                 VFun $ \case
-                  VCustom (VModel model) -> pure . VFun $ \case
+                  VCustom (VModel m) -> pure . VFun $ \case
                     VArray mts ->
                       getTensors mts >>= \tensors ->
                         -- Note that we are using `forwardIO` here so any C++ exception can be
                         -- caught, otherwise the operation will fail silently (besides printing
                         -- to stderr)
                         fmap (VArray . fmap (VCustom . VTensor)) . liftIO $
-                          forwardIO model tensors `catch` torchHandler
+                          forwardIO m.script tensors `catch` torchHandler
                       where
                         -- Unfortunately we need to unwrap all of the constructors to get the
                         -- tensors inside
@@ -126,7 +140,8 @@ defaultMlModule =
                     _ -> throwM expectedTensors
                   _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =
-              unsafePerformIO
+              flip Model (ModelName "<unsafeLoadScript>")
+                . unsafePerformIO
                 . Torch.Script.loadScript WithoutRequiredGrad
                 . Text.unpack
           }
