@@ -220,13 +220,12 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   , dim :: tensor -> Int
   , dtype :: Value (MlValue tensor model mname x) m
   , device :: Value (MlValue tensor model mname x) m
-  -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
-  -- because it needs to be effectful in order to convert the interpolation enum to
-  -- a `String`. It's easier to put it here rather than convert all of `MkFunctionalFuns`
-  -- to `Value (MlValue tensor model mname x) m` and lift everything
-  , quantile :: Value (MlValue tensor model mname x) m
-  -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
-  , dquantile :: Value (MlValue tensor model mname x) m
+  , -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
+    -- because it needs to be effectful in order to convert the interpolation enum to
+    -- a `String`. It's easier to put it here rather than change `MkFunctionalFuns`
+    quantile :: Value (MlValue tensor model mname x) m
+  , -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
+    dquantile :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -277,7 +276,7 @@ module ML
 
   enum device := #cpu | #cuda;
 
-  enum nterpolation := #linear | #lower | #higher | #nearest | #midpoint;
+  enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModel###;
@@ -350,7 +349,7 @@ module Tensor
     -> tensor
     -> int
     -> bool{#true, #false}
-    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!quantile###;
 
@@ -363,7 +362,7 @@ module Tensor
     -> double
     -> int
     -> bool{#true, #false}
-    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!dquantile###;
 
