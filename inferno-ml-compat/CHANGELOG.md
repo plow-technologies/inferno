@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.0
+* Add new `Tensor` primitives: `roll`, `quantile`, `dquantile`
+
 ## 0.1.0
 * Breaking changes:
   - Add significantly more tensor operations
