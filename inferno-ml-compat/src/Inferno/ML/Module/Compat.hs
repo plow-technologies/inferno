@@ -272,10 +272,14 @@ mkMlModule mk =
 
 module ML
 
+  @doc Tensor data type;
   enum dtype := #int | #float | #double | #bool;
 
+  @doc Device on which a tensor is allocated;
   enum device := #cpu | #cuda;
 
+  @doc Quantile interpolation method. Can't be named `interpolation` or `interp`,
+  the most natural choices, due to issues with Inferno's parser;
   enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
