@@ -38,12 +38,16 @@ import Inferno.Module.Prelude.Defs
     dayFun,
     daysBeforeFun,
     daysFun,
+    decodeUtf8Text,
     divFun,
     doubleToInt,
+    dropFun,
     dropWhileFun,
+    encodeUtf8Text,
     enumFromToInt64,
     eqFun,
     expFun,
+    filterFun,
     floorFun,
     foldlFun,
     foldrFun,
@@ -100,6 +104,7 @@ import Inferno.Module.Prelude.Defs
     stripText,
     subFun,
     sumFun,
+    takeFun,
     takeWhileFun,
     tanFun,
     tanhFun,
@@ -109,6 +114,8 @@ import Inferno.Module.Prelude.Defs
     timeIntervalFun,
     timeToInt,
     toBCDFun,
+    toLowerText,
+    toUpperText,
     toWord16Fun,
     toWord32Fun,
     toWord64Fun,
@@ -122,6 +129,7 @@ import Inferno.Module.Prelude.Defs
     yearsBeforeFun,
     zeroFun,
     zipFun,
+    zipWithFun,
   )
 import Inferno.Parse (OpsTable)
 import Inferno.Types.Syntax (ModuleName, Scoped (..))
@@ -507,6 +515,18 @@ module Array
   @doc `Array.reverse xs` returns the elements of `xs` in reverse order;
   reverse : forall 'a. array of 'a -> array of 'a := ###!reverseFun###;
 
+  @doc `Array.take n xs` returns the first `n` elements of `xs`.
+  If `n` is greater than the length of `xs`, returns `xs`.;
+  take : forall 'a. int -> array of 'a -> array of 'a := ###!takeFun###;
+
+  @doc `Array.drop n xs` returns `xs` with the first `n` elements removed.
+  If `n` is greater than the length of `xs`, returns the empty array.;
+  drop : forall 'a. int -> array of 'a -> array of 'a := ###!dropFun###;
+
+  @doc `Array.filter p xs` returns an array containing only the elements of `xs`
+  that satisfy the predicate `p`;
+  filter : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!filterFun###;
+
   @doc `Array.takeWhile`, applied to a predicate `p` and a list `xs`, returns the longest prefix (possibly empty) of `xs` of elements that satisfy `p`;
   takeWhile : forall 'a. ('a -> bool{#true, #false}) -> array of 'a -> array of 'a := ###!takeWhileFun###;
 
@@ -521,7 +541,24 @@ module Text
 
   strip : text -> text := ###stripText###;
 
+  @doc Converts text to uppercase;
+  toUpper : text -> text := ###toUpperText###;
+
+  @doc Converts text to lowercase;
+  toLower : text -> text := ###toLowerText###;
+
   splitAt : int -> text -> (text, text) := ###!textSplitAt###;
+
+  @doc Encode text as UTF-8 bytes. Returns an array of `word16` values representing
+  the UTF-8 byte sequence. Each `word16` represents one byte (0-255). Note: We use
+  `word16` instead of `word8` because Inferno does not currently support `word8`.;
+  encodeUtf8 : text -> array of word16 := ###encodeUtf8Text###;
+
+  @doc Decode UTF-8 bytes to text. Takes an array of `word16` values
+  (each representing a byte, 0-255) and converts them to text. Uses lenient
+  decoding to handle invalid UTF-8 sequences gracefully. Note: We use `word16`
+  instead of `word8` because Inferno does not currently support `word8`.;
+  decodeUtf8 : array of word16 -> text := ###decodeUtf8Text###;
 
 module Time
 
@@ -777,5 +814,11 @@ module Base
 
   @doc Zip two arrays into a array of tuples/pairs. If one input array is shorter than the other, excess elements of the longer array are discarded. `zip [1, 2] ['a', 'b'] == [(1,'a'),(2,'b')]`;
   zip : forall 'a 'b. array of 'a -> array of 'b -> array of ('a, 'b) := ###!zipFun###;
+
+  @doc `zipWith f xs ys` zips two arrays together by applying the pair-wise
+  function `f` to corresponding elements. If one input array is shorter than the
+  other, excess elements of the longer array are discarded.
+  Example: `zipWith (+) [1, 2, 3] [4, 5, 6] == [5, 7, 9]`;
+  zipWith : forall 'a 'b 'c. ('a -> 'b -> 'c) -> array of 'a -> array of 'b -> array of 'c := ###!zipWithFun###;
 
 |]

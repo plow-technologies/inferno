@@ -206,6 +206,7 @@ data MkFunctionalFuns tensor = MkFunctionalFuns
   , glu :: Int -> tensor -> tensor
   , view :: [Int] -> tensor -> tensor
   , repeat :: [Int] -> tensor -> tensor
+  , roll :: tensor -> Int -> Int -> tensor
   }
   deriving (Generic)
 
@@ -219,6 +220,12 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   , dim :: tensor -> Int
   , dtype :: Value (MlValue tensor model mname x) m
   , device :: Value (MlValue tensor model mname x) m
+  , -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
+    -- because it needs to be effectful in order to convert the interpolation enum to
+    -- a `String`. It's easier to put it here rather than change `MkFunctionalFuns`
+    quantile :: Value (MlValue tensor model mname x) m
+  , -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
+    dquantile :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -265,9 +272,15 @@ mkMlModule mk =
 
 module ML
 
+  @doc Tensor data type;
   enum dtype := #int | #float | #double | #bool;
 
+  @doc Device on which a tensor is allocated;
   enum device := #cpu | #cuda;
+
+  @doc Quantile interpolation method. Can't be named `interpolation` or `interp`,
+  the most natural choices, due to issues with Inferno's parser;
+  enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModel###;
@@ -330,6 +343,34 @@ module Tensor
 
   @doc Returns the data type of the input tensor;
   dtype : tensor -> dtype{#int, #float, #double, #bool} := ###!dtype###;
+
+  @doc `quantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
+  along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
+  dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
+  specified by `interp`;
+  quantile :
+    tensor
+    -> tensor
+    -> int
+    -> bool{#true, #false}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
+    -> tensor
+    := ###!quantile###;
+
+  @doc `dquantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
+  along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
+  dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
+  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`.
+
+  NOTE: The `q` quantile value MUST be in the range 0-1!;
+  dquantile :
+    tensor
+    -> double
+    -> int
+    -> bool{#true, #false}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
+    -> tensor
+    := ###!dquantile###;
 
   @doc Returns the mean value of all elements in the input tensor;
   mean : tensor -> tensor := ###mean###;
@@ -739,6 +780,12 @@ module Tensor
   `t` along each dimension;
   repeat : array of int -> tensor -> tensor := ###repeat###;
 
+  @doc `roll t shift dim` rolls the tensor `t` along the given dimension `dim`.
+  Elements that are shifted beyond the last position are re-introduced at the first
+  position. `shift` specifies the number of places by which the elements of the
+  tensor are shifted;
+  roll : tensor -> int -> int -> tensor := ###roll###;
+
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
@@ -895,6 +942,7 @@ mkUnboundModule =
           , glu = unbound
           , view = unbound
           , repeat = unbound
+          , roll = unbound
           }
     , properties =
         MkPropertyFuns
@@ -904,6 +952,8 @@ mkUnboundModule =
           , dim = unbound
           , dtype = unbound
           , device = unbound
+          , quantile = unbound
+          , dquantile = unbound
           }
     }
   where

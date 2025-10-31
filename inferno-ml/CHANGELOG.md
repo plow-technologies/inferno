@@ -1,7 +1,10 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.8.0.0 -- 2025-07-03
+## 0.9.1.0 -- 2025-10-31
+* Add implementations for new `Tensor` primitives from `inferno-ml-compat`
+
+## 0.9.0.0 -- 2025-07-03
 * Breaking change: add implementations for new tensor operations in `inferno-ml-compat` (includes changes to some names and arguments)
 
 ## 0.8.0.0 -- 2025-06-10

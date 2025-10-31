@@ -21,6 +21,7 @@ import Data.Bits
     (.&.),
     (.|.),
   )
+import qualified Data.ByteString as ByteString
 import Data.Foldable (Foldable (foldl'), foldrM, maximumBy, minimumBy)
 import Data.Function (on)
 import Data.Int (Int64)
@@ -29,6 +30,7 @@ import Data.List.Extra ((!?))
 import Data.Ord (comparing)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as Text
+import qualified Data.Text.Encoding as Text.Encoding
 import Data.Time.Calendar (Day, addGregorianMonthsClip, addGregorianYearsClip, fromGregorian, toGregorian)
 import Data.Time.Clock (DiffTime, UTCTime (..), diffTimeToPicoseconds, picosecondsToDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime, utcTimeToPOSIXSeconds)
@@ -416,6 +418,41 @@ reverseFun =
     VArray vs -> pure $ VArray $ reverse vs
     _ -> throwM $ RuntimeError "reverse: expecting an array"
 
+takeFun :: (MonadThrow m) => Value c m
+takeFun =
+  VFun $ \case
+    VInt n -> pure . VFun $ \case
+      VArray vs -> pure . VArray . flip take vs $ fromIntegral n
+      _ -> throwM $ RuntimeError "take: expecting an array"
+    _ -> throwM $ RuntimeError "take: expecting an int"
+
+dropFun :: (MonadThrow m) => Value c m
+dropFun =
+  VFun $ \case
+    VInt n -> pure . VFun $ \case
+      VArray vs -> pure . VArray . flip drop vs $ fromIntegral n
+      _ -> throwM $ RuntimeError "drop: expecting an array"
+    _ -> throwM $ RuntimeError "drop: expecting an int"
+
+filterFun :: forall c m. (MonadThrow m) => Value c m
+filterFun =
+  VFun $ \case
+    VFun p ->
+      pure . VFun $ \case
+        VArray vs -> VArray <$> applyFilter p vs
+        _ -> throwM $ RuntimeError "filter: expecting an array"
+    _ -> throwM $ RuntimeError "filter: expecting a function"
+  where
+    applyFilter :: (Value c m -> m (Value c m)) -> [Value c m] -> m [Value c m]
+    applyFilter _ [] = pure mempty
+    applyFilter p (x : xs) =
+      p x >>= \case
+        VEnum h "true"
+          | h == enumBoolHash -> (x :) <$> applyFilter p xs
+        VEnum h "false"
+          | h == enumBoolHash -> applyFilter p xs
+        _ -> throwM $ RuntimeError "filter: expecting predicate to return a bool"
+
 takeWhileFun :: (MonadThrow m) => Value c m
 takeWhileFun =
   VFun $ \case
@@ -512,6 +549,27 @@ zipFun = VFun $ \case
         return $ VArray $ zipWith (\v1 v2 -> VTuple [v1, v2]) xs ys
       _ -> throwM $ RuntimeError "zip: expecting an array"
   _ -> throwM $ RuntimeError "zip: expecting an array"
+
+zipWithFun :: forall c m. (MonadThrow m) => Value c m
+zipWithFun =
+  VFun $ \case
+    VFun f ->
+      pure . VFun $ \case
+        VArray xs ->
+          pure . VFun $ \case
+            VArray ys -> VArray <$> applyZipWith f xs ys
+            _ -> throwM $ RuntimeError "zipWith: expecting an array"
+        _ -> throwM $ RuntimeError "zipWith: expecting an array"
+    _ -> throwM $ RuntimeError "zipWith: expecting a function"
+  where
+    applyZipWith ::
+      (Value c m -> m (Value c m)) -> [Value c m] -> [Value c m] -> m [Value c m]
+    applyZipWith _ [] _ = pure mempty
+    applyZipWith _ _ [] = pure mempty
+    applyZipWith f (x : xs) (y : ys) =
+      f x >>= \case
+        VFun g -> (:) <$> g y <*> applyZipWith f xs ys
+        _ -> throwM $ RuntimeError "zipWith: expecting a pair-wise function"
 
 lengthFun :: (MonadThrow m) => Value c m
 lengthFun =
@@ -644,6 +702,27 @@ textLength = fromIntegral . Text.length
 
 stripText :: Text -> Text
 stripText = Text.strip
+
+toUpperText :: Text -> Text
+toUpperText = Text.toUpper
+
+toLowerText :: Text -> Text
+toLowerText = Text.toLower
+
+-- | Encode text as UTF-8 bytes. Returns an array of @Word16@ values representing
+-- the UTF-8 byte sequence. Note: We use @Word16@ instead of @Word8@ because Inferno
+-- does not support @Word8@, and it is not feasible to add support at this time.
+encodeUtf8Text :: Text -> [Word16]
+encodeUtf8Text =
+  fmap fromIntegral . ByteString.unpack . Text.Encoding.encodeUtf8
+
+-- | Decode UTF-8 bytes to text. Takes an array of @Word16@ values (each representing
+-- a byte) and converts them to text. Uses lenient decoding to handle invalid UTF-8
+-- sequences gracefully. Note: We use @Word16@ instead of @Word8@ because Inferno does
+-- not support @Word8@, and it is not feasible to add support at this time.
+decodeUtf8Text :: [Word16] -> Text
+decodeUtf8Text =
+  Text.Encoding.decodeUtf8Lenient . ByteString.pack . fmap fromIntegral
 
 textSplitAt :: (MonadThrow m) => Value c m
 textSplitAt =

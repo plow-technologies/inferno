@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Inferno.ML.Module.Prelude
   ( MlModule,
@@ -34,12 +35,13 @@ import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
+import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VEnum, VFun),
+    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
 import Prettyprinter (Pretty)
@@ -58,6 +60,7 @@ import Torch
 import qualified Torch
 import qualified Torch.DType as DType
 import qualified Torch.Functional
+import qualified Torch.Functional.Internal
 import qualified Torch.Script
 import qualified Torch.Tensor as Tensor
 
@@ -294,6 +297,9 @@ defaultMlModule =
           , glu = Torch.glu . Dim
           , view = Torch.view
           , repeat = Torch.repeat
+          , -- NOTE: `roll` is not re-exported publicly from `Torch.Functional` for
+            -- some unknown reason, so we need to import it from `Torch.Functional.Internal`
+            roll = Torch.Functional.Internal.roll
           }
     , properties =
         MkPropertyFuns
@@ -331,8 +337,56 @@ defaultMlModule =
                     throwM . RuntimeError $
                       "device: recevied unexpected device " <> show d
                 _ -> throwM . RuntimeError $ "device: expected a tensor"
+          , -- NOTE: `quantile` is not re-exported publicly from `Torch.Functional`
+            -- (similar to `roll`), so we need to import `quantile_ttlbs` from
+            -- `Torch.Functional.Internal`
+            quantile =
+              VFun $ \case
+                VCustom (VTensor t) -> pure . VFun $ \case
+                  VCustom (VTensor q) ->
+                    pure $ gquantile "quantile" t Torch.Functional.Internal.quantile_ttlbs q
+                  _ -> throwM $ RuntimeError "quantile: expected quantile tensor"
+                _ -> throwM $ RuntimeError "quantile: expected input tensor"
+          , -- NOTE: `dquantile` uses `quantile_tdlbs` from `Torch.Functional.Internal`
+            -- for the same reason as `quantile`
+            dquantile =
+              VFun $ \case
+                VCustom (VTensor t) -> pure . VFun $ \case
+                  VDouble q
+                    | q >= 0 && q <= 1 ->
+                        pure $ gquantile "dquantile" t Torch.Functional.Internal.quantile_tdlbs q
+                    | otherwise ->
+                        throwM . RuntimeError $ "dquantile: quantile value must be between 0 and 1, got " <> show q
+                  _ -> throwM $ RuntimeError "dquantile: expected quantile double"
+                _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }
     }
+  where
+    -- Generic quantile implementation that works for both tensor and double
+    -- quantile values, in PyTorch of course `quantile` just uses duck typing
+    -- for the q value
+    gquantile ::
+      String ->
+      Tensor ->
+      (Tensor -> q -> Int -> Bool -> String -> Tensor) ->
+      q ->
+      Value (MlValue x) m
+    gquantile funName t f q =
+      VFun $ \case
+        VInt (fromIntegral -> dim) -> pure . VFun $ \case
+          VEnum h keep
+            | h == enumBoolHash ->
+                pure . VFun $ \case
+                  VEnum _ interp ->
+                    VCustom . VTensor . f t q dim (keep == "true")
+                      <$> getInterpolation interp
+                  _ -> throwRuntimeError "expected interpolation enum"
+            | otherwise -> throwRuntimeError "expected keepdim bool enum"
+          _ -> throwRuntimeError "expected keepdim bool enum"
+        _ -> throwRuntimeError "expected dim int"
+      where
+        throwRuntimeError :: (MonadThrow m) => String -> m a
+        throwRuntimeError msg = throwM . RuntimeError $ funName <> ": " <> msg
 
 withDType ::
   (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m
@@ -369,6 +423,24 @@ getDevice = \case
         , "unknown device"
         , show s <> ";"
         , "expected one of {#cpu,#cuda}"
+        ]
+
+-- | Get the interpolation mode string from an Inferno @interpolation@ enum.
+-- This returns a @String@ as it is what Hasktorch expects
+getInterpolation :: (MonadThrow m) => Ident -> m String
+getInterpolation = \case
+  "linear" -> pure "linear"
+  "lower" -> pure "lower"
+  "higher" -> pure "higher"
+  "nearest" -> pure "nearest"
+  "midpoint" -> pure "midpoint"
+  s ->
+    throwM . RuntimeError $
+      unwords
+        [ "quantile:"
+        , "unknown interpolation"
+        , show s <> ";"
+        , "expected one of {#linear, #lower, #higher, #nearest, #midpoint}"
         ]
 
 asTensorFun ::
