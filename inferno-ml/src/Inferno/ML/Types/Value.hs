@@ -51,9 +51,16 @@ import Torch
 
 type MlValue x = Compat.MlValue Tensor Model ModelName x
 
+-- | A loaded TorchScript model with its associated name.
+--
+-- This type wraps a 'ScriptModule' along with the 'ModelName' from which
+-- it was loaded. Retaining the model name is useful for debugging and error
+-- reporting, particularly when 'forward' fails.
 data Model = Model
   { script :: ScriptModule
+  -- ^ The underlying TorchScript module loaded from disk
   , name :: ModelName
+  -- ^ The name\/path of the serialized model file
   }
   deriving stock (Show, Generic)
 
