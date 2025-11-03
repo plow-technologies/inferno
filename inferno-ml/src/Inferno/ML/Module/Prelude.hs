@@ -30,6 +30,7 @@ import qualified Inferno.ML.Types.Value
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (bool)
 import Data.Functor ((<&>))
+import Data.Generics.Wrapped (wrappedTo)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import qualified Data.Text as Text
@@ -135,8 +136,16 @@ defaultMlModule =
                         torchHandler =
                           throwM
                             . RuntimeError
-                            . ("forward: exception from Torchscript interpreter " <>)
+                            . (errorMsg <>)
                             . displayException
+                          where
+                            errorMsg :: String
+                            errorMsg =
+                              unwords
+                                [ "forward to model"
+                                , wrappedTo m.name
+                                , "raised exception from Torchscript interpreter: "
+                                ]
                     _ -> throwM expectedTensors
                   _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =
