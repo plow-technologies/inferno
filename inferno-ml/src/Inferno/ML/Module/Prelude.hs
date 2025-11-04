@@ -1,7 +1,7 @@
 {-# LANGUAGE DisambiguateRecordFields #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -26,7 +26,6 @@ import Control.Monad.Catch
     try,
   )
 import Control.Monad.Extra (concatMapM)
-import qualified Inferno.ML.Types.Value
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Bool (bool)
 import Data.Functor ((<&>))
@@ -39,15 +38,16 @@ import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
-  ( Model (Model),
+  ( MlValue,
+    Model (Model),
     ModelName (ModelName),
-    MlValue,
-    enumDeviceHash,
     enumDTypeHash,
+    enumDeviceHash,
     pattern VModel,
     pattern VModelName,
     pattern VTensor,
   )
+import qualified Inferno.ML.Types.Value
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude

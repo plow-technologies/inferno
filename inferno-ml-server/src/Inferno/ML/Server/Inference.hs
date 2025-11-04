@@ -8,7 +8,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
@@ -22,9 +21,9 @@ import Control.Monad (unless, void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (first)
 import Data.Conduit.List (chunksOf, sourceList)
-import Data.Foldable (foldl', toList, traverse_)
+import Data.Foldable (foldl', for_, toList)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
@@ -34,8 +33,10 @@ import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
+import Data.Tuple.Extra (dupe)
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
+import Data.Vector (Vector)
 import qualified Data.Vector as Vector
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
@@ -61,6 +62,7 @@ import Inferno.ML.Types.Value
 import Inferno.Types.Syntax
   ( Expr (App, Var),
     ExtIdent (ExtIdent),
+    Ident,
     ImplExpl (Expl),
     Scoped (LocalScope),
   )
@@ -249,11 +251,11 @@ runInferenceParamWithEnv ipid uuid senv =
                     is = senv ^.. #inputs . to Map.toAscList . each . _2
                     os = senv ^.. #outputs . to Map.toAscList . each . _2
 
-                -- List of model versions, which are used to evaluate
-                -- `loadModel` primitive (eventually calling Hasktorch to
-                -- load the script module)
-                models :: [Id ModelVersion]
-                models = senv ^.. #models . to Map.toAscList . each . _2
+                -- List of model identifiers and versions, which are used to
+                -- evaluate `loadModel` primitive (eventually calling Hasktorch
+                -- to load the script module)
+                models :: [(Ident, Id ModelVersion)]
+                models = senv ^.. #models . to Map.toAscList . each
 
                 mkIdentWith :: Text -> Int -> ExtIdent
                 mkIdentWith x = ExtIdent . Right . (x <>) . tshow
@@ -261,8 +263,8 @@ runInferenceParamWithEnv ipid uuid senv =
                 toSeries :: PID -> Value BridgeMlValue m
                 toSeries = VCustom . VExtended . VSeries
 
-                toModelPath :: Id ModelVersion -> Value BridgeMlValue m
-                toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
+                toModelPath :: (Ident, Id ModelVersion) -> Value BridgeMlValue m
+                toModelPath = VCustom . VModelName . wrappedFrom . uncurry mkModelPath
 
                 argsFrom ::
                   [a] ->
@@ -287,8 +289,10 @@ runInferenceParamWithEnv ipid uuid senv =
 
                     modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
                     modelArgs =
-                      argsFrom models $
-                        bimap (mkIdentWith "model$") toModelPath
+                      argsFrom models $ \(i, pair) ->
+                        ( mkIdentWith "model$" i
+                        , toModelPath pair
+                        )
 
                 closure :: Map VCObjectHash VCObject
                 closure = Map.singleton senv.script senv.obj.obj
@@ -529,28 +533,51 @@ getInferenceParamWithModels ipid =
 -- NOTE: This action assumes that the current working directory is the model
 -- cache! It can be run using e.g. 'withCurrentDirectory'
 getAndCacheModels :: ModelCache -> Models (Id ModelVersion) -> RemoteM ()
-getAndCacheModels cache =
-  traverse_ (uncurry copyAndCache)
-    <=< getModelsAndVersions
-      . Vector.fromList
-      . toListOf each
-  where
-    copyAndCache :: Model -> ModelVersion -> RemoteM ()
-    copyAndCache _ mversion =
-      mkPath >>= \path ->
-        unlessM (doesPathExist path) $ do
-          whenJust mversion.id $ logInfo . CopyingModel
-          checkCacheSize $ fromIntegral mversion.size
-          writeBinaryFileDurableAtomic path
-            =<< getModelVersionContents mversion
-      where
-        mkPath :: RemoteM FilePath
-        mkPath =
-          maybe
-            (throwRemoteError (OtherRemoteError "Missing model version ID"))
-            (pure . mkModelPath)
-            mversion.id
+getAndCacheModels cache modelsMap = do
+  -- Convert to list of pairs to preserve the Ident -> Id ModelVersion mapping
+  let pairs :: [(Ident, Id ModelVersion)]
+      pairs = Map.toList modelsMap
 
+      mvids :: Vector (Id ModelVersion)
+      mvids = Vector.fromList $ snd <$> pairs
+
+  -- First fetch all relevant model versions from the database, then create a map
+  -- from `Id ModelVersion` to the fetched `(Model, ModelVersion)` the for each
+  -- `(Ident, Id ModelVersion)` pair, look up the fetched data and cache it
+  for_ pairs
+    . uncurry
+    . copyAndCacheWithIdent
+    . Map.fromList
+    . fmap (first ((.id) . snd) . dupe)
+    . Vector.toList
+    =<< getModelsAndVersions mvids
+  where
+    copyAndCacheWithIdent ::
+      Map (Maybe (Id ModelVersion)) (Model, ModelVersion) ->
+      Ident ->
+      Id ModelVersion ->
+      RemoteM ()
+    copyAndCacheWithIdent mvs ident mvid =
+      case Map.lookup (Just mvid) mvs of
+        Nothing ->
+          -- This should not happen - it means the model version ID in the
+          -- script's model selection doesn't exist in the database
+          throwRemoteError . NoSuchModel $ Right mvid
+        Just (_, mversion) ->
+          mkPath >>= \path ->
+            unlessM (doesPathExist path) $ do
+              whenJust mversion.id $ logInfo . CopyingModel
+              checkCacheSize $ fromIntegral mversion.size
+              writeBinaryFileDurableAtomic path
+                =<< getModelVersionContents mversion
+          where
+            mkPath :: RemoteM FilePath
+            mkPath =
+              maybe
+                (throwRemoteError (OtherRemoteError "Missing model version ID"))
+                (pure . mkModelPath ident)
+                mversion.id
+      where
         -- Checks that the configured cache size will not be exceeded by
         -- caching the new model. If it will, least-recently-used models
         -- are deleted until there is enough free space
@@ -614,10 +641,20 @@ modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
         compare t1 <$> getAccessTime f2
 
 -- There should only be one way to generate a filepath from a model version, so
--- that the path pointing to the contents is always unambiguous. This uses its
--- UUID to do so
-mkModelPath :: Id ModelVersion -> FilePath
-mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
+-- that the path pointing to the contents is always unambiguous. This uses the
+-- model's identifier along with its UUID. The identifier is included so that
+-- error messages generated from `forward` using this specific model will
+-- clearly state which model it is (as it relates to the Inferno script)
+mkModelPath :: Ident -> Id ModelVersion -> FilePath
+mkModelPath ident mid = name <.> "ts" <.> "pt"
+  where
+    name :: FilePath
+    name =
+      mconcat
+        [ Text.unpack (wrappedTo ident)
+        , "-"
+        , UUID.toString (wrappedTo mid)
+        ]
 
 -- Everything needed to evaluate an ML script. For the normal endpoint, all of
 -- these will be derived directly from the param. For the interactive test

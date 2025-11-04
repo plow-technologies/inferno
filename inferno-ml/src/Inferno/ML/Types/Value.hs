@@ -4,8 +4,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.ML.Types.Value
   ( MlValue,
