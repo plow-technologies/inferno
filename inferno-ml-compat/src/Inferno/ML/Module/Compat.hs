@@ -302,15 +302,38 @@ module ML
 
   toType : dtype{#int, #float, #double, #bool} -> tensor -> tensor := ###!toType###;
 
-  asTensor0 : dtype{#int, #float, #double, #bool} -> double -> tensor := ###!asTensor0###;
+  asTensor0 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> 'a
+    -> tensor
+    := ###!asTensor0###;
 
-  asTensor1 : dtype{#int, #float, #double, #bool} -> array of double -> tensor := ###!asTensor1###;
+  asTensor1 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of 'a
+    -> tensor
+    := ###!asTensor1###;
 
-  asTensor2 : dtype{#int, #float, #double, #bool} -> array of (array of double) -> tensor := ###!asTensor2###;
+  asTensor2 : forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of 'a)
+    -> tensor
+    := ###!asTensor2###;
 
-  asTensor3 : dtype{#int, #float, #double, #bool} -> array of (array of (array of double)) -> tensor := ###!asTensor3###;
+  asTensor3 : forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of (array of 'a))
+    -> tensor
+    := ###!asTensor3###;
 
-  asTensor4 : dtype{#int, #float, #double, #bool} -> array of (array of (array of (array of double))) -> tensor := ###!asTensor4###;
+  asTensor4 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of (array of (array of 'a)))
+    -> tensor
+    := ###!asTensor4###;
 
   asDouble : tensor -> double := ###asDouble###;
 
