@@ -302,6 +302,10 @@ module ML
 
   toType : dtype{#int, #float, #double, #bool} -> tensor -> tensor := ###!toType###;
 
+  @doc Creates a 0-dimensional (scalar) tensor from a `scalar` value. The input
+  `scalar` type `'a` can be `int`, `double`, or `bool{#true, #false}`. The value
+  is automatically converted to match the specified `dtype`. For example,
+  `#true` becomes `1` for numeric dtypes, and `0` becomes `#false` for `#bool`;
   asTensor0 :
     forall 'a. {requires scalar on 'a}
     => dtype{#int, #float, #double, #bool}
@@ -309,6 +313,13 @@ module ML
     -> tensor
     := ###!asTensor0###;
 
+  @doc Creates a 1-dimensional tensor from an array of `scalar` values. The input
+  `scalar` type `'a` can be `int`, `double`, or `bool{#true, #false}`, and will be
+  automatically converted to match the specified `dtype`. Type conversions follow
+  standard rules: booleans convert to `0`/`1` for numeric types, numeric values
+  convert to `#false` for zero and `#true` for non-zero when converting to `#bool`,
+  and numeric types convert between each other with appropriate rounding or
+  truncation (e.g., `3.7` becomes `3` when converting `double` to `#int`);
   asTensor1 :
     forall 'a. {requires scalar on 'a}
     => dtype{#int, #float, #double, #bool}
@@ -316,18 +327,24 @@ module ML
     -> tensor
     := ###!asTensor1###;
 
+  @doc Creates a 2-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
   asTensor2 : forall 'a. {requires scalar on 'a}
     => dtype{#int, #float, #double, #bool}
     -> array of (array of 'a)
     -> tensor
     := ###!asTensor2###;
 
+  @doc Creates a 3-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
   asTensor3 : forall 'a. {requires scalar on 'a}
     => dtype{#int, #float, #double, #bool}
     -> array of (array of (array of 'a))
     -> tensor
     := ###!asTensor3###;
 
+  @doc Creates a 4-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
   asTensor4 :
     forall 'a. {requires scalar on 'a}
     => dtype{#int, #float, #double, #bool}
