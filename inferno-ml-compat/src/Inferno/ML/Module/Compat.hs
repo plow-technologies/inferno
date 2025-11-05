@@ -356,27 +356,38 @@ module ML
 
   @doc Converts a 1-dimensional tensor to an array. The scalar type `'a` that the
   tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
-  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
-  and `Bool` tensors resolve to `bool{#true, #false}`;
+  `#int` tensors resolve to `int`, `#double` and `#float` tensors resolve to `double`,
+  and `#bool` tensors resolve to `bool{#true, #false}`
+
+  Explicit type annotations will result in casts when the `dtype` differs from
+  the Inferno type. For example, `let a = asArray1 t : array of int in ...`, where `t`
+  is a tensor with a `dtype` of `#float`, will result in the array `a` being
+  implicitly cast from `array of double` to `array of int`;
   asArray1 : forall 'a. {requires scalar on 'a} => tensor -> array of 'a := ###!asArray1###;
 
-  @doc Converts a 2-dimensional tensor to a nested array. The scalar type `'a` that the
-  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
-  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
-  and `Bool` tensors resolve to `bool{#true, #false}`;
-  asArray2 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of 'a) := ###!asArray2###;
+  @doc Converts a 2-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray2 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of 'a)
+    := ###!asArray2###;
 
-  @doc Converts a 3-dimensional tensor to a nested array. The scalar type `'a` that the
-  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
-  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
-  and `Bool` tensors resolve to `bool{#true, #false}`;
-  asArray3 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of 'a)) := ###!asArray3###;
+  @doc Converts a 3-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray3 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of (array of 'a))
+    := ###!asArray3###;
 
-  @doc Converts a 4-dimensional tensor to a nested array. The scalar type `'a` that the
-  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
-  `Int64` tensors resolve to `int`, `Double` and `Float` tensors resolve to `double`,
-  and `Bool` tensors resolve to `bool{#true, #false}`;
-  asArray4 : forall 'a. {requires scalar on 'a} => tensor -> array of (array of (array of (array of 'a))) := ###!asArray4###;
+  @doc Converts a 4-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray4 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of (array of (array of 'a)))
+    := ###!asArray4###;
 
 module Tensor
   @doc Returns the total number of elements in the input tensor;
