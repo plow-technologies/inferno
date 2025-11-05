@@ -491,11 +491,11 @@ asTensorFun ::
   , FromValue (MlValue x) m (Either3 i d b)
   ) =>
   String ->
-  -- | Type witness for the integer type (e.g., Int, [Int], [[Int]])
+  -- | Type witness for the integer type (e.g., @Int@, @[Int]@, @[[Int]]@)
   Proxy i ->
-  -- | Type witness for the double type (e.g., Double, [Double], [[Double]])
+  -- | Type witness for the double type (e.g., @Double@, @[Double]@, @[[Double]]@)
   Proxy d ->
-  -- | Type witness for the boolean type (e.g., Bool, [Bool], [[Bool]])
+  -- | Type witness for the boolean type (e.g., @Bool@, @[Bool]@, @[[Bool]]@)
   Proxy b ->
   Value (MlValue x) m
 asTensorFun funName _ _ _ =
@@ -520,9 +520,9 @@ asTensorFun funName _ _ _ =
 asArrayFun ::
   forall i d b x m.
   ( MonadThrow m
-  , TensorLike i
-  , TensorLike d
-  , TensorLike b
+  , TensorLike i -- Integer variant
+  , TensorLike d -- Double variant
+  , TensorLike b -- Boolean variant
   , ToValue (MlValue x) m (Either3 i d b)
   ) =>
   String ->
@@ -562,8 +562,8 @@ asArrayFun funName _ _ _ =
           . Right
           . Right
           $ Torch.asValue @b t
-      dt -> throwM $ RuntimeError $ funName <> ": unsupported dtype " <> show dt
-    _ -> throwM $ RuntimeError $ funName <> ": expected a tensor"
+      dt -> throwM . RuntimeError $ funName <> ": unsupported dtype " <> show dt
+    _ -> throwM . RuntimeError $ funName <> ": expected a tensor"
 
 -- Lifts Hasktorch's `forward` to `IO` (via `evaluate`) so we can catch
 -- any `CppStdException`s in case the Torchscript interpreter fails;
