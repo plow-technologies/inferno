@@ -273,11 +273,15 @@ mkMlModule mk =
 
 module ML
 
+  @doc Tensor data type;
   enum dtype := #int | #float | #double | #bool;
 
+  @doc Device on which a tensor is allocated;
   enum device := #cpu | #cuda;
 
-  enum nterpolation := #linear | #lower | #higher | #nearest | #midpoint;
+  @doc Quantile interpolation method. Can't be named `interpolation` or `interp`,
+  the most natural choices, due to issues with Inferno's parser;
+  enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
 
   @doc Load a named, serialized model;
   loadModel : modelName -> model := ###!loadModel###;
@@ -417,20 +421,22 @@ module Tensor
     -> tensor
     -> int
     -> bool{#true, #false}
-    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!quantile###;
 
   @doc `dquantile t q dim keepdim interp` computes the `q`-th quantile of the tensor `t`
   along dimension `dim`. If `keepdim` is true, the output tensor has the same number of
   dimensions as `t`, with the reduced dimension of size 1. The interpolation method is
-  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`;
+  specified by `interp`. This variant takes a `double` for the quantile value instead of a `tensor`.
+
+  NOTE: The `q` quantile value MUST be in the range 0-1!;
   dquantile :
     tensor
     -> double
     -> int
     -> bool{#true, #false}
-    -> nterpolation{#linear, #lower, #higher, #nearest, #midpoint}
+    -> qinterp{#linear, #lower, #higher, #nearest, #midpoint}
     -> tensor
     := ###!dquantile###;
 

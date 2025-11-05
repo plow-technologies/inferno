@@ -1,6 +1,10 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0
+* Make `asTensor*` and `asArray*` functions polymorphic to accept any scalar type
+* Improve documentation for tensor conversion functions
+
 ## 0.2.0
 * Add new `Tensor` primitives: `roll`, `quantile`, `dquantile`
 
