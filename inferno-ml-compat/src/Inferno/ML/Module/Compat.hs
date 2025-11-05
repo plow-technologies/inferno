@@ -91,10 +91,10 @@ data MkConversionFuns m tensor model mname x = MkConversionFuns
   , asTensor3 :: Value (MlValue tensor model mname x) m
   , asTensor4 :: Value (MlValue tensor model mname x) m
   , asDouble :: tensor -> Double
-  , asArray1 :: tensor -> [Double]
-  , asArray2 :: tensor -> [[Double]]
-  , asArray3 :: tensor -> [[[Double]]]
-  , asArray4 :: tensor -> [[[[Double]]]]
+  , asArray1 :: Value (MlValue tensor model mname x) m
+  , asArray2 :: Value (MlValue tensor model mname x) m
+  , asArray3 :: Value (MlValue tensor model mname x) m
+  , asArray4 :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -222,7 +222,8 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   , device :: Value (MlValue tensor model mname x) m
   , -- NOTE: quantile is in `MkPropertyFuns` (not `MkFunctionalFuns`, where it belongs)
     -- because it needs to be effectful in order to convert the interpolation enum to
-    -- a `String`. It's easier to put it here rather than change `MkFunctionalFuns`
+    -- a `String`. It's easier to put it here rather than convert all of `MkFunctionalFuns`
+    -- to `Value (MlValue tensor model mname x) m` and lift everything
     quantile :: Value (MlValue tensor model mname x) m
   , -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
     dquantile :: Value (MlValue tensor model mname x) m
@@ -305,25 +306,92 @@ module ML
 
   toType : dtype{#int, #float, #double, #bool} -> tensor -> tensor := ###!toType###;
 
-  asTensor0 : dtype{#int, #float, #double, #bool} -> double -> tensor := ###!asTensor0###;
+  @doc Creates a 0-dimensional (scalar) tensor from a `scalar` value. The input
+  `scalar` type `'a` can be `int`, `double`, or `bool{#true, #false}`. The value
+  is automatically converted to match the specified `dtype`. For example,
+  `#true` becomes `1` for numeric dtypes, and `0` becomes `#false` for `#bool`;
+  asTensor0 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> 'a
+    -> tensor
+    := ###!asTensor0###;
 
-  asTensor1 : dtype{#int, #float, #double, #bool} -> array of double -> tensor := ###!asTensor1###;
+  @doc Creates a 1-dimensional tensor from an array of `scalar` values. The input
+  `scalar` type `'a` can be `int`, `double`, or `bool{#true, #false}`, and will be
+  automatically converted to match the specified `dtype`. Type conversions follow
+  standard rules: booleans convert to `0`/`1` for numeric types, numeric values
+  convert to `#false` for zero and `#true` for non-zero when converting to `#bool`,
+  and numeric types convert between each other with appropriate rounding or
+  truncation (e.g., `3.7` becomes `3` when converting `double` to `#int`);
+  asTensor1 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of 'a
+    -> tensor
+    := ###!asTensor1###;
 
-  asTensor2 : dtype{#int, #float, #double, #bool} -> array of (array of double) -> tensor := ###!asTensor2###;
+  @doc Creates a 2-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
+  asTensor2 : forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of 'a)
+    -> tensor
+    := ###!asTensor2###;
 
-  asTensor3 : dtype{#int, #float, #double, #bool} -> array of (array of (array of double)) -> tensor := ###!asTensor3###;
+  @doc Creates a 3-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
+  asTensor3 : forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of (array of 'a))
+    -> tensor
+    := ###!asTensor3###;
 
-  asTensor4 : dtype{#int, #float, #double, #bool} -> array of (array of (array of (array of double))) -> tensor := ###!asTensor4###;
+  @doc Creates a 4-dimensional tensor from a nested array of `scalar` values.
+  See `asTensor1` for details on type conversion from `scalar` to `dtype`;
+  asTensor4 :
+    forall 'a. {requires scalar on 'a}
+    => dtype{#int, #float, #double, #bool}
+    -> array of (array of (array of (array of 'a)))
+    -> tensor
+    := ###!asTensor4###;
 
   asDouble : tensor -> double := ###asDouble###;
 
-  asArray1 : tensor -> array of double := ###asArray1###;
+  @doc Converts a 1-dimensional tensor to an array. The scalar type `'a` that the
+  tensor will resolve to depends on the tensor's `dtype` (see `Tensor.dtype`).
+  `#int` tensors resolve to `int`, `#double` and `#float` tensors resolve to `double`,
+  and `#bool` tensors resolve to `bool{#true, #false}`
 
-  asArray2 : tensor -> array of (array of double) := ###asArray2###;
+  Explicit type annotations will result in casts when the `dtype` differs from
+  the Inferno type. For example, `let a = asArray1 t : array of int in ...`, where `t`
+  is a tensor with a `dtype` of `#float`, will result in the array `a` being
+  implicitly cast from `array of double` to `array of int`;
+  asArray1 : forall 'a. {requires scalar on 'a} => tensor -> array of 'a := ###!asArray1###;
 
-  asArray3 : tensor -> array of (array of (array of double)) := ###asArray3###;
+  @doc Converts a 2-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray2 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of 'a)
+    := ###!asArray2###;
 
-  asArray4 : tensor -> array of (array of (array of (array of double))) := ###asArray4###;
+  @doc Converts a 3-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray3 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of (array of 'a))
+    := ###!asArray3###;
+
+  @doc Converts a 4-dimensional tensor to a nested array.
+  See `asArray1` for details on type resolution and casts;
+  asArray4 :
+    forall 'a. {requires scalar on 'a}
+    => tensor
+    -> array of (array of (array of (array of 'a)))
+    := ###!asArray4###;
 
 module Tensor
   @doc Returns the total number of elements in the input tensor;

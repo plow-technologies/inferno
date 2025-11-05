@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.9.2.0
+* Implement polymorphic `asTensor*` and `asArray*` functions from `inferno-ml-compat`
+
 ## 0.9.1.0 -- 2025-10-31
 * Add implementations for new `Tensor` primitives from `inferno-ml-compat`
 

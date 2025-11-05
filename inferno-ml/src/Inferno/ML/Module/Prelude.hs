@@ -175,16 +175,55 @@ defaultMlModule =
           { toType =
               withDType "toType" $ \dt ->
                 VFun $ fmap (VCustom . VTensor . Torch.toType dt) . fromValue
-          , asTensor0 = asTensorFun "asTensor0" $ Proxy @Double
-          , asTensor1 = asTensorFun "asTensor1" $ Proxy @[Double]
-          , asTensor2 = asTensorFun "asTensor2" $ Proxy @[[Double]]
-          , asTensor3 = asTensorFun "asTensor3" $ Proxy @[[[Double]]]
-          , asTensor4 = asTensorFun "asTensor4" $ Proxy @[[[[Double]]]]
+          , asTensor0 =
+              asTensorFun "asTensor0" (Proxy @Int) (Proxy @Double) $
+                Proxy @Bool
+          , asTensor1 =
+              asTensorFun
+                "asTensor1"
+                (Proxy @[Int])
+                (Proxy @[Double])
+                $ Proxy @[Bool]
+          , asTensor2 =
+              asTensorFun
+                "asTensor2"
+                (Proxy @[[Int]])
+                (Proxy @[[Double]])
+                $ Proxy @[[Bool]]
+          , asTensor3 =
+              asTensorFun
+                "asTensor3"
+                (Proxy @[[[Int]]])
+                (Proxy @[[[Double]]])
+                $ Proxy @[[[Bool]]]
+          , asTensor4 =
+              asTensorFun
+                "asTensor4"
+                (Proxy @[[[[Int]]]])
+                (Proxy @[[[[Double]]]])
+                $ Proxy @[[[[Bool]]]]
           , asDouble = Torch.asValue . Torch.toType DType.Double
-          , asArray1 = Torch.asValue . Torch.toType DType.Double
-          , asArray2 = Torch.asValue . Torch.toType DType.Double
-          , asArray3 = Torch.asValue . Torch.toType DType.Double
-          , asArray4 = Torch.asValue . Torch.toType DType.Double
+          , asArray1 =
+              asArrayFun "asArray1" (Proxy @[Int]) (Proxy @[Double]) $
+                Proxy @[Bool]
+          , asArray2 =
+              asArrayFun
+                "asArray2"
+                (Proxy @[[Int]])
+                (Proxy @[[Double]])
+                $ Proxy @[[Bool]]
+          , asArray3 =
+              asArrayFun
+                "asArray3"
+                (Proxy @[[[Int]]])
+                (Proxy @[[[Double]]])
+                $ Proxy @[[[Bool]]]
+          , asArray4 =
+              asArrayFun
+                "asArray4"
+                (Proxy @[[[[Int]]]])
+                (Proxy @[[[[Double]]]])
+                $ Proxy @[[[[Bool]]]]
           }
     , functional =
         Compat.MkFunctionalFuns
@@ -444,19 +483,87 @@ getInterpolation = \case
         ]
 
 asTensorFun ::
-  forall a x m.
-  ( TensorLike a
-  , MonadThrow m
-  , FromValue (MlValue x) m a
+  forall i d b x m.
+  ( MonadThrow m
+  , TensorLike i -- Integer variant
+  , TensorLike d -- Double variant
+  , TensorLike b -- Boolean variant
+  , FromValue (MlValue x) m (Either3 i d b)
   ) =>
   String ->
-  Proxy a ->
+  -- | Type witness for the integer type (e.g., @Int@, @[Int]@, @[[Int]]@)
+  Proxy i ->
+  -- | Type witness for the double type (e.g., @Double@, @[Double]@, @[[Double]]@)
+  Proxy d ->
+  -- | Type witness for the boolean type (e.g., @Bool@, @[Bool]@, @[[Bool]]@)
+  Proxy b ->
   Value (MlValue x) m
-asTensorFun funName _proxy =
+asTensorFun funName _ _ _ =
   withDType funName $ \dtype ->
     VFun $
-      fmap (VCustom . VTensor . Torch.toType dtype . Torch.asTensor @a)
+      fmap
+        ( VCustom
+            . VTensor
+            . Torch.toType dtype
+            . either
+              -- Array of ints
+              (Torch.asTensor @i)
+              ( either
+                  -- Array of doubles
+                  (Torch.asTensor @d)
+                  -- Array of bools
+                  (Torch.asTensor @b)
+              )
+        )
         . fromValue
+
+asArrayFun ::
+  forall i d b x m.
+  ( MonadThrow m
+  , TensorLike i -- Integer variant
+  , TensorLike d -- Double variant
+  , TensorLike b -- Boolean variant
+  , ToValue (MlValue x) m (Either3 i d b)
+  ) =>
+  String ->
+  -- | Type witness for the integer array type (e.g., @[Int]@, @[[Int]]@)
+  Proxy i ->
+  -- | Type witness for the double array type (e.g., @[Double]@, @[[Double]]@)
+  Proxy d ->
+  -- | Type witness for the boolean array type (e.g., @[Bool]@, @[[Bool]]@)
+  Proxy b ->
+  Value (MlValue x) m
+asArrayFun funName _ _ _ =
+  VFun $ \case
+    VCustom (VTensor t) -> case Torch.dtype t of
+      DType.Int64 ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Left
+          $ Torch.asValue @i t
+      DType.Double ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Left
+          $ Torch.asValue @d t
+      -- Here we need to convert the tensor from floats to doubles,
+      -- since Inferno doesn't have a float type
+      DType.Float ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Left
+          . Torch.asValue @d
+          $ Torch.toType DType.Double t
+      DType.Bool ->
+        pure
+          . toValue @_ @_ @(Either3 i d b)
+          . Right
+          . Right
+          $ Torch.asValue @b t
+      dt -> throwM . RuntimeError $ funName <> ": unsupported dtype " <> show dt
+    _ -> throwM . RuntimeError $ funName <> ": expected a tensor"
 
 -- Lifts Hasktorch's `forward` to `IO` (via `evaluate`) so we can catch
 -- any `CppStdException`s in case the Torchscript interpreter fails;
