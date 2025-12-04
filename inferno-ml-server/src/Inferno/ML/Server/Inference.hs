@@ -30,11 +30,11 @@ import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
-import Data.Maybe (catMaybes, mapMaybe)
 import Data.Traversable (for)
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
@@ -273,18 +273,17 @@ runInferenceParamWithEnv ipid uuid senv =
                 models :: [Id ModelVersion]
                 models = mapMaybe (`Map.lookup` senv.models) scriptParams
 
-              -- Sanity check: the number of resolved pids + models should match
-              -- the number of script parameters. A mismatch indicates the
-              -- EvaluationEnv doesn't match the script's expected parameters
-              unless (length scriptParams == length pids + length models) $
-                throwRemoteError . InvalidScript ipid . Text.unwords $
-                  [ "Parameter count mismatch: script expects"
-                  , tshow (length scriptParams)
-                  , "parameters, but EvaluationEnv provides"
-                  , tshow (length pids + length models)
-                  ]
+                -- NOTE: We deliberately do NOT check that the number of resolved
+                -- PIDs + models matches the number of script parameters. Due to
+                -- Inferno's type inference, scripts may have unused parameters
+                -- (e.g. a model param that isn't used in the body, or an input
+                -- that's declared but not read). These are _filtered out_ by
+                -- `collectArgsAndPrettyPrint`, which we use to get the script
+                -- arguments in correct (i.e. declared) order
+                --
+                -- These unused params are harmless and filtering them out via
+                -- `mapMaybe` is the correct behavior
 
-              let
                 mkIdentWith :: Text -> Int -> ExtIdent
                 mkIdentWith x = ExtIdent . Right . (x <>) . tshow
 
