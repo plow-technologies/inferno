@@ -18,6 +18,7 @@ module Inferno.ML.Server.Inference
 where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
+import Control.Applicative ((<|>))
 import Control.Monad (unless, void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -33,6 +34,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
+import Data.Maybe (catMaybes, mapMaybe)
 import Data.Traversable (for)
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
@@ -61,8 +63,10 @@ import Inferno.ML.Types.Value
 import Inferno.Types.Syntax
   ( Expr (App, Var),
     ExtIdent (ExtIdent),
+    Ident,
     ImplExpl (Expl),
     Scoped (LocalScope),
+    extractArgsAndPrettyPrint,
   )
 import Inferno.Types.Value
   ( ImplEnvM,
@@ -232,8 +236,14 @@ runInferenceParamWithEnv ipid uuid senv =
           RemoteM (WriteStream IO)
         runEval Interpreter{evalExpr, mkEnvFromClosure} t =
           case senv.obj.obj of
-            VCFunction{} -> do
+            VCFunction vexpr _ -> do
               let
+                -- Extract script parameter order from the lambda expression.
+                -- This ensures we apply arguments in the order the script
+                -- expects, not alphabetically sorted by identifier
+                scriptParams :: [Ident]
+                scriptParams = catMaybes . fst $ extractArgsAndPrettyPrint vexpr
+
                 -- Note that this both includes inputs (i.e. readable)
                 -- and outputs (i.e. writable, or readable/writable).
                 -- These need to be provided to the script in order
@@ -241,20 +251,40 @@ runInferenceParamWithEnv ipid uuid senv =
                 -- resolve. We can discard the input type here,
                 -- however. The distinction is only relevant for the
                 -- runtime that runs as a script evaluation engine
-                -- and commits the output write object
+                -- and commits the output write object.
+                --
+                -- IMPORTANT: Build pids in script parameter order, not
+                -- alphabetically. The script expects arguments in the order
+                -- its parameters were declared, which may differ from
+                -- alphabetical order of the identifier names.
                 pids :: [SingleOrMany PID]
-                pids = is <> os
+                pids = mapMaybe lookupPid scriptParams
                   where
-                    is, os :: [SingleOrMany PID]
-                    is = senv ^.. #inputs . to Map.toAscList . each . _2
-                    os = senv ^.. #outputs . to Map.toAscList . each . _2
+                    lookupPid :: Ident -> Maybe (SingleOrMany PID)
+                    lookupPid i =
+                      Map.lookup i senv.inputs <|> Map.lookup i senv.outputs
 
                 -- List of model versions, which are used to evaluate
                 -- `loadModel` primitive (eventually calling Hasktorch to
-                -- load the script module)
+                -- load the script module).
+                --
+                -- IMPORTANT: Build models in script parameter order, matching
+                -- the pids ordering rationale above.
                 models :: [Id ModelVersion]
-                models = senv ^.. #models . to Map.toAscList . each . _2
+                models = mapMaybe (`Map.lookup` senv.models) scriptParams
 
+              -- Sanity check: the number of resolved pids + models should match
+              -- the number of script parameters. A mismatch indicates the
+              -- EvaluationEnv doesn't match the script's expected parameters
+              unless (length scriptParams == length pids + length models) $
+                throwRemoteError . InvalidScript ipid . Text.unwords $
+                  [ "Parameter count mismatch: script expects"
+                  , tshow (length scriptParams)
+                  , "parameters, but EvaluationEnv provides"
+                  , tshow (length pids + length models)
+                  ]
+
+              let
                 mkIdentWith :: Text -> Int -> ExtIdent
                 mkIdentWith x = ExtIdent . Right . (x <>) . tshow
 
