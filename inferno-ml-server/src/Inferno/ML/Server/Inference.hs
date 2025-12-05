@@ -345,17 +345,6 @@ runInferenceParamWithEnv ipid uuid senv =
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
 
-              liftIO $ do
-                putStrLn "Debugging script arguments HERE"
-                putStr "scriptParamOrder: "
-                print scriptParamOrder
-                putStr "Map.keys envPids: "
-                print $ Map.keys envPids
-                putStr "Map.keys envModels: "
-                print $ Map.keys envModels
-                putStr "length scriptArgs: "
-                print $ length scriptArgs
-
               either (throwInfernoError ipid senv.script) yieldPairs
                 =<< flip (`evalExpr` implEnv) expr
                 =<< runImplEnvM mempty (mkEnvFromClosure localEnv closure)
