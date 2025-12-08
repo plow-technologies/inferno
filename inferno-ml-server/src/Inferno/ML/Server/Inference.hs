@@ -261,7 +261,7 @@ runInferenceParamWithEnv ipid uuid senv =
                       _ -> Nothing
 
                 -- All params from the env - this is the source of truth for
-                -- WHAT args to provide (like the old code)
+                -- WHAT args to provide
                 envPids :: Map Ident (SingleOrMany PID)
                 envPids = senv.inputs <> senv.outputs
 
