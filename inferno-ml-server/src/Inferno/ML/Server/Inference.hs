@@ -18,18 +18,21 @@ module Inferno.ML.Server.Inference
 where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
+import Control.Applicative (asum)
 import Control.Monad (unless, void, when, (<=<))
 import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.ListM (sortByM)
-import Data.Bifunctor (bimap)
 import Data.Conduit.List (chunksOf, sourceList)
 import Data.Foldable (foldl', toList, traverse_)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Text (Text)
+import Data.Maybe (mapMaybe)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -59,8 +62,9 @@ import Inferno.ML.Types.Value
     pattern VModelName,
   )
 import Inferno.Types.Syntax
-  ( Expr (App, Var),
+  ( Expr (App, Lam, Var),
     ExtIdent (ExtIdent),
+    Ident (Ident),
     ImplExpl (Expl),
     Scoped (LocalScope),
   )
@@ -232,31 +236,76 @@ runInferenceParamWithEnv ipid uuid senv =
           RemoteM (WriteStream IO)
         runEval Interpreter{evalExpr, mkEnvFromClosure} t =
           case senv.obj.obj of
-            VCFunction{} -> do
+            -- We need the `vexpr` here, which is a `Lam`, to get ALL of the
+            -- script arguments
+            VCFunction vexpr _ -> do
               let
-                -- Note that this both includes inputs (i.e. readable)
-                -- and outputs (i.e. writable, or readable/writable).
-                -- These need to be provided to the script in order
-                -- for the symbolic identifer (e.g. `output0`) to
-                -- resolve. We can discard the input type here,
-                -- however. The distinction is only relevant for the
-                -- runtime that runs as a script evaluation engine
-                -- and commits the output write object
-                pids :: [SingleOrMany PID]
-                pids = is <> os
+                -- Extract script parameter order from the lambda expression.
+                -- This gives us the ORDER in which params should be applied.
+                -- We filter out implicit type params (i.e. `Left _`) as they
+                -- don't need runtime values
+                scriptParamOrder :: [Ident]
+                scriptParamOrder = mapMaybe toIdent $ extractLamParams vexpr
                   where
-                    is, os :: [SingleOrMany PID]
-                    is = senv ^.. #inputs . to Map.toAscList . each . _2
-                    os = senv ^.. #outputs . to Map.toAscList . each . _2
+                    extractLamParams :: Expr h p -> [Maybe ExtIdent]
+                    extractLamParams = go mempty
+                      where
+                        go :: [Maybe ExtIdent] -> Expr h p -> [Maybe ExtIdent]
+                        go acc = \case
+                          Lam _ xs _ e -> flip go e $ acc <> fmap snd (NonEmpty.toList xs)
+                          _ -> acc
 
-                -- List of model versions, which are used to evaluate
-                -- `loadModel` primitive (eventually calling Hasktorch to
-                -- load the script module)
-                models :: [Id ModelVersion]
-                models = senv ^.. #models . to Map.toAscList . each . _2
+                    toIdent :: Maybe ExtIdent -> Maybe Ident
+                    toIdent = \case
+                      Just (ExtIdent (Right name)) -> Just (Ident name)
+                      _ -> Nothing
 
-                mkIdentWith :: Text -> Int -> ExtIdent
-                mkIdentWith x = ExtIdent . Right . (x <>) . tshow
+                -- All params from the env - this is the source of truth for
+                -- WHAT args to provide
+                envPids :: Map Ident (SingleOrMany PID)
+                envPids = senv.inputs <> senv.outputs
+
+                envModels :: Map Ident (Id ModelVersion)
+                envModels = senv.models
+
+                -- Build args list by ordering env params according to script order.
+                -- Params in the env but not in the script order go at the end
+                -- (this handles any edge cases where the script has extra params)
+                scriptArgs :: [ScriptArg]
+                scriptArgs = orderedArgs <> extraArgs
+                  where
+                    -- Args in script param order
+                    orderedArgs :: [ScriptArg]
+                    orderedArgs = mapMaybe lookupInEnv scriptParamOrder
+
+                    -- Any env params not in the script order
+                    extraArgs :: [ScriptArg]
+                    extraArgs =
+                      let scriptSet :: Set Ident
+                          scriptSet = Set.fromList scriptParamOrder
+
+                          extraPids :: [ScriptArg]
+                          extraPids =
+                            Map.toList envPids
+                              & filter ((`Set.notMember` scriptSet) . fst)
+                              & fmap (ArgIoParam . snd)
+
+                          extraModels :: [ScriptArg]
+                          extraModels =
+                            Map.toList envModels
+                              & filter ((`Set.notMember` scriptSet) . fst)
+                              & fmap (ArgModel . snd)
+                       in extraPids <> extraModels
+
+                    lookupInEnv :: Ident -> Maybe ScriptArg
+                    lookupInEnv i =
+                      asum
+                        [ ArgIoParam <$> Map.lookup i envPids
+                        , ArgModel <$> Map.lookup i envModels
+                        ]
+
+                mkIdent :: Int -> ExtIdent
+                mkIdent = ExtIdent . Right . ("arg$" <>) . tshow
 
                 toSeries :: PID -> Value BridgeMlValue m
                 toSeries = VCustom . VExtended . VSeries
@@ -264,53 +313,34 @@ runInferenceParamWithEnv ipid uuid senv =
                 toModelPath :: Id ModelVersion -> Value BridgeMlValue m
                 toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
 
-                argsFrom ::
-                  [a] ->
-                  ((Int, a) -> (ExtIdent, Value BridgeMlValue m)) ->
-                  [(ExtIdent, Value BridgeMlValue m)]
-                argsFrom xs f = f <$> zip [0 ..] xs
-
+                -- Build local environment from unified args list
                 localEnv :: Map ExtIdent (Value BridgeMlValue m)
-                localEnv = Map.fromList $ inputArgs <> modelArgs
+                localEnv = Map.fromList $ zipWith mkEnvEntry [0 ..] scriptArgs
                   where
-                    inputArgs :: [(ExtIdent, Value BridgeMlValue m)]
-                    inputArgs =
-                      argsFrom pids $ \case
-                        (i, Single pid) ->
-                          ( mkIdentWith "input$" i
-                          , toSeries pid
-                          )
-                        (i, Many pids') ->
-                          ( mkIdentWith "input$" i
-                          , pids' ^.. each & over mapped toSeries & VArray
-                          )
-
-                    modelArgs :: [(ExtIdent, Value BridgeMlValue m)]
-                    modelArgs =
-                      argsFrom models $
-                        bimap (mkIdentWith "model$") toModelPath
+                    mkEnvEntry :: Int -> ScriptArg -> (ExtIdent, Value BridgeMlValue m)
+                    mkEnvEntry i = \case
+                      ArgIoParam (Single pid) -> (mkIdent i, toSeries pid)
+                      ArgIoParam (Many pids) ->
+                        ( mkIdent i
+                        , pids ^.. each & over mapped toSeries & VArray
+                        )
+                      ArgModel mid -> (mkIdent i, toModelPath mid)
 
                 closure :: Map VCObjectHash VCObject
                 closure = Map.singleton senv.script senv.obj.obj
 
+                -- Build application expression with args in exact script order
                 expr :: Expr (Maybe VCObjectHash) ()
                 expr =
                   flip (foldl' App) args $
                     Var () (Just senv.script) LocalScope dummy
                   where
-                    -- See note above about inputs/outputs
                     args :: [Expr (Maybe a) ()]
-                    args = exprsFrom "input$" pids <> exprsFrom "model$" models
-                      where
-                        exprsFrom :: Text -> [a] -> [Expr (Maybe b) ()]
-                        exprsFrom ident xs =
-                          [0 .. length xs - 1]
-                            <&> Var () Nothing LocalScope
-                            . Expl
-                            . ExtIdent
-                            . Right
-                            . (ident <>)
-                            . tshow
+                    args =
+                      [0 .. length scriptArgs - 1]
+                        <&> Var () Nothing LocalScope
+                        . Expl
+                        . mkIdent
 
                     dummy :: ImplExpl
                     dummy = Expl . ExtIdent $ Right "dummy"
@@ -632,3 +662,11 @@ data ScriptEnv = ScriptEnv
   , mres :: Maybe Int64
   }
   deriving stock (Generic)
+
+-- A script argument is either a PID (for inputs/outputs) or a model version.
+-- This type is used to build a unified argument list that preserves the exact
+-- parameter order from the script's lambda expression
+data ScriptArg
+  = ArgIoParam (SingleOrMany PID)
+  | ArgModel (Id ModelVersion)
+  deriving stock (Show)
