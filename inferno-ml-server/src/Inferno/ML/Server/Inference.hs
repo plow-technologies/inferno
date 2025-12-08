@@ -663,7 +663,7 @@ data ScriptEnv = ScriptEnv
   }
   deriving stock (Generic)
 
--- | A script argument is either a PID (for inputs/outputs) or a model version.
+-- A script argument is either a PID (for inputs/outputs) or a model version.
 -- This type is used to build a unified argument list that preserves the exact
 -- parameter order from the script's lambda expression
 data ScriptArg
