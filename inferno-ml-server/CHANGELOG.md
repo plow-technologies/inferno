@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2025.12.8
+* Fix script argument ordering to match lambda declaration order
+
 ## 2025.10.17
 * Add `inferno-ml-configure` service
 * Require `PerServerConfig` when starting server
