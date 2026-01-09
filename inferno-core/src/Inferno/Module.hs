@@ -19,7 +19,6 @@ where
 import Control.Monad (foldM)
 import Control.Monad.Catch (MonadThrow (..))
 import Data.Bifunctor (bimap, second)
-import Data.Foldable (foldl')
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
 import qualified Data.Set as Set
