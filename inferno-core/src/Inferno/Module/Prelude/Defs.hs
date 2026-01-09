@@ -271,7 +271,7 @@ recipFun :: Double -> Double
 recipFun = recip
 
 powFun :: Either Int64 Double -> Either (Int64 -> Int64) (Double -> Double)
-powFun = bimap (^) (**)
+powFun = bimap (^^) (**)
 
 expFun :: Double -> Double
 expFun = exp
