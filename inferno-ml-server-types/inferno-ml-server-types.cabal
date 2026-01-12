@@ -67,6 +67,7 @@ library
     , QuickCheck
     , quickcheck-arbitrary-adt
     , quickcheck-instances
+    , scientific
     , servant-client
     , servant-conduit
     , servant-server
