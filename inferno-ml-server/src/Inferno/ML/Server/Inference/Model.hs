@@ -57,6 +57,12 @@ getModelsAndVersions =
 -- | Get the actual serialized bytes of a TorchScript model, which is stored in
 -- the Postgres large object table (and must be explicitly imported using 'loImport'),
 -- along with the number of bytes
+--
+-- TODO/NOTE This will ONLY be invoked in the future when a model has a @TorchScript@
+-- @ModelConfig@. At the moment, it is invoked for all models. This is the least
+-- intrusive change (i.e. throwing an exception if a @Bedrock@ model sneaks in).
+-- We have no path to creating @Bedrock@ at the moment (except via direct database
+-- manipulation), so this is reasonable for now
 getTorchScriptModelContents :: ModelVersion -> RemoteM ByteString
 getTorchScriptModelContents mversion =
   case mversion.contents of
