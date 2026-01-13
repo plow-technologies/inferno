@@ -4,13 +4,14 @@
 
 module Inferno.ML.Server.Inference.Model
   ( getModelsAndVersions,
-    getModelVersionContents,
+    getTorchScriptModelContents,
   )
 where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
+import qualified Data.Text as Text
 import Data.Vector (Vector)
 import Database.PostgreSQL.Simple
   ( In (In),
@@ -53,14 +54,21 @@ getModelsAndVersions =
           AND M.terminated IS NULL
       |]
 
--- | Get the actual serialized bytes of the model, which is stored in the Postgres
--- large object table (and must be explicitly imported using 'loImport'), along
--- with the number of bytes
-getModelVersionContents :: ModelVersion -> RemoteM ByteString
-getModelVersionContents mversion =
-  withConns $ \conn -> withRunInIO $ \r ->
-    withTransaction conn . r $ do
-      liftIO
-        . bracket (loOpen conn mversion.contents ReadMode) (loClose conn)
-        . flip (loRead conn)
-        $ fromIntegral mversion.size
+-- | Get the actual serialized bytes of a TorchScript model, which is stored in
+-- the Postgres large object table (and must be explicitly imported using 'loImport'),
+-- along with the number of bytes
+getTorchScriptModelContents :: ModelVersion -> RemoteM ByteString
+getTorchScriptModelContents mversion =
+  case mversion.contents of
+    Bedrock _ -> throwRemoteError . OtherRemoteError $ Text.unwords
+      [ "Model"
+      , tshow mversion.id
+      , "is a Bedrock model; cannot be used as a TorchScript model"
+      ]
+    TorchScript oid ->
+      withConns $ \conn -> withRunInIO $ \r ->
+        withTransaction conn . r $ do
+          liftIO
+            . bracket (loOpen conn oid ReadMode) (loClose conn)
+            . flip (loRead conn)
+            $ fromIntegral mversion.size

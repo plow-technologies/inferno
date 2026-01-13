@@ -572,7 +572,7 @@ getAndCacheModels cache =
           whenJust mversion.id $ logInfo . CopyingModel
           checkCacheSize $ fromIntegral mversion.size
           writeBinaryFileDurableAtomic path
-            =<< getModelVersionContents mversion
+            =<< getTorchScriptModelContents mversion
       where
         mkPath :: RemoteM FilePath
         mkPath =

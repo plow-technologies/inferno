@@ -453,8 +453,10 @@ data ModelVersion gid c = ModelVersion
   -- an 'Oid' pointing to the serialized bytes of the model imported into
   -- the PSQL large object table
   , size :: Word64
-  -- ^ The size of the @contents@ above; the contents are immutable so we can
-  -- calculate this once and store it
+  -- ^ The size of the @contents@ above IF it is a TorchScript model; for
+  -- Bedrock models, this will be set to zero and unused. The contents
+  -- are immutable so we can calculate this once and store it, rather than
+  -- re-calculate on demand which would be wasteful
   , version :: Version
   , created :: Maybe UTCTime
   -- ^ When the model version was created; if left empty, this will be generated
@@ -889,7 +891,7 @@ instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) w
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p = InferenceParamWithModels
   { param :: InferenceParam gid p
-  , models :: Models (Id (ModelVersion gid Oid))
+  , models :: Models (Id (ModelVersion gid ModelConfig))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -1087,7 +1089,7 @@ data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash
   , inputs :: Inputs p
   , outputs :: Outputs p
-  , models :: Models (Id (ModelVersion gid Oid))
+  , models :: Models (Id (ModelVersion gid ModelConfig))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)

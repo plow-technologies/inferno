@@ -24,7 +24,7 @@ import Data.Word (Word8)
 import Inferno.ML.Server (runInEnv)
 import Inferno.ML.Server.Inference (getAndCacheModels)
 import Inferno.ML.Server.Inference.Model
-  ( getModelVersionContents,
+  ( getTorchScriptModelContents,
     getModelsAndVersions,
   )
 import Inferno.ML.Server.Types
@@ -118,7 +118,7 @@ getWithContents :: Env -> IO (ModelVersion, ByteString)
 getWithContents env = flip runReaderT env $ do
   (getModelsAndVersions modelVersions >>=) . (. fmap snd . toList) $ \case
     [] -> throwString "No model was retrieved"
-    v : _ -> (v,) <$> getModelVersionContents v
+    v : _ -> (v,) <$> getTorchScriptModelContents v
 
 mnistV1 :: Id ModelVersion
 mnistV1 = Id $ UUID.fromWords 6 0 0 0
