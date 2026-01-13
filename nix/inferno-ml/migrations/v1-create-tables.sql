@@ -36,12 +36,19 @@ create table if not exists mversions
   , description text not null
     -- Model card (description and metadata) serialized as JSON
   , card jsonb not null
+    -- Can be either an OID pointer to serialized TorchScript blob or a
+    -- configuration for a Bedrock model
+    --
+    -- I.e. `{"torchscript": <oid>}` or `{"bedrock": <cfg>}`
+    --
+    -- NOTE For TorchScript models only:
+    --
     -- The model contents are not stored directly because it might exceed
     -- the 1GB column-size limit. Instead the model version contains a
     -- pointer to a Postgres large object (the `oid` below). This means
     -- that saving a model version requires as its first step `lo_import`ing
     -- the contents
-  , contents oid not null
+  , contents jsonb not null
     -- The size of the `contents` above in bytes. This could be calculated
     -- on-demand, but since the `contents` are immutable, we can calculate
     -- this once and store it here

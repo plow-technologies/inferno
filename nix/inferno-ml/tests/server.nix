@@ -89,7 +89,7 @@ pkgs.nixosTest {
                 , '00000005-0000-0000-0000-000000000000'::uuid
                 , 'My first model'
                 , '${card}'::jsonb
-                , :LASTOID
+                , jsonb_build_object('torchscript', :LASTOID)
                 , length(lo_get(:LASTOID))
                 , 'v1'
                 ;
