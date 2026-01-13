@@ -558,6 +558,10 @@ getInferenceParamWithModels ipid =
 --
 -- NOTE: This action assumes that the current working directory is the model
 -- cache! It can be run using e.g. 'withCurrentDirectory'
+--
+-- NOTE/TODO In the future, once the @Bedrock@ model system is more complete,
+-- this will ONLY be invoked if the model version holds a @Torchscript@ model.
+-- At the moment, that is a more intrusive change that is not yet necessary
 getAndCacheModels :: ModelCache -> Models (Id ModelVersion) -> RemoteM ()
 getAndCacheModels cache =
   traverse_ (uncurry copyAndCache)
