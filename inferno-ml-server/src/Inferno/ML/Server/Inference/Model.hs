@@ -60,11 +60,13 @@ getModelsAndVersions =
 getTorchScriptModelContents :: ModelVersion -> RemoteM ByteString
 getTorchScriptModelContents mversion =
   case mversion.contents of
-    Bedrock _ -> throwRemoteError . OtherRemoteError $ Text.unwords
-      [ "Model"
-      , tshow mversion.id
-      , "is a Bedrock model; cannot be used as a TorchScript model"
-      ]
+    Bedrock _ ->
+      throwRemoteError . OtherRemoteError $
+        Text.unwords
+          [ "Model"
+          , tshow mversion.id
+          , "is a Bedrock model; cannot be used as a TorchScript model"
+          ]
     TorchScript oid ->
       withConns $ \conn -> withRunInIO $ \r ->
         withTransaction conn . r $ do

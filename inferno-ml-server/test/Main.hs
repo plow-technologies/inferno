@@ -24,8 +24,8 @@ import Data.Word (Word8)
 import Inferno.ML.Server (runInEnv)
 import Inferno.ML.Server.Inference (getAndCacheModels)
 import Inferno.ML.Server.Inference.Model
-  ( getTorchScriptModelContents,
-    getModelsAndVersions,
+  ( getModelsAndVersions,
+    getTorchScriptModelContents,
   )
 import Inferno.ML.Server.Types
 import Lens.Micro.Platform
