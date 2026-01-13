@@ -597,7 +597,6 @@ instance ToJSON ModelConfig where
       object ["torchscript" .= fromIntegral @_ @Word64 x]
     Bedrock bc -> object ["bedrock" .= bc]
 
-
 -- | Configuration for Bedrock-based models
 data BedrockConfig = BedrockConfig
   { modelId :: Text
@@ -637,7 +636,6 @@ mkTemperature f
 
 instance Arbitrary Temperature where
   arbitrary = Temperature <$> choose (0.0, 1.0)
-
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
