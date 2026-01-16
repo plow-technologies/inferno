@@ -495,7 +495,7 @@ instance (ToField gid) => ToRow (ModelVersion gid ModelConfig) where
     , toField Default
     ]
 
-instance (FromJSON gid) => FromJSON (ModelVersion gid ModelConfig) where
+instance (FromJSON gid, FromJSON a) => FromJSON (ModelVersion gid a) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       <$> o .:? "id"
@@ -511,7 +511,7 @@ instance (FromJSON gid) => FromJSON (ModelVersion gid ModelConfig) where
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
 
-instance (ToJSON gid) => ToJSON (ModelVersion gid ModelConfig) where
+instance (ToJSON gid, ToJSON a) => ToJSON (ModelVersion gid a) where
   toJSON mv =
     object
       [ "id" .= mv.id

@@ -1,5 +1,9 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.1.16
+* Update for `ModelConfig` and related types; distinguish `TorchScript` vs `Bedrock` models
+* Change `ModelVersion` `contents` from `Oid` to `ModelConfig`
+
 ## 2025.12.8
 * Fix script argument ordering to match lambda declaration order
 

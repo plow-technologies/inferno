@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.24.0
+* Add `ModelConfig`, `BedrockConfig` etc..., for LLM configuration
+
 ## 0.23.0
 * Add `PerServerConfig` and per-server API/client
 
