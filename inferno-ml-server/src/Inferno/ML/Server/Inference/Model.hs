@@ -4,13 +4,14 @@
 
 module Inferno.ML.Server.Inference.Model
   ( getModelsAndVersions,
-    getModelVersionContents,
+    getTorchScriptModelContents,
   )
 where
 
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.ByteString (ByteString)
 import Data.Foldable (toList)
+import qualified Data.Text as Text
 import Data.Vector (Vector)
 import Database.PostgreSQL.Simple
   ( In (In),
@@ -53,14 +54,29 @@ getModelsAndVersions =
           AND M.terminated IS NULL
       |]
 
--- | Get the actual serialized bytes of the model, which is stored in the Postgres
--- large object table (and must be explicitly imported using 'loImport'), along
--- with the number of bytes
-getModelVersionContents :: ModelVersion -> RemoteM ByteString
-getModelVersionContents mversion =
-  withConns $ \conn -> withRunInIO $ \r ->
-    withTransaction conn . r $ do
-      liftIO
-        . bracket (loOpen conn mversion.contents ReadMode) (loClose conn)
-        . flip (loRead conn)
-        $ fromIntegral mversion.size
+-- | Get the actual serialized bytes of a TorchScript model, which is stored in
+-- the Postgres large object table (and must be explicitly imported using 'loImport'),
+-- along with the number of bytes
+--
+-- TODO/NOTE This will ONLY be invoked in the future when a model has a @TorchScript@
+-- @ModelConfig@. At the moment, it is invoked for all models. This is the least
+-- intrusive change (i.e. throwing an exception if a @Bedrock@ model sneaks in).
+-- We have no path to creating @Bedrock@ at the moment (except via direct database
+-- manipulation), so this is reasonable for now
+getTorchScriptModelContents :: ModelVersion -> RemoteM ByteString
+getTorchScriptModelContents mversion =
+  case mversion.contents of
+    Bedrock _ ->
+      throwRemoteError . OtherRemoteError $
+        Text.unwords
+          [ "Model"
+          , tshow mversion.id
+          , "is a Bedrock model; cannot be used as a TorchScript model"
+          ]
+    TorchScript oid ->
+      withConns $ \conn -> withRunInIO $ \r ->
+        withTransaction conn . r $ do
+          liftIO
+            . bracket (loOpen conn oid ReadMode) (loClose conn)
+            . flip (loRead conn)
+            $ fromIntegral mversion.size

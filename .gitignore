@@ -31,3 +31,5 @@ data/
 *.sw?
 /**/CLAUDE.md
 .slop/
+# From Emacs
+/**/flycheck_*

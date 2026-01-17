@@ -12,6 +12,7 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types
@@ -45,6 +46,7 @@ import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import Data.Ord (comparing)
+import Data.Scientific (toRealFloat)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text.Encoding
@@ -451,8 +453,10 @@ data ModelVersion gid c = ModelVersion
   -- an 'Oid' pointing to the serialized bytes of the model imported into
   -- the PSQL large object table
   , size :: Word64
-  -- ^ The size of the @contents@ above; the contents are immutable so we can
-  -- calculate this once and store it
+  -- ^ The size of the @contents@ above IF it is a TorchScript model; for
+  -- Bedrock models, this will be set to zero and unused. The contents
+  -- are immutable so we can calculate this once and store it, rather than
+  -- re-calculate on demand which would be wasteful
   , version :: Version
   , created :: Maybe UTCTime
   -- ^ When the model version was created; if left empty, this will be generated
@@ -465,48 +469,40 @@ data ModelVersion gid c = ModelVersion
   -- NOTE: This may require an orphan instance for the `c` type variable
   deriving anyclass (NFData)
 
-instance (FromField gid) => FromRow (ModelVersion gid Oid) where
-  -- NOTE: Order of fields must align exactly with DB schema. This instance
-  -- could just be `anyclass` derived but it's probably better to be as
-  -- explicit as possible
+instance (FromField gid, Typeable gid) => FromRow (ModelVersion gid ModelConfig) where
   fromRow =
     ModelVersion
       <$> field
       <*> field
       <*> field
       <*> field
-      <*> field
-      -- The actual storage type is a `bigint` because a regular `integer` may
-      -- not be big enough (only large enough for ~2gb size). We can't have a
-      -- negative model size though, so this is represented as a `Word64` on
-      -- the Haskell side
+      <*> fmap getAeson field
       <*> fmap fromIntegral (field @Int64)
       <*> field
       <*> field
       <*> field
 
-instance (ToField gid) => ToRow (ModelVersion gid Oid) where
-  -- NOTE: Order of fields must align exactly with DB schema
+instance (ToField gid) => ToRow (ModelVersion gid ModelConfig) where
   toRow mv =
     [ mv.id & maybe (toField Default) toField
     , mv.model & toField
     , mv.description & toField
     , mv.card & Aeson & toField
-    , mv.contents & toField
+    , mv.contents & Aeson & toField
     , mv.size & toField
     , mv.version & toField
     , mv.created & maybe (toField Default) toField
     , toField Default
     ]
 
-instance (FromJSON gid) => FromJSON (ModelVersion gid Oid) where
+instance (FromJSON gid, FromJSON a) => FromJSON (ModelVersion gid a) where
   parseJSON = withObject "ModelVersion" $ \o ->
     ModelVersion
       <$> o .:? "id"
       <*> o .: "model"
       <*> o .: "description"
       <*> o .: "card"
-      <*> fmap (Oid . fromIntegral @Word64) (o .: "contents")
+      <*> o .: "contents"
       <*> o .: "size"
       <*> o .: "version"
       -- Will be absent when saving new model version
@@ -515,22 +511,19 @@ instance (FromJSON gid) => FromJSON (ModelVersion gid Oid) where
       -- sense to require a `"terminated": null` field
       <*> o .:? "terminated"
 
-instance (ToJSON gid) => ToJSON (ModelVersion gid Oid) where
+instance (ToJSON gid, ToJSON a) => ToJSON (ModelVersion gid a) where
   toJSON mv =
     object
       [ "id" .= mv.id
       , "model" .= mv.model
       , "description" .= mv.description
-      , "contents" .= unOid mv.contents
+      , "contents" .= mv.contents
       , "size" .= mv.size
       , "version" .= mv.version
       , "card" .= mv.card
       , "created" .= mv.created
       , "terminated" .= mv.terminated
       ]
-    where
-      unOid :: Oid -> Word32
-      unOid (Oid (CUInt x)) = x
 
 -- Not derived generically in order to use special `Gen UTCTime`
 instance (Arbitrary c) => Arbitrary (ModelVersion gid c) where
@@ -556,6 +549,93 @@ instance (Arbitrary c) => ToADTArbitrary (ModelVersion gid c) where
   toADTArbitrary _ =
     ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
       <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
+
+-- | Sum type representing different model configuration types
+data ModelConfig
+  = TorchScript Oid
+  | Bedrock BedrockConfig
+  deriving stock (Show, Eq, Generic)
+
+instance Arbitrary ModelConfig where
+  arbitrary =
+    oneof
+      [ TorchScript . Oid . CUInt <$> arbitrary
+      , Bedrock <$> arbitrary
+      ]
+
+instance ToADTArbitrary ModelConfig where
+  toADTArbitrarySingleton _ =
+    ( ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelConfig"
+        . ConstructorArbitraryPair "TorchScript"
+    )
+      . TorchScript
+      . Oid
+      . CUInt
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Server.Types" "ModelConfig"
+      <$> sequence
+        [ ConstructorArbitraryPair "TorchScript"
+            . TorchScript
+            . Oid
+            . CUInt
+            <$> arbitrary
+        , ConstructorArbitraryPair "Bedrock" . Bedrock <$> arbitrary
+        ]
+
+instance FromJSON ModelConfig where
+  parseJSON = withObject "ModelConfig" $ \o ->
+    asum
+      [ TorchScript . Oid . fromIntegral @Word64 <$> o .: "torchscript"
+      , Bedrock <$> o .: "bedrock"
+      ]
+
+instance ToJSON ModelConfig where
+  toJSON = \case
+    TorchScript (Oid (CUInt x)) ->
+      object ["torchscript" .= fromIntegral @_ @Word64 x]
+    Bedrock bc -> object ["bedrock" .= bc]
+
+-- | Configuration for Bedrock-based models
+data BedrockConfig = BedrockConfig
+  { modelId :: Text
+  -- ^ The Bedrock model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
+  , region :: Maybe Text
+  -- ^ AWS region for the Bedrock service
+  , temperature :: Temperature
+  -- ^ Temperature parameter for generation
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON, NFData, ToADTArbitrary)
+
+instance Arbitrary BedrockConfig where
+  arbitrary = genericArbitrary
+
+-- | Temperature parameter for LLM generation (0.0 to 1.0).
+--
+-- Validated during construction and deserialization to ensure it's within
+-- the valid range.
+newtype Temperature = Temperature Float
+  deriving stock (Show, Generic)
+  deriving newtype (Eq, ToJSON)
+  deriving anyclass (ToADTArbitrary, NFData)
+
+instance FromJSON Temperature where
+  parseJSON = withScientific "Temperature" $ \(toRealFloat -> f) ->
+    maybe (fail (invalid f)) pure $ mkTemperature f
+    where
+      invalid :: Float -> String
+      invalid = ("Temperature must be between 0.0 and 1.0, got " <>) . show
+
+-- | Smart constructor for 'Temperature' that validates the range.
+mkTemperature :: Float -> Maybe Temperature
+mkTemperature f
+  | f >= 0.0 && f <= 1.0 = Just $ Temperature f
+  | otherwise = Nothing
+
+instance Arbitrary Temperature where
+  arbitrary = Temperature <$> choose (0.0, 1.0)
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
@@ -809,7 +889,7 @@ instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) w
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p = InferenceParamWithModels
   { param :: InferenceParam gid p
-  , models :: Models (Id (ModelVersion gid Oid))
+  , models :: Models (Id (ModelVersion gid ModelConfig))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -1007,7 +1087,7 @@ data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash
   , inputs :: Inputs p
   , outputs :: Outputs p
-  , models :: Models (Id (ModelVersion gid Oid))
+  , models :: Models (Id (ModelVersion gid ModelConfig))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
