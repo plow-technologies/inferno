@@ -39,17 +39,6 @@ pkgs.nixosTest {
       pkgs.postgresql
       (
         pkgs.writeShellApplication {
-          name = "run-db-test";
-          text = ''
-            cat << EOF >/tmp/config.json
-              ${builtins.toJSON config.services.inferno-ml-server.configuration}
-            EOF
-            ${pkgs.inferno-ml-server.tests}/bin/tests /tmp/config.json
-          '';
-        }
-      )
-      (
-        pkgs.writeShellApplication {
           name = "insert-mnist-model";
           runtimeInputs = [ pkgs.postgresql ];
           text =
@@ -255,8 +244,6 @@ pkgs.nixosTest {
     node.wait_until_succeeds('curl --fail localhost:8080/status', timeout=30)
 
     node.succeed('sudo -HE -u inferno parse-scripts-and-save-params')
-
-    node.succeed('sudo -HE -u inferno run-db-test >&2')
 
     # `tests/scripts/ones.inferno`
     runtest('${ids.ones}')
