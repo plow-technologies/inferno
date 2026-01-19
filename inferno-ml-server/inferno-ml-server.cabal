@@ -57,6 +57,7 @@ library
     , conduit
     , containers
     , deepseq
+    , disk-free-space
     , exceptions
     , extra
     , filepath

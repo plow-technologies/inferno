@@ -32,6 +32,7 @@ import Inferno.ML.Module.Prelude
     getDevice,
     mkMlPrelude,
   )
+import Inferno.ML.Server.Inference.Model (cacheAndLoadModel)
 import Inferno.ML.Server.Module.Types
 import Inferno.ML.Server.Types
   ( IValue,
@@ -39,7 +40,12 @@ import Inferno.ML.Server.Types
     TraceWarn (CouldntMoveTensor),
     logWarn,
   )
-import Inferno.ML.Types.Value (MlValue, pattern VExtended)
+import Inferno.ML.Types.Value
+  ( MlValue,
+    ModelName (ModelName),
+    pattern VExtended,
+    pattern VModelName,
+  )
 import Inferno.ML.Types.Value.Compat (mlQuoter)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
@@ -293,6 +299,15 @@ serverMlPrelude =
         -- Overrides the default, less-safe `toDevice` implementation with one
         -- that checks if the tensor has been moved
         & #devices . #toDevice .~ toDeviceFun
+        -- Overrides the default `loadModel` with one that handles caching
+        & #models . #loadModel .~ loadModelFun
+
+    loadModelFun :: BridgeV RemoteM
+    loadModelFun =
+      VFun $ \case
+        VCustom (VModelName (ModelName uuid)) ->
+          toValue <$> liftImplEnvM (cacheAndLoadModel uuid)
+        _ -> throwM $ RuntimeError "loadModel: expected a modelName"
 
     toDeviceFun :: BridgeV RemoteM
     toDeviceFun =
