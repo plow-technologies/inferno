@@ -38,6 +38,7 @@ library
     , inline-c-cpp
     , prettyprinter
     , text
+    , uuid
 
   default-language:   Haskell2010
   default-extensions:

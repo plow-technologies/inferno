@@ -13,18 +13,15 @@
 module Inferno.ML.Server.Inference
   ( runInferenceParam,
     testInferenceParam,
-    getAndCacheModels,
   )
 where
 
 import Conduit (ConduitT, awaitForever, mapC, yieldMany, (.|))
 import Control.Applicative (asum)
-import Control.Monad (unless, void, when, (<=<))
-import Control.Monad.Extra (loopM, unlessM, whenJust, whenM)
+import Control.Monad (unless, void)
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.ListM (sortByM)
 import Data.Conduit.List (chunksOf, sourceList)
-import Data.Foldable (foldl', toList, traverse_)
+import Data.Foldable (foldl', toList)
 import Data.Generics.Wrapped (wrappedFrom, wrappedTo)
 import Data.Int (Int64)
 import qualified Data.List.NonEmpty as NonEmpty
@@ -38,8 +35,6 @@ import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
 import Data.Traversable (for)
 import Data.UUID (UUID)
-import qualified Data.UUID as UUID
-import qualified Data.Vector as Vector
 import Data.Word (Word64)
 import Database.PostgreSQL.Simple
   ( Only (Only, fromOnly),
@@ -54,7 +49,6 @@ import Inferno.Core
   ( Interpreter (Interpreter, evalExpr, mkEnvFromClosure),
   )
 import Inferno.ML.Server.Bridge (initializeInferno)
-import Inferno.ML.Server.Inference.Model
 import Inferno.ML.Server.Types
 import Inferno.ML.Server.Utils
 import Inferno.ML.Types.Value
@@ -81,26 +75,12 @@ import Inferno.VersionControl.Types
 import qualified Inferno.VersionControl.Types
 import Lens.Micro.Platform
 import System.CPUTime (getCPUTime)
-import System.FilePath ((<.>))
 import System.Mem (getAllocationCounter, setAllocationCounter)
 import System.Posix.Types (EpochTime)
 import UnliftIO (withRunInIO)
 import UnliftIO.Async (wait, withAsync)
-import UnliftIO.Directory
-  ( doesPathExist,
-    getAccessTime,
-    getCurrentDirectory,
-    getFileSize,
-    listDirectory,
-    removeFile,
-    withCurrentDirectory,
-  )
-import UnliftIO.Exception
-  ( bracket_,
-    catchIO,
-    displayException,
-  )
-import UnliftIO.IO.File (writeBinaryFileDurableAtomic)
+import UnliftIO.Directory (withCurrentDirectory)
+import UnliftIO.Exception (bracket_)
 import UnliftIO.IORef (atomicWriteIORef, readIORef)
 import UnliftIO.MVar (putMVar, takeMVar, withMVar)
 import UnliftIO.Timeout (timeout)
@@ -219,15 +199,13 @@ runInferenceParamWithEnv ipid uuid senv =
       -- will not have been initialized yet. After that, it will be reused
       -- until the server is started again
       interpreter <- getOrMkInferno ipid
-      cache <- view $ #config . #global . #cache
       t <- liftIO $ fromIntegral @Int . round <$> getPOSIXTime
       -- Change working directories to the model cache so that Hasktorch
       -- can find the models using relative paths (otherwise the AST would
       -- need to be updated to use an absolute path to a versioned model,
       -- e.g. `loadModel "~/inferno/.cache/..."`)
-      withCurrentDirectory cache.path $ do
+      withCurrentDirectory modelCachePath $ do
         logInfo $ EvaluatingParam ipid
-        getAndCacheModels cache senv.models
         runEval interpreter t
       where
         runEval ::
@@ -311,7 +289,7 @@ runInferenceParamWithEnv ipid uuid senv =
                 toSeries = VCustom . VExtended . VSeries
 
                 toModelPath :: Id ModelVersion -> Value BridgeMlValue m
-                toModelPath = VCustom . VModelName . wrappedFrom . mkModelPath
+                toModelPath = VCustom . VModelName . wrappedFrom . wrappedTo
 
                 -- Build local environment from unified args list
                 localEnv :: Map ExtIdent (Value BridgeMlValue m)
@@ -547,111 +525,6 @@ getInferenceParamWithModels ipid =
         GROUP BY
           P.id
       |]
-
--- | For all of the model version IDs declared in the param, fetch the model
--- version and the parent model, and then cache them
---
--- The contents of the model version are retrieved (the Postgres large object),
--- then copied to the model cache if it has not yet been cached. Previously
--- saved model versions(s) are evicted if the cache 'maxSize' is exceeded by
--- adding the model version contents; this is based on access time
---
--- NOTE: This action assumes that the current working directory is the model
--- cache! It can be run using e.g. 'withCurrentDirectory'
---
--- NOTE/TODO In the future, once the @Bedrock@ model system is more complete,
--- this will ONLY be invoked if the model version holds a @Torchscript@ model.
--- At the moment, that is a more intrusive change that is not yet necessary
-getAndCacheModels :: ModelCache -> Models (Id ModelVersion) -> RemoteM ()
-getAndCacheModels cache =
-  traverse_ (uncurry copyAndCache)
-    <=< getModelsAndVersions
-      . Vector.fromList
-      . toListOf each
-  where
-    copyAndCache :: Model -> ModelVersion -> RemoteM ()
-    copyAndCache _ mversion =
-      mkPath >>= \path ->
-        unlessM (doesPathExist path) $ do
-          whenJust mversion.id $ logInfo . CopyingModel
-          checkCacheSize $ fromIntegral mversion.size
-          writeBinaryFileDurableAtomic path
-            =<< getTorchScriptModelContents mversion
-      where
-        mkPath :: RemoteM FilePath
-        mkPath =
-          maybe
-            (throwRemoteError (OtherRemoteError "Missing model version ID"))
-            (pure . mkModelPath)
-            mversion.id
-
-        -- Checks that the configured cache size will not be exceeded by
-        -- caching the new model. If it will, least-recently-used models
-        -- are deleted until there is enough free space
-        checkCacheSize :: Integer -> RemoteM ()
-        checkCacheSize modelSize = do
-          when (modelSize >= maxSize) $ throwRemoteError CacheSizeExceeded
-          whenM cacheSizeExceeded evictOldModels
-          where
-            evictOldModels :: RemoteM ()
-            evictOldModels =
-              loopM doEvict
-                =<< modelsByAccessTime
-                -- Note that the current directory is the cache, because this
-                -- action is only run above using `withCurrentDirectory` pointing
-                -- to the cache
-                =<< getCurrentDirectory
-
-            doEvict :: [FilePath] -> RemoteM (Either [FilePath] ())
-            doEvict = \case
-              [] -> pure $ Right ()
-              -- The list of paths is sorted in ascending order based on access
-              -- time, so whatever path is at the head of the list is the current
-              -- least-recently-used path
-              m : ms ->
-                cacheSizeExceeded >>= \case
-                  False -> pure $ Right ()
-                  True -> Left ms <$ tryRemoveFile
-                where
-                  tryRemoveFile :: RemoteM ()
-                  tryRemoveFile =
-                    catchIO (removeFile m) $
-                      logWarn
-                        . OtherWarn
-                        . Text.pack
-                        . displayException
-
-            -- Adds the new model byte size to the existing model cache
-            -- directory size. This needs to be re-computed on each loop
-            -- iteration because models may have been deleted in the loop
-            cacheSizeExceeded :: RemoteM Bool
-            cacheSizeExceeded = (>= maxSize) <$> newCacheSize
-              where
-                newCacheSize :: RemoteM Integer
-                newCacheSize =
-                  fmap ((+ modelSize) . sum) . traverse getFileSize
-                    =<< listDirectory
-                    =<< getCurrentDirectory
-
-            maxSize :: Integer
-            maxSize = fromIntegral cache.maxSize
-
--- Get a list of models by their access time, so that models that have not been
--- used recently can be deleted. This will put the least-recently-used paths
--- at the head of the list
-modelsByAccessTime :: forall m. (MonadIO m) => FilePath -> m [FilePath]
-modelsByAccessTime = sortByM compareAccessTime <=< listDirectory
-  where
-    compareAccessTime :: FilePath -> FilePath -> m Ordering
-    compareAccessTime f1 f2 =
-      getAccessTime f1 >>= \t1 ->
-        compare t1 <$> getAccessTime f2
-
--- There should only be one way to generate a filepath from a model version, so
--- that the path pointing to the contents is always unambiguous. This uses its
--- UUID to do so
-mkModelPath :: Id ModelVersion -> FilePath
-mkModelPath = (<.> "ts" <.> "pt") . UUID.toString . wrappedTo
 
 -- Everything needed to evaluate an ML script. For the normal endpoint, all of
 -- these will be derived directly from the param. For the interactive test

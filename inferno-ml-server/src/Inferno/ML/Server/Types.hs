@@ -91,6 +91,7 @@ import Plow.Logging (IOTracer, traceWith)
 import Plow.Logging.Message
   ( LogLevel (LevelError, LevelInfo, LevelWarn),
   )
+import System.FilePath ((</>))
 import System.Posix.Types (EpochTime)
 import Text.Read (readMaybe)
 import UnliftIO (Async, MonadUnliftIO)
@@ -143,22 +144,6 @@ data Env = Env
     interpreter :: IORef (Maybe (Interpreter RemoteM BridgeMlValue))
   }
   deriving stock (Generic)
-
--- | GlobalConfig for caching ML models to be used with Inferno scripts. When a script
--- uses @ML.loadModel@, models will be copied from the DB and saved to the cache
--- directory. Once the 'maxSize' has been exceeded, least-recently-used cached
--- models will be removed
-data ModelCache = ModelCache
-  { path :: FilePath
-  -- ^ Directory where the models should be cached
-  , maxSize :: Word64
-  -- ^ Maximum size in bytes of the model cache directory
-  }
-  deriving stock (Show, Eq, Generic)
-
-instance FromJSON ModelCache where
-  parseJSON = withObject "ModelCache" $ \o ->
-    ModelCache <$> o .: "path" <*> o .: "max-size"
 
 -- The type for user and groups IDs. This is compatible with the `UserId` and
 -- `GroupId` types from `all`, but we can't import those
@@ -224,7 +209,6 @@ data Config = Config
 -- to create a complete configuration
 data GlobalConfig = GlobalConfig
   { port :: Word64
-  , cache :: ModelCache
   , timeout :: Word64
   -- ^ Timeout for script evaluation
   --
@@ -237,11 +221,14 @@ data GlobalConfig = GlobalConfig
   }
   deriving stock (Show, Eq, Generic)
 
+-- | Directory where models are cached
+modelCachePath :: FilePath
+modelCachePath = Types.infernoMlStateDirectory </> "models"
+
 instance FromJSON GlobalConfig where
   parseJSON = withObject "GlobalConfig" $ \o ->
     GlobalConfig
       <$> o .: "port"
-      <*> o .: "cache"
       <*> o .: "timeout"
       <*> (connInfoP =<< o .: "store")
       <*> (memoryMaxP =<< o .: "memoryMax" .!= 95)
