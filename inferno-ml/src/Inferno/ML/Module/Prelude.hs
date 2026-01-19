@@ -19,9 +19,7 @@ import Control.Monad.Catch
   ( Exception (displayException),
     MonadCatch,
     MonadThrow (throwM),
-    SomeException,
     catch,
-    try,
   )
 import Control.Monad.Extra (concatMapM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
