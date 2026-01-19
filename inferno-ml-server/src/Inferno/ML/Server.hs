@@ -53,7 +53,7 @@ import Servant
   )
 import Text.Read (readMaybe)
 import UnliftIO.Async (Async, cancel)
-import UnliftIO.Directory (doesPathExist, removeFile)
+import UnliftIO.Directory (createDirectoryIfMissing, doesPathExist, removeFile)
 import UnliftIO.Exception
   ( Exception (displayException),
     handle,
@@ -91,6 +91,7 @@ runInEnv cfg f =
     withRemoteTracer cfg.perServer.instanceId pool $ \tracer -> do
       traceWith tracer $ InfoTrace StartingServer
       whenJustM wasOomKilled $ traceWith tracer . WarnTrace . OomKilled
+      createDirectoryIfMissing True modelCachePath
       f
         =<< Env cfg tracer pool
           <$> newMVar ()
