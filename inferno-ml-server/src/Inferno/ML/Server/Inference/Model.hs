@@ -118,7 +118,7 @@ cacheAndLoadModel uuid = do
     path = modelCachePath </> mkModelPath uuid
 
     copyModelVersion :: ModelVersion -> RemoteM ()
-    copyModelVersion mversion =  do
+    copyModelVersion mversion = do
       checkDiskSpace mversion.size
       writeBinaryFileDurableAtomic path
         =<< getTorchScriptModelContents mversion
