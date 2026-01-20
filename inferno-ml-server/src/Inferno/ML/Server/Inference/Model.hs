@@ -107,19 +107,26 @@ getTorchScriptModelContents mversion =
 -- writes to cache, then loads
 cacheAndLoadModel :: UUID -> RemoteM ScriptModule
 cacheAndLoadModel uuid = do
-  let path :: FilePath
-      path = modelCachePath </> mkModelPath uuid
   unlessM (doesPathExist path) $ do
-    logInfo $ CopyingModel (Id uuid)
-    mversion <- getModelVersion uuid
-    checkDiskSpace mversion.size
-    writeBinaryFileDurableAtomic path =<< getTorchScriptModelContents mversion
+    logInfo . CopyingModel $ Id uuid
+    copyModelVersion =<< getModelVersion
+  -- NOTE: Any exceptions from `loadScript` are caught in the `loadModel`
+  -- primitive and converted to `RuntimeError`s there
   liftIO $ Torch.Script.loadScript WithoutRequiredGrad path
   where
-    getModelVersion :: UUID -> RemoteM ModelVersion
-    getModelVersion uid =
-      firstOrThrow (NoSuchModel (Right (Id uid)))
-        =<< queryStore q (Only uid)
+    path :: FilePath
+    path = modelCachePath </> mkModelPath uuid
+
+    copyModelVersion :: ModelVersion -> RemoteM ()
+    copyModelVersion mversion =  do
+      checkDiskSpace mversion.size
+      writeBinaryFileDurableAtomic path
+        =<< getTorchScriptModelContents mversion
+
+    getModelVersion :: RemoteM ModelVersion
+    getModelVersion =
+      firstOrThrow (NoSuchModel (Right (Id uuid)))
+        =<< queryStore q (Only uuid)
       where
         q :: Query
         q =

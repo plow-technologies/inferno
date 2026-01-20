@@ -306,7 +306,10 @@ serverMlPrelude =
     loadModelFun =
       VFun $ \case
         VCustom (VModelName (ModelName uuid)) ->
-          toValue <$> liftImplEnvM (cacheAndLoadModel uuid)
+          either
+            (throwM . RuntimeError . displayException)
+            (pure . toValue)
+            =<< liftImplEnvM (tryAny (cacheAndLoadModel uuid))
         _ -> throwM $ RuntimeError "loadModel: expected a modelName"
 
     toDeviceFun :: BridgeV RemoteM
