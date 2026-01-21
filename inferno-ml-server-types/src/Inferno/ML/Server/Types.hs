@@ -469,7 +469,7 @@ data ModelVersion gid c = ModelVersion
   -- NOTE: This may require an orphan instance for the `c` type variable
   deriving anyclass (NFData)
 
-instance (FromField gid, Typeable gid) => FromRow (ModelVersion gid ModelConfig) where
+instance (FromField gid, Typeable gid) => FromRow (ModelVersion gid (ModelConfig Oid)) where
   fromRow =
     ModelVersion
       <$> field
@@ -482,7 +482,7 @@ instance (FromField gid, Typeable gid) => FromRow (ModelVersion gid ModelConfig)
       <*> field
       <*> field
 
-instance (ToField gid) => ToRow (ModelVersion gid ModelConfig) where
+instance (ToField gid) => ToRow (ModelVersion gid (ModelConfig Oid)) where
   toRow mv =
     [ mv.id & maybe (toField Default) toField
     , mv.model & toField
@@ -550,20 +550,22 @@ instance (Arbitrary c) => ToADTArbitrary (ModelVersion gid c) where
     ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
       <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
 
--- | Sum type representing different model configuration types
-data ModelConfig
-  = TorchScript Oid
+-- | Sum type representing different model configuration types. The type
+-- parameter represents the contents of a TorchScript model; for DB storage
+-- this is an `Oid`, while for runtime evaluation this would be a `ScriptModule`
+data ModelConfig a
+  = TorchScript a
   | Bedrock BedrockConfig
-  deriving stock (Show, Eq, Generic)
+  deriving stock (Show, Eq, Generic, Functor)
 
-instance Arbitrary ModelConfig where
+instance Arbitrary (ModelConfig Oid) where
   arbitrary =
     oneof
       [ TorchScript . Oid . CUInt <$> arbitrary
       , Bedrock <$> arbitrary
       ]
 
-instance ToADTArbitrary ModelConfig where
+instance ToADTArbitrary (ModelConfig Oid) where
   toADTArbitrarySingleton _ =
     ( ADTArbitrarySingleton "Inferno.ML.Server.Types" "ModelConfig"
         . ConstructorArbitraryPair "TorchScript"
@@ -584,14 +586,14 @@ instance ToADTArbitrary ModelConfig where
         , ConstructorArbitraryPair "Bedrock" . Bedrock <$> arbitrary
         ]
 
-instance FromJSON ModelConfig where
+instance FromJSON (ModelConfig Oid) where
   parseJSON = withObject "ModelConfig" $ \o ->
     asum
       [ TorchScript . Oid . fromIntegral @Word64 <$> o .: "torchscript"
       , Bedrock <$> o .: "bedrock"
       ]
 
-instance ToJSON ModelConfig where
+instance ToJSON (ModelConfig Oid) where
   toJSON = \case
     TorchScript (Oid (CUInt x)) ->
       object ["torchscript" .= fromIntegral @_ @Word64 x]
@@ -889,7 +891,7 @@ instance (Arbitrary gid, Arbitrary p) => ToADTArbitrary (InferenceParam gid p) w
 -- linked to it indirectly via its script. This is provided for convenience
 data InferenceParamWithModels gid p = InferenceParamWithModels
   { param :: InferenceParam gid p
-  , models :: Models (Id (ModelVersion gid ModelConfig))
+  , models :: Models (Id (ModelVersion gid (ModelConfig Oid)))
   }
   deriving stock (Show, Eq, Generic)
 
@@ -1087,7 +1089,7 @@ data EvaluationEnv gid p = EvaluationEnv
   { script :: VCObjectHash
   , inputs :: Inputs p
   , outputs :: Outputs p
-  , models :: Models (Id (ModelVersion gid ModelConfig))
+  , models :: Models (Id (ModelVersion gid (ModelConfig Oid)))
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON, ToADTArbitrary)
