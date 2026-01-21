@@ -19,6 +19,7 @@ source-repository head
 library
   exposed-modules:
     Inferno.ML.Module.Compat
+    Inferno.ML.Types.Compat
     Inferno.ML.Types.Value.Compat
 
   hs-source-dirs:     src

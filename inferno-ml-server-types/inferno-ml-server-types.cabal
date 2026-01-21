@@ -57,6 +57,7 @@ library
     , hashable
     , http-api-data
     , inferno-core
+    , inferno-ml-compat
     , inferno-types
     , inferno-vc
     , iproute

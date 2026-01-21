@@ -13,6 +13,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.ML.Server.Types
@@ -77,6 +78,13 @@ import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.ML.Server.Types.PerServer
+import Inferno.ML.Types.Compat
+  ( BedrockConfig (BedrockConfig),
+    ModelConfig (Bedrock, TorchScript),
+    Temperature (Temperature),
+    mkTemperature,
+  )
+import qualified Inferno.ML.Types.Compat
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash (VCObjectHash),
@@ -550,13 +558,7 @@ instance (Arbitrary c) => ToADTArbitrary (ModelVersion gid c) where
     ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
       <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
 
--- | Sum type representing different model configuration types. The type
--- parameter represents the contents of a TorchScript model; for DB storage
--- this is an `Oid`, while for runtime evaluation this would be a `ScriptModule`
-data ModelConfig a
-  = TorchScript a
-  | Bedrock BedrockConfig
-  deriving stock (Show, Eq, Generic, Functor)
+-- Orphan instances for `ModelConfig` (type defined in `Inferno.ML.Types.Value`)
 
 instance Arbitrary (ModelConfig Oid) where
   arbitrary =
@@ -599,29 +601,56 @@ instance ToJSON (ModelConfig Oid) where
       object ["torchscript" .= fromIntegral @_ @Word64 x]
     Bedrock bc -> object ["bedrock" .= bc]
 
--- | Configuration for Bedrock-based models
-data BedrockConfig = BedrockConfig
-  { modelId :: Text
-  -- ^ The Bedrock model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
-  , region :: Maybe Text
-  -- ^ AWS region for the Bedrock service
-  , temperature :: Temperature
-  -- ^ Temperature parameter for generation
-  }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON, NFData, ToADTArbitrary)
+-- Orphan instances for `BedrockConfig` (type defined in `Inferno.ML.Types.Value`)
+
+instance FromJSON BedrockConfig where
+  parseJSON = withObject "BedrockConfig" $ \o ->
+    BedrockConfig
+      <$> o .: "modelId"
+      <*> o .: "region"
+      <*> o .: "temperature"
+
+instance ToJSON BedrockConfig where
+  toJSON bc =
+    object
+      [ "modelId" .= bc.modelId
+      , "region" .= bc.region
+      , "temperature" .= bc.temperature
+      ]
+
+instance NFData BedrockConfig where
+  rnf = rwhnf
+
+instance ToADTArbitrary BedrockConfig where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "BedrockConfig"
+      . ConstructorArbitraryPair "BedrockConfig"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "BedrockConfig"
+      <$> sequence [ConstructorArbitraryPair "BedrockConfig" <$> arbitrary]
 
 instance Arbitrary BedrockConfig where
   arbitrary = genericArbitrary
 
--- | Temperature parameter for LLM generation (0.0 to 1.0).
---
--- Validated during construction and deserialization to ensure it's within
--- the valid range.
-newtype Temperature = Temperature Float
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, ToJSON)
-  deriving anyclass (ToADTArbitrary, NFData)
+-- Orphan instances for `Temperature` (type defined in `Inferno.ML.Types.Value`)
+
+instance ToJSON Temperature where
+  toJSON (Temperature f) = toJSON f
+
+instance NFData Temperature where
+  rnf = rwhnf
+
+instance ToADTArbitrary Temperature where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "Temperature"
+      . ConstructorArbitraryPair "Temperature"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "Temperature"
+      <$> sequence [ConstructorArbitraryPair "Temperature" <$> arbitrary]
 
 instance FromJSON Temperature where
   parseJSON = withScientific "Temperature" $ \(toRealFloat -> f) ->
@@ -629,12 +658,6 @@ instance FromJSON Temperature where
     where
       invalid :: Float -> String
       invalid = ("Temperature must be between 0.0 and 1.0, got " <>) . show
-
--- | Smart constructor for 'Temperature' that validates the range.
-mkTemperature :: Float -> Maybe Temperature
-mkTemperature f
-  | f >= 0.0 && f <= 1.0 = Just $ Temperature f
-  | otherwise = Nothing
 
 instance Arbitrary Temperature where
   arbitrary = Temperature <$> choose (0.0, 1.0)
