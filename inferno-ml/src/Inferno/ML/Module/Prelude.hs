@@ -102,9 +102,9 @@ defaultMlModule =
                   VCustom (VModel (Bedrock _)) ->
                     throwM . RuntimeError $
                       unwords
-                      [ "Cannot `forward` to a Bedrock model; `forward` is"
-                      , "only compatible with TorchScript models"
-                      ]
+                        [ "Cannot `forward` to a Bedrock model; `forward` is"
+                        , "only compatible with TorchScript models"
+                        ]
                   VCustom (VModel (TorchScript model)) -> pure . VFun $ \case
                     VArray mts ->
                       getTensors mts >>= \tensors ->
@@ -138,8 +138,9 @@ defaultMlModule =
                     . liftIO
                     . Torch.Script.loadScript WithoutRequiredGrad
                     $ Text.unpack mpath
-                _ -> throwM
-                  $ RuntimeError "unsafeLoadScript: expected path to a TorchScript model"
+                _ ->
+                  throwM $
+                    RuntimeError "unsafeLoadScript: expected path to a TorchScript model"
           }
     , devices =
         Compat.MkDeviceFuns

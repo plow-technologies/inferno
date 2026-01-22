@@ -19,6 +19,8 @@
 module Inferno.ML.Server.Types
   ( module Inferno.ML.Server.Types,
     module Inferno.ML.Server.Types.PerServer,
+    -- Convenience re-export of compat types
+    module M,
   )
 where
 
@@ -78,7 +80,7 @@ import Foreign.C (CUInt (CUInt))
 import GHC.Generics (Generic)
 import Inferno.Instances.Arbitrary ()
 import Inferno.ML.Server.Types.PerServer
-import Inferno.ML.Types.Compat
+import Inferno.ML.Types.Compat as M
   ( BedrockConfig (BedrockConfig),
     ModelConfig (Bedrock, TorchScript),
     Temperature (Temperature),

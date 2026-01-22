@@ -282,7 +282,9 @@ module ML
   the most natural choices, due to issues with Inferno's parser;
   enum qinterp := #linear | #lower | #higher | #nearest | #midpoint;
 
-  @doc Load a named, serialized model;
+  @doc Load a named, serialized model (TorchScript) or the configuration of a
+  Bedrock-based model. Note that the type of model contained within determines if
+  it is compatible with `forward` (TorchScript) or with `prompt` (Bedrock);
   loadModel : modelName -> model := ###!loadModel###;
 
   unsafeLoadScript : text -> model := ###unsafeLoadScript###;

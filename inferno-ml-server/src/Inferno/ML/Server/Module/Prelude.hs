@@ -32,7 +32,7 @@ import Inferno.ML.Module.Prelude
     getDevice,
     mkMlPrelude,
   )
-import Inferno.ML.Server.Inference.Model (cacheAndLoadModel)
+import Inferno.ML.Server.Inference.Model (loadModel)
 import Inferno.ML.Server.Module.Types
 import Inferno.ML.Server.Types
   ( IValue,
@@ -299,7 +299,8 @@ serverMlPrelude =
         -- Overrides the default, less-safe `toDevice` implementation with one
         -- that checks if the tensor has been moved
         & #devices . #toDevice .~ toDeviceFun
-        -- Overrides the default `loadModel` with one that handles caching
+        -- Overrides the default `loadModel` with one that handles caching for
+        -- `TorchScript` models and getting configuration for `Bedrock` models
         & #models . #loadModel .~ loadModelFun
 
     loadModelFun :: BridgeV RemoteM
@@ -309,7 +310,12 @@ serverMlPrelude =
           either
             (throwM . RuntimeError . displayException)
             (pure . toValue)
-            =<< liftImplEnvM (tryAny (cacheAndLoadModel uuid))
+            -- NOTE: `loadModel` internally handles the model version `contents`
+            -- type. For `TorchScript` models, this includes potentially reading
+            -- and writing the serialized blob to local storage if not cached;
+            -- for `Bedrock` models, this just holds the Bedrock configuration in
+            -- memory (which will be used by `prompt`)
+            =<< liftImplEnvM (tryAny (loadModel uuid))
         _ -> throwM $ RuntimeError "loadModel: expected a modelName"
 
     toDeviceFun :: BridgeV RemoteM
