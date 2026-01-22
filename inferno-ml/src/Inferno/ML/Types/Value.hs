@@ -22,6 +22,8 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.UUID (UUID)
+import qualified Data.UUID as UUID
 import GHC.Generics (Generic)
 import Inferno.ML.Types.Value.Compat (customTypes)
 import qualified Inferno.ML.Types.Value.Compat as Compat
@@ -62,10 +64,13 @@ pattern VModelName mn = Compat.VModelName mn
 pattern VExtended :: x -> MlValue x
 pattern VExtended x = Compat.VExtended x
 
--- | The name of a serialized model, e.g. @model.ts.pt@
-newtype ModelName = ModelName FilePath
+-- | The UUID of a model version; used to identify models for caching and loading
+newtype ModelName = ModelName UUID
   deriving stock (Show, Generic)
-  deriving newtype (Eq, Pretty)
+  deriving newtype (Eq)
+
+instance Pretty ModelName where
+  pretty (ModelName uuid) = pretty $ UUID.toText uuid
 
 instance (Eq x) => Eq (MlValue x) where
   VTensor t1 == VTensor t2 = t1 == t2

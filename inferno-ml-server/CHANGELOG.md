@@ -1,5 +1,9 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.1.20
+* Lazy model caching: models are now cached on-demand in `loadModel` instead of eagerly before evaluation
+* Remove `ModelCache` configuration; use disk space-based eviction (90% threshold) instead of fixed cache size
+
 ## 2026.1.16
 * Update for `ModelConfig` and related types; distinguish `TorchScript` vs `Bedrock` models
 * Change `ModelVersion` `contents` from `Oid` to `ModelConfig`

@@ -1,6 +1,10 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.10.0.0 -- 2026-01-20
+* Breaking change: `ModelName` now holds `UUID` instead of `FilePath`
+* Default `loadModel` now throws error; must be overridden by server
+
 ## 0.9.1.0 -- 2025-10-31
 * Add implementations for new `Tensor` primitives from `inferno-ml-compat`
 

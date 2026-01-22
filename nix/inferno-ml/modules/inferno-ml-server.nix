@@ -89,13 +89,14 @@ in
                   '';
               };
 
-              # TODO Deprecate this as well; can just use the state directory
-              # for it
               cache = lib.mkOption {
                 description = lib.mdDoc ''
+                  WARNING: Deprecated; this option has no effect.
+
                   Options for the cache itself
                 '';
-                type = lib.types.submodule {
+                default = null;
+                type = lib.types.nullOr (lib.types.submodule {
                   options = {
                     max-size = lib.mkOption {
                       type = lib.types.ints.unsigned;
@@ -113,7 +114,7 @@ in
                       '';
                     };
                   };
-                };
+                });
               };
 
               store = lib.mkOption {
@@ -176,10 +177,12 @@ in
         }.${builtins.typeOf cfg.configuration};
       in
       {
-        # Warn for removing `configuration.instanceId`, as it's not used anymore.
-        # Any non-default (`null`) value means it's been set
-        warnings = lib.optional (cfg.configuration.instanceId != null)
-          "Option `inferno-ml-server.instanceId` is deprecated and ignored; please remove it.";
+        # Warn for deprecated options that are no longer used
+        warnings =
+          lib.optional (cfg.configuration.instanceId != null)
+            "Option `inferno-ml-server.instanceId` is deprecated and ignored; please remove it."
+          ++ lib.optional (cfg.configuration.cache != null)
+            "Option `inferno-ml-server.cache` is deprecated and ignored; please remove it.";
 
         # NOTE Since the kernel OOM killer might be invoked by the systemd
         # service configuration below (which is what we want), we need to make
@@ -270,22 +273,6 @@ in
           # This is the (non-configurable) port for `inferno-ml-configure`
           8081
         ];
-
-        # Make sure that the cache directory exists and belongs to the correct user
-        # and group. This could also be done in the systemd service definition, but
-        # then we'd need to always use relative paths
-        system.activationScripts = {
-          mkInfernoMlCacheDir =
-            let
-              inherit (configuration.cache) path;
-            in
-            lib.stringAfter [ "users" "groups" ]
-              ''
-                mkdir -p ${path}
-                chown -R ${cfg.user}:${cfg.group} ${path}
-                chmod u+rwx ${path}
-              '';
-        };
       }
     );
 }

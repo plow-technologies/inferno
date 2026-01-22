@@ -19,9 +19,7 @@ import Control.Monad.Catch
   ( Exception (displayException),
     MonadCatch,
     MonadThrow (throwM),
-    SomeException,
     catch,
-    try,
   )
 import Control.Monad.Extra (concatMapM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -82,16 +80,12 @@ defaultMlModule =
   Compat.MkMlModule
     { models =
         Compat.MkModelFuns
-          { loadModel =
+          { -- NOTE: This default implementation throws an error; the server
+            -- should override this with an implementation that handles caching
+            loadModel =
               VFun $ \case
-                VCustom (VModelName (ModelName mn)) ->
-                  either
-                    (throwM . RuntimeError . displayException)
-                    (pure . VCustom . VModel)
-                    =<< liftIO (try @_ @SomeException loadModel)
-                  where
-                    loadModel :: IO ScriptModule
-                    loadModel = Torch.Script.loadScript WithoutRequiredGrad mn
+                VCustom (VModelName _) ->
+                  throwM $ RuntimeError "loadModel: not implemented; must be overridden by server"
                 _ -> throwM $ RuntimeError "Expected a modelName"
           , forward =
               let

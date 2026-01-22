@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               inferno-ml-server
-version:            2026.1.16
+version:            2026.1.20
 synopsis:           Server for Inferno ML
 description:        Server for Inferno ML
 homepage:           https://github.com/plow-technologies/inferno.git#readme
@@ -57,6 +57,7 @@ library
     , conduit
     , containers
     , deepseq
+    , disk-free-space
     , exceptions
     , extra
     , filepath
@@ -125,29 +126,6 @@ executable inferno-ml-configure
     , wai
     , wai-logger
     , warp
-
-executable tests
-  import:         common
-  main-is:        Main.hs
-  hs-source-dirs: test
-  ghc-options:    -threaded -rtsopts
-  build-depends:
-    , aeson
-    , base
-    , bytestring
-    , containers
-    , filepath
-    , generic-lens
-    , hspec
-    , inferno-ml-server
-    , inferno-types
-    , microlens-platform
-    , mtl
-    , plow-log
-    , text
-    , unliftio
-    , uuid
-    , vector
 
 executable test-client
   import:         common
