@@ -106,6 +106,14 @@ instance (Pretty x) => FromValue (MlValue x) m Tensor where
     VCustom (VTensor t) -> pure t
     v -> couldNotCast v
 
+instance ToValue (MlValue x) m (ModelConfig ScriptModule) where
+  toValue = VCustom . VModel
+
+instance (Pretty x) => FromValue (MlValue x) m (ModelConfig ScriptModule) where
+  fromValue = \case
+    VCustom (VModel mc) -> pure mc
+    v -> couldNotCast v
+
 instance ToValue (MlValue x) m ScriptModule where
   toValue = VCustom . VModel . TorchScript
 

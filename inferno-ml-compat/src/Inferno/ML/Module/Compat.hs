@@ -57,7 +57,7 @@ data MkMlModule m tensor model mname x = MkMlModule
 data MkModelFuns m tensor model mname x = MkModelFuns
   { loadModel :: Value (MlValue tensor model mname x) m
   , forward :: Value (MlValue tensor model mname x) m
-  , unsafeLoadScript :: Text -> model
+  , unsafeLoadScript :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
