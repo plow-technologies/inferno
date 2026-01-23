@@ -560,7 +560,9 @@ instance (Arbitrary c) => ToADTArbitrary (ModelVersion gid c) where
     ADTArbitrary "Inferno.ML.Server.Types" "ModelVersion"
       <$> sequence [ConstructorArbitraryPair "ModelVersion" <$> arbitrary]
 
--- Orphan instances for `ModelConfig` (type defined in `Inferno.ML.Types.Value`)
+-- Orphan instances for `ModelConfig` (type defined in `Inferno.ML.Types.Value`).
+-- Note that these are defined here as they are DB/HTTP layer instances and aren't
+-- really appropriate for `inferno-ml` package
 
 instance Arbitrary (ModelConfig Oid) where
   arbitrary =
@@ -603,7 +605,8 @@ instance ToJSON (ModelConfig Oid) where
       object ["torchscript" .= fromIntegral @_ @Word64 x]
     Bedrock bc -> object ["bedrock" .= bc]
 
--- Orphan instances for `BedrockConfig` (type defined in `Inferno.ML.Types.Value`)
+-- Orphan instances for `BedrockConfig` (type defined in `Inferno.ML.Types.Value`).
+-- Defined here for same reasons as `ModelConfig` instances
 
 instance FromJSON BedrockConfig where
   parseJSON = withObject "BedrockConfig" $ \o ->
@@ -636,7 +639,8 @@ instance ToADTArbitrary BedrockConfig where
 instance Arbitrary BedrockConfig where
   arbitrary = genericArbitrary
 
--- Orphan instances for `Temperature` (type defined in `Inferno.ML.Types.Value`)
+-- Orphan instances for `Temperature` (type defined in `Inferno.ML.Types.Value`).
+-- Defined here for same reasons as `ModelConfig` instances
 
 instance ToJSON Temperature where
   toJSON (Temperature f) = toJSON f
