@@ -69,6 +69,7 @@ import Database.PostgreSQL.Simple.FromField
   ( FromField (fromField),
     returnError,
   )
+import Database.PostgreSQL.Simple.LargeObjects (Oid)
 import Database.PostgreSQL.Simple.ToField
   ( ToField (toField),
   )
@@ -360,7 +361,7 @@ type EvaluationInfo = Types.EvaluationInfo (EntityId GId) PID
 
 type Model = Types.Model (EntityId GId)
 
-type ModelVersion = Types.ModelVersion (EntityId GId) ModelConfig
+type ModelVersion = Types.ModelVersion (EntityId GId) (ModelConfig Oid)
 
 type InferenceScript = Types.InferenceScript ScriptMetadata (EntityId GId)
 

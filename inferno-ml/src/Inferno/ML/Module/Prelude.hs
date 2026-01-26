@@ -28,7 +28,6 @@ import Data.Functor ((<&>))
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
 import qualified Data.Text as Text
-import GHC.IO.Unsafe (unsafePerformIO)
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
@@ -39,7 +38,7 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt),
+    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt, VText),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
 import Prettyprinter (Pretty)
@@ -63,7 +62,7 @@ import qualified Torch.Script
 import qualified Torch.Tensor as Tensor
 
 -- | A @MkMlModule@ implementation that depends on Hasktorch types
-type MlModule m x = Compat.MkMlModule m Tensor ScriptModule ModelName x
+type MlModule m x = Compat.MkMlModule m Tensor (ModelConfig ScriptModule) ModelName x
 
 -- | The default @ML@ Inferno module generator which depends on Hasktorch.
 -- Applying @mkMlModule@ will create the @ML@ module with these primitive
@@ -80,8 +79,10 @@ defaultMlModule =
   Compat.MkMlModule
     { models =
         Compat.MkModelFuns
-          { -- NOTE: This default implementation throws an error; the server
-            -- should override this with an implementation that handles caching
+          { -- NOTE: This default implementation throws an error; actual use sites
+            -- should override this with an implementation that:
+            --    - handles loading/caching `TorchScript` models
+            --    - handles loading `Bedrock` configurations
             loadModel =
               VFun $ \case
                 VCustom (VModelName _) ->
@@ -93,7 +94,18 @@ defaultMlModule =
                 expectedTensors = RuntimeError "expected an array of tensors"
                in
                 VFun $ \case
-                  VCustom (VModel model) -> pure . VFun $ \case
+                  -- Note that the distinction between `Bedrock` and `TorchScript`
+                  -- models is not tracked by the type system, otherwise we'd
+                  -- have a lot of duplication between model things. Because
+                  -- of this, we need to handle mismatches in the runtime
+                  -- (e.g. `forward`ing to a Bedrock model)
+                  VCustom (VModel (Bedrock _)) ->
+                    throwM . RuntimeError $
+                      unwords
+                        [ "Cannot `forward` to a Bedrock model; `forward` is"
+                        , "only compatible with TorchScript models"
+                        ]
+                  VCustom (VModel (TorchScript model)) -> pure . VFun $ \case
                     VArray mts ->
                       getTensors mts >>= \tensors ->
                         -- Note that we are using `forwardIO` here so any C++ exception can be
@@ -120,9 +132,15 @@ defaultMlModule =
                     _ -> throwM expectedTensors
                   _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =
-              unsafePerformIO
-                . Torch.Script.loadScript WithoutRequiredGrad
-                . Text.unpack
+              VFun $ \case
+                VText mpath ->
+                  fmap toValue
+                    . liftIO
+                    . Torch.Script.loadScript WithoutRequiredGrad
+                    $ Text.unpack mpath
+                _ ->
+                  throwM $
+                    RuntimeError "unsafeLoadScript: expected path to a TorchScript model"
           }
     , devices =
         Compat.MkDeviceFuns

@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.0.0 -- 2026-01-23
+* Update for polymorphic `ModelConfig`; handle `Bedrock` models in `loadModel`
+
 ## 0.10.0.0 -- 2026-01-20
 * Breaking change: `ModelName` now holds `UUID` instead of `FilePath`
 * Default `loadModel` now throws error; must be overridden by server

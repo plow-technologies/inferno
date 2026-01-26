@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0
+* Make `ModelConfig` polymorphic; add `Bedrock` constructor
+
 ## 0.2.0
 * Add new `Tensor` primitives: `roll`, `quantile`, `dquantile`
 

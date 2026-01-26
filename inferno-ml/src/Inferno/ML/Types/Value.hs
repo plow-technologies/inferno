@@ -14,8 +14,8 @@ module Inferno.ML.Types.Value
     ModelName (ModelName),
     enumDeviceHash,
     enumDTypeHash,
-    -- Convenience re-export
-    customTypes,
+    -- Convenience re-exports
+    module M,
   ) where
 
 import qualified Data.Map as Map
@@ -25,7 +25,19 @@ import qualified Data.Text as Text
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
 import GHC.Generics (Generic)
-import Inferno.ML.Types.Value.Compat (customTypes)
+import Inferno.ML.Types.Compat
+  ( BedrockConfig (BedrockConfig),
+    ModelConfig (Bedrock, TorchScript),
+    Temperature,
+    mkTemperature,
+  )
+import Inferno.ML.Types.Compat as M
+  ( BedrockConfig (BedrockConfig),
+    ModelConfig (Bedrock, TorchScript),
+    Temperature (Temperature),
+    mkTemperature,
+  )
+import Inferno.ML.Types.Value.Compat as M (customTypes)
 import qualified Inferno.ML.Types.Value.Compat as Compat
 import Inferno.Module (BuiltinEnumHash (BuiltinEnumHash))
 import Inferno.Module.Cast
@@ -48,14 +60,14 @@ import Torch
     Tensor,
   )
 
-type MlValue x = Compat.MlValue Tensor ScriptModule ModelName x
+type MlValue x = Compat.MlValue Tensor (ModelConfig ScriptModule) ModelName x
 
 {-# COMPLETE VTensor, VModel, VModelName, VExtended #-}
 
 pattern VTensor :: Tensor -> MlValue x
 pattern VTensor t = Compat.VTensor t
 
-pattern VModel :: ScriptModule -> MlValue x
+pattern VModel :: ModelConfig ScriptModule -> MlValue x
 pattern VModel m = Compat.VModel m
 
 pattern VModelName :: ModelName -> MlValue x
@@ -81,7 +93,8 @@ instance (Eq x) => Eq (MlValue x) where
 instance (Pretty x) => Pretty (MlValue x) where
   pretty = \case
     VTensor t -> align . pretty . Text.pack $ show t
-    VModel m -> align . pretty . Text.pack $ show m
+    VModel (TorchScript m) -> align . pretty . Text.pack $ show m
+    VModel (Bedrock bc) -> align . pretty . Text.pack $ show bc
     VModelName x -> align $ pretty x
     VExtended x -> align $ pretty x
 
@@ -93,12 +106,28 @@ instance (Pretty x) => FromValue (MlValue x) m Tensor where
     VCustom (VTensor t) -> pure t
     v -> couldNotCast v
 
-instance ToValue (MlValue x) m ScriptModule where
+instance ToValue (MlValue x) m (ModelConfig ScriptModule) where
   toValue = VCustom . VModel
+
+instance (Pretty x) => FromValue (MlValue x) m (ModelConfig ScriptModule) where
+  fromValue = \case
+    VCustom (VModel mc) -> pure mc
+    v -> couldNotCast v
+
+instance ToValue (MlValue x) m ScriptModule where
+  toValue = VCustom . VModel . TorchScript
 
 instance (Pretty x) => FromValue (MlValue x) m ScriptModule where
   fromValue = \case
-    VCustom (VModel t) -> pure t
+    VCustom (VModel (TorchScript sm)) -> pure sm
+    v -> couldNotCast v
+
+instance ToValue (MlValue x) m BedrockConfig where
+  toValue = VCustom . VModel . Bedrock
+
+instance (Pretty x) => FromValue (MlValue x) m BedrockConfig where
+  fromValue = \case
+    VCustom (VModel (Bedrock bc)) -> pure bc
     v -> couldNotCast v
 
 instance ToValue (MlValue x) m ModelName where
