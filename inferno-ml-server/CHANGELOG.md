@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.1.23
+* Update for polymorphic `ModelConfig`
+
 ## 2026.1.20
 * Lazy model caching: models are now cached on-demand in `loadModel` instead of eagerly before evaluation
 * Remove `ModelCache` configuration; use disk space-based eviction (90% threshold) instead of fixed cache size
