@@ -50,13 +50,14 @@ import UnliftIO.IO.File (writeBinaryFileDurableAtomic)
 -- model directory of the server, or a @Bedrock@ model, in which case the
 -- model configuration is simply held in memory
 loadModel :: UUID -> RemoteM (ModelConfig ScriptModule)
-loadModel uuid = getModelVersion uuid >>= \mversion ->
-  case mversion.contents of
-    TorchScript oid ->
+loadModel uuid =
+  getModelVersion uuid >>= \mversion ->
+    case mversion.contents of
+      TorchScript oid ->
         fmap TorchScript . cacheTorchScriptModel $
           TorchScriptModel uuid mversion.size oid
-    -- For `Bedrock`, we can just use the configuration straight from the DB
-    Bedrock cfg -> pure $ Bedrock cfg
+      -- For `Bedrock`, we can just use the configuration straight from the DB
+      Bedrock cfg -> pure $ Bedrock cfg
 
 -- | Cache and load a model by its UUID. If already cached, loads directly.
 -- Otherwise fetches from DB, checks disk space (evicting LRU models if needed),
@@ -83,11 +84,11 @@ cacheTorchScriptModel tsm = do
     getTorchScriptModelContents :: RemoteM ByteString
     getTorchScriptModelContents =
       withConns $ \conn -> withRunInIO $ \r ->
-        withTransaction conn . r $
-          liftIO
+        withTransaction conn . r
+          $ liftIO
             . bracket (loOpen conn tsm.oid ReadMode) (loClose conn)
             . flip (loRead conn)
-            $ fromIntegral tsm.size
+          $ fromIntegral tsm.size
 
     -- Check if adding a model would exceed 90% disk usage; if so, evict LRU models
     checkDiskSpace :: Word64 -> RemoteM ()
