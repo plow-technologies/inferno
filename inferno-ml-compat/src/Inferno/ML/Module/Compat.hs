@@ -58,6 +58,7 @@ data MkModelFuns m tensor model mname x = MkModelFuns
   { loadModel :: Value (MlValue tensor model mname x) m
   , forward :: Value (MlValue tensor model mname x) m
   , unsafeLoadScript :: Value (MlValue tensor model mname x) m
+  , prompt :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -289,7 +290,19 @@ module ML
 
   unsafeLoadScript : text -> model := ###unsafeLoadScript###;
 
+  @doc Run a forward pass through a TorchScript model, evaluating the model on
+  the provided input tensors and returning the resulting output tensors.
+
+  NOTE: This function only works for TorchScript models. You cannot `forward`
+  to Bedrock models;
   forward : model -> array of tensor -> array of tensor := ###!forward###;
+
+  @doc Prompt an LLM, i.e Bedrock, model. Raw text is returned: no structure
+  is guaranteed beyond a readable string.
+
+  NOTE: This function only works for Bedrock models. You cannot `prompt` a
+  TorchScript model;
+  prompt : model -> text -> text := ###!prompt###;
 
   zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 
@@ -812,6 +825,7 @@ mkUnboundModule =
           { loadModel = unbound
           , forward = unbound
           , unsafeLoadScript = unbound
+          , prompt = unbound
           }
     , devices =
         MkDeviceFuns
