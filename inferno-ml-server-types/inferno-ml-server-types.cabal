@@ -35,6 +35,7 @@ library
   exposed-modules:
     Inferno.ML.Server.Client
     Inferno.ML.Server.Client.Bridge
+    Inferno.ML.Server.Client.Bedrock
     Inferno.ML.Server.Client.PerServer
     Inferno.ML.Server.Types
     Inferno.ML.Server.Types.Log

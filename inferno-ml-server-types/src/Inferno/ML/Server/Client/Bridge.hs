@@ -36,6 +36,7 @@ latestValueAndTimeBeforeC ::
 -- | Get an array of values falling between the two times
 valuesBetweenC ::
   (ToHttpApiData p, ToHttpApiData t) => Int64 -> p -> t -> t -> ClientM IValue
+
 valueAtC
   :<|> latestValueAndTimeBeforeC
   :<|> valuesBetweenC =

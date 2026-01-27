@@ -197,6 +197,9 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "t2" t
       :> Get '[JSON] IValue
 
+type PromptAPI =
+  "prompt" :> ReqBody '[JSON] BedrockConfig :> Put '[JSON] BedrockResult
+
 -- | Stream of writes that an ML parameter script results in. Each element
 -- in the stream is a chunk (sub-list) of the original values that the
 -- inference script evaluates to. For example, given the following output:
@@ -1125,6 +1128,21 @@ data EvaluationEnv gid p = EvaluationEnv
 
 instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
+
+data BedrockResult
+  = Success
+    -- Raw text of the prompt response
+    Text
+  | Failure
+    -- Exception text from a Bedrock API failure; we could have a more
+    -- sophisticated error type, but this is going to be turned into a
+    -- @RuntimeError@ regardless of what the error is. So the text is sufficient
+    --
+    -- Note that bridge\/HTTP errors will be surfaced via @runClientM@ for
+    -- the @bridgeC@ invocation, so we don't need to consider those here
+    Text
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
 
 data RemoteError p m mv
   = CacheSizeExceeded
