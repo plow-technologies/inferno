@@ -1,5 +1,5 @@
 module Inferno.ML.Server.Client.Bedrock
-  ( promptC
+  ( promptC,
   )
 where
 

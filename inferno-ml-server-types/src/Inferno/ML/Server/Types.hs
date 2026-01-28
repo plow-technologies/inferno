@@ -1131,16 +1131,16 @@ instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
 
 data BedrockResult
   = Success
-    -- Raw text of the prompt response
-    Text
+      -- Raw text of the prompt response
+      Text
   | Failure
-    -- Exception text from a Bedrock API failure; we could have a more
-    -- sophisticated error type, but this is going to be turned into a
-    -- @RuntimeError@ regardless of what the error is. So the text is sufficient
-    --
-    -- Note that bridge\/HTTP errors will be surfaced via @runClientM@ for
-    -- the @bridgeC@ invocation, so we don't need to consider those here
-    Text
+      -- Exception text from a Bedrock API failure; we could have a more
+      -- sophisticated error type, but this is going to be turned into a
+      -- @RuntimeError@ regardless of what the error is. So the text is sufficient
+      --
+      -- Note that bridge\/HTTP errors will be surfaced via @runClientM@ for
+      -- the @bridgeC@ invocation, so we don't need to consider those here
+      Text
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)
 

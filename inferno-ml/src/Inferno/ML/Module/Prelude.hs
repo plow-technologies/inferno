@@ -134,8 +134,9 @@ defaultMlModule =
           , prompt =
               VFun $ \case
                 VCustom (VModel _) -> pure . VFun $ \case
-                  VText _ -> throwM $
-                    RuntimeError "prompt: not implemented; must be overridden by server"
+                  VText _ ->
+                    throwM $
+                      RuntimeError "prompt: not implemented; must be overridden by server"
                   _ -> throwM $ RuntimeError "expected text"
                 _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =

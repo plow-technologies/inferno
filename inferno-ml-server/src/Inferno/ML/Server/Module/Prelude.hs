@@ -10,12 +10,16 @@ module Inferno.ML.Server.Module.Prelude
     mkServerBridgePrelude,
     serverMlPrelude,
     mkPrintModules,
+    getBridgeInfo,
+    callBridge,
   )
 where
 
+import Control.DeepSeq (NFData)
 import Control.Exception (ErrorCall)
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Reader (asks)
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
@@ -24,6 +28,8 @@ import Data.Maybe (isJust)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import Data.Tuple.Extra ((&&&))
+import Database.PostgreSQL.Simple (Only (Only), Query)
+import Database.PostgreSQL.Simple.SqlQQ (sql)
 import Foreign.C (CTime (CTime))
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Prelude
@@ -35,15 +41,14 @@ import Inferno.ML.Module.Prelude
 import Inferno.ML.Server.Inference.Model (loadModel)
 import Inferno.ML.Server.Module.Types
 import Inferno.ML.Server.Types
-  ( IValue,
-    RemoteM,
-    TraceWarn (CouldntMoveTensor),
-    logWarn,
-  )
+import Inferno.ML.Server.Utils
 import Inferno.ML.Types.Value
   ( MlValue,
     ModelName (ModelName),
+    pattern Bedrock,
+    pattern TorchScript,
     pattern VExtended,
+    pattern VModel,
     pattern VModelName,
   )
 import Inferno.ML.Types.Value.Compat (mlQuoter)
@@ -60,6 +65,14 @@ import Inferno.Types.VersionControl (VCObjectHash)
 import Lens.Micro.Platform
 import Prettyprinter (Pretty, defaultLayoutOptions, layoutPretty, pretty)
 import Prettyprinter.Render.Text (renderStrict)
+import Servant.Client.Streaming
+  ( BaseUrl (BaseUrl),
+    ClientEnv,
+    ClientM,
+    Scheme (Http),
+    mkClientEnv,
+    runClientM,
+  )
 import System.Posix.Types (EpochTime)
 import Torch (Device, Tensor)
 import qualified Torch (toDevice)
@@ -285,8 +298,11 @@ mkServerBridgePrelude bfuns mlPrelude =
         bridgeModules @_ bfuns
 
 -- | ML prelude for use only in @RemoteM@ (needed for tracing effects)
-serverMlPrelude :: ModuleMap RemoteM (MlValue BridgeValue)
-serverMlPrelude =
+serverMlPrelude ::
+  -- | Used for communicating with bridge when @prompt@ is evaluated
+  Id InferenceParam ->
+  ModuleMap RemoteM (MlValue BridgeValue)
+serverMlPrelude ipid =
   -- NOTE There's no risk of overlap in module names here, so we can just
   -- use `union` instead of `unionWith`
   Map.union printModules $ mkMlPrelude mlModule
@@ -302,6 +318,7 @@ serverMlPrelude =
         -- Overrides the default `loadModel` with one that handles caching for
         -- `TorchScript` models and getting configuration for `Bedrock` models
         & #models . #loadModel .~ loadModelFun
+        & #models . #prompt .~ promptFun
 
     loadModelFun :: BridgeV RemoteM
     loadModelFun =
@@ -346,6 +363,25 @@ serverMlPrelude =
                   liftImplEnvM . logWarn . CouldntMoveTensor $ show device
                   pure $ toValue @_ @_ @Tensor tensor
         _ -> throwM $ RuntimeError "toDeviceFun: expecting a device enum"
+
+    promptFun :: BridgeV RemoteM
+    promptFun =
+      VFun $ \case
+        -- Note that the distinction between `Bedrock` and `TorchScript`
+        -- models is not tracked by the type system, otherwise we'd
+        -- have a lot of duplication between model things. Because
+        -- of this, we need to handle mismatches in the runtime
+        -- (e.g. `prompt`ing to a Torchscript model)
+        VCustom (VModel (TorchScript _)) ->
+          throwM . RuntimeError $
+            unwords
+              [ "Cannot `prompt` a TorchScript model; `prompt` is"
+              , "only compatible with Bedrock models"
+              ]
+        VCustom (VModel (Bedrock config)) -> pure . VFun $ \case
+          VText t -> undefined
+          _ -> undefined
+        _ -> throwM $ RuntimeError "prompt: expecting a model"
 
     printModules :: ModuleMap RemoteM (MlValue BridgeValue)
     printModules = mkPrintModules printFun printWithFun
@@ -438,3 +474,22 @@ module Print
 
 renderValue :: (Pretty v) => Value v (ImplEnvM m v) -> Text
 renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty
+
+-- | Call one of the bridge endpoints using the given 'BridgeInfo'
+callBridge :: (NFData a) => Id InferenceParam -> BridgeInfo -> ClientM a -> RemoteM a
+callBridge ipid bi c =
+  either (throwRemoteError . ClientError ipid . show) pure =<< liftIO . runClientM c =<< mkEnv
+  where
+    mkEnv :: RemoteM ClientEnv
+    mkEnv = asks $ (`mkClientEnv` url) . view #manager
+      where
+        url :: BaseUrl
+        url = BaseUrl Http (show bi.host) (fromIntegral bi.port) mempty
+
+-- There should always be a bridge saved for the param
+getBridgeInfo :: Id InferenceParam -> RemoteM BridgeInfo
+getBridgeInfo ipid =
+  firstOrThrow (NoBridgeSaved ipid) =<< queryStore q (Only ipid)
+  where
+    q :: Query
+    q = [sql| SELECT * FROM bridges WHERE id = ? |]
