@@ -198,7 +198,7 @@ type BridgeAPI p t =
       :> Get '[JSON] IValue
 
 type PromptAPI =
-  "prompt" :> ReqBody '[JSON] BedrockConfig :> Put '[JSON] BedrockResult
+  "prompt" :> ReqBody '[JSON] BedrockRequest :> Put '[JSON] BedrockResult
 
 -- | Stream of writes that an ML parameter script results in. Each element
 -- in the stream is a chunk (sub-list) of the original values that the
@@ -1129,20 +1129,35 @@ data EvaluationEnv gid p = EvaluationEnv
 instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
 
+-- | Required information for the underlying request of @ML.prompt@ function
+data BedrockRequest = BedrockRequest
+  { prompt :: Text
+  -- ^ Original prompt text
+  , config :: BedrockConfig
+  -- ^ Model configuration
+  }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSON, ToJSON)
+
+-- | Result of the underlying request of @ML.prompt@ function
 data BedrockResult
-  = Success
+  = PromptSuccess
       -- Raw text of the prompt response
       Text
-  | Failure
+  | PromptFailure
       -- Exception text from a Bedrock API failure; we could have a more
       -- sophisticated error type, but this is going to be turned into a
-      -- @RuntimeError@ regardless of what the error is. So the text is sufficient
+      -- @RuntimeError@ regardless of what the error is. So the text is sufficient.
+      -- Note that Inferno does not have proper sum types so we can\'t really
+      -- represent Bedrock failures as an Inferno type easily. For example,
+      -- there would be no way for users to branch on different types of failures,
+      -- failure messages, etc...
       --
       -- Note that bridge\/HTTP errors will be surfaced via @runClientM@ for
       -- the @bridgeC@ invocation, so we don't need to consider those here
       Text
   deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSON, ToJSON)
+  deriving anyclass (FromJSON, ToJSON, NFData)
 
 data RemoteError p m mv
   = CacheSizeExceeded

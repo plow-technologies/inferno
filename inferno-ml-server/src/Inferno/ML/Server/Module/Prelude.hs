@@ -27,6 +27,7 @@ import qualified Data.Map as Map
 import Data.Maybe (isJust)
 import Data.Sequence ((|>))
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Tuple.Extra ((&&&))
 import Database.PostgreSQL.Simple (Only (Only), Query)
 import Database.PostgreSQL.Simple.SqlQQ (sql)
@@ -38,6 +39,7 @@ import Inferno.ML.Module.Prelude
     getDevice,
     mkMlPrelude,
   )
+import Inferno.ML.Server.Client.Bedrock (promptC)
 import Inferno.ML.Server.Inference.Model (loadModel)
 import Inferno.ML.Server.Module.Types
 import Inferno.ML.Server.Types
@@ -45,8 +47,6 @@ import Inferno.ML.Server.Utils
 import Inferno.ML.Types.Value
   ( MlValue,
     ModelName (ModelName),
-    pattern Bedrock,
-    pattern TorchScript,
     pattern VExtended,
     pattern VModel,
     pattern VModelName,
@@ -80,6 +80,7 @@ import UnliftIO.Exception
   ( displayException,
     evaluate,
     fromException,
+    handle,
     tryAny,
   )
 import UnliftIO.IORef (atomicModifyIORef')
@@ -379,8 +380,36 @@ serverMlPrelude ipid =
               , "only compatible with Bedrock models"
               ]
         VCustom (VModel (Bedrock config)) -> pure . VFun $ \case
-          VText t -> undefined
-          _ -> undefined
+          VText t ->
+            let
+              callPrompt :: RemoteM BedrockResult
+              callPrompt =
+                withCallBridge ipid . promptC $
+                  BedrockRequest t config
+
+              clientFailure :: RemoteError -> RemoteM a
+              clientFailure = \case
+                -- This is the only internal exception that should be thrown by
+                -- the bridge invocation. This would indicate some HTTP issue
+                ClientError _ s ->
+                  throwM . RuntimeError $
+                    unwords
+                      [ "Error in `prompt`: HTTP failure;"
+                      , "original exceptin:"
+                      , s
+                      ]
+                e -> throwM e
+             in
+              liftImplEnvM $
+                handle clientFailure callPrompt >>= \case
+                  PromptFailure f ->
+                    throwM . RuntimeError $
+                      unwords
+                        [ "Error in `prompt`, Bedrock API failure:"
+                        , Text.unpack f
+                        ]
+                  PromptSuccess s -> pure $ toValue s
+          _ -> throwM $ RuntimeError "prompt: expecting prompt text"
         _ -> throwM $ RuntimeError "prompt: expecting a model"
 
     printModules :: ModuleMap RemoteM (MlValue BridgeValue)
@@ -474,6 +503,9 @@ module Print
 
 renderValue :: (Pretty v) => Value v (ImplEnvM m v) -> Text
 renderValue = renderStrict . layoutPretty defaultLayoutOptions . pretty
+
+withCallBridge :: (NFData a) => Id InferenceParam -> ClientM a -> RemoteM a
+withCallBridge ipid c = getBridgeInfo ipid >>= \bi -> callBridge ipid bi c
 
 -- | Call one of the bridge endpoints using the given 'BridgeInfo'
 callBridge :: (NFData a) => Id InferenceParam -> BridgeInfo -> ClientM a -> RemoteM a

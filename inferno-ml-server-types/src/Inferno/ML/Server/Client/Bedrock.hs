@@ -7,7 +7,7 @@ import Data.Data (Proxy (Proxy))
 import Inferno.ML.Server.Types
 import Servant.Client.Streaming (ClientM, client)
 
-promptC :: BedrockConfig -> ClientM BedrockResult
+promptC :: BedrockRequest -> ClientM BedrockResult
 promptC = client api
 
 api :: Proxy PromptAPI
