@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.12.0.0 -- 2026-01-29
+* Add `prompt` to `ML` module
+
 ## 0.11.0.0 -- 2026-01-23
 * Update for polymorphic `ModelConfig`; handle `Bedrock` models in `loadModel`
 

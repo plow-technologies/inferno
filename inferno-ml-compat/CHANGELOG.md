@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.0
+* Add `prompt` function to ML module interface
+
 ## 0.3.0
 * Make `ModelConfig` polymorphic; add `Bedrock` constructor
 
