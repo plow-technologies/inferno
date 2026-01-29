@@ -1,6 +1,6 @@
 cabal-version: 2.4
 name:          inferno-ml-server-types
-version:       0.25.0
+version:       0.26.0
 synopsis:      Types for Inferno ML server
 description:   Types for Inferno ML server
 homepage:      https://github.com/plow-technologies/inferno.git#readme
@@ -34,6 +34,7 @@ library
   import:          common
   exposed-modules:
     Inferno.ML.Server.Client
+    Inferno.ML.Server.Client.Bedrock
     Inferno.ML.Server.Client.Bridge
     Inferno.ML.Server.Client.PerServer
     Inferno.ML.Server.Types

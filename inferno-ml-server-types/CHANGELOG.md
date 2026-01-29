@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.26.0
+* Add `BedrockRequest`, `BedrockResult`, `PromptAPI`, and Bedrock client
+
 ## 0.25.0
 * Make `ModelConfig` polymorphic; re-export from `inferno-ml-compat`
 

@@ -131,6 +131,14 @@ defaultMlModule =
                             . displayException
                     _ -> throwM expectedTensors
                   _ -> throwM $ RuntimeError "expected a model"
+          , prompt =
+              VFun $ \case
+                VCustom (VModel _) -> pure . VFun $ \case
+                  VText _ ->
+                    throwM $
+                      RuntimeError "prompt: not implemented; must be overridden by server"
+                  _ -> throwM $ RuntimeError "expected text"
+                _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =
               VFun $ \case
                 VText mpath ->

@@ -20,7 +20,7 @@ data ModelConfig a
 -- | Configuration for Bedrock-based models
 data BedrockConfig = BedrockConfig
   { modelId :: Text
-  -- ^ The Bedrock model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
+  -- ^ The *Bedrock* model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
   , region :: Maybe Text
   -- ^ AWS region for the Bedrock service
   , temperature :: Temperature
