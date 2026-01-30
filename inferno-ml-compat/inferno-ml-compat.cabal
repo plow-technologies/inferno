@@ -28,7 +28,8 @@ library
     -Wunused-packages
 
   build-depends:
-      base
+      aeson
+    , base
     , exceptions
     , inferno-core
     , inferno-types

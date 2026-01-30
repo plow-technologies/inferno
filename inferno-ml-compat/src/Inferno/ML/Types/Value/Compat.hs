@@ -4,6 +4,7 @@
 
 module Inferno.ML.Types.Value.Compat where
 
+import qualified Data.Aeson as Aeson
 import Inferno.Types.Syntax (CustomType)
 import Inferno.Utils.QQ.Module (moduleQuoter)
 import Language.Haskell.TH.Quote (QuasiQuoter)
@@ -16,6 +17,7 @@ data MlValue tensor model mname x
   = VTensor tensor
   | VModel model
   | VModelName mname
+  | VJson Aeson.Value
   | VExtended x
 
 customTypes :: [CustomType]

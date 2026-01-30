@@ -27,7 +27,9 @@ library
     -Wunused-packages
 
   build-depends:
-      base
+      aeson
+    , aeson-pretty
+    , base
     , containers
     , exceptions
     , extra
