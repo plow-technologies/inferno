@@ -48,6 +48,7 @@ data MkMlModule m tensor model mname x = MkMlModule
   , conversions :: MkConversionFuns m tensor model mname x
   , functional :: MkFunctionalFuns tensor
   , properties :: MkPropertyFuns m tensor model mname x
+  , json :: MkJsonFuns m tensor model mname x
   }
   deriving (Generic)
 
@@ -228,6 +229,21 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
     quantile :: Value (MlValue tensor model mname x) m
   , -- NOTE: `dquantile` is in `MkPropertyFuns` for the same reason as `quantile`
     dquantile :: Value (MlValue tensor model mname x) m
+  }
+  deriving (Generic)
+
+-- | JSON accessor functions. Due to Inferno ML\'s fairly complex type constraints,
+-- it is easier to defined these here and implement elsewhere, even though we could
+-- try to do it inline
+--
+-- NOTE: For Inferno primitive documentation, see the Inferno module
+data MkJsonFuns m tensor model mname x = MkJsonFuns
+  { atKey :: Value (MlValue tensor model mname x) m
+  , asArray :: Value (MlValue tensor model mname x) m
+  , asObject :: Value (MlValue tensor model mname x) m
+  , asNumber :: Value (MlValue tensor model mname x) m
+  , asText :: Value (MlValue tensor model mname x) m
+  , asBool :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -812,6 +828,30 @@ module Tensor
   tensor are shifted;
   roll : tensor -> int -> int -> tensor := ###roll###;
 
+module JSON
+  @doc `JSON.atKey j k` looks up the key `k` in the JSON object `j`,
+  returning `None` if `j` is not an object or if `k` is not present;
+  atKey : json -> text -> option of json := ###!atKey###;
+
+  @doc `JSON.asArray j` attempts to interpret `j` as a JSON array,
+  returning `None` if `j` is not an array;
+  asArray : json -> option of (array of json) := ###!asArray###;
+
+  @doc `JSON.asObject j` attempts to interpret `j` as a JSON object,
+  returning `None` if `j` is not an object;
+  asObject : json -> option of (array of (text, json)) := ###!asObject###;
+
+  @doc `JSON.asText j` attempts to interpret `j` as a JSON string,
+  returning `None` if `j` is not a string;
+  asText : json -> option of text := ###!asText###;
+
+  @doc `JSON.asDouble j` attempts to interpret `j` as a JSON number,
+  returning `None` if `j` is not a number;
+  asDouble : json -> option of double := ###!asNumber###;
+
+  @doc `JSON.asBool j` attempts to interpret `j` as a JSON boolean,
+  returning `None` if `j` is not a boolean;
+  asBool : json -> option of bool{#true, #false} := ###!asBool###;
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
@@ -822,6 +862,7 @@ module Tensor
     MkConversionFuns{..} = mk.conversions
     MkFunctionalFuns{..} = mk.functional
     MkPropertyFuns{..} = mk.properties
+    MkJsonFuns{..} = mk.json
 
 -- | Given concrete types, this will create a 'MkPrelude' that is suitable for
 -- type-checking purposes, but which will throw an error if evaluated. This is
@@ -983,6 +1024,15 @@ mkUnboundModule =
           , quantile = unbound
           , dquantile = unbound
           }
+    , json =
+      MkJsonFuns
+        { atKey = undefined
+        , asArray = undefined
+        , asObject = undefined
+        , asNumber = undefined
+        , asText = undefined
+        , asBool = undefined
+        }
     }
   where
     unbound :: a
