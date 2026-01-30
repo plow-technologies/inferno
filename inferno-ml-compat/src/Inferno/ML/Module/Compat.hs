@@ -847,7 +847,7 @@ module JSON
 
   @doc `JSON.asDouble j` attempts to interpret `j` as a JSON number,
   returning `None` if `j` is not a number;
-  asDouble : json -> option of double := ###!asNumber###;
+  asNumber : json -> option of double := ###!asNumber###;
 
   @doc `JSON.asBool j` attempts to interpret `j` as a JSON boolean,
   returning `None` if `j` is not a boolean;
@@ -1025,14 +1025,14 @@ mkUnboundModule =
           , dquantile = unbound
           }
     , json =
-      MkJsonFuns
-        { atKey = undefined
-        , asArray = undefined
-        , asObject = undefined
-        , asNumber = undefined
-        , asText = undefined
-        , asBool = undefined
-        }
+        MkJsonFuns
+          { atKey = undefined
+          , asArray = undefined
+          , asObject = undefined
+          , asNumber = undefined
+          , asText = undefined
+          , asBool = undefined
+          }
     }
   where
     unbound :: a

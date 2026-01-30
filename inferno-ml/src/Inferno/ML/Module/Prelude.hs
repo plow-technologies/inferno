@@ -23,10 +23,16 @@ import Control.Monad.Catch
   )
 import Control.Monad.Extra (concatMapM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Key as Aeson.Key
+import qualified Data.Aeson.KeyMap as Aeson.KeyMap
+import Data.Aeson.Lens (key, _Array, _Bool, _Number, _Object, _String)
+import Data.Bifunctor (first)
 import Data.Bool (bool)
-import Data.Functor ((<&>))
+import Data.Foldable (toList)
 import qualified Data.Map as Map
 import Data.Proxy (Proxy (Proxy))
+import Data.Scientific (toRealFloat)
 import qualified Data.Text as Text
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
@@ -38,9 +44,10 @@ import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt, VText),
+    Value (VArray, VCustom, VDouble, VEmpty, VEnum, VFun, VInt, VOne, VText),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
+import Lens.Micro.Platform
 import Prettyprinter (Pretty)
 import Torch
   ( DType,
@@ -388,6 +395,31 @@ defaultMlModule =
                   _ -> throwM $ RuntimeError "dquantile: expected quantile double"
                 _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }
+    , json =
+        Compat.MkJsonFuns
+          { atKey = withJson "atKey" $ \j -> VFun $ \case
+              VText (Aeson.Key.fromText -> k) -> j ^? key k & toValue & pure
+              _ -> throwM $ RuntimeError "atKey: expecting a text key"
+          , asArray =
+              withJson "asArray" $
+                maybe VEmpty (VOne . VArray . toList . fmap toValue)
+                  . preview _Array
+          , asObject =
+              withJson "asObject" $
+                maybe
+                  VEmpty
+                  ( VOne
+                      . toValue
+                      . fmap (first Aeson.Key.toText)
+                      . Aeson.KeyMap.toAscList
+                  )
+                  . preview _Object
+          , asNumber =
+              withJson "asNumber" $
+                toValue . fmap (toRealFloat @Double) . preview _Number
+          , asText = withJson "asText" $ toValue . preview _String
+          , asBool = withJson "asBool" $ toValue . preview _Bool
+          }
     }
   where
     -- Generic quantile implementation that works for both tensor and double
@@ -415,6 +447,13 @@ defaultMlModule =
       where
         throwRuntimeError :: (MonadThrow m) => String -> m a
         throwRuntimeError msg = throwM . RuntimeError $ funName <> ": " <> msg
+
+withJson ::
+  (MonadThrow m) => String -> (Aeson.Value -> Value (MlValue x) m) -> Value (MlValue x) m
+withJson funName f =
+  VFun $ \case
+    VCustom (VJson j) -> pure $ f j
+    _ -> throwM . RuntimeError $ funName <> ": expecting json value"
 
 withDType ::
   (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m

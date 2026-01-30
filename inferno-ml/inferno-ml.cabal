@@ -38,7 +38,10 @@ library
     , inferno-ml-compat
     , inferno-types
     , inline-c-cpp
+    , lens-aeson
+    , microlens-platform
     , prettyprinter
+    , scientific
     , text
     , uuid
 

@@ -10,6 +10,7 @@ module Inferno.ML.Types.Value
     pattern VTensor,
     pattern VModel,
     pattern VModelName,
+    pattern VJson,
     pattern VExtended,
     ModelName (ModelName),
     enumDeviceHash,
@@ -56,7 +57,7 @@ import Inferno.Types.Syntax
     InfernoType (TBase),
     TCScheme (ForallTC),
   )
-import Inferno.Types.Value (Value (VCustom))
+import Inferno.Types.Value (Value (VCustom, VText, VTuple))
 import Inferno.Types.VersionControl (VCObjectHash, vcHash)
 import Prettyprinter (Pretty (pretty), align)
 import Torch
@@ -161,6 +162,16 @@ instance ToValue (MlValue x) m Aeson.Value where
 instance (Pretty x) => FromValue (MlValue x) m Aeson.Value where
   fromValue = \case
     VCustom (VJson j) -> pure j
+    v -> couldNotCast v
+
+-- Helpers for unpacking Aeson `KeyMap`s into lists of tuples
+
+instance ToValue (MlValue x) m (Text, Aeson.Value) where
+  toValue (k, v) = VTuple [toValue k, toValue v]
+
+instance (Pretty x) => FromValue (MlValue x) m (Text, Aeson.Value) where
+  fromValue = \case
+    VTuple [VText k, VCustom (VJson v)] -> pure (k, v)
     v -> couldNotCast v
 
 -- We need a hash for the `device` enum in Inferno in order for functions
