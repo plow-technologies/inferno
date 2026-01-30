@@ -26,6 +26,7 @@ customTypes =
     "modelName"
   , "model"
   , "write"
+  , "json"
   ]
 
 mlQuoter :: QuasiQuoter

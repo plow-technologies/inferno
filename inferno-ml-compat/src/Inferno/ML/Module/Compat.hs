@@ -59,6 +59,7 @@ data MkModelFuns m tensor model mname x = MkModelFuns
   , forward :: Value (MlValue tensor model mname x) m
   , unsafeLoadScript :: Value (MlValue tensor model mname x) m
   , prompt :: Value (MlValue tensor model mname x) m
+  , promptWith :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -303,6 +304,16 @@ module ML
   NOTE: This function only works for Bedrock models. You cannot `prompt` a
   TorchScript model;
   prompt : model -> text -> text := ###!prompt###;
+
+  @doc Prompt an LLM, i.e Bedrock, model. Structured JSON is returned and
+  parseable using `JSON` module functions. If the text cannot be parsed into a
+  JSON structure, it becomes JSON text.
+
+  FIXME: Add schema argument
+
+  NOTE: This function only works for Bedrock models. You cannot `promptWith` a
+  TorchScript model;
+  promptWith : model -> text -> json := ###!prompt###;
 
   zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 
@@ -826,6 +837,7 @@ mkUnboundModule =
           , forward = unbound
           , unsafeLoadScript = unbound
           , prompt = unbound
+          , promptWith = unbound
           }
     , devices =
         MkDeviceFuns
