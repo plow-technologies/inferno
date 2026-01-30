@@ -318,6 +318,36 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo "Option.join None" VEmpty
     shouldEvaluateTo "Option.join (Some None)" VEmpty
     shouldEvaluateTo "Option.join (Some (Some 2.3))" $ VOne $ VDouble 2.3
+    -- Option.flatMap
+    shouldEvaluateTo
+      "Option.flatMap (fun x -> Some (x + 1)) (Some 3.0)"
+      $ VOne
+      $ VDouble 4
+    shouldEvaluateTo
+      "Option.flatMap (fun x -> None) (Some 3.0)"
+      VEmpty
+    shouldEvaluateTo
+      "Option.flatMap (fun x -> Some (x + 1)) None"
+      VEmpty
+    -- Option.traverse
+    shouldEvaluateTo
+      "Option.traverse (fun x -> Some (x * 2)) []"
+      $ VOne
+      $ VArray []
+    shouldEvaluateTo
+      "Option.traverse (fun x -> Some (x * 2)) [1.0, 2.0, 3.0]"
+      $ VOne
+      $ VArray [VDouble 2, VDouble 4, VDouble 6]
+    shouldEvaluateTo
+      "Option.traverse (fun x -> if x > 0 then Some x else None) [1, 2, 3]"
+      $ VOne
+      $ VArray [VDouble 1, VDouble 2, VDouble 3]
+    shouldEvaluateTo
+      "Option.traverse (fun x -> if x > 0 then Some x else None) [1, -2, 3]"
+      VEmpty
+    shouldEvaluateTo
+      "Option.traverse (fun x -> if x > 0 then Some x else None) [-1, 2, 3]"
+      VEmpty
     -- Time
     shouldEvaluateTo "Time.seconds 5" $ VEpochTime 5
     shouldEvaluateTo "Time.minutes 5 == 5 * Time.seconds 60" vTrue

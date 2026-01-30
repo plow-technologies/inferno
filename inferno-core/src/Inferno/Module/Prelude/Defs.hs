@@ -159,6 +159,30 @@ keepSomesFun =
             xs
     _ -> throwM $ RuntimeError "keepSomes: expecting an array"
 
+-- | Traverse an array with a function returning an option, short-circuiting on
+-- any Inferno @None@ value
+traverseOptionFun :: forall c m. (MonadThrow m) => Value c m
+traverseOptionFun =
+  VFun $ \case
+    VFun f ->
+      pure . VFun $ \case
+        VArray xs -> go f xs
+        _ -> throwM $ RuntimeError "traverse: expecting an array"
+    _ -> throwM $ RuntimeError "traverse: expecting a function"
+  where
+    go :: (Value c m -> m (Value c m)) -> [Value c m] -> m (Value c m)
+    go _ [] = pure . VOne $ VArray []
+    go f (x : xs) =
+      f x >>= \case
+        VEmpty -> pure VEmpty
+        VOne y ->
+          go f xs >>= \case
+            VEmpty -> pure VEmpty
+            VOne (VArray ys) -> pure . VOne . VArray $ y : ys
+            -- This won't be hit but we need to account for the case anyway
+            _ -> throwM $ RuntimeError "traverse: function must return an option"
+        _ -> throwM $ RuntimeError "traverse: function must return an option"
+
 foldlFun :: (MonadThrow m) => Value c m
 foldlFun =
   VFun $ \case
