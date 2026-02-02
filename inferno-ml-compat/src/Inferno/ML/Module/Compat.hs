@@ -49,6 +49,7 @@ data MkMlModule m tensor model mname x = MkMlModule
   , functional :: MkFunctionalFuns tensor
   , properties :: MkPropertyFuns m tensor model mname x
   , json :: MkJsonFuns m tensor model mname x
+  , schema :: MkSchemaFuns m tensor model mname x
   }
   deriving (Generic)
 
@@ -244,6 +245,13 @@ data MkJsonFuns m tensor model mname x = MkJsonFuns
   , asNumber :: Value (MlValue tensor model mname x) m
   , asText :: Value (MlValue tensor model mname x) m
   , asBool :: Value (MlValue tensor model mname x) m
+  }
+  deriving (Generic)
+
+data MkSchemaFuns m tensor model mname x = MkSchemaFuns
+  { fromPrimitive :: Value (MlValue tensor model mname x) m
+  , object :: Value (MlValue tensor model mname x) m
+  , array :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -852,6 +860,60 @@ module JSON
   @doc `JSON.asBool j` attempts to interpret `j` as a JSON boolean,
   returning `None` if `j` is not a boolean;
   asBool : json -> option of bool{#true, #false} := ###!asBool###;
+
+module Schema
+  @doc Primitive JSON types for specifying the response type of an `ML.promptWith`
+  invocation.
+
+  The `primitive` enum and `schema` type inform the LLM of the expected shape
+  of response data. This enables structured parsing of LLM responses, along with
+  the `JSON` module.
+
+  When used with `ML.promptWith`, the LLM will automatically be instructed to
+  produce a response that matches the shape of the schema. `JSON` module functions
+  can then be used to access, consume, and parse the returned data.
+
+  Note that unlike `primitive`, `schema` itself cannot be created directly. It
+  must be produced via one of the smart constructor functions below.
+
+  `primitive`s can be turned into `schema`s and used with composite schema
+  types (i.e. arrays and objects) by using the `fromPrimitive` function below.
+
+  Note that `null` as a JSON value is NOT directly supported.;
+  enum primitive := #string | #number | #bool;
+
+  @doc Turn a `primitive` into a `schema`, this can either be used directly or
+  used with `object` or `array` to produce more complex schemas.
+
+  ~~~inferno
+  // We are expecting a string as a response
+  //
+  // The response can then be consumed with `JSON.asString ...`
+  Schema.fromPrimitive Schema.#string == "$string"
+  ~~~;
+  fromPrimitive : primitive{#string, #number, #bool} -> schema := ###!fromPrimitive###;
+
+  @doc Turn the array of key-value pairs into a `schema`. The individual `schema`s
+  under each key do NOT need to be homogeneous: any schema type is supported,
+  allowing for e.g. nested objects, arrays, etc...
+
+  ~~~inferno
+  // We are expecting an object with a single `ok` boolean key as a response
+  //
+  // The response can be consumed with `Option.flatMap (JSON.asBool) (JSON.atKey "ok" ...)`
+  Schema.object [("ok", Schema.fromPrimitive Schema.#bool)] == {"ok": "$bool"}
+  ~~~;
+  object : array of (text, schema) -> schema := ###!object###;
+
+  @doc Turn the array of `schema`s into a `schema`.
+
+  ~~~inferno
+  // We are expecting an array of doubles as a response
+  //
+  // The response can be consumed with `Option.flatMap (Option.traverse JSON.asNumber) (JSON.asArray ...)`
+  Schema.object [Schema.fromPrimitive Schema.#number] == [$number]
+  ~~~;
+  array : array of schema -> schema := ###!array###;
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
@@ -863,6 +925,7 @@ module JSON
     MkFunctionalFuns{..} = mk.functional
     MkPropertyFuns{..} = mk.properties
     MkJsonFuns{..} = mk.json
+    MkSchemaFuns{..} = mk.schema
 
 -- | Given concrete types, this will create a 'MkPrelude' that is suitable for
 -- type-checking purposes, but which will throw an error if evaluated. This is
@@ -1032,6 +1095,12 @@ mkUnboundModule =
           , asNumber = undefined
           , asText = undefined
           , asBool = undefined
+          }
+    , schema =
+        MkSchemaFuns
+          { fromPrimitive = undefined
+          , object = undefined
+          , array = undefined
           }
     }
   where
