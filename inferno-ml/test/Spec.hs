@@ -86,15 +86,20 @@ evalTests = describe "evaluate" $
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])
 
     shouldEvaluateTo "Schema.fromPrimitive Schema.#number" $
-      VCustom . VSchema $ Compat.Primitive Compat.Number
+      VCustom . VSchema $
+        Compat.Primitive Compat.Number
     shouldEvaluateTo "Schema.fromPrimitive Schema.#string" $
-      VCustom . VSchema $ Compat.Primitive Compat.String
+      VCustom . VSchema $
+        Compat.Primitive Compat.String
     shouldEvaluateTo "Schema.fromPrimitive Schema.#bool" $
-      VCustom . VSchema $ Compat.Primitive Compat.Bool
+      VCustom . VSchema $
+        Compat.Primitive Compat.Bool
     shouldEvaluateTo "Schema.array (Schema.fromPrimitive Schema.#number)" $
-      VCustom . VSchema . Compat.Array $ Compat.Primitive Compat.Number
+      VCustom . VSchema . Compat.Array $
+        Compat.Primitive Compat.Number
     shouldEvaluateTo "Schema.object [(\"x\", Schema.fromPrimitive Schema.#bool)]" $
-      VCustom . VSchema . Compat.Object $ Map.fromList [("x", Compat.Primitive Compat.Bool)]
+      VCustom . VSchema . Compat.Object $
+        Map.fromList [("x", Compat.Primitive Compat.Bool)]
 
 schemaTests :: Spec
 schemaTests = describe "renderSchema" $ do
