@@ -1,6 +1,9 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.5.0
+* Add `Schema` and `JSON` modules for structured LLM response schemas
+
 ## 0.4.0
 * Add `prompt` function to ML module interface
 
