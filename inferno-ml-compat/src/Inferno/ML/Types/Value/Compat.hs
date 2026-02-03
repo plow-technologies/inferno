@@ -6,13 +6,22 @@
 module Inferno.ML.Types.Value.Compat where
 
 import qualified Data.Aeson as Aeson
+import Data.Functor ((<&>))
 import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Text (Text)
-import Data.Vector (Vector)
+import qualified Data.Text.Lazy as Text.Lazy
+import Data.Text.Lazy.Builder
+  ( Builder
+  , toLazyText
+  , fromText
+  , singleton
+  )
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (CustomType)
 import Inferno.Utils.QQ.Module (moduleQuoter)
 import Language.Haskell.TH.Quote (QuasiQuoter)
+
 
 -- | Compatibility type for Inferno ML projects. This is intended to avoid
 -- forcing a dependency on the @hasktorch@ package. For example, dummy types
@@ -26,17 +35,58 @@ data MlValue tensor model mname x
   | VSchema Schema
   | VExtended x
 
+-- | A schema containing type and shape information for LLM responses. This
+-- can be a composite type or a single scalar primitive
 data Schema
-  = Primitive SchemaPrimitive
-  | Array (Vector Schema)
+  = -- | For either using a 'Primitive' as a schema alone, or as part of a
+    -- composite
+    Primitive SchemaPrimitive
+  | -- | Note: since Inferno arrays a homoegeneous, we only allow the @Array@
+    -- case to hold a single schema. E.g. @[$number]@
+    Array Schema
   | Object (Map Text Schema)
   deriving stock (Show, Eq, Generic)
 
-instance Aeson.ToJSON Schema where
-  toJSON = \case
-    Primitive p -> Aeson.toJSON p
-    Array xs -> Aeson.toJSON xs
-    Object o -> Aeson.toJSON o
+-- | This uses a @Text@-based builder instead of Aeson to create the schema. We
+-- don't want type meta-variables quoted, for example. E.g. we want @$string@,
+-- not @"$string"@. This is NOT meant to be parseable as JSON, it's a textual
+-- description of a 'Schema' that resembles JSON
+renderSchema :: Schema -> Text
+renderSchema = Text.Lazy.toStrict . toLazyText . render
+  where
+    render :: Schema -> Builder
+    render = \case
+      Primitive p -> case p of
+        String -> fromText "$string"
+        Number -> fromText "$number"
+        Bool -> fromText "$bool"
+      Array a -> mconcat [singleton '[', render a, singleton ']']
+      Object o ->
+        mconcat
+          [ singleton '{'
+          , commaSep $ Map.toList o <&> \(k, v) ->
+              mconcat
+                [ -- Creates the "keys", formatted similarly to JSON keys
+                  -- (unlike the primitive meta-variables)
+                  mconcat
+                  [ singleton '"'
+                  , fromText k
+                  , singleton '"'
+                  , singleton ':'
+                  , singleton ' '
+                  ]
+                , render v
+                ]
+          , singleton '}'
+          ]
+        where
+          commaSep :: [Builder] -> Builder
+          commaSep [] = mempty
+          commaSep (b : bs) =
+            mconcat
+              [ b
+              , foldMap (fromText ", " <>) bs
+              ]
 
 -- | Primitive type for LLM response schemas
 data SchemaPrimitive
@@ -45,12 +95,6 @@ data SchemaPrimitive
   | Bool
   deriving stock (Show, Eq, Generic)
 
--- This creates the meta type variables for the schema
-instance Aeson.ToJSON SchemaPrimitive where
-  toJSON = \case
-    String -> "$string"
-    Number -> "$number"
-    Bool -> "$bool"
 
 customTypes :: [CustomType]
 customTypes =

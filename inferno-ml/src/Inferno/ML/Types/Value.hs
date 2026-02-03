@@ -67,7 +67,7 @@ import Torch
 
 type MlValue x = Compat.MlValue Tensor (ModelConfig ScriptModule) ModelName x
 
-{-# COMPLETE VTensor, VModel, VModelName, VJson, VExtended #-}
+{-# COMPLETE VTensor, VModel, VModelName, VJson, VSchema, VExtended #-}
 
 pattern VTensor :: Tensor -> MlValue x
 pattern VTensor t = Compat.VTensor t
@@ -80,6 +80,9 @@ pattern VModelName mn = Compat.VModelName mn
 
 pattern VJson :: Aeson.Value -> MlValue x
 pattern VJson j = Compat.VJson j
+
+pattern VSchema :: Compat.Schema -> MlValue x
+pattern VSchema s = Compat.VSchema s
 
 pattern VExtended :: x -> MlValue x
 pattern VExtended x = Compat.VExtended x
