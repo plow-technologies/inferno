@@ -333,11 +333,22 @@ module ML
   parseable using `JSON` module functions. If the text cannot be parsed into a
   JSON structure, it becomes JSON text.
 
-  FIXME: Add schema argument
+  For a contrived example, `promptWith m t s` where
+  - `m` is a Bedrock model
+  - `t` is the prompt: `"Find any outlier(s) in this set of number [1, 2203, 3, 4, 9861]"`
+  - `s` is the schema: `Schema.array (Schema.fromPrimitive Schema.#number)`
+
+  will automatically prompt the LLM to return a JSON response following the
+  schema `[$number]`. The output can be parsed using `JSON` and `Option` module
+  members. In this case, `Option.flapMap (Option.traverse JSON.asNumber (JSON.asArray ...))`
+
+  See the `Schema` module documentation for available schema structures. Note that
+  both primitives and composite types are supported. For example, you can request
+  nested objects, arrays of objects, etc...
 
   NOTE: This function only works for Bedrock models. You cannot `promptWith` a
-  TorchScript model;
-  promptWith : model -> text -> json := ###!prompt###;
+  TorchScript model.;
+  promptWith : model -> text -> schema -> json := ###!prompt###;
 
   zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 

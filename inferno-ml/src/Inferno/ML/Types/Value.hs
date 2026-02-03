@@ -11,6 +11,7 @@ module Inferno.ML.Types.Value
     pattern VModel,
     pattern VModelName,
     pattern VJson,
+    pattern VSchema,
     pattern VExtended,
     ModelName (ModelName),
     enumDeviceHash,
@@ -118,6 +119,7 @@ instance (Pretty x) => Pretty (MlValue x) where
             }
         $ j
     VExtended x -> align $ pretty x
+    VSchema s -> align . pretty $ Compat.renderSchema s
 
 instance ToValue (MlValue x) m Tensor where
   toValue = VCustom . VTensor
@@ -175,6 +177,14 @@ instance ToValue (MlValue x) m (Text, Aeson.Value) where
 instance (Pretty x) => FromValue (MlValue x) m (Text, Aeson.Value) where
   fromValue = \case
     VTuple [VText k, VCustom (VJson v)] -> pure (k, v)
+    v -> couldNotCast v
+
+instance ToValue (MlValue x) m Compat.Schema where
+  toValue = VCustom . VSchema
+
+instance (Pretty x) => FromValue (MlValue x) m Compat.Schema where
+  fromValue = \case
+    VCustom (VSchema s) -> pure s
     v -> couldNotCast v
 
 -- We need a hash for the `device` enum in Inferno in order for functions
