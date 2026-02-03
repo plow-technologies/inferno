@@ -89,12 +89,13 @@ test-suite inferno-ml-tests
   hs-source-dirs:   test
   main-is:          Spec.hs
   build-depends:
-      base           >=4.7 && <5
+      base               >=4.7 && <5
     , containers
     , hasktorch
     , hspec
     , inferno-core
     , inferno-ml
+    , inferno-ml-compat
     , inferno-types
     , text
 
