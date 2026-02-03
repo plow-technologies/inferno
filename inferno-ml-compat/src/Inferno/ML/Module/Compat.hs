@@ -873,12 +873,9 @@ module JSON
   asBool : json -> option of bool{#true, #false} := ###!asBool###;
 
 module Schema
-  @doc Primitive JSON types for specifying the response type of an `ML.promptWith`
-  invocation.
-
-  The `primitive` enum and `schema` type inform the LLM of the expected shape
-  of response data. This enables structured parsing of LLM responses, along with
-  the `JSON` module.
+  @doc The `primitive` enum and `schema` type inform the LLM of the expected shape
+  and type of response data. This enables structured parsing of LLM responses,
+  along with the `JSON` module.
 
   When used with `ML.promptWith`, the LLM will automatically be instructed to
   produce a response that matches the shape of the schema. `JSON` module functions
