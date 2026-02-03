@@ -916,15 +916,18 @@ module Schema
   ~~~;
   object : array of (text, schema) -> schema := ###!object###;
 
-  @doc Turn the array of `schema`s into a `schema`.
+  @doc Turn the `schema` into an array of `schema`. This only takes a _single_
+  `schema` argument because Inferno `array`s are homogeneous. For example,
+  `Schema.array (Schema.fromPrimitive Schema.#string)` means we are expecting an
+  array of strings.
 
   ~~~inferno
   // We are expecting an array of doubles as a response
   //
   // The response can be consumed with `Option.flatMap (Option.traverse JSON.asNumber) (JSON.asArray ...)`
-  Schema.object [Schema.fromPrimitive Schema.#number] == [$number]
+  Schema.array (Schema.fromPrimitive Schema.#number) == [$number]
   ~~~;
-  array : array of schema -> schema := ###!array###;
+  array : schema -> schema := ###!array###;
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
