@@ -20,11 +20,12 @@ import Control.Exception (ErrorCall)
 import Control.Monad.Catch (MonadCatch, MonadThrow (throwM))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader (asks)
+import qualified Data.Aeson as Aeson
 import Data.Foldable (foldrM)
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
 import qualified Data.Map as Map
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Sequence ((|>))
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -50,8 +51,9 @@ import Inferno.ML.Types.Value
     pattern VExtended,
     pattern VModel,
     pattern VModelName,
+    pattern VSchema,
   )
-import Inferno.ML.Types.Value.Compat (mlQuoter)
+import Inferno.ML.Types.Value.Compat (mlQuoter, renderSchema)
 import Inferno.Module.Cast
 import Inferno.Module.Prelude (ModuleMap)
 import qualified Inferno.Types.Module
@@ -320,6 +322,7 @@ serverMlPrelude ipid =
         -- `TorchScript` models and getting configuration for `Bedrock` models
         & #models . #loadModel .~ loadModelFun
         & #models . #prompt .~ promptFun
+        & #models . #promptWith .~ promptWithFun
 
     loadModelFun :: BridgeV RemoteM
     loadModelFun =
@@ -380,37 +383,73 @@ serverMlPrelude ipid =
               , "only compatible with Bedrock models"
               ]
         VCustom (VModel (Bedrock config)) -> pure . VFun $ \case
-          VText t ->
-            let
-              callPrompt :: RemoteM BedrockResult
-              callPrompt =
-                withCallBridge ipid . promptC $
-                  BedrockRequest t config
-
-              clientFailure :: RemoteError -> RemoteM a
-              clientFailure = \case
-                -- This is the only internal exception that should be thrown by
-                -- the bridge invocation. This would indicate some HTTP issue
-                ClientError _ s ->
-                  throwM . RuntimeError $
-                    unwords
-                      [ "Error in `prompt`: HTTP failure;"
-                      , "original exceptin:"
-                      , s
-                      ]
-                e -> throwM e
-             in
-              liftImplEnvM $
-                handle clientFailure callPrompt >>= \case
-                  PromptFailure f ->
-                    throwM . RuntimeError $
-                      unwords
-                        [ "Error in `prompt`, Bedrock API failure:"
-                        , Text.unpack f
-                        ]
-                  PromptSuccess s -> pure $ toValue s
+          VText pt -> liftImplEnvM $ toValue <$> callPrompt config pt
           _ -> throwM $ RuntimeError "prompt: expecting prompt text"
         _ -> throwM $ RuntimeError "prompt: expecting a model"
+
+    promptWithFun :: BridgeV RemoteM
+    promptWithFun =
+      VFun $ \case
+        -- See note above
+        VCustom (VModel (TorchScript _)) ->
+          throwM . RuntimeError $
+            unwords
+              [ "Cannot `promptWith` a TorchScript model; `promptWith` is"
+              , "only compatible with Bedrock models"
+              ]
+        VCustom (VModel (Bedrock config)) -> pure . VFun $ \case
+          VText pt -> pure . VFun $ \case
+            VCustom (VSchema schema) ->
+              let
+                -- Try to parse the LLM response as JSON (Aeson `Value`), falling
+                -- back to `String` if not parseable
+                asJson :: Text -> Aeson.Value
+                asJson t = fromMaybe (Aeson.String t) $ Aeson.decodeStrictText t
+
+                appendSchema :: Text
+                appendSchema =
+                  Text.unlines
+                    [ pt
+                    , "Return a JSON-parseable response like this: "
+                        <> renderSchema schema
+                    ]
+               in
+                fmap (toValue . asJson) . liftImplEnvM $
+                  callPrompt config appendSchema
+            _ -> throwM $ RuntimeError "promptWith: expecting schema"
+          _ -> throwM $ RuntimeError "promptWith: expecting prompt text"
+        _ -> throwM $ RuntimeError "promptWith: expecting a model"
+
+    -- Execute the actual bridge API call
+    callPrompt :: BedrockConfig -> Text -> RemoteM Text
+    callPrompt config t =
+      let
+        callBridgePrompt :: RemoteM BedrockResult
+        callBridgePrompt =
+          withCallBridge ipid . promptC $
+            BedrockRequest t config
+
+        clientFailure :: RemoteError -> RemoteM a
+        clientFailure = \case
+          -- This is the only internal exception that should be thrown by
+          -- the bridge invocation. This would indicate some HTTP issue
+          ClientError _ s ->
+            throwM . RuntimeError $
+              unwords
+                [ "Error in `prompt`: HTTP failure;"
+                , "original exceptin:"
+                , s
+                ]
+          e -> throwM e
+       in
+        handle clientFailure callBridgePrompt >>= \case
+          PromptFailure f ->
+            throwM . RuntimeError $
+              unwords
+                [ "Error in `prompt`, Bedrock API failure:"
+                , Text.unpack f
+                ]
+          PromptSuccess s -> pure s
 
     printModules :: ModuleMap RemoteM (MlValue BridgeValue)
     printModules = mkPrintModules printFun printWithFun

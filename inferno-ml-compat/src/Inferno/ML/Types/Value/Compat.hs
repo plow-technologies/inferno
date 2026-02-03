@@ -12,16 +12,15 @@ import qualified Data.Map.Strict as Map
 import Data.Text (Text)
 import qualified Data.Text.Lazy as Text.Lazy
 import Data.Text.Lazy.Builder
-  ( Builder
-  , toLazyText
-  , fromText
-  , singleton
+  ( Builder,
+    fromText,
+    singleton,
+    toLazyText,
   )
 import GHC.Generics (Generic)
 import Inferno.Types.Syntax (CustomType)
 import Inferno.Utils.QQ.Module (moduleQuoter)
 import Language.Haskell.TH.Quote (QuasiQuoter)
-
 
 -- | Compatibility type for Inferno ML projects. This is intended to avoid
 -- forcing a dependency on the @hasktorch@ package. For example, dummy types
@@ -64,19 +63,20 @@ renderSchema = Text.Lazy.toStrict . toLazyText . render
       Object o ->
         mconcat
           [ singleton '{'
-          , commaSep $ Map.toList o <&> \(k, v) ->
-              mconcat
-                [ -- Creates the "keys", formatted similarly to JSON keys
-                  -- (unlike the primitive meta-variables)
-                  mconcat
-                  [ singleton '"'
-                  , fromText k
-                  , singleton '"'
-                  , singleton ':'
-                  , singleton ' '
+          , commaSep $
+              Map.toList o <&> \(k, v) ->
+                mconcat
+                  [ -- Creates the "keys", formatted similarly to JSON keys
+                    -- (unlike the primitive meta-variables)
+                    mconcat
+                      [ singleton '"'
+                      , fromText k
+                      , singleton '"'
+                      , singleton ':'
+                      , singleton ' '
+                      ]
+                  , render v
                   ]
-                , render v
-                ]
           , singleton '}'
           ]
         where
@@ -94,7 +94,6 @@ data SchemaPrimitive
   | Number
   | Bool
   deriving stock (Show, Eq, Generic)
-
 
 customTypes :: [CustomType]
 customTypes =
