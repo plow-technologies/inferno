@@ -12,7 +12,7 @@ import qualified Data.Map as Map
 import Data.Text (Text, unpack)
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (defaultMlPrelude)
-import Inferno.ML.Types.Value (MlValue, customTypes, pattern VTensor)
+import Inferno.ML.Types.Value (MlValue, customTypes, pattern VSchema, pattern VTensor)
 import qualified Inferno.ML.Types.Value.Compat as Compat
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Value (Value (..))
@@ -84,6 +84,17 @@ evalTests = describe "evaluate" $
     shouldFailToInferTypeFor "ML.asTensor4 ML.#float [[1, 2, 4]]"
     shouldEvaluateTo "ML.asDouble (Tensor.sumAll (ML.ones ML.#int [2, 4]))" $ VDouble 8.0
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])
+
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#number" $
+      VCustom . VSchema $ Compat.Primitive Compat.Number
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#string" $
+      VCustom . VSchema $ Compat.Primitive Compat.String
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#bool" $
+      VCustom . VSchema $ Compat.Primitive Compat.Bool
+    shouldEvaluateTo "Schema.array (Schema.fromPrimitive Schema.#number)" $
+      VCustom . VSchema . Compat.Array $ Compat.Primitive Compat.Number
+    shouldEvaluateTo "Schema.object [(\"x\", Schema.fromPrimitive Schema.#bool)]" $
+      VCustom . VSchema . Compat.Object $ Map.fromList [("x", Compat.Primitive Compat.Bool)]
 
 schemaTests :: Spec
 schemaTests = describe "renderSchema" $ do
