@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.2.3
+* Implement `promptWith` for structured LLM responses
+
 ## 2026.1.29
 * Implement `prompt` function via bridge to Bedrock API
 

@@ -1,6 +1,9 @@
 # Revision History for inferno-ml
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.13.0.0 -- 2026-02-03
+* Add `Schema` and `JSON` module implementations
+
 ## 0.12.0.0 -- 2026-01-29
 * Add `prompt` to `ML` module
 

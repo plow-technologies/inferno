@@ -119,6 +119,7 @@ import Inferno.Module.Prelude.Defs
     toWord16Fun,
     toWord32Fun,
     toWord64Fun,
+    traverseOptionFun,
     truncateFun,
     truncateToFun,
     unconsFun,
@@ -382,6 +383,20 @@ module Option
       | Some a -> Some (f a)
       | None -> None
     };
+
+  @doc `Option.flatMap f ma` applies `f` to the value inside `ma` and flattens the result,
+  i.e. if `ma` is `Some a`, it returns the `option` result of `f a`, otherwise `None`.;
+  flatMap : forall 'a 'b. ('a -> option of 'b) -> option of 'a -> option of 'b :=
+    fun f ma -> match ma with {
+      | Some a -> f a
+      | None -> None
+    };
+
+  @doc `Option.traverse f xs` applies `f` to each element of `xs`, returning `Some` of
+  the resulting array if all applications return `Some`, or `None` if any returns `None`.;
+  traverse : forall 'a 'b. ('a -> option of 'b) -> array of 'a -> option of (array of 'b) :=
+    ###!traverseOptionFun###;
+
   singleton : forall 'a. 'a -> option of 'a := fun a -> Some a;
 
   @doc Given a tuple `(Some x , Some y)`, `Option.mergeTuple` returns `Some (x , y)`. If any of the components are `None` it returns `None`.;

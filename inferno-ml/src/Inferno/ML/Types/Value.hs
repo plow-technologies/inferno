@@ -10,6 +10,8 @@ module Inferno.ML.Types.Value
     pattern VTensor,
     pattern VModel,
     pattern VModelName,
+    pattern VJson,
+    pattern VSchema,
     pattern VExtended,
     ModelName (ModelName),
     enumDeviceHash,
@@ -18,10 +20,14 @@ module Inferno.ML.Types.Value
     module M,
   ) where
 
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Encode.Pretty as Aeson.Encode.Pretty
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import qualified Data.Text.Lazy as Text.Lazy
+import qualified Data.Text.Lazy.Builder as Text.Lazy.Builder
 import Data.UUID (UUID)
 import qualified Data.UUID as UUID
 import GHC.Generics (Generic)
@@ -52,7 +58,7 @@ import Inferno.Types.Syntax
     InfernoType (TBase),
     TCScheme (ForallTC),
   )
-import Inferno.Types.Value (Value (VCustom))
+import Inferno.Types.Value (Value (VCustom, VText, VTuple))
 import Inferno.Types.VersionControl (VCObjectHash, vcHash)
 import Prettyprinter (Pretty (pretty), align)
 import Torch
@@ -62,7 +68,7 @@ import Torch
 
 type MlValue x = Compat.MlValue Tensor (ModelConfig ScriptModule) ModelName x
 
-{-# COMPLETE VTensor, VModel, VModelName, VExtended #-}
+{-# COMPLETE VTensor, VModel, VModelName, VJson, VSchema, VExtended #-}
 
 pattern VTensor :: Tensor -> MlValue x
 pattern VTensor t = Compat.VTensor t
@@ -72,6 +78,12 @@ pattern VModel m = Compat.VModel m
 
 pattern VModelName :: ModelName -> MlValue x
 pattern VModelName mn = Compat.VModelName mn
+
+pattern VJson :: Aeson.Value -> MlValue x
+pattern VJson j = Compat.VJson j
+
+pattern VSchema :: Compat.Schema -> MlValue x
+pattern VSchema s = Compat.VSchema s
 
 pattern VExtended :: x -> MlValue x
 pattern VExtended x = Compat.VExtended x
@@ -96,7 +108,18 @@ instance (Pretty x) => Pretty (MlValue x) where
     VModel (TorchScript m) -> align . pretty . Text.pack $ show m
     VModel (Bedrock bc) -> align . pretty . Text.pack $ show bc
     VModelName x -> align $ pretty x
+    VJson j ->
+      align
+        . pretty
+        . Text.Lazy.toStrict
+        . Text.Lazy.Builder.toLazyText
+        . Aeson.Encode.Pretty.encodePrettyToTextBuilder'
+          Aeson.Encode.Pretty.defConfig
+            { Aeson.Encode.Pretty.confIndent = Aeson.Encode.Pretty.Spaces 2
+            }
+        $ j
     VExtended x -> align $ pretty x
+    VSchema s -> align . pretty $ Compat.renderSchema s
 
 instance ToValue (MlValue x) m Tensor where
   toValue = VCustom . VTensor
@@ -136,6 +159,32 @@ instance ToValue (MlValue x) m ModelName where
 instance (Pretty x) => FromValue (MlValue x) m ModelName where
   fromValue = \case
     VCustom (VModelName t) -> pure t
+    v -> couldNotCast v
+
+instance ToValue (MlValue x) m Aeson.Value where
+  toValue = VCustom . VJson
+
+instance (Pretty x) => FromValue (MlValue x) m Aeson.Value where
+  fromValue = \case
+    VCustom (VJson j) -> pure j
+    v -> couldNotCast v
+
+-- Helpers for unpacking Aeson `KeyMap`s into lists of tuples
+
+instance ToValue (MlValue x) m (Text, Aeson.Value) where
+  toValue (k, v) = VTuple [toValue k, toValue v]
+
+instance (Pretty x) => FromValue (MlValue x) m (Text, Aeson.Value) where
+  fromValue = \case
+    VTuple [VText k, VCustom (VJson v)] -> pure (k, v)
+    v -> couldNotCast v
+
+instance ToValue (MlValue x) m Compat.Schema where
+  toValue = VCustom . VSchema
+
+instance (Pretty x) => FromValue (MlValue x) m Compat.Schema where
+  fromValue = \case
+    VCustom (VSchema s) -> pure s
     v -> couldNotCast v
 
 -- We need a hash for the `device` enum in Inferno in order for functions

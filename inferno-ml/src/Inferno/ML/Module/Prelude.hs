@@ -23,24 +23,45 @@ import Control.Monad.Catch
   )
 import Control.Monad.Extra (concatMapM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Key as Aeson.Key
+import qualified Data.Aeson.KeyMap as Aeson.KeyMap
+import Data.Aeson.Lens (key, _Array, _Bool, _Number, _Object, _String)
+import Data.Bifunctor (first)
 import Data.Bool (bool)
-import Data.Functor ((<&>))
-import qualified Data.Map as Map
+import Data.Foldable (toList)
+import Data.Map (Map)
+import qualified Data.Map.Strict as Map
 import Data.Proxy (Proxy (Proxy))
+import Data.Scientific (toRealFloat)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.Eval.Error (EvalError (RuntimeError))
 import Inferno.ML.Module.Compat (MkPropertyFuns (MkPropertyFuns))
 import qualified Inferno.ML.Module.Compat as Compat
 import Inferno.ML.Types.Value
+import qualified Inferno.ML.Types.Value.Compat as Compat
 import Inferno.Module.Builtin (enumBoolHash)
 import Inferno.Module.Cast (Either3, FromValue (fromValue), ToValue (toValue))
 import qualified Inferno.Module.Prelude as Prelude
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.Value
   ( ImplEnvM,
-    Value (VArray, VCustom, VDouble, VEnum, VFun, VInt, VText),
+    Value
+      ( VArray,
+        VCustom,
+        VDouble,
+        VEmpty,
+        VEnum,
+        VFun,
+        VInt,
+        VOne,
+        VText,
+        VTuple
+      ),
   )
 import Language.C.Inline.Cpp.Exception (CppException)
+import Lens.Micro.Platform
 import Prettyprinter (Pretty)
 import Torch
   ( DType,
@@ -137,6 +158,14 @@ defaultMlModule =
                   VText _ ->
                     throwM $
                       RuntimeError "prompt: not implemented; must be overridden by server"
+                  _ -> throwM $ RuntimeError "expected text"
+                _ -> throwM $ RuntimeError "expected a model"
+          , promptWith =
+              VFun $ \case
+                VCustom (VModel _) -> pure . VFun $ \case
+                  VText _ ->
+                    throwM $
+                      RuntimeError "promptWith: not implemented; must be overridden by server"
                   _ -> throwM $ RuntimeError "expected text"
                 _ -> throwM $ RuntimeError "expected a model"
           , unsafeLoadScript =
@@ -380,6 +409,58 @@ defaultMlModule =
                   _ -> throwM $ RuntimeError "dquantile: expected quantile double"
                 _ -> throwM $ RuntimeError "dquantile: expected input tensor"
           }
+    , json =
+        Compat.MkJsonFuns
+          { atKey = withJson "atKey" $ \j -> VFun $ \case
+              VText (Aeson.Key.fromText -> k) -> j ^? key k & toValue & pure
+              _ -> throwM $ RuntimeError "atKey: expecting a text key"
+          , asArray =
+              withJson "asArray" $
+                maybe VEmpty (VOne . VArray . toList . fmap toValue)
+                  . preview _Array
+          , asObject =
+              withJson "asObject" $
+                maybe
+                  VEmpty
+                  ( VOne
+                      . toValue
+                      . fmap (first Aeson.Key.toText)
+                      . Aeson.KeyMap.toAscList
+                  )
+                  . preview _Object
+          , asNumber =
+              withJson "asNumber" $
+                toValue . fmap (toRealFloat @Double) . preview _Number
+          , asText = withJson "asText" $ toValue . preview _String
+          , asBool = withJson "asBool" $ toValue . preview _Bool
+          }
+    , schema =
+        Compat.MkSchemaFuns
+          { fromPrimitive =
+              VFun $ \case
+                VEnum _ e -> case e of
+                  "string" -> pure . toValue $ Compat.Primitive Compat.String
+                  "number" -> pure . toValue $ Compat.Primitive Compat.Number
+                  "bool" -> pure . toValue $ Compat.Primitive Compat.Bool
+                  _ -> throwM $ RuntimeError "fromPrimitive: expecting a schema primitive"
+                _ -> throwM $ RuntimeError "fromPrimitive: expecting a schema primitive"
+          , object =
+              VFun $ \case
+                VArray kvs ->
+                  VCustom . VSchema . Compat.Object <$> getPairs kvs
+                  where
+                    -- Unfortunately we need to traverse over every single
+                    -- key-value pair here
+                    getPairs :: [Value (MlValue x) m] -> m (Map Text Compat.Schema)
+                    getPairs = fmap (fmap Map.fromList) . traverse $ \case
+                      VTuple [VText k, VCustom (VSchema s)] -> pure (k, s)
+                      _ -> throwM $ RuntimeError "object: expecting a list of key-value pairs"
+                _ -> throwM $ RuntimeError "object: expecting a schema"
+          , array =
+              VFun $ \case
+                VCustom (VSchema s) -> pure . toValue $ Compat.Array s
+                _ -> throwM $ RuntimeError "object: expecting a schema"
+          }
     }
   where
     -- Generic quantile implementation that works for both tensor and double
@@ -407,6 +488,13 @@ defaultMlModule =
       where
         throwRuntimeError :: (MonadThrow m) => String -> m a
         throwRuntimeError msg = throwM . RuntimeError $ funName <> ": " <> msg
+
+withJson ::
+  (MonadThrow m) => String -> (Aeson.Value -> Value (MlValue x) m) -> Value (MlValue x) m
+withJson funName f =
+  VFun $ \case
+    VCustom (VJson j) -> pure $ f j
+    _ -> throwM . RuntimeError $ funName <> ": expecting json value"
 
 withDType ::
   (MonadThrow m) => String -> (DType -> Value (MlValue x) m) -> Value (MlValue x) m

@@ -12,7 +12,8 @@ import qualified Data.Map as Map
 import Data.Text (Text, unpack)
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
 import Inferno.ML.Module.Prelude (defaultMlPrelude)
-import Inferno.ML.Types.Value (MlValue, customTypes, pattern VTensor)
+import Inferno.ML.Types.Value (MlValue, customTypes, pattern VSchema, pattern VTensor)
+import qualified Inferno.ML.Types.Value.Compat as Compat
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Value (Value (..))
 import Inferno.Utils.Prettyprinter (renderPretty)
@@ -24,6 +25,7 @@ main :: IO ()
 main =
   hspec $ do
     evalTests
+    schemaTests
 
 xorScript :: Text
 xorScript =
@@ -82,3 +84,74 @@ evalTests = describe "evaluate" $
     shouldFailToInferTypeFor "ML.asTensor4 ML.#float [[1, 2, 4]]"
     shouldEvaluateTo "ML.asDouble (Tensor.sumAll (ML.ones ML.#int [2, 4]))" $ VDouble 8.0
     shouldEvaluateTo xorScript $ VArray (map VInt [0, 1, 1, 0])
+
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#number" $
+      VCustom . VSchema $
+        Compat.Primitive Compat.Number
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#string" $
+      VCustom . VSchema $
+        Compat.Primitive Compat.String
+    shouldEvaluateTo "Schema.fromPrimitive Schema.#bool" $
+      VCustom . VSchema $
+        Compat.Primitive Compat.Bool
+    shouldEvaluateTo "Schema.array (Schema.fromPrimitive Schema.#number)" $
+      VCustom . VSchema . Compat.Array $
+        Compat.Primitive Compat.Number
+    shouldEvaluateTo "Schema.object [(\"x\", Schema.fromPrimitive Schema.#bool)]" $
+      VCustom . VSchema . Compat.Object $
+        Map.fromList [("x", Compat.Primitive Compat.Bool)]
+
+schemaTests :: Spec
+schemaTests = describe "renderSchema" $ do
+  it "renders primitive string" $
+    Compat.renderSchema (Compat.Primitive Compat.String) `shouldBe` "$string"
+
+  it "renders primitive number" $
+    Compat.renderSchema (Compat.Primitive Compat.Number) `shouldBe` "$number"
+
+  it "renders primitive bool" $
+    Compat.renderSchema (Compat.Primitive Compat.Bool) `shouldBe` "$bool"
+
+  it "renders array of primitives" $
+    Compat.renderSchema (Compat.Array $ Compat.Primitive Compat.String)
+      `shouldBe` "[$string]"
+
+  it "renders nested arrays" $
+    Compat.renderSchema (Compat.Array . Compat.Array $ Compat.Primitive Compat.Number)
+      `shouldBe` "[[$number]]"
+
+  it "renders empty object" $
+    Compat.renderSchema (Compat.Object Map.empty) `shouldBe` "{}"
+
+  it "renders object with single field" $
+    Compat.renderSchema (Compat.Object $ Map.fromList [("ok", Compat.Primitive Compat.Bool)])
+      `shouldBe` "{\"ok\": $bool}"
+
+  it "renders object with multiple fields" $
+    Compat.renderSchema
+      ( Compat.Object $
+          Map.fromList
+            [ ("name", Compat.Primitive Compat.String)
+            , ("age", Compat.Primitive Compat.Number)
+            ]
+      )
+      `shouldBe` "{\"age\": $number, \"name\": $string}"
+
+  it "renders nested object" $
+    Compat.renderSchema
+      ( Compat.Object $
+          Map.fromList
+            [
+              ( "user"
+              , Compat.Object $ Map.fromList [("id", Compat.Primitive Compat.Number)]
+              )
+            ]
+      )
+      `shouldBe` "{\"user\": {\"id\": $number}}"
+
+  it "renders array of objects" $
+    Compat.renderSchema
+      ( Compat.Array . Compat.Object $
+          Map.fromList [("x", Compat.Primitive Compat.Number)]
+      )
+      `shouldBe` "[{\"x\": $number}]"

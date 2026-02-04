@@ -48,6 +48,8 @@ data MkMlModule m tensor model mname x = MkMlModule
   , conversions :: MkConversionFuns m tensor model mname x
   , functional :: MkFunctionalFuns tensor
   , properties :: MkPropertyFuns m tensor model mname x
+  , json :: MkJsonFuns m tensor model mname x
+  , schema :: MkSchemaFuns m tensor model mname x
   }
   deriving (Generic)
 
@@ -59,6 +61,7 @@ data MkModelFuns m tensor model mname x = MkModelFuns
   , forward :: Value (MlValue tensor model mname x) m
   , unsafeLoadScript :: Value (MlValue tensor model mname x) m
   , prompt :: Value (MlValue tensor model mname x) m
+  , promptWith :: Value (MlValue tensor model mname x) m
   }
   deriving (Generic)
 
@@ -230,6 +233,28 @@ data MkPropertyFuns m tensor model mname x = MkPropertyFuns
   }
   deriving (Generic)
 
+-- | JSON accessor functions. Due to Inferno ML\'s fairly complex type constraints,
+-- it is easier to defined these here and implement elsewhere, even though we could
+-- try to do it inline
+--
+-- NOTE: For Inferno primitive documentation, see the Inferno module
+data MkJsonFuns m tensor model mname x = MkJsonFuns
+  { atKey :: Value (MlValue tensor model mname x) m
+  , asArray :: Value (MlValue tensor model mname x) m
+  , asObject :: Value (MlValue tensor model mname x) m
+  , asNumber :: Value (MlValue tensor model mname x) m
+  , asText :: Value (MlValue tensor model mname x) m
+  , asBool :: Value (MlValue tensor model mname x) m
+  }
+  deriving (Generic)
+
+data MkSchemaFuns m tensor model mname x = MkSchemaFuns
+  { fromPrimitive :: Value (MlValue tensor model mname x) m
+  , object :: Value (MlValue tensor model mname x) m
+  , array :: Value (MlValue tensor model mname x) m
+  }
+  deriving (Generic)
+
 mkMlModule ::
   forall m tensor model mname x.
   ( MonadThrow m
@@ -303,6 +328,27 @@ module ML
   NOTE: This function only works for Bedrock models. You cannot `prompt` a
   TorchScript model;
   prompt : model -> text -> text := ###!prompt###;
+
+  @doc Prompt an LLM, i.e Bedrock, model. Structured JSON is returned and
+  parseable using `JSON` module functions. If the text cannot be parsed into a
+  JSON structure, it becomes JSON text.
+
+  For a contrived example, `promptWith m t s` where
+  - `m` is a Bedrock model
+  - `t` is the prompt: `"Find any outlier(s) in this set of number [1, 2203, 3, 4, 9861]"`
+  - `s` is the schema: `Schema.array (Schema.fromPrimitive Schema.#number)`
+
+  will automatically prompt the LLM to return a JSON response following the
+  schema `[$number]`. The output can be parsed using `JSON` and `Option` module
+  members. In this case, `Option.flapMap (Option.traverse JSON.asNumber (JSON.asArray ...))`
+
+  See the `Schema` module documentation for available schema structures. Note that
+  both primitives and composite types are supported. For example, you can request
+  nested objects, arrays of objects, etc...
+
+  NOTE: This function only works for Bedrock models. You cannot `promptWith` a
+  TorchScript model.;
+  promptWith : model -> text -> schema -> json := ###!prompt###;
 
   zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 
@@ -801,6 +847,84 @@ module Tensor
   tensor are shifted;
   roll : tensor -> int -> int -> tensor := ###roll###;
 
+module JSON
+  @doc `JSON.atKey j k` looks up the key `k` in the JSON object `j`,
+  returning `None` if `j` is not an object or if `k` is not present;
+  atKey : json -> text -> option of json := ###!atKey###;
+
+  @doc `JSON.asArray j` attempts to interpret `j` as a JSON array,
+  returning `None` if `j` is not an array;
+  asArray : json -> option of (array of json) := ###!asArray###;
+
+  @doc `JSON.asObject j` attempts to interpret `j` as a JSON object,
+  returning `None` if `j` is not an object;
+  asObject : json -> option of (array of (text, json)) := ###!asObject###;
+
+  @doc `JSON.asText j` attempts to interpret `j` as a JSON string,
+  returning `None` if `j` is not a string;
+  asText : json -> option of text := ###!asText###;
+
+  @doc `JSON.asDouble j` attempts to interpret `j` as a JSON number,
+  returning `None` if `j` is not a number;
+  asNumber : json -> option of double := ###!asNumber###;
+
+  @doc `JSON.asBool j` attempts to interpret `j` as a JSON boolean,
+  returning `None` if `j` is not a boolean;
+  asBool : json -> option of bool{#true, #false} := ###!asBool###;
+
+module Schema
+  @doc The `primitive` enum and `schema` type inform the LLM of the expected shape
+  and type of response data. This enables structured parsing of LLM responses,
+  along with the `JSON` module.
+
+  When used with `ML.promptWith`, the LLM will automatically be instructed to
+  produce a response that matches the shape of the schema. `JSON` module functions
+  can then be used to access, consume, and parse the returned data.
+
+  Note that unlike `primitive`, `schema` itself cannot be created directly. It
+  must be produced via one of the smart constructor functions below.
+
+  `primitive`s can be turned into `schema`s and used with composite schema
+  types (i.e. arrays and objects) by using the `fromPrimitive` function below.
+
+  Note that `null` as a JSON value is NOT directly supported.;
+  enum primitive := #string | #number | #bool;
+
+  @doc Turn a `primitive` into a `schema`, this can either be used directly or
+  used with `object` or `array` to produce more complex schemas.
+
+  ~~~inferno
+  // We are expecting a string as a response
+  //
+  // The response can then be consumed with `JSON.asString ...`
+  Schema.fromPrimitive Schema.#string == "$string"
+  ~~~;
+  fromPrimitive : primitive{#string, #number, #bool} -> schema := ###!fromPrimitive###;
+
+  @doc Turn the array of key-value pairs into a `schema`. The individual `schema`s
+  under each key do NOT need to be homogeneous: any schema type is supported,
+  allowing for e.g. nested objects, arrays, etc...
+
+  ~~~inferno
+  // We are expecting an object with a single `ok` boolean key as a response
+  //
+  // The response can be consumed with `Option.flatMap (JSON.asBool) (JSON.atKey "ok" ...)`
+  Schema.object [("ok", Schema.fromPrimitive Schema.#bool)] == {"ok": "$bool"}
+  ~~~;
+  object : array of (text, schema) -> schema := ###!object###;
+
+  @doc Turn the `schema` into an array of `schema`. This only takes a _single_
+  `schema` argument because Inferno `array`s are homogeneous. For example,
+  `Schema.array (Schema.fromPrimitive Schema.#string)` means we are expecting an
+  array of strings.
+
+  ~~~inferno
+  // We are expecting an array of doubles as a response
+  //
+  // The response can be consumed with `Option.flatMap (Option.traverse JSON.asNumber) (JSON.asArray ...)`
+  Schema.array (Schema.fromPrimitive Schema.#number) == [$number]
+  ~~~;
+  array : schema -> schema := ###!array###;
 |]
   where
     -- Unfortunately the Inferno QQ parser can't handle overloaded record dots,
@@ -811,6 +935,8 @@ module Tensor
     MkConversionFuns{..} = mk.conversions
     MkFunctionalFuns{..} = mk.functional
     MkPropertyFuns{..} = mk.properties
+    MkJsonFuns{..} = mk.json
+    MkSchemaFuns{..} = mk.schema
 
 -- | Given concrete types, this will create a 'MkPrelude' that is suitable for
 -- type-checking purposes, but which will throw an error if evaluated. This is
@@ -826,6 +952,7 @@ mkUnboundModule =
           , forward = unbound
           , unsafeLoadScript = unbound
           , prompt = unbound
+          , promptWith = unbound
           }
     , devices =
         MkDeviceFuns
@@ -970,6 +1097,21 @@ mkUnboundModule =
           , device = unbound
           , quantile = unbound
           , dquantile = unbound
+          }
+    , json =
+        MkJsonFuns
+          { atKey = undefined
+          , asArray = undefined
+          , asObject = undefined
+          , asNumber = undefined
+          , asText = undefined
+          , asBool = undefined
+          }
+    , schema =
+        MkSchemaFuns
+          { fromPrimitive = undefined
+          , object = undefined
+          , array = undefined
           }
     }
   where
