@@ -615,14 +615,12 @@ instance FromJSON BedrockConfig where
   parseJSON = withObject "BedrockConfig" $ \o ->
     BedrockConfig
       <$> o .: "modelId"
-      <*> o .: "region"
       <*> o .: "temperature"
 
 instance ToJSON BedrockConfig where
   toJSON bc =
     object
       [ "modelId" .= bc.modelId
-      , "region" .= bc.region
       , "temperature" .= bc.temperature
       ]
 
