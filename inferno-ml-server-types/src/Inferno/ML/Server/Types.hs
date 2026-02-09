@@ -11,6 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -83,8 +84,10 @@ import Inferno.ML.Server.Types.PerServer
 import Inferno.ML.Types.Compat as M
   ( BedrockConfig (BedrockConfig),
     ModelConfig (Bedrock, TorchScript),
+    Normalized (Normalized),
     Temperature (Temperature),
-    mkTemperature,
+    TopP (TopP),
+    mkNormalized,
   )
 import qualified Inferno.ML.Types.Compat
 import Inferno.Types.Syntax (Ident)
@@ -616,12 +619,14 @@ instance FromJSON BedrockConfig where
     BedrockConfig
       <$> o .: "modelId"
       <*> o .: "temperature"
+      <*> o .: "top-p"
 
 instance ToJSON BedrockConfig where
   toJSON bc =
     object
       [ "modelId" .= bc.modelId
       , "temperature" .= bc.temperature
+      , "top-p" .= bc.topP
       ]
 
 instance NFData BedrockConfig where
@@ -640,14 +645,43 @@ instance ToADTArbitrary BedrockConfig where
 instance Arbitrary BedrockConfig where
   arbitrary = genericArbitrary
 
--- Orphan instances for `Temperature` (type defined in `Inferno.ML.Types.Value`).
+-- Orphan instances for all normalized LLM inference parameters, e.g. `Normalized`,
+-- `Temperature`, etc... (types defined in `Inferno.ML.Types.Value`).
+--
 -- Defined here for same reasons as `ModelConfig` instances
 
-instance ToJSON Temperature where
-  toJSON (Temperature f) = toJSON f
+instance FromJSON Normalized where
+  parseJSON = withScientific "Normalized" $ \(toRealFloat -> f) ->
+    maybe (fail (invalid f)) pure $ mkNormalized f
+    where
+      invalid :: Float -> String
+      invalid =
+        ("Normalized values must be between 0.0 and 1.0, got " <>)
+          . show
 
-instance NFData Temperature where
+instance ToJSON Normalized where
+  toJSON (Normalized n) = toJSON n
+
+instance Arbitrary Normalized where
+  arbitrary = Normalized <$> choose (0.0, 1.0)
+
+instance NFData Normalized where
   rnf = rwhnf
+
+instance ToADTArbitrary Normalized where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "Normalized"
+      . ConstructorArbitraryPair "Normalized"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "Normalized"
+      <$> sequence [ConstructorArbitraryPair "Normalized" <$> arbitrary]
+
+deriving newtype instance FromJSON Temperature
+deriving newtype instance ToJSON Temperature
+deriving newtype instance NFData Temperature
+deriving newtype instance Arbitrary Temperature
 
 instance ToADTArbitrary Temperature where
   toADTArbitrarySingleton _ =
@@ -659,15 +693,20 @@ instance ToADTArbitrary Temperature where
     ADTArbitrary "Inferno.ML.Types.Value" "Temperature"
       <$> sequence [ConstructorArbitraryPair "Temperature" <$> arbitrary]
 
-instance FromJSON Temperature where
-  parseJSON = withScientific "Temperature" $ \(toRealFloat -> f) ->
-    maybe (fail (invalid f)) pure $ mkTemperature f
-    where
-      invalid :: Float -> String
-      invalid = ("Temperature must be between 0.0 and 1.0, got " <>) . show
+deriving newtype instance FromJSON TopP
+deriving newtype instance ToJSON TopP
+deriving newtype instance NFData TopP
+deriving newtype instance Arbitrary TopP
 
-instance Arbitrary Temperature where
-  arbitrary = Temperature <$> choose (0.0, 1.0)
+instance ToADTArbitrary TopP where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "TopP"
+      . ConstructorArbitraryPair "TopP"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "TopP"
+      <$> sequence [ConstructorArbitraryPair "TopP" <$> arbitrary]
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard

@@ -22,20 +22,46 @@ data BedrockConfig = BedrockConfig
   { modelId :: Text
   -- ^ The *Bedrock* model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
   , temperature :: Temperature
-  -- ^ Temperature parameter for generation
+  -- ^ Optional temperature parameter for generation; defaults to 0.2
+  , topP :: TopP
+  -- ^ Optional top-p parameter for generation; defaults to 0.9
   }
   deriving stock (Show, Eq, Generic)
+
+-- | Normalized parameters for LLM inference (i.e. in range 0.0 to 1.0).
+--
+-- Validated during construction and deserialization to ensure it falls within
+-- the valid range.
+newtype Normalized = Normalized Float
+  deriving stock (Show, Generic)
+  deriving newtype (Eq)
+
+-- | Smart constructor for 'Normalized' that validates the range.
+mkNormalized :: Float -> Maybe Normalized
+mkNormalized f
+  | f >= 0.0 && f <= 1.0 = Just $ Normalized f
+  | otherwise = Nothing
 
 -- | Temperature parameter for LLM generation (0.0 to 1.0).
 --
 -- Validated during construction and deserialization to ensure it falls within
 -- the valid range.
-newtype Temperature = Temperature Float
+newtype Temperature = Temperature Normalized
   deriving stock (Show, Generic)
   deriving newtype (Eq)
 
--- | Smart constructor for `Temperature` that validates the range.
+-- | Smart constructor for 'Temperature' that validates the range.
 mkTemperature :: Float -> Maybe Temperature
-mkTemperature f
-  | f >= 0.0 && f <= 1.0 = Just $ Temperature f
-  | otherwise = Nothing
+mkTemperature = fmap Temperature . mkNormalized
+
+-- | Temperature parameter for LLM generation (0.0 to 1.0).
+--
+-- Validated during construction and deserialization to ensure it falls within
+-- the valid range.
+newtype TopP = TopP Normalized
+  deriving stock (Show, Generic)
+  deriving newtype (Eq)
+
+-- | Smart constructor for 'TopP' that validates the range.
+mkTopP :: Float -> Maybe TopP
+mkTopP = fmap TopP . mkNormalized
