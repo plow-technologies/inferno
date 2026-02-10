@@ -87,12 +87,12 @@ import Inferno.ML.Types.Compat as M
   ( BedrockConfig (BedrockConfig),
     ModelConfig (Bedrock, TorchScript),
     Normalized (Normalized),
+    StopSequences (StopSequences),
     Temperature (Temperature),
     TopP (TopP),
-    StopSequences (StopSequences),
     mkNormalized,
   )
-import qualified Inferno.ML.Types.Compat
+import qualified Inferno.ML.Types.Compat ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash (VCObjectHash),
@@ -128,9 +128,9 @@ import Test.QuickCheck
     chooseInt,
     listOf,
     oneof,
+    resize,
     suchThat,
     vectorOf,
-    resize,
   )
 import Test.QuickCheck.Arbitrary.ADT
   ( ADTArbitrary (ADTArbitrary),
@@ -618,22 +618,9 @@ instance ToJSON (ModelConfig Oid) where
 -- Orphan instances for `BedrockConfig` (type defined in `Inferno.ML.Types.Value`).
 -- Defined here for same reasons as `ModelConfig` instances
 
-instance FromJSON BedrockConfig where
-  parseJSON = withObject "BedrockConfig" $ \o ->
-    BedrockConfig
-      <$> o .: "modelId"
-      <*> o .: "temperature"
-      <*> o .: "top-p"
-      <*> o .: "stop-sequences"
+deriving anyclass instance FromJSON BedrockConfig
 
-instance ToJSON BedrockConfig where
-  toJSON bc =
-    object
-      [ "modelId" .= bc.modelId
-      , "temperature" .= bc.temperature
-      , "top-p" .= bc.topP
-      , "stop-sequences" .= bc.stopSequences
-      ]
+deriving anyclass instance ToJSON BedrockConfig
 
 instance NFData BedrockConfig where
   rnf = rwhnf
