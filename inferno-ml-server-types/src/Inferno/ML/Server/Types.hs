@@ -619,10 +619,10 @@ instance ToJSON (ModelConfig Oid) where
 -- Defined here for same reasons as `ModelConfig` instances
 
 instance FromJSON BedrockConfig where
-  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = camelTo2 '-' }
+  parseJSON = genericParseJSON defaultOptions{fieldLabelModifier = camelTo2 '-'}
 
 instance ToJSON BedrockConfig where
-  toJSON = genericToJSON defaultOptions { fieldLabelModifier = camelTo2 '-' }
+  toJSON = genericToJSON defaultOptions{fieldLabelModifier = camelTo2 '-'}
 
 instance NFData BedrockConfig where
   rnf = rwhnf
