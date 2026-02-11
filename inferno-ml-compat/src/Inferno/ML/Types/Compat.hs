@@ -7,105 +7,37 @@
 module Inferno.ML.Types.Compat where
 
 import Data.Text (Text)
-import Data.Vector (Vector)
-import Data.Word (Word32)
 import GHC.Generics (Generic)
 
 -- | Sum type representing different model configuration types. The type
 -- parameter represents the contents of a TorchScript model; for DB storage
--- this is an @Oid@, while for runtime evaluation this would be a @ScriptModule@
+-- this is an `Oid`, while for runtime evaluation this would be a `ScriptModule`
 data ModelConfig a
   = TorchScript a
   | Bedrock BedrockConfig
   deriving stock (Show, Eq, Generic, Functor)
 
--- | Configuration for Bedrock-based models.
---
--- The @Maybe@ fields for inference parameters (@temperature@, @topP@, @stopSequences@)
--- should typically be left unset (@Nothing@). When unset, the model\'s own tuned
--- defaults are used, which are calibrated by the provider for that specific model.
--- Only override these if you have a specific reason to do so. Defaults are NOT
--- provided because they are a false equivalency. E.g. @temperature@ of 0.2 and
--- @topP@ of 0.9 in Claude and Llama mean different things and will produce
--- different results. In short: trust the model provider
+-- | Configuration for Bedrock-based models
 data BedrockConfig = BedrockConfig
   { modelId :: Text
   -- ^ The *Bedrock* model identifier (e.g., "anthropic.claude-3-5-sonnet-20241022-v2:0")
-  , maxTokens :: Maybe Word32
-  -- ^ User-provided maximum tokens per invocation. This will be @min@d against
-  -- a global hard cap at runtime. Useful for controlling costs when invoking
-  -- a model frequently and wanting to stay below the global limit
-  --
-  -- If not provided, the global limit is always applied
-  , temperature :: Maybe Temperature
-  -- ^ Controls randomness in token selection; lower values produce more
-  -- deterministic responses, higher values produce more random\/creative ones
-  , topP :: Maybe TopP
-  -- ^ Nucleus sampling parameter; considers only tokens comprising the top
-  -- cumulative probability mass (e.g. @0.9@ means only tokens in the top 90%
-  -- probability are considered)
-  , stopSequences :: Maybe StopSequences
-  -- ^ Character sequences that halt token generation when encountered.
-  -- Capped at 4 elements, each at most 50 characters. In practice, most models
-  -- do not handle stop sequences well; leave this empty unless you have a /very/
-  -- specific use case. Do NOT use it for ad-hoc pattern-matching, regexes, etc...
+  , region :: Maybe Text
+  -- ^ AWS region for the Bedrock service
+  , temperature :: Temperature
+  -- ^ Temperature parameter for generation
   }
   deriving stock (Show, Eq, Generic)
 
--- | Normalized parameters for LLM inference (i.e. in range 0.0 to 1.0).
+-- | Temperature parameter for LLM generation (0.0 to 1.0).
 --
 -- Validated during construction and deserialization to ensure it falls within
 -- the valid range.
-newtype Normalized = Normalized Float
+newtype Temperature = Temperature Float
   deriving stock (Show, Generic)
   deriving newtype (Eq)
 
--- | Smart constructor for 'Normalized' that validates the range.
-mkNormalized :: Float -> Maybe Normalized
-mkNormalized f
-  | f >= 0.0 && f <= 1.0 = Just $ Normalized f
-  | otherwise = Nothing
-
--- | Controls randomness in token selection during LLM inference. Lower values
--- (e.g. @0.2@) produce more deterministic, focused responses; higher values
--- (e.g. @0.8@) produce more random, creative responses. Must be in range
--- @0.0@ to @1.0@.
---
--- Validated during construction and deserialization to ensure it falls within
--- the valid range.
-newtype Temperature = Temperature Normalized
-  deriving stock (Show, Generic)
-  deriving newtype (Eq)
-
--- | Smart constructor for 'Temperature' that validates the range.
+-- | Smart constructor for `Temperature` that validates the range.
 mkTemperature :: Float -> Maybe Temperature
-mkTemperature = fmap Temperature . mkNormalized
-
--- | Nucleus sampling parameter for LLM inference. Limits token selection to
--- only those comprising the top cumulative probability mass. For example,
--- @0.9@ means only tokens in the top 90% of the probability distribution are
--- considered. Lower values produce more focused outputs; higher values allow
--- more diversity. Must be in range @0.0@ to @1.0@
---
--- Validated during construction and deserialization to ensure it falls within
--- the valid range.
-newtype TopP = TopP Normalized
-  deriving stock (Show, Generic)
-  deriving newtype (Eq)
-
--- | Smart constructor for 'TopP' that validates the range.
-mkTopP :: Float -> Maybe TopP
-mkTopP = fmap TopP . mkNormalized
-
--- | Character sequences that halt token generation when encountered during
--- LLM inference. Useful for marking clear boundaries in generated text ONLY IF
--- it is *essential* to do so
---
--- Capped at 4 elements during parsing, with each element limited to 50
--- characters. Note that while AWS Bedrock allows up to 2,500 stop sequences,
--- in practice most models do not handle more than a few, and using stop
--- sequences at all can lead to abrupt truncations. Leave this empty unless
--- you have a /very/ specific use case
-newtype StopSequences = StopSequences (Vector Text)
-  deriving stock (Show, Generic)
-  deriving newtype (Eq)
+mkTemperature f
+  | f >= 0.0 && f <= 1.0 = Just $ Temperature f
+  | otherwise = Nothing

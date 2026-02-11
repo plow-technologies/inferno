@@ -1,9 +1,6 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.27.0
-* Add JSON and `Arbitrary` instances for new `BedrockConfig` types
-
 ## 0.26.0
 * Add `BedrockRequest`, `BedrockResult`, `PromptAPI`, and Bedrock client
 
