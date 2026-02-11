@@ -618,9 +618,11 @@ instance ToJSON (ModelConfig Oid) where
 -- Orphan instances for `BedrockConfig` (type defined in `Inferno.ML.Types.Value`).
 -- Defined here for same reasons as `ModelConfig` instances
 
-deriving anyclass instance FromJSON BedrockConfig
+instance FromJSON BedrockConfig where
+  parseJSON = genericParseJSON defaultOptions { fieldLabelModifier = camelTo2 '-' }
 
-deriving anyclass instance ToJSON BedrockConfig
+instance ToJSON BedrockConfig where
+  toJSON = genericToJSON defaultOptions { fieldLabelModifier = camelTo2 '-' }
 
 instance NFData BedrockConfig where
   rnf = rwhnf
