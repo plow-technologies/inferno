@@ -11,6 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -29,9 +30,10 @@ import Control.Applicative (asum, optional)
 import Control.Category ((>>>))
 import Control.DeepSeq (NFData (rnf), rwhnf)
 import Control.Exception (Exception, displayException)
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Crypto.Hash (digestFromByteString)
-import Data.Aeson hiding (Value)
+import Data.Aeson
+import Data.Aeson.Types (Parser)
 import qualified Data.Attoparsec.ByteString.Char8 as Attoparsec
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
@@ -57,6 +59,7 @@ import Data.Time (UTCTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Data.UUID (UUID)
 import Data.Vector (Vector)
+import qualified Data.Vector as Vector
 import Data.Word (Word16, Word32, Word64)
 import Database.PostgreSQL.Simple.FromField
   ( Conversion,
@@ -83,10 +86,13 @@ import Inferno.ML.Server.Types.PerServer
 import Inferno.ML.Types.Compat as M
   ( BedrockConfig (BedrockConfig),
     ModelConfig (Bedrock, TorchScript),
+    Normalized (Normalized),
+    StopSequences (StopSequences),
     Temperature (Temperature),
-    mkTemperature,
+    TopP (TopP),
+    mkNormalized,
   )
-import qualified Inferno.ML.Types.Compat
+import qualified Inferno.ML.Types.Compat ()
 import Inferno.Types.Syntax (Ident)
 import Inferno.Types.VersionControl
   ( VCObjectHash (VCObjectHash),
@@ -122,6 +128,7 @@ import Test.QuickCheck
     chooseInt,
     listOf,
     oneof,
+    resize,
     suchThat,
     vectorOf,
   )
@@ -612,19 +619,10 @@ instance ToJSON (ModelConfig Oid) where
 -- Defined here for same reasons as `ModelConfig` instances
 
 instance FromJSON BedrockConfig where
-  parseJSON = withObject "BedrockConfig" $ \o ->
-    BedrockConfig
-      <$> o .: "modelId"
-      <*> o .: "region"
-      <*> o .: "temperature"
+  parseJSON = genericParseJSON defaultOptions{fieldLabelModifier = camelTo2 '-'}
 
 instance ToJSON BedrockConfig where
-  toJSON bc =
-    object
-      [ "modelId" .= bc.modelId
-      , "region" .= bc.region
-      , "temperature" .= bc.temperature
-      ]
+  toJSON = genericToJSON defaultOptions{fieldLabelModifier = camelTo2 '-'}
 
 instance NFData BedrockConfig where
   rnf = rwhnf
@@ -642,14 +640,46 @@ instance ToADTArbitrary BedrockConfig where
 instance Arbitrary BedrockConfig where
   arbitrary = genericArbitrary
 
--- Orphan instances for `Temperature` (type defined in `Inferno.ML.Types.Value`).
+-- Orphan instances for all normalized LLM inference parameters, e.g. `Normalized`,
+-- `Temperature`, etc... (types defined in `Inferno.ML.Types.Value`).
+--
 -- Defined here for same reasons as `ModelConfig` instances
 
-instance ToJSON Temperature where
-  toJSON (Temperature f) = toJSON f
+instance FromJSON Normalized where
+  parseJSON = withScientific "Normalized" $ \(toRealFloat -> f) ->
+    maybe (fail (invalid f)) pure $ mkNormalized f
+    where
+      invalid :: Float -> String
+      invalid =
+        ("Normalized values must be between 0.0 and 1.0, got " <>)
+          . show
 
-instance NFData Temperature where
+instance ToJSON Normalized where
+  toJSON (Normalized n) = toJSON n
+
+instance Arbitrary Normalized where
+  arbitrary = Normalized <$> choose (0.0, 1.0)
+
+instance NFData Normalized where
   rnf = rwhnf
+
+instance ToADTArbitrary Normalized where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "Normalized"
+      . ConstructorArbitraryPair "Normalized"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "Normalized"
+      <$> sequence [ConstructorArbitraryPair "Normalized" <$> arbitrary]
+
+deriving newtype instance FromJSON Temperature
+
+deriving newtype instance ToJSON Temperature
+
+deriving newtype instance NFData Temperature
+
+deriving newtype instance Arbitrary Temperature
 
 instance ToADTArbitrary Temperature where
   toADTArbitrarySingleton _ =
@@ -661,15 +691,65 @@ instance ToADTArbitrary Temperature where
     ADTArbitrary "Inferno.ML.Types.Value" "Temperature"
       <$> sequence [ConstructorArbitraryPair "Temperature" <$> arbitrary]
 
-instance FromJSON Temperature where
-  parseJSON = withScientific "Temperature" $ \(toRealFloat -> f) ->
-    maybe (fail (invalid f)) pure $ mkTemperature f
-    where
-      invalid :: Float -> String
-      invalid = ("Temperature must be between 0.0 and 1.0, got " <>) . show
+deriving newtype instance FromJSON TopP
 
-instance Arbitrary Temperature where
-  arbitrary = Temperature <$> choose (0.0, 1.0)
+deriving newtype instance ToJSON TopP
+
+deriving newtype instance NFData TopP
+
+deriving newtype instance Arbitrary TopP
+
+instance ToADTArbitrary TopP where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "TopP"
+      . ConstructorArbitraryPair "TopP"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "TopP"
+      <$> sequence [ConstructorArbitraryPair "TopP" <$> arbitrary]
+
+instance FromJSON StopSequences where
+  parseJSON = withArray "StopSequences" $ \xs -> do
+    -- The maximum length allowed by Bedrock `Converse` operations for this
+    -- is 2500, HOWEVER, more than ~4 in practice may lead to abrupt truncations
+    -- and brittle responses. AWS allows 2,500 as an API limit, but in practice
+    -- most models offered do not accept anywhere near that much
+    --
+    -- The best is, in fact, to have 0 `stop-sequences`, but we are exposing
+    -- knobs for power users
+    when (length xs > 4) $
+      fail "StopSequences exceeds maximum length of 4"
+    StopSequences <$> traverse stopSequenceP xs
+    where
+      -- Stop sequences are intended to be _short_ sentinel strings to mark
+      -- clear boundaries in generated text (e.g. an end marker). Very long
+      -- stop sequences are almost always a misuse and create problems, hence
+      -- the additional length check for each element of `StopSequences`
+      stopSequenceP :: Value -> Parser Text
+      stopSequenceP = withText "StopSequence" $ \t -> do
+        when (Text.length t > 50) $
+          fail "StopSequences element exceeds maximum length of 50"
+        pure t
+
+deriving newtype instance ToJSON StopSequences
+
+deriving newtype instance NFData StopSequences
+
+-- Regarding `resize`: we don't want the inner vector to be an invalid length,
+-- otherwise JSON parsing will fail (see above)
+instance Arbitrary StopSequences where
+  arbitrary = StopSequences . Vector.fromList <$> resize 4 arbitrary
+
+instance ToADTArbitrary StopSequences where
+  toADTArbitrarySingleton _ =
+    ADTArbitrarySingleton "Inferno.ML.Types.Value" "StopSequences"
+      . ConstructorArbitraryPair "StopSequences"
+      <$> arbitrary
+
+  toADTArbitrary _ =
+    ADTArbitrary "Inferno.ML.Types.Value" "StopSequences"
+      <$> sequence [ConstructorArbitraryPair "StopSequences" <$> arbitrary]
 
 -- | Full description and metadata of the model
 data ModelCard = ModelCard
