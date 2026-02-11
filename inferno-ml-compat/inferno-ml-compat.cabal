@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               inferno-ml-compat
-version:            0.6.0
+version:            0.5.0
 synopsis:           Compat types for Inferno ML
 description:        Compat types for Inferno ML
 homepage:           https://github.com/plow-technologies/inferno.git#readme
@@ -37,7 +37,6 @@ library
     , prettyprinter
     , template-haskell
     , text
-    , vector
 
   default-language:   Haskell2010
   default-extensions:

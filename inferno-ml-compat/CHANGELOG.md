@@ -1,9 +1,6 @@
 # Revision History for inferno-ml-compat
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
-## 0.6.0
-* Add `maxTokens`, `temperature`, `topP`, `stopSequences` fields to `BedrockConfig`, with corresponding types
-
 ## 0.5.0
 * Add `Schema` and `JSON` modules for structured LLM response schemas
 
