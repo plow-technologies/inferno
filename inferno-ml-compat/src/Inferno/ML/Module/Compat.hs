@@ -348,7 +348,7 @@ module ML
 
   NOTE: This function only works for Bedrock models. You cannot `promptWith` a
   TorchScript model.;
-  promptWith : model -> text -> schema -> json := ###!prompt###;
+  promptWith : model -> text -> schema -> json := ###!promptWith###;
 
   zeros : dtype{#int, #float, #double, #bool} -> array of int -> tensor := ###!zeros###;
 
