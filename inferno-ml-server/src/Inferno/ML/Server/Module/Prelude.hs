@@ -408,9 +408,9 @@ serverMlPrelude ipid =
 
                 appendSchema :: Text
                 appendSchema =
-                  Text.unlines
+                  Text.unwords
                     [ pt
-                    , "Return a JSON-parseable response like this: "
+                    , "You must respond with ONLY valid JSON matching this schema, no other text: "
                         <> renderSchema schema
                     ]
                in
