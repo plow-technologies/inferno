@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.3.2
+* Make JSON generation more explicit in `promptWith` and drop newline
+
 ## 2026.2.3
 * Implement `promptWith` for structured LLM responses
 
