@@ -1,6 +1,10 @@
 # Revision History for inferno-ml-server-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.28.0
+* Make `BedrockRequest` and `PromptAPI` polymorphic over `gid` and `p`
+* Add `param` field to `BedrockRequest` for inference parameter tracking
+
 ## 0.27.0
 * Add JSON and `Arbitrary` instances for new `BedrockConfig` types
 

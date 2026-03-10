@@ -31,5 +31,6 @@ data/
 *.sw?
 /**/CLAUDE.md
 .slop/
+.claude/settings.local.json
 # From Emacs
 /**/flycheck_*
