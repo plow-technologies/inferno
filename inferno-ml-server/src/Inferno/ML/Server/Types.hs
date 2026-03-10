@@ -102,7 +102,8 @@ import UnliftIO.IORef (IORef)
 import UnliftIO.MVar (MVar)
 import Web.HttpApiData (FromHttpApiData, ToHttpApiData)
 import "inferno-ml-server-types" Inferno.ML.Server.Types as M hiding
-  ( BridgeInfo,
+  ( BedrockRequest,
+    BridgeInfo,
     EvaluationEnv,
     EvaluationInfo,
     InferenceParam,
@@ -388,6 +389,11 @@ pattern InferenceParamWithModels ip mvs = Types.InferenceParamWithModels ip mvs
 
 pattern BridgeInfo :: Id InferenceParam -> IPv4 -> Word64 -> BridgeInfo
 pattern BridgeInfo ipid h p = Types.BridgeInfo ipid h p
+
+type BedrockRequest = Types.BedrockRequest (EntityId GId) PID
+
+pattern BedrockRequest :: Text -> BedrockConfig -> Id InferenceParam -> BedrockRequest
+pattern BedrockRequest t c p = Types.BedrockRequest t c p
 
 pattern VCMeta ::
   CTime ->
