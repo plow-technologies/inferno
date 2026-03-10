@@ -204,8 +204,8 @@ type BridgeAPI p t =
       :> QueryParam' '[Required] "t2" t
       :> Get '[JSON] IValue
 
-type PromptAPI =
-  "prompt" :> ReqBody '[JSON] BedrockRequest :> Put '[JSON] BedrockResult
+type PromptAPI gid p =
+  "prompt" :> ReqBody '[JSON] (BedrockRequest gid p) :> Put '[JSON] BedrockResult
 
 -- | Stream of writes that an ML parameter script results in. Each element
 -- in the stream is a chunk (sub-list) of the original values that the
@@ -1210,11 +1210,13 @@ instance (Arbitrary p) => Arbitrary (EvaluationEnv gid p) where
   arbitrary = genericArbitrary
 
 -- | Required information for the underlying request of @ML.prompt@ function
-data BedrockRequest = BedrockRequest
+data BedrockRequest gid p = BedrockRequest
   { prompt :: Text
   -- ^ Original prompt text
   , config :: BedrockConfig
   -- ^ Model configuration
+  , param :: Id (InferenceParam gid p)
+  -- ^ The inference parameter ID; used for token usage tracking
   }
   deriving stock (Show, Eq, Generic)
   deriving anyclass (FromJSON, ToJSON)

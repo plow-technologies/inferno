@@ -427,7 +427,7 @@ serverMlPrelude ipid =
         callBridgePrompt :: RemoteM BedrockResult
         callBridgePrompt =
           withCallBridge ipid . promptC $
-            BedrockRequest t config
+            BedrockRequest t config ipid
 
         clientFailure :: RemoteError -> RemoteM a
         clientFailure = \case
