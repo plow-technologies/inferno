@@ -1,5 +1,8 @@
 # Revision History for `inferno-ml-server`
 
+## 2026.3.12
+* Fix script application to only pass arguments matching lambda parameters; extra env entries are now ignored
+
 ## 2026.3.10
 * Pass inference parameter ID to `BedrockRequest` for token usage tracking
 

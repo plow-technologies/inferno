@@ -28,8 +28,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
-import Data.Set (Set)
-import qualified Data.Set as Set
 import qualified Data.Text as Text
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Time.Clock.POSIX (getPOSIXTime)
@@ -246,35 +244,12 @@ runInferenceParamWithEnv ipid uuid senv =
                 envModels :: Map Ident (Id ModelVersion)
                 envModels = senv.models
 
-                -- Build args list by ordering env params according to script order.
-                -- Params in the env but not in the script order go at the end
-                -- (this handles any edge cases where the script has extra params)
+                -- Build args list by ordering env params according to script
+                -- order. Only apply args that correspond to actual script
+                -- lambda parameters; env entries not in the script are ignored
                 scriptArgs :: [ScriptArg]
-                scriptArgs = orderedArgs <> extraArgs
+                scriptArgs = mapMaybe lookupInEnv scriptParamOrder
                   where
-                    -- Args in script param order
-                    orderedArgs :: [ScriptArg]
-                    orderedArgs = mapMaybe lookupInEnv scriptParamOrder
-
-                    -- Any env params not in the script order
-                    extraArgs :: [ScriptArg]
-                    extraArgs =
-                      let scriptSet :: Set Ident
-                          scriptSet = Set.fromList scriptParamOrder
-
-                          extraPids :: [ScriptArg]
-                          extraPids =
-                            Map.toList envPids
-                              & filter ((`Set.notMember` scriptSet) . fst)
-                              & fmap (ArgIoParam . snd)
-
-                          extraModels :: [ScriptArg]
-                          extraModels =
-                            Map.toList envModels
-                              & filter ((`Set.notMember` scriptSet) . fst)
-                              & fmap (ArgModel . snd)
-                       in extraPids <> extraModels
-
                     lookupInEnv :: Ident -> Maybe ScriptArg
                     lookupInEnv i =
                       asum
