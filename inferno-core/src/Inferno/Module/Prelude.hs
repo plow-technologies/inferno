@@ -123,6 +123,7 @@ import Inferno.Module.Prelude.Defs
     truncateFun,
     truncateToFun,
     unconsFun,
+    unwordsText,
     weeksBeforeFun,
     weeksFun,
     xorFun,
@@ -561,6 +562,10 @@ module Text
 
   @doc Converts text to lowercase;
   toLower : text -> text := ###toLowerText###;
+
+  @doc Joins an array of text values into a single text, separating each element
+  with a space. Useful for splitting large amounts of text across lines;
+  unwords : array of text -> text := ###unwordsText###;
 
   splitAt : int -> text -> (text, text) := ###!textSplitAt###;
 
