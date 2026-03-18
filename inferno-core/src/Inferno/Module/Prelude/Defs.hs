@@ -733,6 +733,9 @@ toUpperText = Text.toUpper
 toLowerText :: Text -> Text
 toLowerText = Text.toLower
 
+unwordsText :: [Text] -> Text
+unwordsText = Text.unwords
+
 -- | Encode text as UTF-8 bytes. Returns an array of @Word16@ values representing
 -- the UTF-8 byte sequence. Note: We use @Word16@ instead of @Word8@ because Inferno
 -- does not support @Word8@, and it is not feasible to add support at this time.

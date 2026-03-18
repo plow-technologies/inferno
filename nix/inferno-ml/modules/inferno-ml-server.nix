@@ -58,7 +58,7 @@ in
 
               timeout = lib.mkOption {
                 type = lib.types.ints.u32;
-                default = 600;
+                default = 1200;
                 description = lib.mdDoc
                   "Number of seconds for script eval timeout";
               };

@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.6 -- 2026-03-18
+* Add `Text.unwords` primitive
+
 ## 0.11.6.5 -- 2025-10-31
 * Add new `Array` primitives: `take`, `drop`, `filter`, `zipWith`
 * Add new `Text` primitives: `toUpper`, `toLower`, `encodeUtf8`, `decodeUtf8`
