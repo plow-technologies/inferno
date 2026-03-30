@@ -1267,7 +1267,7 @@ infer expr =
               return (OpenModule l1 mHash modNm imports p e', ty, cs)
   where
     -- Check if a record expr/pat has a duplicate field name
-    checkDuplicateFields l fs = aux mempty fs
+    checkDuplicateFields l = aux mempty
       where
         aux _seen [] = pure ()
         aux seen ((f, _, _) : fs')

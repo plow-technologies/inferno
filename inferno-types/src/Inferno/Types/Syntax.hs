@@ -636,7 +636,7 @@ data Comment pos
 
 instance Pretty (Comment a) where
   pretty = \case
-    LineComment _ str _ -> ("//" <+> pretty str)
+    LineComment _ str _ -> "//" <+> pretty str
     BlockComment _ str _ -> encloseComment $ map pretty $ Text.splitOn "\n" $ Text.strip str
     where
       encloseComment ds = case ds of
@@ -707,20 +707,20 @@ instance (Typeable f, Data e) => Data (IStr f e) where
   --     2 -> unsafeCoerce $ k (k (z ISStr) :: Typeable f => c (IStr 'True e -> IStr 'False e))
   --     _ -> unsafeCoerce $ k (k (z ISExpr) :: Typeable f => c (IStr f e -> IStr 'True e))
 
-  toConstr ISEmpty = con_ISEmpty
-  toConstr (ISStr _ _) = con_ISStr
-  toConstr (ISExpr _ _) = con_ISExpr
+  toConstr ISEmpty = conISEmpty
+  toConstr (ISStr _ _) = conISStr
+  toConstr (ISExpr _ _) = conISExpr
 
-  dataTypeOf _ = ty_IStr
+  dataTypeOf _ = tyIStr
   dataCast1 = gcast1
 
-con_ISEmpty, con_ISStr, con_ISExpr :: Constr
-con_ISEmpty = mkConstr ty_IStr "ISEmpty" [] Data.Prefix
-con_ISStr = mkConstr ty_IStr "ISStr" [] Data.Prefix
-con_ISExpr = mkConstr ty_IStr "ISExpr" [] Data.Prefix
+conISEmpty, conISStr, conISExpr :: Constr
+conISEmpty = mkConstr tyIStr "ISEmpty" [] Data.Prefix
+conISStr = mkConstr tyIStr "ISStr" [] Data.Prefix
+conISExpr = mkConstr tyIStr "ISExpr" [] Data.Prefix
 
-ty_IStr :: Data.DataType
-ty_IStr = mkDataType "Inferno.Syntax.IStr" [con_ISEmpty, con_ISStr, con_ISExpr]
+tyIStr :: Data.DataType
+tyIStr = mkDataType "Inferno.Syntax.IStr" [conISEmpty, conISStr, conISExpr]
 
 deriving instance (Show e) => Show (IStr f e)
 
@@ -749,15 +749,15 @@ instance (Data e) => Data (SomeIStr e) where
   --   gunfold' :: forall c. (forall b r. Data b => c (b -> r) -> c r) -> (forall r. r -> c r) -> Constr -> c (SomeIStr e)
   --   gunfold' k z _ = k (z SomeIStr :: c (IStr 'False e -> SomeIStr e))
 
-  toConstr _ = con_SomeIStr
-  dataTypeOf _ = ty_SomeIStr
+  toConstr _ = conSomeIStr
+  dataTypeOf _ = tySomeIStr
   dataCast1 = gcast1
 
-con_SomeIStr :: Constr
-con_SomeIStr = mkConstr ty_SomeIStr "SomeIStr" [] Data.Prefix
+conSomeIStr :: Constr
+conSomeIStr = mkConstr tySomeIStr "SomeIStr" [] Data.Prefix
 
-ty_SomeIStr :: Data.DataType
-ty_SomeIStr = mkDataType "Inferno.Syntax.SomeIStr" [con_SomeIStr]
+tySomeIStr :: Data.DataType
+tySomeIStr = mkDataType "Inferno.Syntax.SomeIStr" [conSomeIStr]
 
 deriving instance (Show e) => Show (SomeIStr e)
 
