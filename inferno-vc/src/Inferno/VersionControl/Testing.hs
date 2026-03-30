@@ -274,7 +274,9 @@ vcServerSpec url = do
       runOperation vcClientEnv (deleteVCObject h2)
       metas <- runOperation vcClientEnv (fetchVCObjectHistory h3)
       map obj metas `shouldBe` [h3, h2]
-      Inferno.VersionControl.Types.pred (head metas) `shouldBe` CloneOfRemoved h2
+      case metas of
+        (m : _) -> Inferno.VersionControl.Types.pred m `shouldBe` CloneOfRemoved h2
+        [] -> expectationFailure "Expected non-empty history"
 
     it "cannot branch" $ do
       o1 <- createObj Init
