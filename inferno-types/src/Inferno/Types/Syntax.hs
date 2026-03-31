@@ -126,7 +126,7 @@ import Data.Bifunctor (bimap, first)
 import Data.Bifunctor.TH (deriveBifunctor)
 import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
-import Data.Foldable (fold)
+import Data.Foldable (fold, foldl')
 import Data.Functor.Foldable (ana, cata, project)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
@@ -1192,18 +1192,14 @@ instance BlockUtils Import where
     other -> project other
   renameModule _ = id
 
-  hasLeadingComment = head . cata go
-    where
-      go = \case
-        ICommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    ICommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go = \case
-        ICommentAfterF _ _ -> [True]
-        ICommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    ICommentAfterF _ _ -> True
+    ICommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 instance BlockUtils (Pat hash) where
   blockPosition = cata go
@@ -1232,20 +1228,14 @@ instance BlockUtils (Pat hash) where
     PEnum pos hash _ns i -> project $ PEnum pos hash newNs i
     other -> project other
 
-  hasLeadingComment = head . cata go
-    where
-      go :: PatF hash pos [Bool] -> [Bool]
-      go = \case
-        PCommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    PCommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go :: PatF hash pos [Bool] -> [Bool]
-      go = \case
-        PCommentAfterF _ _ -> [True]
-        PCommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    PCommentAfterF _ _ -> True
+    PCommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 instance BlockUtils (Expr hash) where
   blockPosition = cata go
@@ -1309,20 +1299,14 @@ instance BlockUtils (Expr hash) where
         (fmap (\(p4, pat, p5, e2) -> (p4, renameModule newNs pat, p5, renameModule newNs e2)) xs)
         p3
     other -> other
-  hasLeadingComment = head . cata go
-    where
-      go :: ExprF hash pos [Bool] -> [Bool]
-      go = \case
-        CommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    CommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go :: ExprF hash pos [Bool] -> [Bool]
-      go = \case
-        CommentAfterF _ _ -> [True]
-        CommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    CommentAfterF _ _ -> True
+    CommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 collectApps :: Expr hash pos -> [Expr hash pos]
 collectApps (App x@(App _ _) y) = collectApps x ++ [y]
