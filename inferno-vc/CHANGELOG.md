@@ -1,6 +1,9 @@
 # Revision History for inferno-vc
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.8.2 -- 2026-03-31
+* Fix hlint warnings
+
 ## 0.3.8.1 -- 2025-02-13
 * Fourmolu
 

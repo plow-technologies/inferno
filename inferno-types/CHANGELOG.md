@@ -1,6 +1,9 @@
 # Revision History for inferno-types
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.4.6.3 -- 2026-03-31
+* Fix hlint warnings
+
 ## 0.4.6.2 -- 2025-02-13
 * Fourmolu
 
