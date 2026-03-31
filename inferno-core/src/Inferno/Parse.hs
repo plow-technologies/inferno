@@ -228,7 +228,7 @@ enumE :: (SourcePos -> () -> Scoped ModuleName -> Ident -> f) -> Parser f
 enumE f = do
   startPos <- getSourcePos
   lexeme $
-    try (f startPos () <$> (Scope . ModuleName <$> variable) <*> (char '.' *> enumConstructor))
+    try (f startPos () . Scope . ModuleName <$> variable <*> (char '.' *> enumConstructor))
       <|> f startPos () LocalScope <$> enumConstructor
 
 implVarE :: Parser (Expr () SourcePos)
@@ -782,15 +782,15 @@ parseExpr opsTable modOpsTables customTypes s =
 
 type TyParser = ReaderT (Map.Map Text Int, OpsTable, Map.Map ModuleName OpsTable, [CustomType]) (WriterT Comments (Parsec InfernoParsingError Text))
 
-rws_type :: [Text] -- list of reserved type sig words
-rws_type = ["define", "on", "forall"]
+rwsType :: [Text] -- list of reserved type sig words
+rwsType = ["define", "on", "forall"]
 
 typeIdent :: TyParser Text
 typeIdent = try (p >>= check)
   where
     p = pack <$> (((:) <$> letterChar <*> hidden (many alphaNumChar)) <?> "a type")
     check x =
-      if x `elem` rws_type
+      if x `elem` rwsType
         then fail $ "Keyword " <> show x <> " cannot be a variable/function name"
         else return x
 
@@ -810,12 +810,12 @@ baseType = do
             <|> choice (map (\t -> symbol (pack t) $> TCustom t) customTypes)
         )
 
-type_variable_raw :: TyParser Text
-type_variable_raw = char '\'' *> takeWhile1P Nothing isAlphaNum
+typeVariableRaw :: TyParser Text
+typeVariableRaw = char '\'' *> takeWhile1P Nothing isAlphaNum
 
-type_variable :: TyParser Int
-type_variable = do
-  nm <- type_variable_raw
+typeVariable :: TyParser Int
+typeVariable = do
+  nm <- typeVariableRaw
   (tys, _, _, _) <- ask
   case Map.lookup nm tys of
     Just i -> return i
@@ -846,7 +846,7 @@ recordType = label "record type\nfor example: {name: text; age: int}" $
                 return ([(f, e1)], RowAbsent)
             )
         <|> ( do
-                t <- type_variable
+                t <- typeVariable
                 char '}'
                 return ([], RowVar $ TV t)
             )
@@ -854,7 +854,7 @@ recordType = label "record type\nfor example: {name: text; age: int}" $
                 char '}'
                 pure ([], RowAbsent)
             )
-    keywords = Set.fromList $ rws ++ rws_type
+    keywords = Set.fromList $ rws ++ rwsType
     fieldName :: TyParser Text
     fieldName = f >>= check
       where
@@ -871,7 +871,7 @@ typeParserBase =
     <|> try (lexeme baseType)
     <|> uncurry TRecord <$> recordType
     <|> lexeme (TBase <$> (TEnum <$> typeIdent <*> (Set.fromList <$> (symbol "{" *> enumList <* symbol "}"))))
-    <|> lexeme (TVar . TV <$> type_variable)
+    <|> lexeme (TVar . TV <$> typeVariable)
   where
     enumList =
       try
@@ -937,7 +937,7 @@ tyContextSingle = Left <$> (symbol "requires" *> typeClass) <|> Right <$> ((,) <
 
 schemeParser :: TyParser TCScheme
 schemeParser = do
-  vars <- try (rword "forall" *> many (lexeme type_variable_raw) <* rword ".") <|> pure mempty
+  vars <- try (rword "forall" *> many (lexeme typeVariableRaw) <* rword ".") <|> pure mempty
   withReaderT (\(_, ops, m, ts) -> (Map.fromList $ zip vars [0 ..], ops, m, ts)) $
     constructScheme <$> (try tyContext <|> pure []) <*> typeParser
   where

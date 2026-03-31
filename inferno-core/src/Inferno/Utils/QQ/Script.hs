@@ -79,5 +79,6 @@ inferno =
       let str = convert h :: ByteString
        in Just
             ( AppE (VarE 'Maybe.fromJust)
-                <$> (AppE (VarE 'Crypto.digestFromByteString) <$> lift (unpack str))
+                . AppE (VarE 'Crypto.digestFromByteString)
+                <$> lift (unpack str)
             )

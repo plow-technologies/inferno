@@ -133,7 +133,9 @@ insertCommentIntoExpr comment = go'
       _ -> error "unreachable"
 
     go' :: Expr hash SourcePos -> Expr hash SourcePos
-    go' x = head $ go [x]
+    go' x = case go [x] of
+      (r : _) -> r
+      [] -> x
 
     go :: [Expr hash SourcePos] -> [Expr hash SourcePos]
     go =
@@ -162,7 +164,9 @@ insertCommentIntoExpr comment = go'
                                   e : go es
                     else -- if the comment is neither before nor after the block, it must be within the expression
                       ( case e of
-                          App e1 e2 -> let res = go [e1, e2] in App (res !! 0) (res !! 1)
+                          App e1 e2 -> case go [e1, e2] of
+                            (r1 : r2 : _) -> App r1 r2
+                            _ -> e
                           Lam p1 xs p2 body -> Lam p1 xs p2 $ go' body
                           Let p1 p2 v p3 e1 posOfIn e2 ->
                             if commentIsBefore posOfIn

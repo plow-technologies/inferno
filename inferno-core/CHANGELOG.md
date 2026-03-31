@@ -1,6 +1,9 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.7 -- 2026-03-31
+* Fix hlint warnings
+
 ## 0.11.6.6 -- 2026-03-18
 * Add `Text.unwords` primitive
 

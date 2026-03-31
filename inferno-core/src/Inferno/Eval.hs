@@ -53,6 +53,9 @@ type TermEnv hash c m a = (Map.Map ExtIdent (Value c m), Map.Map hash (Either (E
 emptyTmenv :: TermEnv hash c m a
 emptyTmenv = (Map.empty, Map.empty)
 
+-- We still need Inferno to compile with GHC <9.10, so we can't use `Data.Functor.unzip`,
+-- which is what Hlint recommends
+{- HLINT ignore eval "Avoid NonEmpty.unzip" -}
 eval :: (MonadThrow m, Pretty c) => TermEnv VCObjectHash c (ImplEnvM m c) a -> Expr (Maybe VCObjectHash) a -> ImplEnvM m c (Value c (ImplEnvM m c))
 eval env@(localEnv, pinnedEnv) expr = case expr of
   Lit_ (LInt k) -> return $

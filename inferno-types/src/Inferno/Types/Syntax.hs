@@ -126,7 +126,7 @@ import Data.Bifunctor (bimap, first)
 import Data.Bifunctor.TH (deriveBifunctor)
 import Data.Data (Constr, Data (..), Typeable, gcast1, mkConstr, mkDataType)
 import qualified Data.Data as Data
-import Data.Foldable (fold)
+import Data.Foldable (fold, foldl')
 import Data.Functor.Foldable (ana, cata, project)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
@@ -636,7 +636,7 @@ data Comment pos
 
 instance Pretty (Comment a) where
   pretty = \case
-    LineComment _ str _ -> ("//" <+> pretty str)
+    LineComment _ str _ -> "//" <+> pretty str
     BlockComment _ str _ -> encloseComment $ map pretty $ Text.splitOn "\n" $ Text.strip str
     where
       encloseComment ds = case ds of
@@ -707,20 +707,20 @@ instance (Typeable f, Data e) => Data (IStr f e) where
   --     2 -> unsafeCoerce $ k (k (z ISStr) :: Typeable f => c (IStr 'True e -> IStr 'False e))
   --     _ -> unsafeCoerce $ k (k (z ISExpr) :: Typeable f => c (IStr f e -> IStr 'True e))
 
-  toConstr ISEmpty = con_ISEmpty
-  toConstr (ISStr _ _) = con_ISStr
-  toConstr (ISExpr _ _) = con_ISExpr
+  toConstr ISEmpty = conISEmpty
+  toConstr (ISStr _ _) = conISStr
+  toConstr (ISExpr _ _) = conISExpr
 
-  dataTypeOf _ = ty_IStr
+  dataTypeOf _ = tyIStr
   dataCast1 = gcast1
 
-con_ISEmpty, con_ISStr, con_ISExpr :: Constr
-con_ISEmpty = mkConstr ty_IStr "ISEmpty" [] Data.Prefix
-con_ISStr = mkConstr ty_IStr "ISStr" [] Data.Prefix
-con_ISExpr = mkConstr ty_IStr "ISExpr" [] Data.Prefix
+conISEmpty, conISStr, conISExpr :: Constr
+conISEmpty = mkConstr tyIStr "ISEmpty" [] Data.Prefix
+conISStr = mkConstr tyIStr "ISStr" [] Data.Prefix
+conISExpr = mkConstr tyIStr "ISExpr" [] Data.Prefix
 
-ty_IStr :: Data.DataType
-ty_IStr = mkDataType "Inferno.Syntax.IStr" [con_ISEmpty, con_ISStr, con_ISExpr]
+tyIStr :: Data.DataType
+tyIStr = mkDataType "Inferno.Syntax.IStr" [conISEmpty, conISStr, conISExpr]
 
 deriving instance (Show e) => Show (IStr f e)
 
@@ -749,15 +749,15 @@ instance (Data e) => Data (SomeIStr e) where
   --   gunfold' :: forall c. (forall b r. Data b => c (b -> r) -> c r) -> (forall r. r -> c r) -> Constr -> c (SomeIStr e)
   --   gunfold' k z _ = k (z SomeIStr :: c (IStr 'False e -> SomeIStr e))
 
-  toConstr _ = con_SomeIStr
-  dataTypeOf _ = ty_SomeIStr
+  toConstr _ = conSomeIStr
+  dataTypeOf _ = tySomeIStr
   dataCast1 = gcast1
 
-con_SomeIStr :: Constr
-con_SomeIStr = mkConstr ty_SomeIStr "SomeIStr" [] Data.Prefix
+conSomeIStr :: Constr
+conSomeIStr = mkConstr tySomeIStr "SomeIStr" [] Data.Prefix
 
-ty_SomeIStr :: Data.DataType
-ty_SomeIStr = mkDataType "Inferno.Syntax.SomeIStr" [con_SomeIStr]
+tySomeIStr :: Data.DataType
+tySomeIStr = mkDataType "Inferno.Syntax.SomeIStr" [conSomeIStr]
 
 deriving instance (Show e) => Show (SomeIStr e)
 
@@ -1192,18 +1192,14 @@ instance BlockUtils Import where
     other -> project other
   renameModule _ = id
 
-  hasLeadingComment = head . cata go
-    where
-      go = \case
-        ICommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    ICommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go = \case
-        ICommentAfterF _ _ -> [True]
-        ICommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    ICommentAfterF _ _ -> True
+    ICommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 instance BlockUtils (Pat hash) where
   blockPosition = cata go
@@ -1232,20 +1228,14 @@ instance BlockUtils (Pat hash) where
     PEnum pos hash _ns i -> project $ PEnum pos hash newNs i
     other -> project other
 
-  hasLeadingComment = head . cata go
-    where
-      go :: PatF hash pos [Bool] -> [Bool]
-      go = \case
-        PCommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    PCommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go :: PatF hash pos [Bool] -> [Bool]
-      go = \case
-        PCommentAfterF _ _ -> [True]
-        PCommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    PCommentAfterF _ _ -> True
+    PCommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 instance BlockUtils (Expr hash) where
   blockPosition = cata go
@@ -1309,20 +1299,14 @@ instance BlockUtils (Expr hash) where
         (fmap (\(p4, pat, p5, e2) -> (p4, renameModule newNs pat, p5, renameModule newNs e2)) xs)
         p3
     other -> other
-  hasLeadingComment = head . cata go
-    where
-      go :: ExprF hash pos [Bool] -> [Bool]
-      go = \case
-        CommentAboveF _ _ -> [True]
-        rest -> foldr (++) [False] rest
+  hasLeadingComment = cata $ \case
+    CommentAboveF _ _ -> True
+    rest -> foldr const False rest
 
-  hasTrailingComment = last . cata go
-    where
-      go :: ExprF hash pos [Bool] -> [Bool]
-      go = \case
-        CommentAfterF _ _ -> [True]
-        CommentBelowF _ _ -> [True]
-        rest -> foldl (++) [False] rest
+  hasTrailingComment = cata $ \case
+    CommentAfterF _ _ -> True
+    CommentBelowF _ _ -> True
+    rest -> foldl' (const id) False rest
 
 collectApps :: Expr hash pos -> [Expr hash pos]
 collectApps (App x@(App _ _) y) = collectApps x ++ [y]

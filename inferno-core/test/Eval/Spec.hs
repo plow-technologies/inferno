@@ -70,7 +70,7 @@ evalTests = describe "evaluate" $
               Left err -> expectationFailure $ show err
               Right ast ->
                 evalExpr defaultEnv Map.empty ast >>= \case
-                  Left err' -> (for_ merr (shouldBe err'))
+                  Left err' -> for_ merr (shouldBe err')
                   Right _ -> expectationFailure "Should not evaluate."
 
     shouldEvaluateTo "3" $ VDouble 3

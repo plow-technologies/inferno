@@ -1084,17 +1084,21 @@ infer expr =
                   , e1 /= e2
                   ]
 
-          return
-            ( Case p1 e' p2 (NEList.fromList $ zipWith (curry (\(e'', (p6, pat, p7, _)) -> (p6, pat, p7, e''))) es'' patExprs) p3
-            , ImplType isMerged $ head ts_res
-            , Set.fromList ics
-                `Set.union` cs_e
-                `Set.union` Set.unions patConstraints
-                `Set.union` patTysEqConstraints
-                `Set.union` patTysMustEqCaseExprTy t_e
-                `Set.union` patExpTysEqConstraints (zip (map (\(_, ty, _) -> ty) res) (map (\(_, _p, _, e'') -> e'') patExprs))
-                `Set.union` Set.unions cs_res
-            )
+          case ts_res of
+            (tRes : _) ->
+              return
+                ( Case p1 e' p2 (NEList.fromList $ zipWith (curry (\(e'', (p6, pat, p7, _)) -> (p6, pat, p7, e''))) es'' patExprs) p3
+                , ImplType isMerged tRes
+                , Set.fromList ics
+                    `Set.union` cs_e
+                    `Set.union` Set.unions patConstraints
+                    `Set.union` patTysEqConstraints
+                    `Set.union` patTysMustEqCaseExprTy t_e
+                    `Set.union` patExpTysEqConstraints (zip (map (\(_, ty, _) -> ty) res) (map (\(_, _p, _, e'') -> e'') patExprs))
+                    `Set.union` Set.unions cs_res
+                )
+            -- `patExprs'` is `NonEmpty`, so `ts_res` is always non-empty
+            [] -> error "impossible: case expression must have at least one branch"
           where
             mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)], Set.Set Constraint)
             mkPatConstraint pat =
@@ -1267,7 +1271,7 @@ infer expr =
               return (OpenModule l1 mHash modNm imports p e', ty, cs)
   where
     -- Check if a record expr/pat has a duplicate field name
-    checkDuplicateFields l fs = aux mempty fs
+    checkDuplicateFields l = aux mempty
       where
         aux _seen [] = pure ()
         aux seen ((f, _, _) : fs')
