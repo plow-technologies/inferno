@@ -57,7 +57,6 @@ instance Substitutable Env where
   apply s env =
     env
       { types = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ types env
-      , pinnedTypes = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ pinnedTypes env
       }
   ftv env =
     ftv $ map ty $ Map.elems $ types env
