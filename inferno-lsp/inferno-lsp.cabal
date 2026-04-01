@@ -36,6 +36,7 @@ library
     , bytestring
     , co-log-core
     , containers
+    , extra
     , inferno-core
     , inferno-types
     , inferno-vc

@@ -8,7 +8,8 @@ module Inferno.LSP.ParseInfer where
 import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
-import Data.List (find, findIndices, foldl', nub, sort)
+import Data.List.Extra (nubOrd)
+import Data.List (find, findIndices, foldl', sort)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
@@ -679,7 +680,7 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
           case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
             [] -> error "we must always have at least one witness!"
             subs ->
-              let prettyList = map pretty $ nub $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
+              let prettyList = map pretty $ nubOrd $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
                   prettyListMax10 = take 10 prettyList
                in if length prettyListMax10 == length prettyList
                     then sep $ unionTySig prettyList
