@@ -1,6 +1,11 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.8 -- 2026-04-01
+* Replace `nub` with `nubOrd` in `normalize`
+* Add strictness annotations to `InferState`
+* Skip applying substitutions to `pinnedTypes` in `Env`
+
 ## 0.11.6.7 -- 2026-03-31
 * Fix hlint warnings
 
