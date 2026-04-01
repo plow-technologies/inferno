@@ -6,8 +6,8 @@
 module Inferno.LSP.Completion where
 
 import Data.Bifunctor (bimap)
-import Data.List.Extra (nubOrd)
 import Data.List (delete)
+import Data.List.Extra (nubOrd)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)

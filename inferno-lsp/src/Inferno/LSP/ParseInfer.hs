@@ -8,8 +8,8 @@ module Inferno.LSP.ParseInfer where
 import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (MonadIO (..))
 import Data.Either (isLeft)
-import Data.List.Extra (nubOrd)
 import Data.List (find, findIndices, foldl', sort)
+import Data.List.Extra (nubOrd)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe, listToMaybe, mapMaybe)
