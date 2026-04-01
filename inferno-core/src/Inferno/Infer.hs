@@ -136,11 +136,11 @@ type Infer a =
 
 -- | Inference state
 data InferState = InferState
-  { count :: Int
-  , typeMap :: Map.Map (Location SourcePos) (TypeMetadata (Set.Set TypeClass, ImplType))
-  , modules :: Map.Map ModuleName (Module ())
-  , typeClasses :: Set.Set TypeClass
-  , patternsToCheck :: [(Location SourcePos, [Pat (Pinned VCObjectHash) SourcePos])]
+  { count :: !Int
+  , typeMap :: !(Map.Map (Location SourcePos) (TypeMetadata (Set.Set TypeClass, ImplType)))
+  , modules :: !(Map.Map ModuleName (Module ()))
+  , typeClasses :: !(Set.Set TypeClass)
+  , patternsToCheck :: ![(Location SourcePos, [Pat (Pinned VCObjectHash) SourcePos])]
   }
 
 -- | Initial inference state
