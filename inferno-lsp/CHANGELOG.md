@@ -1,6 +1,9 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.2.6.2 -- 2026-04-01
+* Replace `nub` with `nubOrd`
+
 ## 0.2.6.1 -- 2025-02-13
 * Fourmolu
 

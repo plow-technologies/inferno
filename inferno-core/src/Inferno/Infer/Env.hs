@@ -25,7 +25,7 @@ module Inferno.Infer.Env
 where
 
 import Data.Foldable (Foldable (foldl'))
-import Data.List (nub)
+import Data.List.Extra (nubOrd)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Inferno.Types.Syntax (ExtIdent, RestOfRecord (RowAbsent, RowVar))
@@ -57,7 +57,6 @@ instance Substitutable Env where
   apply s env =
     env
       { types = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ types env
-      , pinnedTypes = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ pinnedTypes env
       }
   ftv env =
     ftv $ map ty $ Map.elems $ types env
@@ -160,7 +159,7 @@ normalize (ForallTC _ tcs (ImplType impl body)) =
   where
     -- collect free variables from the body of the function first,
     -- then from any implicit type variables and finally from the typeclasses
-    ftvs = nub $ fv body ++ concatMap (fv . snd) (Map.toList impl) ++ concatMap (\(TypeClass _ tys) -> concatMap fv tys) (Set.toList tcs)
+    ftvs = nubOrd $ fv body ++ concatMap (fv . snd) (Map.toList impl) ++ concatMap (\(TypeClass _ tys) -> concatMap fv tys) (Set.toList tcs)
     ord = zip ftvs (map TV [0 ..])
     ordMap = Map.fromList ord
 

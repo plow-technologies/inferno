@@ -6,7 +6,8 @@
 module Inferno.LSP.Completion where
 
 import Data.Bifunctor (bimap)
-import Data.List (delete, nub)
+import Data.List (delete)
+import Data.List.Extra (nubOrd)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
@@ -201,7 +202,7 @@ rwsCompletionItems prefix
 moduleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> [CompletionItem]
 moduleNameCompletionItems preludeNameToTypeMap = fmap mkModuleCompletionItem modules
   where
-    modules = nub . fmap unModuleName . mapMaybe fst $ Map.keys preludeNameToTypeMap
+    modules = nubOrd . fmap unModuleName . mapMaybe fst $ Map.keys preludeNameToTypeMap
     mkModuleCompletionItem m =
       CompletionItem
         { _label = m
