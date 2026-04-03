@@ -1,3 +1,5 @@
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -160,6 +162,15 @@ type Solve a = ReaderT (Set.Set TypeClass) (ExceptT [TypeError SourcePos] Identi
 type SolveState st a = ReaderT (Set.Set TypeClass) (StateT st (ExceptT [TypeError SourcePos] Identity)) a
 
 type Location a = (a, a)
+
+-- | A single branch of a @match@ expression; local record to avoid
+-- repeatedly destructuring the raw 4-tuple from the AST.
+data CaseBranch = CaseBranch
+  { barPos :: SourcePos
+  , pat :: Pat (Pinned VCObjectHash) SourcePos
+  , arrPos :: SourcePos
+  , body :: Expr (Pinned VCObjectHash) SourcePos
+  }
 
 instance Substitutable Constraint where
   apply s (Left (t1, t2, es)) = Left (apply s t1, apply s t2, es)
@@ -1053,15 +1064,16 @@ infer expr =
           attachTypeToPosition exprLoc meta{ty = (Set.empty, ImplType is $ TOptional ty)}
           return (One p e', ImplType is $ TOptional ty, cs)
         Case p1 e p2 patExprs' p3 -> do
-          let patExprs = NEList.toList patExprs'
+          let branches = [CaseBranch bp pt ap bd | (bp, pt, ap, bd) <- NEList.toList patExprs']
+              pats = fmap (.pat) branches
           (e', ImplType i_e t_e, cs_e) <- infer e
           (patTys, patVars, patConstraints) <-
             unzip3
-              <$> mapM ((\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p) . (\(_, p, _, _) -> p)) patExprs
+              <$> mapM (\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p) pats
 
-          addCasePatterns exprLoc $ map (\(_, p, _, _) -> p) patExprs
+          addCasePatterns exprLoc pats
 
-          res <- forM (zip patVars $ map (\(_, _p, _, e'') -> e'') patExprs) $
+          res <- forM (zip patVars $ fmap (.body) branches) $
             \(vars, e''') -> foldr (inEnv . (\(Ident x, meta) -> (ExtIdent $ Right x, meta))) (infer e''') vars
 
           let (es'', is_res, ts_res, cs_res) = unzip4 $ map (\(e'', ImplType i_r t_r, cs_r) -> (e'', i_r, t_r, cs_r)) res
@@ -1070,14 +1082,14 @@ infer expr =
               patTysEqConstraints =
                 Sequence.fromList
                   [ tyConstr tPat4 tPat5 [PatternsMustBeEqType tyCls tPat4 tPat5 p4 p5 (blockPosition p4) (blockPosition p5)]
-                  | (tPat4, p4) <- zip patTys (map (\(_, p, _, _) -> p) patExprs)
-                  , (tPat5, p5) <- zip patTys (map (\(_, p, _, _) -> p) patExprs)
+                  | (tPat4, p4) <- zip patTys pats
+                  , (tPat5, p5) <- zip patTys pats
                   , p4 /= p5
                   ]
               patTysMustEqCaseExprTy cExprTy =
                 Sequence.fromList
                   [ tyConstr tPat cExprTy [PatternUnificationFail tPat cExprTy p $ blockPosition p]
-                  | (tPat, p) <- zip patTys (map (\(_, p, _, _) -> p) patExprs)
+                  | (tPat, p) <- zip patTys pats
                   ]
               patExpTysEqConstraints set =
                 Sequence.fromList
@@ -1090,7 +1102,7 @@ infer expr =
           case ts_res of
             (tRes : _) ->
               return
-                ( Case p1 e' p2 (NEList.fromList $ zipWith (curry (\(e'', (p6, pat, p7, _)) -> (p6, pat, p7, e''))) es'' patExprs) p3
+                ( Case p1 e' p2 (NEList.fromList $ zipWith (\e'' b -> (b.barPos, b.pat, b.arrPos, e'')) es'' branches) p3
                 , ImplType isMerged tRes
                 , mconcat
                     [ Sequence.fromList ics
@@ -1098,7 +1110,7 @@ infer expr =
                     , mconcat patConstraints
                     , patTysEqConstraints
                     , patTysMustEqCaseExprTy t_e
-                    , patExpTysEqConstraints (zip (map (\(_, ty, _) -> ty) res) (map (\(_, _p, _, e'') -> e'') patExprs))
+                    , patExpTysEqConstraints (zip (fmap (\(_, ty, _) -> ty) res) (fmap (.body) branches))
                     , mconcat cs_res
                     ]
                 )
