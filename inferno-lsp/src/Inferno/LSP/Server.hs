@@ -223,8 +223,13 @@ parseAndInferWithTimeout beforeParse afterParse interpreter idents doc_txt valid
 
   liftIO $ beforeParse (uuid, ts)
   result <- do
-    -- Timeout parsing and type checking after 10 seconds
-    let timeLimit = 10
+    -- Timeout parsing and type checking after 120 seconds
+    --
+    -- NOTE This limit was previously 10s but we had actual scripts in test/prod
+    -- time out because parsing and typechecking is so slow. This higher limit
+    -- will make the LSP session appear to "hang" (i.e. no immediate feedback)
+    -- but at least we can save scripts!
+    let timeLimit = 120
     mResult <- liftIO $ timeout (timeLimit * 1_000_000) $ parseAndInferDiagnostics @_ @c interpreter idents doc_txt validateInput
     case mResult of
       Nothing -> pure $ Left [errorDiagnostic 1 1 1 1 (Just "inferno.lsp") $ "Inferno timed out in " <> T.pack (show timeLimit) <> "s"]
