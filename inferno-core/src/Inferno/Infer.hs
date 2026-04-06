@@ -173,13 +173,6 @@ data InferResult = InferResult
   , constrs :: Seq Constraint
   }
 
--- | Virtual record fields for `ImplType`, which has positional arguments.
-instance HasField "impl" ImplType (Map.Map ExtIdent InfernoType) where
-  getField (ImplType m _) = m
-
-instance HasField "body" ImplType InfernoType where
-  getField (ImplType _ t) = t
-
 -- | A single branch of a @match@ expression; local record to avoid
 -- repeatedly destructuring the raw 4-tuple from the AST.
 data CaseBranch = CaseBranch
@@ -188,6 +181,15 @@ data CaseBranch = CaseBranch
   , arrPos :: SourcePos
   , body :: Expr (Pinned VCObjectHash) SourcePos
   }
+
+-- | Virtual record fields for `ImplType`, which has positional arguments. This
+-- makes it much easier to access the relevant components when recursively calling
+-- @infer@
+instance HasField "impl" ImplType (Map.Map ExtIdent InfernoType) where
+  getField (ImplType m _) = m
+
+instance HasField "body" ImplType InfernoType where
+  getField (ImplType _ t) = t
 
 instance Substitutable Constraint where
   apply s (Left (t1, t2, es)) = Left (apply s t1, apply s t2, es)

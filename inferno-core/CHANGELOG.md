@@ -1,6 +1,10 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.6.9 -- 2026-04-06
+* Switch from `Set` to `Seq` for constraints in type inference
+* Refactor `infer`, use helper records and field access instead of anonymous tuple projections
+
 ## 0.11.6.8 -- 2026-04-01
 * Replace `nub` with `nubOrd` in `normalize`
 * Add strictness annotations to `InferState`
