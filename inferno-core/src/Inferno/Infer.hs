@@ -660,7 +660,7 @@ infer expr =
               <$> forM
                 (toEitherList xs)
                 ( \case
-                    Left str -> return (Left str, Map.empty, Sequence.empty)
+                    Left str -> pure (Left str, Map.empty, Sequence.empty)
                     Right (p3, e, p4) ->
                       (\r -> (Right (p3, r.expr, p4), r.typ.impl, r.constrs))
                         <$> infer e
@@ -694,11 +694,11 @@ infer expr =
               , constrs = Sequence.fromList ics <> cs
               }
           where
-            go [] = return ([], [], [], Sequence.empty)
+            go [] = pure ([], [], [], Sequence.empty)
             go ((e', p3) : es') = do
               r <- infer e'
               (es'', impls, tRest, csRest) <- go es'
-              return ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
+              pure ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
         RecordField p_r (Ident rc) (Ident f) -> do
           r <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right rc
           tv <- fresh
@@ -746,29 +746,31 @@ infer expr =
             InferResult
               { expr = Array p1 ((r.expr, p2) : es') p3
               , typ = inferredTy
-              , constrs = Sequence.fromList ics <> r.constrs <> cs'
+              , constrs = mconcat [Sequence.fromList ics, r.constrs, cs']
               }
           where
-            go _t [] = return ([], [], Sequence.empty)
+            go _t [] = pure ([], [], Sequence.empty)
             go t ((e', p4) : es') = do
               r <- infer e'
               (es'', impls, csRest) <- go t es'
-              return
+              pure
                 ( (r.expr, p4) : es''
                 , r.typ.impl : impls
-                , r.constrs
-                    <> csRest
-                    <> Sequence.fromList
-                      [ tyConstr
-                          t
-                          r.typ.body
-                          [ UnificationFail
-                              (Set.fromList . map snd . rights $ toList $ r.constrs <> csRest)
-                              t
-                              r.typ.body
-                              $ blockPosition e'
-                          ]
-                      ]
+                , mconcat
+                    [ r.constrs
+                    , csRest
+                    , Sequence.fromList
+                        [ tyConstr
+                            t
+                            r.typ.body
+                            [ UnificationFail
+                                (Set.fromList . map snd . rights $ toList $ r.constrs <> csRest)
+                                t
+                                r.typ.body
+                                $ blockPosition e'
+                            ]
+                        ]
+                    ]
                 )
         ArrayComp p1 e p2 sels cond p3 -> do
           _ <- checkVariableOverlap $ NEList.toList sels
@@ -779,13 +781,13 @@ infer expr =
           (cond', i_cond, c_cond) <- case cond of
             Just (p4, e_cond) -> do
               r2 <- foldr inEnv (infer e_cond) vars
-              return
+              pure
                 ( Just (p4, r2.expr)
                 , r2.typ.impl
                 , r2.constrs
                     <> Sequence.singleton (tyConstr r2.typ.body typeBool [UnificationFail (Set.fromList . map snd . rights $ toList r2.constrs) r2.typ.body typeBool $ blockPosition e_cond])
                 )
-            Nothing -> return (Nothing, Map.empty, Sequence.empty)
+            Nothing -> pure (Nothing, Map.empty, Sequence.empty)
 
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) $ [r1.typ.impl, i_cond] ++ is
           pure
@@ -793,13 +795,15 @@ infer expr =
               { expr = ArrayComp p1 r1.expr p2 (NEList.fromList sels') cond' p3
               , typ = ImplType isMerged (TArray r1.typ.body)
               , constrs =
-                  Sequence.fromList ics
-                    <> r1.constrs
-                    <> c_cond
-                    <> mconcat css
+                  mconcat
+                    [ Sequence.fromList ics
+                    , r1.constrs
+                    , c_cond
+                    , mconcat css
+                    ]
               }
           where
-            go [] _ = return []
+            go [] _ = pure []
             go ((pos, Ident x, p4, e_s, p5) : xs) f = do
               r <- f $ infer e_s
               tv <- fresh
@@ -819,7 +823,7 @@ infer expr =
                         }
                     )
               rest <- go xs (inEnv newEnv . f)
-              return $
+              pure $
                 ( (pos, Ident x, p4, r.expr, p5)
                 , newEnv
                 , r.typ.impl
@@ -881,18 +885,20 @@ infer expr =
               tv <- fresh
               let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
                   tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
-              return
+              pure
                 InferResult
                   { expr = App r1.expr r2.expr
                   , typ = ImplType isMerged tv
                   , constrs =
-                      Sequence.fromList ics
-                        <> r1.constrs
-                        <> r2.constrs
-                        <> Sequence.fromList
-                          [ tyConstr t1a r2.typ.body [UnificationFail tyCls t1a r2.typ.body $ blockPosition e2]
-                          , tyConstr t1b tv [UnificationFail tyCls t1b tv $ blockPosition expr]
-                          ]
+                      mconcat
+                        [ Sequence.fromList ics
+                        , r1.constrs
+                        , r2.constrs
+                        , Sequence.fromList
+                            [ tyConstr t1a r2.typ.body [UnificationFail tyCls t1a r2.typ.body $ blockPosition e2]
+                            , tyConstr t1b tv [UnificationFail tyCls t1b tv $ blockPosition expr]
+                            ]
+                        ]
                   }
             _ -> do
               tv <- fresh
@@ -905,12 +911,14 @@ infer expr =
                   { expr = App r1.expr r2.expr
                   , typ = ImplType isMerged tv
                   , constrs =
-                      Sequence.fromList ics
-                        <> r1.constrs
-                        <> r2.constrs
-                        <> Sequence.fromList
-                          [ tyConstr r1.typ.body (r2.typ.body `TArr` tv) [ExpectedFunction tyCls (r2.typ.body `TArr` tv) r1.typ.body $ blockPosition e1]
-                          ]
+                      mconcat
+                        [ Sequence.fromList ics
+                        , r1.constrs
+                        , r2.constrs
+                        , Sequence.fromList
+                            [ tyConstr r1.typ.body (r2.typ.body `TArr` tv) [ExpectedFunction tyCls (r2.typ.body `TArr` tv) r1.typ.body $ blockPosition e1]
+                            ]
+                        ]
                   }
         LetAnnot p1 loc x pT t p2 e1 p3 e2 -> do
           r1 <- infer e1
@@ -940,13 +948,15 @@ infer expr =
               { expr = LetAnnot p1 loc x pT t p2 r1.expr p3 r2.expr
               , typ = ImplType isMerged r2.typ.body
               , constrs =
-                  Sequence.fromList ics
-                    <> r1.constrs
-                    <> r2.constrs
-                    -- Type of e1 == type annotation
-                    <> Sequence.fromList [tyConstr r1.typ.body tT [AnnotationUnificationFail tyCls r1.typ.body tT $ blockPosition e1]]
-                    -- Type class constraints from type annotation TODO filter out reps?
-                    <> foldMap (Sequence.singleton . Right . (exprLoc,)) tcs
+                  mconcat
+                    [ Sequence.fromList ics
+                    , r1.constrs
+                    , r2.constrs
+                    , -- Type of e1 == type annotation
+                      Sequence.fromList [tyConstr r1.typ.body tT [AnnotationUnificationFail tyCls r1.typ.body tT $ blockPosition e1]]
+                    , -- Type class constraints from type annotation TODO filter out reps?
+                      foldMap (Sequence.singleton . Right . (exprLoc,)) tcs
+                    ]
               }
         -- non generalized let
         Let p1 loc (Expl x) p2 e1 p3 e2 -> do
@@ -970,17 +980,17 @@ infer expr =
                 )
           r2 <- inEnv newEnv $ infer e2
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-          return
+          pure
             InferResult
               { expr = Let p1 loc (Expl x) p2 r1.expr p3 r2.expr
               , typ = ImplType isMerged r2.typ.body
-              , constrs = Sequence.fromList ics <> r1.constrs <> r2.constrs
+              , constrs = mconcat [Sequence.fromList ics, r1.constrs, r2.constrs]
               }
         Let p1 loc (Impl x) p2 e1 p3 e2 -> do
           r1 <- infer e1
           r2 <- infer e2
 
-          v1 <- maybe fresh return (Map.lookup x r2.typ.impl)
+          v1 <- maybe fresh pure (Map.lookup x r2.typ.impl)
 
           let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, Map.withoutKeys r2.typ.impl (Set.singleton x)]
               tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
@@ -990,10 +1000,12 @@ infer expr =
               { expr = Let p1 loc (Impl x) p2 r1.expr p3 r2.expr
               , typ = ImplType isMerged r2.typ.body
               , constrs =
-                  Sequence.fromList ics
-                    <> r1.constrs
-                    <> r2.constrs
-                    <> Sequence.singleton (tyConstr v1 r1.typ.body [ImplicitVarTypeOverlap tyCls x v1 r1.typ.body $ blockPosition expr])
+                  mconcat
+                    [ Sequence.fromList ics
+                    , r1.constrs
+                    , r2.constrs
+                    , Sequence.singleton (tyConstr v1 r1.typ.body [ImplicitVarTypeOverlap tyCls x v1 r1.typ.body $ blockPosition expr])
+                    ]
               }
         Op e1 loc mHash opMeta modNm op e2 -> do
           let (sPos, ePos) = elementPosition loc op
@@ -1016,15 +1028,17 @@ infer expr =
               { expr = Op r1.expr loc mHash opMeta modNm op r2.expr
               , typ = ImplType isMerged tv
               , constrs =
-                  Sequence.fromList ics
-                    <> r1.constrs
-                    <> r2.constrs
-                    <> Sequence.fromList
-                      [ tyConstr u1 r1.typ.body [UnificationFail tyCls u1 r1.typ.body $ blockPosition e1]
-                      , tyConstr u2 r2.typ.body [UnificationFail tyCls u2 r2.typ.body $ blockPosition e2]
-                      , tyConstr u3 tv [UnificationFail tyCls u3 tv $ blockPosition expr]
-                      ]
-                    <> foldMap (Sequence.singleton . Right . (opLoc,)) tcs
+                  mconcat
+                    [ Sequence.fromList ics
+                    , r1.constrs
+                    , r2.constrs
+                    , Sequence.fromList
+                        [ tyConstr u1 r1.typ.body [UnificationFail tyCls u1 r1.typ.body $ blockPosition e1]
+                        , tyConstr u2 r2.typ.body [UnificationFail tyCls u2 r2.typ.body $ blockPosition e2]
+                        , tyConstr u3 tv [UnificationFail tyCls u3 tv $ blockPosition expr]
+                        ]
+                    , foldMap (Sequence.singleton . Right . (opLoc,)) tcs
+                    ]
               }
         PreOp loc mHash opMeta modNm op e -> do
           let (sPos, ePos) = elementPosition loc op
@@ -1044,12 +1058,14 @@ infer expr =
               { expr = PreOp loc mHash opMeta modNm op r.expr
               , typ = ImplType r.typ.impl tv
               , constrs =
-                  r.constrs
-                    <> Sequence.fromList
-                      [ tyConstr u1 r.typ.body [UnificationFail tyCls u1 r.typ.body $ blockPosition e]
-                      , tyConstr u2 tv [UnificationFail tyCls u2 tv $ blockPosition expr]
-                      ]
-                    <> foldMap (Sequence.singleton . Right . (opLoc,)) tcs
+                  mconcat
+                    [ r.constrs
+                    , Sequence.fromList
+                        [ tyConstr u1 r.typ.body [UnificationFail tyCls u1 r.typ.body $ blockPosition e]
+                        , tyConstr u2 tv [UnificationFail tyCls u2 tv $ blockPosition expr]
+                        ]
+                    , foldMap (Sequence.singleton . Right . (opLoc,)) tcs
+                    ]
               }
         If p1 cond p2 tr p3 fl -> do
           r1 <- infer cond
@@ -1064,14 +1080,16 @@ infer expr =
               { expr = If p1 r1.expr p2 r2.expr p3 r3.expr
               , typ = ImplType isMerged r2.typ.body
               , constrs =
-                  Sequence.fromList ics
-                    <> r1.constrs
-                    <> r2.constrs
-                    <> r3.constrs
-                    <> Sequence.fromList
-                      [ tyConstr r1.typ.body typeBool [IfConditionMustBeBool tyCls r1.typ.body $ blockPosition cond]
-                      , tyConstr r2.typ.body r3.typ.body [IfBranchesMustBeEqType tyCls r2.typ.body r3.typ.body (blockPosition tr) (blockPosition fl)]
-                      ]
+                  mconcat
+                    [ Sequence.fromList ics
+                    , r1.constrs
+                    , r2.constrs
+                    , r3.constrs
+                    , Sequence.fromList
+                        [ tyConstr r1.typ.body typeBool [IfConditionMustBeBool tyCls r1.typ.body $ blockPosition cond]
+                        , tyConstr r2.typ.body r3.typ.body [IfBranchesMustBeEqType tyCls r2.typ.body r3.typ.body (blockPosition tr) (blockPosition fl)]
+                        ]
+                    ]
               }
         Tuple p1 es p2 -> do
           (es', impls, tys, cs) <- go $ tListToList es
@@ -1092,11 +1110,11 @@ infer expr =
               , constrs = Sequence.fromList ics <> cs
               }
           where
-            go [] = return ([], [], [], Sequence.empty)
+            go [] = pure ([], [], [], Sequence.empty)
             go ((e', p3) : es') = do
               r <- infer e'
               (es'', impls, tRest, csRest) <- go es'
-              return ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
+              pure ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
         Assert p1 cond p2 e -> do
           r1 <- infer cond
           r2 <- infer e
@@ -1210,13 +1228,13 @@ infer expr =
                               , ty = ForallTC [] Set.empty $ ImplType Map.empty tv
                               , docs = Nothing
                               }
-                      return (tv, [(Ident x, meta)], Sequence.empty)
+                      pure (tv, [(Ident x, meta)], Sequence.empty)
                     PEnum _ Local _ _ -> error "internal error, malformed pattern enum must be pinned"
                     PEnum _ hash sc i -> do
                       meta <- lookupEnv patLoc $ Left $ fromJust $ pinnedToMaybe hash
                       let (_, ImplType _ t) = ty meta
                       attachTypeToPosition patLoc meta{identExpr = Enum () () sc i}
-                      return (t, [], Sequence.empty)
+                      pure (t, [], Sequence.empty)
                     PLit _ l ->
                       inferPatLit
                         patLoc
@@ -1231,12 +1249,12 @@ infer expr =
                       (t, vars, cs) <- mkPatConstraint p
                       meta <- lookupEnv patLoc $ Left oneHash
                       attachTypeToPosition patLoc meta{ty = (Set.empty, ImplType Map.empty $ t .-> TOptional t)}
-                      return (TOptional t, vars, cs)
+                      pure (TOptional t, vars, cs)
                     PEmpty _ -> do
                       meta <- lookupEnv patLoc $ Left emptyHash
                       let (_, ImplType _ t) = ty meta
                       attachTypeToPosition patLoc meta
-                      return (t, [], Sequence.empty)
+                      pure (t, [], Sequence.empty)
                     PArray _ [] _ -> do
                       tv <- fresh
                       let t = TArray tv
@@ -1247,7 +1265,7 @@ infer expr =
                           , ty = (Set.empty, ImplType Map.empty t)
                           , docs = Nothing
                           }
-                      return (t, [], Sequence.empty)
+                      pure (t, [], Sequence.empty)
                     PArray _ ((p, _) : ps) _ -> do
                       (t, vars1, csP) <- mkPatConstraint p
                       (vars2, csPs) <- aux t ps
@@ -1259,16 +1277,16 @@ infer expr =
                           , ty = (Set.empty, ImplType Map.empty inferredTy)
                           , docs = Nothing
                           }
-                      return (inferredTy, vars1 ++ vars2, csP <> csPs)
+                      pure (inferredTy, vars1 ++ vars2, csP <> csPs)
                       where
-                        aux _t [] = return ([], Sequence.empty)
+                        aux _t [] = pure ([], Sequence.empty)
                         aux t ((p', _) : ps') = do
                           (t', vars', cs') <- mkPatConstraint p'
                           (vars, cs) <- aux t ps'
                           let tIst' = tyConstr t t' [UnificationFail Set.empty t t' $ blockPosition p']
-                          return
+                          pure
                             ( vars' ++ vars
-                            , cs' <> cs <> Sequence.singleton tIst'
+                            , mconcat [cs', cs, Sequence.singleton tIst']
                             )
                     PTuple _ ps _ -> do
                       (ts, vars, cs) <- aux $ tListToList ps
@@ -1280,13 +1298,13 @@ infer expr =
                           , ty = (Set.empty, ImplType Map.empty inferredTy)
                           , docs = Nothing
                           }
-                      return (inferredTy, vars, cs)
+                      pure (inferredTy, vars, cs)
                       where
-                        aux [] = return ([], [], Sequence.empty)
+                        aux [] = pure ([], [], Sequence.empty)
                         aux ((p', _l) : ps') = do
                           (t, vars1, cs1) <- mkPatConstraint p'
                           (ts, vars2, cs2) <- aux ps'
-                          return (t : ts, vars1 ++ vars2, cs1 <> cs2)
+                          pure (t : ts, vars1 ++ vars2, cs1 <> cs2)
                     PRecord _ fs _ -> do
                       checkDuplicateFields patLoc fs
                       (ts, vars, cs) <- aux fs
@@ -1298,13 +1316,13 @@ infer expr =
                           , ty = (Set.empty, ImplType Map.empty inferredTy)
                           , docs = Nothing
                           }
-                      return (inferredTy, vars, cs)
+                      pure (inferredTy, vars, cs)
                       where
-                        aux [] = return (mempty, [], Sequence.empty)
+                        aux [] = pure (mempty, [], Sequence.empty)
                         aux ((f, p', _l) : ps') = do
                           (t, vars1, cs1) <- mkPatConstraint p'
                           (ts, vars2, cs2) <- aux ps'
-                          return (Map.insert f t ts, vars1 ++ vars2, cs1 <> cs2)
+                          pure (Map.insert f t ts, vars1 ++ vars2, cs1 <> cs2)
                     PVar _ Nothing -> do
                       tv <- fresh
                       let meta =
@@ -1314,7 +1332,7 @@ infer expr =
                               , docs = Nothing
                               }
                       attachTypeToPosition patLoc meta
-                      return (tv, [], Sequence.empty)
+                      pure (tv, [], Sequence.empty)
                     PCommentAbove _ p -> mkPatConstraint p
                     PCommentAfter p _ -> mkPatConstraint p
                     PCommentBelow p _ -> mkPatConstraint p
@@ -1378,7 +1396,7 @@ inferPatLit loc n t =
       , ty = (Set.empty, ImplType Map.empty t)
       , docs = Nothing
       }
-    >> return (t, [], Sequence.empty)
+    >> pure (t, [], Sequence.empty)
 
 -------------------------------------------------------------------------------
 -- Constraint Solver
