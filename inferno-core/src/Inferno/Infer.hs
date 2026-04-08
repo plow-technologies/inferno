@@ -43,7 +43,7 @@ import Control.Monad.State
     evalStateT,
     execState,
     gets,
-    modify,
+    modify',
   )
 import Data.Bifunctor (Bifunctor (first, second), bimap)
 import qualified Data.Bimap as Bimap
@@ -53,7 +53,7 @@ import Data.Generics.Product (HasType, getTyped, setTyped)
 import Data.List (find, sortOn, unzip4)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
-import qualified Data.Map.Merge.Lazy as Map
+import qualified Data.Map.Merge.Strict as Map
 import Data.Maybe (catMaybes, fromJust, mapMaybe)
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Sequence
@@ -384,7 +384,7 @@ inferExpr allModules expr =
                       -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
                       (Subst s) : _ ->
                         let ftvsDependentOnOuterType =
-                              Set.foldl
+                              Set.foldl'
                                 ( \ftvsTransClosure c ->
                                     let ftvCls = ftv c
                                      in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
@@ -395,7 +395,7 @@ inferExpr allModules expr =
                                 -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
                                 (ftv substitutedTy.body `Set.union` Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty substitutedTy.impl)
                                 cls
-                            subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
+                            subst' = Subst $ Set.foldl' (flip Map.delete) s ftvsDependentOnOuterType
                          in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
                             res subst' $ closeOverTypeReps (Map.map (apply subst') substitutedTy.impl) r.expr
   where
@@ -538,11 +538,11 @@ freshRaw = do
 
 attachTypeToPosition :: Location SourcePos -> TypeMetadata (Set.Set TypeClass, ImplType) -> Infer ()
 attachTypeToPosition k meta =
-  modify $ \s -> s{typeMap = Map.insert k meta s.typeMap}
+  modify' $ \s -> s{typeMap = Map.insert k meta s.typeMap}
 
 addCasePatterns :: Location SourcePos -> [Pat (Pinned VCObjectHash) SourcePos] -> Infer ()
 addCasePatterns k pttrns =
-  modify $
+  modify' $
     \s ->
       s
         { patternsToCheck = (k, pttrns) : s.patternsToCheck
@@ -1351,7 +1351,7 @@ infer expr =
             Just oldNmMod -> do
               put s{modules = Map.insert newNm oldNmMod mods}
               r <- infer e
-              modify $ \s' -> s'{modules = Map.delete newNm s.modules}
+              modify' $ \s' -> s'{modules = Map.delete newNm s.modules}
               pure InferResult{expr = RenameModule l1 newNm l2 oldNm l3 r.expr, typ = r.typ, constrs = r.constrs}
         OpenModule l1 mHash modNm@(ModuleName n) imports p e -> do
           InferState{modules = mods} <- get
@@ -1607,7 +1607,7 @@ solverTypeClasses su =
             (Subst s : xs) -> do
               -- even if we have multiple matching substitutions, we can still make progress if they all agree
               -- on some parameter
-              let su' = Subst (foldr intersection s [x | Subst x <- xs]) `compose` su
+              let su' = Subst (foldl' (flip intersection) s [x | Subst x <- xs]) `compose` su
               -- trace ("applying su': "<> show su' <> "\nprevious was su: " <> show su) $
               applySubsts su'
               solverTypeClasses su'
@@ -1686,7 +1686,7 @@ findTypeClassWitnesses allClasses iters tyCls tvs =
     (_, litMap, clauses) = flip execState (Counter 1, Bimap.empty, []) $ do
       encodeTypeClasses allClasses filteredSubs $ Set.toList tyCls
       lm :: Bimap.Bimap Int (TV, InfernoType) <- gets getTyped
-      let ls_grouped = foldr (\(l, (tv, _)) m' -> Map.alter (Just . maybe [l] (l :)) tv m') mempty $ Bimap.toList lm
+      let ls_grouped = foldl' (\m' (l, (tv, _)) -> Map.alter (Just . maybe [l] (l :)) tv m') mempty $ Bimap.toList lm
       forM_ (Map.elems ls_grouped) $ \ls -> xor ls
 
     getSolutions = \case
@@ -1728,7 +1728,7 @@ filteredTypeClassSubstitutions allClasses = \case
       Left _ -> filteredTypeClassSubstitutions allClasses tcs
       Right subs' ->
         let subs = [su | Subst su <- subs']
-            mergedSubs = foldr (Map.merge (Map.mapMissing $ \_k a -> Set.singleton a) Map.preserveMissing $ Map.zipWithMatched $ \_k a as -> Set.insert a as) mempty subs
+            mergedSubs = foldl' (Map.merge Map.preserveMissing (Map.mapMissing $ \_k a -> Set.singleton a) $ Map.zipWithMatched $ \_k as a -> Set.insert a as) mempty subs
             finalMap = filteredTypeClassSubstitutions allClasses tcs
          in Map.merge Map.preserveMissing Map.preserveMissing (Map.zipWithMatched $ \_k as bs -> Set.intersection as bs) mergedSubs finalMap
 
