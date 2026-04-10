@@ -2,10 +2,6 @@
 
 module Infer.Spec where
 
-import Control.Monad.Except (runExceptT)
-import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.Reader (ReaderT (runReaderT))
-import Control.Monad.State (evalStateT)
 import Data.List (intercalate)
 import qualified Data.List.NonEmpty as NEList
 import qualified Data.Map as Map
@@ -286,62 +282,50 @@ inferTests = describe "infer" $
       unificationShouldBeOK
         ([], RowAbsent)
         ([], RowAbsent)
-        0
 
       unificationShouldBeOK
         ([("f1", typeDouble)], RowVar $ TV 1)
         ([("f1", typeDouble)], RowVar $ TV 2)
-        3
 
       unificationShouldBeOK
         ([("f1", typeBool), ("f2", typeDouble)], RowAbsent)
         ([("f2", typeDouble), ("f1", typeBool)], RowAbsent)
-        0
 
       unificationShouldBeOK
         ([("f1", typeInt), ("f2", TVar $ TV 0)], RowAbsent)
         ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
-        2
 
       unificationShouldFail
         ([("f2", TVar $ TV 0)], RowAbsent)
         ([("f1", TVar $ TV 1), ("f2", TVar $ TV 2)], RowAbsent)
-        3
 
       unificationShouldBeOK
         ([("f1", typeInt)], RowVar $ TV 0)
         ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowAbsent)
-        2
 
       unificationShouldFail
         ([("f1", typeInt)], RowAbsent)
         ([("f1", TVar $ TV 1), ("f2", typeDouble)], RowVar $ TV 0)
-        2
 
       unificationShouldBeOK
         ([], RowVar $ TV 0)
         ([("f1", typeInt), ("f2", typeDouble)], RowAbsent)
-        1
 
       unificationShouldFail
         ([("f1", typeInt)], RowVar $ TV 0)
         ([("f2", typeText), ("f3", typeDouble)], RowAbsent)
-        1
 
       unificationShouldBeOK
         ([("f1", typeInt)], RowVar $ TV 0)
         ([("f2", typeText)], RowVar $ TV 1)
-        2
 
       unificationShouldFail
         ([("f1", typeInt), ("f2", typeDouble)], RowVar $ TV 0)
         ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
-        2
 
       unificationShouldBeOK
         ([("f1", typeInt)], RowVar $ TV 0)
         ([("f2", typeText), ("f3", typeDouble)], RowVar $ TV 1)
-        2
   where
     t_hash = vcHash ("true" :: Ident, enumBoolHash)
     f_hash = vcHash ("false" :: Ident, enumBoolHash)
@@ -370,25 +354,19 @@ inferTests = describe "infer" $
       it ("patterns\n      " <> printPatts patts <> "\n    should contain redundant clauses") $
         checkUsefullness enum_sigs (map (: []) patts) `shouldNotBe` []
 
-    unificationShouldBeOK (ts1, trv1) (ts2, trv2) varCount = do
+    unificationShouldBeOK (ts1, trv1) (ts2, trv2) = do
       let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
-      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
-        let sortFields = Map.toAscList . Map.fromList
-        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
-        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
-        case y of
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $
+        case unifyRecords [] (Map.fromList ts1, trv1) (Map.fromList ts2, trv2) of
           Left errs ->
             trace ("unification returned errors " <> show errs) $ expectationFailure $ show errs
           Right s' ->
             trace ("unification returned " <> show s') $ pure ()
 
-    unificationShouldFail (ts1, trv1) (ts2, trv2) varCount = do
+    unificationShouldFail (ts1, trv1) (ts2, trv2) = do
       let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
-      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $ do
-        let sortFields = Map.toAscList . Map.fromList
-        let x = unifyRecords [] (sortFields ts1, trv1) (sortFields ts2, trv2) [] [] []
-        let y = runIdentity $ runExceptT $ flip evalStateT varCount $ runReaderT x mempty
-        case y of
+      it (unpack $ "unifyRecords " <> pr (ts1, trv1) <> " " <> pr (ts2, trv2)) $
+        case unifyRecords [] (Map.fromList ts1, trv1) (Map.fromList ts2, trv2) of
           Left errs ->
             trace ("unification returned errors " <> show errs) $ pure ()
           Right s' ->
