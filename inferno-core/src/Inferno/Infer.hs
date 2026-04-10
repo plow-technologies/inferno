@@ -28,8 +28,9 @@ import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
-import Data.Foldable (foldl', toList) -- foldl': see CLAUDE.md note about lower GHC versions
-import Data.Functor (($>)) -- foldl': see CLAUDE.md note about lower GHC versions
+import Data.Foldable (for_, foldl', toList) -- foldl': see CLAUDE.md note about lower GHC versions
+import Data.Function ((&))
+import Data.Functor (($>))
 import qualified Data.Map as Map
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 import qualified Data.Set as Set
@@ -100,6 +101,14 @@ data CaseBranch = CaseBranch
   , pat :: Pat (Pinned VCObjectHash) SourcePos
   , arrPos :: SourcePos
   , body :: Expr (Pinned VCObjectHash) SourcePos
+  }
+
+-- | One side of a record-field merge: remaining sorted fields,
+-- the row variable tail, and accumulated new fields.
+data RecordSide = RecordSide
+  { fields :: ![(Ident, InfernoType)]
+  , ror :: !RestOfRecord
+  , new :: ![(Ident, InfernoType)]
   }
 
 -- | Virtual record fields for @ImplType@
@@ -350,12 +359,9 @@ unify err t1 t2 = do
         | length ts1 == length ts2 ->
             zipWithM_ (unify err) (toList ts1) $ toList ts2
       (TRecord fs1 r1) (TRecord fs2 r2) ->
-        unifyRecordFields
-          err
-          (Map.toAscList fs1, r1)
-          (Map.toAscList fs2, r2)
-          mempty
-          mempty
+        unifyRecordFields err
+          RecordSide{fields = Map.toAscList fs1, ror = r1, new = mempty}
+          RecordSide{fields = Map.toAscList fs2, ror = r2, new = mempty}
           mempty
       _ _ -> throwError err
 
@@ -385,44 +391,50 @@ unify err t1 t2 = do
 -- are bound to the row variables via 'ufBind'.
 unifyRecordFields ::
   [TypeError SourcePos] ->
-  ([(Ident, InfernoType)], RestOfRecord) ->
-  ([(Ident, InfernoType)], RestOfRecord) ->
-  [(Ident, InfernoType)] ->
-  [(Ident, InfernoType)] ->
+  RecordSide ->
+  RecordSide ->
   [(InfernoType, InfernoType)] ->
   Infer s ()
 unifyRecordFields err = \cases
   -- Base case: all fields consumed
-  ([], ror1) ([], ror2) new1 new2 pairs -> do
+  s1@RecordSide{fields = []} s2@RecordSide{fields = []} pairs -> do
     -- Unify all accumulated field-type pairs
-    mapM_ (uncurry $ unify err) pairs
+    for_ pairs . uncurry $ unify err
     -- Build new record types for the row variable expansions, then unify
     -- the row variables
-    ror1' <- expandRowVar err ror1 new1
-    ror2' <- expandRowVar err ror2 new2
+    ror1' <- expandRowVar err s1.ror s1.new
+    ror2' <- expandRowVar err s2.ror s2.new
     unifyRowVars err ror1' ror2'
   -- Left exhausted, right has fields remaining
-  ([], ror1) ((f2, t2) : ts2, ror2) new1 new2 pairs ->
+  s1@RecordSide{fields = []} s2@RecordSide{fields = (f2, t2) : ts2} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
-      unifyRecordFields err ([], ror1) (ts2, ror2) ((f2, tv) : new1) new2 $
-        (tv, t2) : pairs
+      unifyRecordFields err
+        s1{new = (f2, tv) : s1.new}
+        s2{fields = ts2}
+        $ (tv, t2) : pairs
   -- Right exhausted, left has fields remaining
-  ((f1, t1) : ts1, ror1) ([], ror2) new1 new2 pairs ->
+  s1@RecordSide{fields = (f1, t1) : ts1} s2@RecordSide{fields = []} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
-      unifyRecordFields err (ts1, ror1) ([], ror2) new1 ((f1, tv) : new2) $
-        (tv, t1) : pairs
+      unifyRecordFields err
+        s1{fields = ts1}
+        s2{new = (f1, tv) : s2.new}
+        $ (tv, t1) : pairs
   -- Both have fields; compare the smallest field names
-  ((f1, t1) : ts1, ror1) ((f2, t2) : ts2, ror2) new1 new2 pairs
+  s1@RecordSide{fields = (f1, t1) : ts1} s2@RecordSide{fields = (f2, t2) : ts2} pairs
     | f1 == f2 ->
-        unifyRecordFields err (ts1, ror1) (ts2, ror2) new1 new2 ((t1, t2) : pairs)
+        unifyRecordFields err s1{fields = ts1} s2{fields = ts2} $ (t1, t2) : pairs
     | f1 > f2 ->
         (freshTV >>=) . (. TVar) $ \tv ->
-          unifyRecordFields err ((f1, t1) : ts1, ror1) (ts2, ror2) ((f2, tv) : new1) new2 $
-            (tv, t2) : pairs
+          unifyRecordFields err
+            s1{new = (f2, tv) : s1.new}
+            s2{fields = ts2}
+            $ (tv, t2) : pairs
     | otherwise ->
         (freshTV >>=) . (. TVar) $ \tv ->
-          unifyRecordFields err (ts1, ror1) ((f2, t2) : ts2, ror2) new1 ((f1, tv) : new2) $
-            (tv, t1) : pairs
+          unifyRecordFields err
+            s1{fields = ts1}
+            s2{new = (f1, tv) : s2.new}
+            $ (tv, t1) : pairs
 
 -- | If there are new fields to add, bind the row variable to a record
 -- containing those fields and a fresh row variable. Returns the new
@@ -496,12 +508,9 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
 
           doUnify :: Infer s ()
           doUnify =
-            unifyRecordFields
-              err
-              (Map.toAscList fs1, ror1)
-              (Map.toAscList fs2, ror2)
-              mempty
-              mempty
+            unifyRecordFields err
+              RecordSide{fields = Map.toAscList fs1, ror = ror1, new = mempty}
+              RecordSide{fields = Map.toAscList fs2, ror = ror2, new = mempty}
               mempty
 
       runExceptT (runReaderT doUnify ctx) >>= \case
@@ -518,9 +527,8 @@ freezeUFToSubst ::
   Int ->
   MVector.STVector s UFContent ->
   ST s (Either [TypeError SourcePos] Subst)
-freezeUFToSubst n v = do
-  pairs <- go 0
-  pure . Right . Subst $ Map.fromList pairs
+freezeUFToSubst n v =
+  Right . Subst . Map.fromList <$> go 0
   where
     go :: Int -> ST s [(TV, InfernoType)]
     go i
@@ -528,7 +536,7 @@ freezeUFToSubst n v = do
       | otherwise = do
           t <- resolve i
           rest <- go $ i + 1
-          case t of
+          t & \case
             TVar tv'
               | tv' == TV i -> pure rest
             _ -> pure $ (TV i, t) : rest
