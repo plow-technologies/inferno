@@ -28,7 +28,7 @@ import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
-import Data.Foldable (for_, foldl', toList) -- foldl': see CLAUDE.md note about lower GHC versions
+import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about lower GHC versions
 import Data.Function ((&))
 import Data.Functor (($>))
 import qualified Data.Map as Map
@@ -251,15 +251,17 @@ readRoot (TV ri) =
     UFLink _ -> pure (0, Nothing) -- unreachable after ufFind
 
 -- | Union two type variables by rank. If either root already has a
--- resolved type, the other root inherits it (and we unify if both have one).
+-- resolved type, the other root inherits it. If both have resolved
+-- types, they are unified for consistency.
 ufUnion :: TV -> TV -> Infer s ()
 ufUnion a b =
   withFind a $ \ra@(TV ri) -> withFind b $ \rb@(TV rj) ->
     when (ra /= rb) $ do
       (rankA, mA) <- readRoot ra
       (rankB, mB) <- readRoot rb
-      let merged :: Maybe InfernoType
-          merged = mA <|> mB
+      merged <- case (mA, mB) of
+        (Just tA, Just tB) -> unify [] tA tB $> mA
+        _ -> pure $ mA <|> mB
       withStore $ \v ->
         case compare rankA rankB of
           LT -> do
@@ -273,10 +275,15 @@ ufUnion a b =
             MVector.write v ri $ UFRoot (rankA + 1) merged
 
 -- | Bind a root type variable to a concrete (non-'TVar') type.
+-- If the root already has a resolved type, unifies it with @t@
+-- for consistency instead of overwriting.
 ufBind :: TV -> InfernoType -> Infer s ()
 ufBind tv t = withFind tv $ \root@(TV ri) ->
-  (readRoot root >>=) . (. fst) $ \rank ->
-    withStore $ \v -> MVector.write v ri . UFRoot rank $ Just t
+  readRoot root >>= \case
+    (rank, Nothing) ->
+      withStore $ \v -> MVector.write v ri . UFRoot rank $ Just t
+    (_, Just old) ->
+      unify [] old t
 
 -- | Walk a type, replacing 'TVar's via 'ufProbe' and recursing structurally.
 -- For 'TRecord', when the row variable resolves to another record, merge
@@ -297,16 +304,16 @@ zonk = \case
   TRep t -> TRep <$> zonk t
   TRecord fields ror -> (`zonkRecord` ror) =<< traverse zonk fields
   where
-    -- Zonk a record's row variable; if it resolves to another `TRecord`,
-    -- merge the fields and keep going.
+    -- Zonk a record's row variable; if it resolves to another @TRecord@,
+    -- zonk the new fields, merge, and keep going.
     zonkRecord :: Map.Map Ident InfernoType -> RestOfRecord -> Infer s InfernoType
     zonkRecord fs = \case
       RowAbsent -> pure $ TRecord fs RowAbsent
       RowVar tv ->
         ufProbe tv >>= \case
-          TVar tv' -> pure . TRecord fs $ RowVar tv'
-          TRecord fs' ror' ->
-            flip zonkRecord ror' $ Map.union fs fs'
+          TVar v -> pure . TRecord fs $ RowVar v
+          TRecord extra ror ->
+            (`zonkRecord` ror) . Map.union fs =<< traverse zonk extra
           -- Row variable resolved to something that is not a record or a var;
           -- this should not happen in well-formed programs. Treat as opaque.
           _ -> pure $ TRecord fs RowAbsent
@@ -355,7 +362,8 @@ unify err t1 t2 = do
         | length ts1 == length ts2 ->
             zipWithM_ (unify err) (toList ts1) $ toList ts2
       (TRecord fs1 r1) (TRecord fs2 r2) ->
-        unifyRecordFields err
+        unifyRecordFields
+          err
           RecordSide{fields = Map.toAscList fs1, ror = r1, new = mempty}
           RecordSide{fields = Map.toAscList fs2, ror = r2, new = mempty}
           mempty
@@ -404,14 +412,16 @@ unifyRecordFields err = \cases
   -- Left exhausted, right has fields remaining
   s1@RecordSide{fields = []} s2@RecordSide{fields = (f2, t2) : ts2} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
-      unifyRecordFields err
+      unifyRecordFields
+        err
         s1{new = (f2, tv) : s1.new}
         s2{fields = ts2}
         $ (tv, t2) : pairs
   -- Right exhausted, left has fields remaining
   s1@RecordSide{fields = (f1, t1) : ts1} s2@RecordSide{fields = []} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
-      unifyRecordFields err
+      unifyRecordFields
+        err
         s1{fields = ts1}
         s2{new = (f1, tv) : s2.new}
         $ (tv, t1) : pairs
@@ -421,13 +431,15 @@ unifyRecordFields err = \cases
         unifyRecordFields err s1{fields = ts1} s2{fields = ts2} $ (t1, t2) : pairs
     | f1 > f2 ->
         (freshTV >>=) . (. TVar) $ \tv ->
-          unifyRecordFields err
+          unifyRecordFields
+            err
             s1{new = (f2, tv) : s1.new}
             s2{fields = ts2}
             $ (tv, t2) : pairs
     | otherwise ->
         (freshTV >>=) . (. TVar) $ \tv ->
-          unifyRecordFields err
+          unifyRecordFields
+            err
             s1{fields = ts1}
             s2{new = (f1, tv) : s2.new}
             $ (tv, t1) : pairs
@@ -475,8 +487,9 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
   where
     -- Compute the starting counter from the max TV in the inputs
     maxTV :: Int
-    maxTV = maybe 0 ((+1) . unTV) . Set.lookupMax $
-      ftv (TRecord fs1 ror1) `Set.union` ftv (TRecord fs2 ror2)
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        ftv (TRecord fs1 ror1) `Set.union` ftv (TRecord fs2 ror2)
 
     go :: forall s. ST s (Either [TypeError SourcePos] Subst)
     go = do
@@ -504,7 +517,8 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
 
           doUnify :: Infer s ()
           doUnify =
-            unifyRecordFields err
+            unifyRecordFields
+              err
               RecordSide{fields = Map.toAscList fs1, ror = ror1, new = mempty}
               RecordSide{fields = Map.toAscList fs2, ror = ror2, new = mempty}
               mempty
@@ -516,8 +530,9 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
           v <- readSTRef stRef
           freezeUFToSubst n v
 
--- | Freeze the UF store into a 'Subst'. For each TV @0..n-1@, if it
--- resolves to something other than itself, add the mapping.
+-- | Freeze the UF store into a 'Subst'. For each TV @0..n-1@, fully
+-- resolve its type (transitively resolving all inner @TVar@s) and add
+-- the mapping if it differs from the identity.
 freezeUFToSubst ::
   forall s.
   Int ->
@@ -530,20 +545,48 @@ freezeUFToSubst n v =
     go i
       | i >= n = pure mempty
       | otherwise = do
-          t <- resolve i
+          t <- resolveType =<< findRoot i
           rest <- go $ i + 1
           t & \case
-            TVar tv'
-              | tv' == TV i -> pure rest
+            TVar tv
+              | tv == TV i -> pure rest
             _ -> pure $ (TV i, t) : rest
 
-    -- Chase links and return the resolved type
-    resolve :: Int -> ST s InfernoType
-    resolve i =
+    -- Chase @UFLink@ pointers to the root and return its stored type
+    findRoot :: Int -> ST s InfernoType
+    findRoot i =
       MVector.read v i >>= \case
-        UFLink (TV j) -> resolve j
+        UFLink (TV j) -> findRoot j
         UFRoot _ (Just t) -> pure t
         UFRoot _ Nothing -> pure . TVar $ TV i
+
+    -- Transitively resolve all @TVar@s within a type
+    resolveType :: InfernoType -> ST s InfernoType
+    resolveType = \case
+      TVar tv@(TV i) ->
+        findRoot i >>= \case
+          TVar u | u == tv -> pure $ TVar tv
+          t -> resolveType t
+      TBase b -> pure $ TBase b
+      TArr a b -> TArr <$> resolveType a <*> resolveType b
+      TArray t -> TArray <$> resolveType t
+      TSeries t -> TSeries <$> resolveType t
+      TOptional t -> TOptional <$> resolveType t
+      TTuple ts -> TTuple <$> traverse resolveType ts
+      TRep t -> TRep <$> resolveType t
+      TRecord fs ror -> (`resolveRecord` ror) =<< traverse resolveType fs
+
+    -- Resolve a record's row variable tail, merging fields from any
+    -- row variable expansion (mirrors @zonkRecord@ in @zonk@)
+    resolveRecord :: Map.Map Ident InfernoType -> RestOfRecord -> ST s InfernoType
+    resolveRecord fs = \case
+      RowAbsent -> pure $ TRecord fs RowAbsent
+      RowVar tv@(TV i) ->
+        findRoot i >>= \case
+          TVar u | u == tv -> pure . TRecord fs $ RowVar tv
+          TRecord extra ror ->
+            (`resolveRecord` ror) . Map.union fs =<< traverse resolveType extra
+          _ -> pure $ TRecord fs RowAbsent
 
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
