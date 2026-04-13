@@ -8,7 +8,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Infer
-  ( Constraint,
+  ( Constraint (..),
     TypeError (..),
     Subst (..),
     inferExpr,
@@ -76,16 +76,12 @@ import Text.Megaparsec (SourcePos)
 
 type Location a = (a, a)
 
--- | Type equality or typeclass constraint (kept for API compatibility)
-type Constraint =
-  Either
-    ( InfernoType
-    , InfernoType
-    , [TypeError SourcePos]
-    )
-    ( Location SourcePos
-    , TypeClass
-    )
+-- | A constraint emitted during inference.
+data Constraint
+  = -- | Two types that must be equal, with error context if unification fails.
+    UnifyConstraint !InfernoType !InfernoType ![TypeError SourcePos]
+  | -- | A typeclass obligation at a source location.
+    ClassConstraint !(Location SourcePos) !TypeClass
 
 -- | Result of inferring a sub-expression: the elaborated expression,
 -- its implicit type, and the generated typeclasses (for error context).
@@ -120,16 +116,16 @@ instance HasField "body" ImplType InfernoType where
 
 instance Substitutable Constraint where
   apply s = \case
-    Left (t1, t2, es) -> Left (apply s t1, apply s t2, es)
-    Right (loc, tc) -> Right (loc, apply s tc)
+    UnifyConstraint t1 t2 es -> UnifyConstraint (apply s t1) (apply s t2) es
+    ClassConstraint loc tc -> ClassConstraint loc $ apply s tc
   ftv = \case
-    Left (t1, t2, _) -> ftv t1 `Set.union` ftv t2
-    Right (_, tc) -> ftv tc
+    UnifyConstraint t1 t2 _ -> ftv t1 `Set.union` ftv t2
+    ClassConstraint _ tc -> ftv tc
 
 instance Pretty Constraint where
   pretty = \case
-    Left (t1, t2, _) -> pretty t1 <+> "~" <+> pretty t2
-    Right (_, tc) -> pretty tc
+    UnifyConstraint t1 t2 _ -> pretty t1 <+> "~" <+> pretty t2
+    ClassConstraint _ tc -> pretty tc
 
 -------------------------------------------------------------------------------
 -- Union-Find Cell Representation
@@ -597,7 +593,6 @@ inferPossibleTypes = undefined
 infer :: Expr (Pinned VCObjectHash) SourcePos -> forall s. Infer s InferResult
 infer = undefined
 
-{-# NOINLINE findTypeClassWitnesses #-}
 findTypeClassWitnesses ::
   Set.Set TypeClass ->
   Maybe Int ->
