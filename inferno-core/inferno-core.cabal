@@ -31,6 +31,7 @@ library
     Inferno.Eval.Error
     Inferno.Infer
     Inferno.Infer.Env
+    Inferno.Infer.Error
     Inferno.Infer.Exhaustiveness
     Inferno.Infer.Pinned
     Inferno.Instances.Arbitrary
@@ -45,7 +46,6 @@ library
     Inferno.Utils.QQ.Script
 
   other-modules:
-    Inferno.Infer.Error
     Inferno.Module.Prelude.Defs
     Inferno.Utils.QQ.Common
 

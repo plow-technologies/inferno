@@ -8,9 +8,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Infer
-  ( Constraint (..),
-    TypeError (..),
-    Subst (..),
+  ( Constraint (UnifyConstraint, ClassConstraint),
+    Subst (Subst),
     inferExpr,
     closeOver,
     closeOverType,
@@ -22,7 +21,7 @@ module Inferno.Infer
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (when, (<=<))
+import Control.Monad (join, when, (<=<))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
@@ -34,7 +33,7 @@ import Data.Functor (($>))
 import qualified Data.Map as Map
 import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
 import qualified Data.Set as Set
-import qualified Data.Vector.Mutable as MVector
+import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
 import Inferno.Infer.Env (Env, TypeMetadata, closeOver, closeOverType)
 import Inferno.Infer.Error (TypeError (InfiniteType))
@@ -119,7 +118,7 @@ instance Substitutable Constraint where
     UnifyConstraint t1 t2 es -> UnifyConstraint (apply s t1) (apply s t2) es
     ClassConstraint loc tc -> ClassConstraint loc $ apply s tc
   ftv = \case
-    UnifyConstraint t1 t2 _ -> ftv t1 `Set.union` ftv t2
+    UnifyConstraint t1 t2 _ -> ftv t1 <> ftv t2
     ClassConstraint _ tc -> ftv tc
 
 instance Pretty Constraint where
@@ -145,7 +144,7 @@ data UFContent
 
 -- | Mutable union-find store, indexed by @unTV :: Int@.
 -- Backed by a growable @MVector@ in @ST@.
-type UFStore s = STRef s (MVector.STVector s UFContent)
+type UFStore s = STRef s (Vector.Mutable.STVector s UFContent)
 
 -- | The inference monad: @ReaderT@ over @ExceptT@ over @ST@.
 -- All mutable state lives in @STRef@s.
@@ -185,7 +184,7 @@ liftST :: ST s a -> Infer s a
 liftST = lift . lift
 
 -- | Run an @ST@ action with the current UF store vector.
-withStore :: (MVector.STVector s UFContent -> ST s a) -> Infer s a
+withStore :: (Vector.Mutable.STVector s UFContent -> ST s a) -> Infer s a
 withStore f = liftST . (f <=< readSTRef) =<< asks (.refs.ufStore)
 
 -------------------------------------------------------------------------------
@@ -200,10 +199,10 @@ ensureCapacity i =
     liftST $
       readSTRef storeRef >>= \v ->
         let cap0, cap1 :: Int
-            cap0 = MVector.length v
+            cap0 = Vector.Mutable.length v
             cap1 = max (cap0 * 2) (i + 1)
          in when (i >= cap0) $
-              writeSTRef storeRef =<< MVector.grow v (cap1 - cap0)
+              writeSTRef storeRef =<< Vector.Mutable.grow v (cap1 - cap0)
 
 -- | Allocate a fresh type variable, returning it as a 'TV'.
 freshTV :: Infer s TV
@@ -216,18 +215,18 @@ freshTVRaw = do
   n <- liftST $ readSTRef cRef
   liftST . writeSTRef cRef $ n + 1
   ensureCapacity n
-  withStore $ \v -> MVector.write v n $ UFRoot 0 Nothing
+  withStore $ \v -> Vector.Mutable.write v n $ UFRoot 0 Nothing
   pure n
 
 -- | Chase 'UFLink' pointers to the root, applying path compression.
 ufFind :: TV -> Infer s TV
 ufFind tv@(TV i) =
-  withStore (`MVector.read` i) >>= \case
+  withStore (`Vector.Mutable.read` i) >>= \case
     UFRoot _ _ -> pure tv
     UFLink parent -> do
       root <- ufFind parent
       -- Path compression
-      when (root /= parent) $ withStore $ \v -> MVector.write v i $ UFLink root
+      when (root /= parent) $ withStore $ \v -> Vector.Mutable.write v i $ UFLink root
       pure root
 
 -- | 'ufFind' in CPS style.
@@ -246,7 +245,7 @@ ufProbe tv = withFind tv $ \root ->
 -- Precondition: @tv@ must be a root (i.e. returned by 'ufFind').
 readRoot :: TV -> Infer s (Int, Maybe InfernoType)
 readRoot (TV ri) =
-  withStore (`MVector.read` ri) >>= \case
+  withStore (`Vector.Mutable.read` ri) >>= \case
     UFRoot rank mt -> pure (rank, mt)
     UFLink _ -> pure (0, Nothing) -- unreachable after ufFind
 
@@ -265,14 +264,14 @@ ufUnion a b =
       withStore $ \v ->
         case compare rankA rankB of
           LT -> do
-            MVector.write v ri $ UFLink rb
-            MVector.write v rj $ UFRoot rankB merged
+            Vector.Mutable.write v ri $ UFLink rb
+            Vector.Mutable.write v rj $ UFRoot rankB merged
           GT -> do
-            MVector.write v rj $ UFLink ra
-            MVector.write v ri $ UFRoot rankA merged
+            Vector.Mutable.write v rj $ UFLink ra
+            Vector.Mutable.write v ri $ UFRoot rankA merged
           EQ -> do
-            MVector.write v rj $ UFLink ra
-            MVector.write v ri $ UFRoot (rankA + 1) merged
+            Vector.Mutable.write v rj $ UFLink ra
+            Vector.Mutable.write v ri $ UFRoot (rankA + 1) merged
 
 -- | Bind a root type variable to a concrete (non-'TVar') type.
 -- If the root already has a resolved type, unifies it with @t@
@@ -281,7 +280,7 @@ ufBind :: TV -> InfernoType -> Infer s ()
 ufBind tv t = withFind tv $ \root@(TV ri) ->
   readRoot root >>= \case
     (rank, Nothing) ->
-      withStore $ \v -> MVector.write v ri . UFRoot rank $ Just t
+      withStore $ \v -> Vector.Mutable.write v ri . UFRoot rank $ Just t
     (_, Just old) ->
       unify [] old t
 
@@ -338,10 +337,7 @@ occursIn tv t = (tv `Set.member`) . ftv <$> zonk t
 -- | Unify two types eagerly using the union-find. The error list is used when
 -- unification fails.
 unify :: [TypeError SourcePos] -> InfernoType -> InfernoType -> Infer s ()
-unify err t1 t2 = do
-  t1' <- zonk t1
-  t2' <- zonk t2
-  go t1' t2'
+unify err t1 t2 = join $ go <$> zonk t1 <*> zonk t2
   where
     go :: InfernoType -> InfernoType -> Infer s ()
     go = \cases
@@ -489,12 +485,12 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
     maxTV :: Int
     maxTV =
       maybe 0 ((+ 1) . unTV) . Set.lookupMax $
-        ftv (TRecord fs1 ror1) `Set.union` ftv (TRecord fs2 ror2)
+        ftv (TRecord fs1 ror1) <> ftv (TRecord fs2 ror2)
 
     go :: forall s. ST s (Either [TypeError SourcePos] Subst)
     go = do
       cRef <- newSTRef maxTV
-      vecInit <- MVector.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
+      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
       stRef <- newSTRef vecInit
       tmRef <- newSTRef mempty
       modsRef <- newSTRef mempty
@@ -536,7 +532,7 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
 freezeUFToSubst ::
   forall s.
   Int ->
-  MVector.STVector s UFContent ->
+  Vector.Mutable.STVector s UFContent ->
   ST s (Either [TypeError SourcePos] Subst)
 freezeUFToSubst n v =
   Right . Subst . Map.fromList <$> go 0
@@ -555,7 +551,7 @@ freezeUFToSubst n v =
     -- Chase @UFLink@ pointers to the root and return its stored type
     findRoot :: Int -> ST s InfernoType
     findRoot i =
-      MVector.read v i >>= \case
+      Vector.Mutable.read v i >>= \case
         UFLink (TV j) -> findRoot j
         UFRoot _ (Just t) -> pure t
         UFRoot _ Nothing -> pure . TVar $ TV i
