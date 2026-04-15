@@ -27,24 +27,42 @@ import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
+import Data.Bifunctor (bimap)
 import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about lower GHC versions
 import Data.Function ((&))
-import Data.Functor (($>))
+import Data.Functor (($>), (<&>))
+import Data.List (find)
 import qualified Data.Map as Map
-import Data.STRef (STRef, newSTRef, readSTRef, writeSTRef)
+import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import qualified Data.Set as Set
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
-import Inferno.Infer.Env (Env, TypeMetadata, closeOver, closeOverType)
-import Inferno.Infer.Error (TypeError (InfiniteType))
+import Inferno.Infer.Env
+  ( Env,
+    TypeMetadata (TypeMetadata, docs, identExpr, ty),
+    closeOver,
+    closeOverType,
+  )
+import qualified Inferno.Infer.Env as Env
+import Inferno.Infer.Error
+  ( TypeError
+      ( InfiniteType,
+        UnboundExtIdent,
+        UnboundNameInNamespace
+      ),
+  )
 import Inferno.Types.Module (Module, PinnedModule)
 import Inferno.Types.Syntax
-  ( Expr,
-    ExtIdent,
+  ( BlockUtils (blockPosition),
+    Expr (App, Lit, Var),
+    ExtIdent (ExtIdent),
     Ident,
+    ImplExpl (Expl, Impl),
+    Lit (LDouble, LHex, LInt, LText),
     ModuleName,
     Pat,
     RestOfRecord (RowAbsent, RowVar),
+    Scoped (LocalScope),
   )
 import Inferno.Types.Type
   ( ImplType (ImplType),
@@ -61,11 +79,14 @@ import Inferno.Types.Type
       ),
     Subst (Subst),
     Substitutable (apply, ftv),
-    TCScheme,
+    TCScheme (ForallTC),
     TV (TV, unTV),
     TypeClass (TypeClass),
+    typeDouble,
+    typeText,
+    typeWord64,
   )
-import Inferno.Types.VersionControl (Pinned, VCObjectHash)
+import Inferno.Types.VersionControl (Pinned (Local), VCObjectHash, pinnedToMaybe)
 import Prettyprinter (Pretty (pretty), (<+>))
 import Text.Megaparsec (SourcePos)
 
@@ -331,6 +352,49 @@ occursIn :: TV -> InfernoType -> Infer s Bool
 occursIn tv t = (tv `Set.member`) . ftv <$> zonk t
 
 -------------------------------------------------------------------------------
+-- Type Map Helpers
+-------------------------------------------------------------------------------
+
+-- | Record a type metadata entry for the given source location.
+attachTypeToPosition ::
+  Location SourcePos ->
+  TypeMetadata (Set.Set TypeClass, ImplType) ->
+  Infer s ()
+attachTypeToPosition k meta =
+  asks (.refs.typeMap) >>= \ref ->
+    liftST . modifySTRef' ref $ Map.insert k meta
+
+-- | Look up a variable (by hash or name) in the environment, instantiate
+-- its scheme, and return the metadata with the instantiated type.
+lookupEnv ::
+  Location SourcePos ->
+  Either VCObjectHash ExtIdent ->
+  Infer s (TypeMetadata (Set.Set TypeClass, ImplType))
+lookupEnv loc x =
+  asks (.env) >>= \env ->
+    case either (`Env.lookupPinned` env) (`Env.lookup` env) x of
+      Nothing ->
+        throwError
+          [ either
+              (\hsh -> UnboundNameInNamespace LocalScope (Left hsh) loc)
+              (\i -> UnboundExtIdent LocalScope i loc)
+              x
+          ]
+      Just meta -> do
+        iTy <- instantiate meta.ty
+        pure meta{ty = iTy}
+
+-- | Instantiate a type scheme by replacing each quantified variable
+-- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
+-- build a local 'Subst' and 'apply' it.
+instantiate :: TCScheme -> Infer s (Set.Set TypeClass, ImplType)
+instantiate (ForallTC as tcs t) = do
+  as' <- traverse (const $ TVar <$> freshTV) as
+  let s :: Subst
+      s = Subst . Map.fromList $ zip as as'
+  pure (Set.map (apply s) tcs, apply s t)
+
+-------------------------------------------------------------------------------
 -- Core Unification
 -------------------------------------------------------------------------------
 
@@ -585,8 +649,135 @@ freezeUFToSubst n v =
           _ -> pure $ TRecord fs RowAbsent
 
 -------------------------------------------------------------------------------
+-- Inference Helpers
+-------------------------------------------------------------------------------
+
+-- | Infer an integer literal. Creates a fresh type variable constrained by
+-- the @numeric@ typeclass, and wraps the expression with an implicit @TRep@
+-- argument (used for runtime representation dispatch).
+inferLitInt ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Lit ->
+  Infer s InferResult
+inferLitInt expr loc pos l = do
+  tv <- TVar <$> freshTV
+  i <- ExtIdent . Left <$> freshTVRaw
+
+  let tyCls :: TypeClass
+      tyCls = TypeClass "numeric" [tv]
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = Lit () l
+      , ty = (Set.singleton tyCls, ImplType Map.empty tv)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr = App expr (Var pos Local LocalScope $ Impl i)
+      , typ = ImplType (Map.singleton i $ TRep tv) tv
+      , tcs = Set.singleton tyCls
+      }
+
+-- | Infer a non-integer literal (@LDouble@, @LHex@, @LText@).
+-- The type is known ground; no typeclass constraint is needed.
+inferLitOther ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Lit ->
+  Infer s InferResult
+inferLitOther expr loc l = do
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = Lit () l
+      , ty = (Set.empty, ImplType Map.empty t)
+      , docs = Nothing
+      }
+  pure InferResult{expr = expr, typ = ImplType Map.empty t, tcs = Set.empty}
+  where
+    t :: InfernoType
+    t = litType l
+
+    litType :: Lit -> InfernoType
+    litType = \case
+      LDouble _ -> typeDouble
+      LHex _ -> typeWord64
+      LText _ -> typeText
+      -- This is ugly but necessary. Int literals really must be inferred first,
+      -- see `infer`
+      LInt _ ->
+        error "internal typechecker error: ints MUST be inferred before other literals"
+
+-- | Infer an explicit variable reference. Looks up its type scheme in the
+-- environment, instantiates it, and handles @rep@ typeclass constraints by
+-- creating implicit @TRep@ arguments.
+inferVarExpl ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Pinned VCObjectHash ->
+  ExtIdent ->
+  Infer s InferResult
+inferVarExpl expr loc pos mHash x = do
+  meta <- lookupEnv loc $ maybe (Right x) Left $ pinnedToMaybe mHash
+  let tcs :: Set.Set TypeClass
+      tcs = fst meta.ty
+
+      iType :: ImplType
+      iType = snd meta.ty
+  attachTypeToPosition loc meta
+  case find isRepTC $ Set.toList tcs of
+    Just (TypeClass _ repTys) -> do
+      traverse mkRepImpl repTys <&> \repImpls ->
+        InferResult
+          { expr =
+              foldl' App expr $
+                fmap (Var pos Local LocalScope . Impl . fst) repImpls
+          , typ = ImplType (iType.impl `Map.union` Map.fromList repImpls) iType.body
+          , tcs = Set.filter (not . isRepTC) tcs
+          }
+    Nothing ->
+      pure
+        InferResult
+          { expr = expr
+          , typ = iType
+          , tcs = Set.filter (not . isRepTC) tcs
+          }
+  where
+    isRepTC :: TypeClass -> Bool
+    isRepTC (TypeClass nm _) = nm == "rep"
+
+    mkRepImpl :: InfernoType -> Infer s (ExtIdent, InfernoType)
+    mkRepImpl repTy =
+      (,TRep repTy) . ExtIdent . Left <$> freshTVRaw
+
+-- | Infer an implicit variable reference. Creates a fresh type variable
+-- and records it in the implicit map.
+inferVarImpl ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  ExtIdent ->
+  Infer s InferResult
+inferVarImpl expr loc x = do
+  tv <- TVar <$> freshTV
+  let implTy :: ImplType
+      implTy = ImplType (Map.singleton x tv) tv
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) expr
+      , ty = (Set.empty, implTy)
+      , docs = Nothing
+      }
+  pure InferResult{expr = expr, typ = implTy, tcs = Set.empty}
+
+-------------------------------------------------------------------------------
 -- Stubs for Later Phases
 -------------------------------------------------------------------------------
+
+infer :: Expr (Pinned VCObjectHash) SourcePos -> forall s. Infer s InferResult
+infer = undefined
 
 -- Given a map of implicit types containing `rep of <ty>` variables, and an expression `e`
 -- we want to either substitute any implicit variable `?var$n : rep of <ty>` with a `RuntimeRep <ty>`,
@@ -628,9 +819,6 @@ inferPossibleTypes ::
   Maybe InfernoType ->
   Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
 inferPossibleTypes = undefined
-
-infer :: Expr (Pinned VCObjectHash) SourcePos -> forall s. Infer s InferResult
-infer = undefined
 
 findTypeClassWitnesses ::
   Set.Set TypeClass ->
