@@ -35,10 +35,13 @@ import Data.List (find)
 import qualified Data.Map as Map
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import qualified Data.Set as Set
+import Data.Text (Text)
+import Data.Tuple.Extra (fst3, snd3, thd3)
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
 import Inferno.Infer.Env
   ( Env,
+    Namespace (EnumNamespace, OpNamespace),
     TypeMetadata (TypeMetadata, docs, identExpr, ty),
     closeOver,
     closeOverType,
@@ -46,23 +49,29 @@ import Inferno.Infer.Env
 import qualified Inferno.Infer.Env as Env
 import Inferno.Infer.Error
   ( TypeError
-      ( InfiniteType,
+      ( DuplicateRecordField,
+        ImplicitVarTypeOverlap,
+        InfiniteType,
         UnboundExtIdent,
-        UnboundNameInNamespace
+        UnboundNameInNamespace,
+        UnificationFail
       ),
   )
 import Inferno.Types.Module (Module, PinnedModule)
 import Inferno.Types.Syntax
-  ( BlockUtils (blockPosition),
-    Expr (App, Lit, Var),
+  ( BlockUtils (blockPosition, removeComments),
+    Expr (App, Enum, InterpolatedString, Lit, OpVar, Record, RecordField, Var),
     ExtIdent (ExtIdent),
-    Ident,
+    Ident (Ident),
     ImplExpl (Expl, Impl),
     Lit (LDouble, LHex, LInt, LText),
     ModuleName,
     Pat,
     RestOfRecord (RowAbsent, RowVar),
     Scoped (LocalScope),
+    SomeIStr,
+    fromEitherList,
+    toEitherList,
   )
 import Inferno.Types.Type
   ( ImplType (ImplType),
@@ -364,6 +373,36 @@ attachTypeToPosition k meta =
   asks (.refs.typeMap) >>= \ref ->
     liftST . modifySTRef' ref $ Map.insert k meta
 
+-- | Merge a list of implicit maps. When two maps share a key, 'unify' the
+-- types immediately (eager unification replaces the old constraint-based
+-- approach).
+mergeImplMaps ::
+  Location SourcePos ->
+  [Map.Map ExtIdent InfernoType] ->
+  Infer s (Map.Map ExtIdent InfernoType)
+mergeImplMaps loc =
+  foldl'
+    ( \acc m -> do
+        merged <- acc
+        for_ (Map.toList $ Map.intersectionWith (,) merged m) $ \(ident, (t1, t2)) ->
+          unify [ImplicitVarTypeOverlap mempty ident t1 t2 loc] t1 t2
+        pure $ Map.union merged m
+    )
+    (pure Map.empty)
+
+-- | Check for duplicate field names in a record literal.
+checkDuplicateFields ::
+  Location SourcePos ->
+  [(Ident, a, b)] ->
+  Infer s ()
+checkDuplicateFields loc = go mempty
+  where
+    go :: Set.Set Ident -> [(Ident, a, b)] -> Infer s ()
+    go _ [] = pure ()
+    go seen ((f, _, _) : rest)
+      | Set.member f seen = throwError [DuplicateRecordField f loc]
+      | otherwise = go (Set.insert f seen) rest
+
 -- | Look up a variable (by hash or name) in the environment, instantiate
 -- its scheme, and return the metadata with the instantiated type.
 lookupEnv ::
@@ -384,15 +423,29 @@ lookupEnv loc x =
         iTy <- instantiate meta.ty
         pure meta{ty = iTy}
 
+-- | Look up a pinned hash that must exist (e.g. op vars, enums).
+-- If the 'Pinned' value is 'Local' (not pinned), throws
+-- 'UnboundNameInNamespace' with the given 'Namespace' for a proper error.
+lookupPinned ::
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Namespace ->
+  Infer s (TypeMetadata (Set.Set TypeClass, ImplType))
+lookupPinned loc pin ns =
+  maybe
+    (throwError [UnboundNameInNamespace LocalScope (Right ns) loc])
+    (lookupEnv loc . Left)
+    $ pinnedToMaybe pin
+
 -- | Instantiate a type scheme by replacing each quantified variable
 -- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
 -- build a local 'Subst' and 'apply' it.
 instantiate :: TCScheme -> Infer s (Set.Set TypeClass, ImplType)
 instantiate (ForallTC as tcs t) = do
-  as' <- traverse (const $ TVar <$> freshTV) as
-  let s :: Subst
-      s = Subst . Map.fromList $ zip as as'
-  pure (Set.map (apply s) tcs, apply s t)
+  traverse (const (fmap TVar freshTV)) as <&> \freshVars ->
+    let sub :: Subst
+        sub = Subst . Map.fromList $ zip as freshVars
+     in (Set.map (apply sub) tcs, apply sub t)
 
 -------------------------------------------------------------------------------
 -- Core Unification
@@ -466,9 +519,9 @@ unifyRecordFields err = \cases
     for_ pairs . uncurry $ unify err
     -- Build new record types for the row variable expansions, then unify
     -- the row variables
-    ror1' <- expandRowVar err s1.ror s1.new
-    ror2' <- expandRowVar err s2.ror s2.new
-    unifyRowVars err ror1' ror2'
+    tail1 <- expandRowVar err s1.ror s1.new
+    tail2 <- expandRowVar err s2.ror s2.new
+    unifyRowVars err tail1 tail2
   -- Left exhausted, right has fields remaining
   s1@RecordSide{fields = []} s2@RecordSide{fields = (f2, t2) : ts2} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
@@ -516,10 +569,10 @@ expandRowVar = \cases
   _ ror [] -> pure ror
   err RowAbsent (_ : _) -> throwError err
   _ (RowVar tv) newFields ->
-    freshTV >>= \tv' ->
+    freshTV >>= \tailVar ->
       -- Bind the old row var to a record of the new fields + fresh tail
-      ufBind tv (TRecord (Map.fromDescList newFields) (RowVar tv'))
-        $> RowVar tv'
+      ufBind tv (TRecord (Map.fromDescList newFields) (RowVar tailVar))
+        $> RowVar tailVar
 
 -- | Unify two 'RestOfRecord' tails.
 unifyRowVars :: [TypeError SourcePos] -> RestOfRecord -> RestOfRecord -> Infer s ()
@@ -771,6 +824,152 @@ inferVarImpl expr loc x = do
       , docs = Nothing
       }
   pure InferResult{expr = expr, typ = implTy, tcs = Set.empty}
+
+-- | Infer a prefix-used operator (e.g. @(+)@). Op vars must always be pinned.
+inferOpVar ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Ident ->
+  Infer s InferResult
+inferOpVar expr loc pin ident =
+  lookupPinned loc pin (OpNamespace ident) >>= \meta -> do
+    attachTypeToPosition loc meta
+    pure
+      InferResult
+        { expr = expr
+        , typ = snd meta.ty
+        , tcs = fst meta.ty
+        }
+
+-- | Infer an enum constructor. Enums must always be pinned.
+inferEnum ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Ident ->
+  Infer s InferResult
+inferEnum expr loc pin ident =
+  lookupPinned loc pin (EnumNamespace ident) >>= \meta -> do
+    attachTypeToPosition
+      loc
+      meta
+        { identExpr = bimap (const ()) (const ()) expr
+        }
+    pure InferResult{expr = expr, typ = snd meta.ty, tcs = Set.empty}
+
+-- | Infer an interpolated string. Each embedded expression is inferred
+-- independently; the overall type is @text@. Implicit maps are merged eagerly.
+inferInterp ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  SomeIStr (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos) ->
+  SourcePos ->
+  Infer s InferResult
+inferInterp expr loc p1 xs end = do
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (Set.empty, ImplType Map.empty typeText)
+      , docs = Nothing
+      }
+  (parts, impls, tcSets) <- fmap unzip3 . traverse inferPart $ toEitherList xs
+  merged <- mergeImplMaps loc impls
+  pure
+    InferResult
+      { expr = InterpolatedString p1 (fromEitherList parts) end
+      , typ = ImplType merged typeText
+      , tcs = mconcat tcSets
+      }
+  where
+    inferPart ::
+      Either
+        Text
+        ( SourcePos
+        , Expr (Pinned VCObjectHash) SourcePos
+        , SourcePos
+        ) ->
+      Infer
+        s
+        ( Either Text (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos)
+        , Map.Map ExtIdent InfernoType
+        , Set.Set TypeClass
+        )
+    inferPart = \case
+      Left str -> pure (Left str, Map.empty, Set.empty)
+      Right (p1, e, p2) ->
+        infer e <&> \r -> (Right (p1, r.expr, p2), r.typ.impl, r.tcs)
+
+-- | Infer a record literal @{ f1 = e1; f2 = e2; ... }@. Each field
+-- expression is inferred; implicit maps are merged eagerly.
+inferRecord ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  [(Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+  SourcePos ->
+  Infer s InferResult
+inferRecord expr loc open fes close = do
+  checkDuplicateFields loc fes
+  results <- traverse (infer . snd3) fes
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
+  let names :: [Ident]
+      names = fmap fst3 fes
+
+      fieldTypes :: Map.Map Ident InfernoType
+      fieldTypes = Map.fromList $ zip names (fmap (.typ.body) results)
+
+      rebuiltFes :: [(Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)]
+      rebuiltFes = zipWith rebuildFe fes results
+
+      rebuildFe ::
+        (Ident, a, Maybe SourcePos) ->
+        InferResult ->
+        (Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)
+      rebuildFe fe r = (fst3 fe, r.expr, thd3 fe)
+
+      recTy :: ImplType
+      recTy = ImplType merged $ TRecord fieldTypes RowAbsent
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (Set.empty, recTy)
+      , docs = Nothing
+      }
+
+  pure
+    InferResult
+      { expr = Record open rebuiltFes close
+      , typ = recTy
+      , tcs = foldMap (.tcs) results
+      }
+
+-- | Infer a record field access @r.f@. Synthesizes a record type with
+-- the accessed field and a fresh row variable, then unifies it with the
+-- inferred type of @r@.
+inferRecField ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Ident ->
+  Ident ->
+  Infer s InferResult
+inferRecField expr loc pos (Ident recN) fieldName = do
+  r <- infer $ Var pos Local LocalScope . Expl . ExtIdent $ Right recN
+  fieldTv <- TVar <$> freshTV
+  rowTv <- freshTV
+  let recTy :: InfernoType
+      recTy = TRecord (Map.singleton fieldName fieldTv) $ RowVar rowTv
+  unify [UnificationFail r.tcs r.typ.body recTy loc] r.typ.body recTy
+  pure
+    InferResult
+      { expr = expr
+      , typ = ImplType r.typ.impl fieldTv
+      , tcs = r.tcs
+      }
 
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
