@@ -3,6 +3,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -24,7 +25,7 @@ import Control.Applicative ((<|>))
 import Control.Monad (join, when, (<=<))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Extra (whenM, zipWithM_)
-import Control.Monad.Reader (ReaderT, asks, runReaderT)
+import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap)
@@ -32,8 +33,10 @@ import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about 
 import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import Data.List (find)
+import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.Map as Map
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
+import Data.Sequence (Seq, (<|))
 import qualified Data.Set as Set
 import Data.Text (Text)
 import Data.Tuple.Extra (fst3, snd3, thd3)
@@ -54,13 +57,24 @@ import Inferno.Infer.Error
         InfiniteType,
         UnboundExtIdent,
         UnboundNameInNamespace,
-        UnificationFail
+        UnificationFail,
+        VarMultipleOccurrence
       ),
   )
 import Inferno.Types.Module (Module, PinnedModule)
 import Inferno.Types.Syntax
   ( BlockUtils (blockPosition, removeComments),
-    Expr (App, Enum, InterpolatedString, Lit, OpVar, Record, RecordField, Var),
+    ElementPosition (elementPosition),
+    Expr
+      ( App,
+        Array,
+        ArrayComp,
+        InterpolatedString,
+        Lit,
+        Record,
+        RecordField,
+        Var
+      ),
     ExtIdent (ExtIdent),
     Ident (Ident),
     ImplExpl (Expl, Impl),
@@ -91,6 +105,7 @@ import Inferno.Types.Type
     TCScheme (ForallTC),
     TV (TV, unTV),
     TypeClass (TypeClass),
+    typeBool,
     typeDouble,
     typeText,
     typeWord64,
@@ -126,6 +141,28 @@ data CaseBranch = CaseBranch
   , pat :: Pat (Pinned VCObjectHash) SourcePos
   , arrPos :: SourcePos
   , body :: Expr (Pinned VCObjectHash) SourcePos
+  }
+
+-- | A single selector in an array comprehension (@x <- gen@).
+-- The @infer@ dispatcher constructs these from the raw 5-tuple in @ArrayComp@.
+data Selector = Selector
+  { identPos :: !SourcePos
+  , ident :: !Ident
+  , arrowPos :: !SourcePos
+  , gen :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , commaPos :: !(Maybe SourcePos)
+  }
+
+-- | Result of processing all selectors, body, and condition in an
+-- array comprehension. Built during the @processSels@ unwinding.
+data CompResult = CompResult
+  { rebuiltSels :: !(Seq Selector)
+  , selImpls :: ![Map.Map ExtIdent InfernoType]
+  , selTcs :: !(Set.Set TypeClass)
+  , bodyResult :: !InferResult
+  , condExpr :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
+  , condImpl :: !(Map.Map ExtIdent InfernoType)
+  , condTcs :: !(Set.Set TypeClass)
   }
 
 -- | One side of a record-field merge: remaining sorted fields,
@@ -361,8 +398,13 @@ occursIn :: TV -> InfernoType -> Infer s Bool
 occursIn tv t = (tv `Set.member`) . ftv <$> zonk t
 
 -------------------------------------------------------------------------------
--- Type Map Helpers
+-- Type Map and Environment Helpers
 -------------------------------------------------------------------------------
+
+-- | Extend the typing environment for a local binding (scoped via @local@).
+inEnv :: (ExtIdent, TypeMetadata TCScheme) -> Infer s a -> Infer s a
+inEnv (x, meta) =
+  local $ \ctx -> ctx{env = Env.remove ctx.env x `Env.extend` (x, meta)}
 
 -- | Record a type metadata entry for the given source location.
 attachTypeToPosition ::
@@ -970,6 +1012,187 @@ inferRecField expr loc pos (Ident recN) fieldName = do
       , typ = ImplType r.typ.impl fieldTv
       , tcs = r.tcs
       }
+
+-- | Infer an array literal. Creates a fresh element type variable and
+-- unifies every element against it (handles empty arrays uniformly).
+inferArray ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  [(Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+  SourcePos ->
+  Infer s InferResult
+inferArray expr loc open elems close = do
+  elemTv <- TVar <$> freshTV
+  results <- traverse (inferElem elemTv) elems
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+  let arrTy :: ImplType
+      arrTy = ImplType merged $ TArray elemTv
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (Set.empty, arrTy)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr = Array open (zipWith (\(_, p) r -> (r.expr, p)) elems results) close
+      , typ = arrTy
+      , tcs = foldMap (.tcs) results
+      }
+  where
+    inferElem ::
+      InfernoType ->
+      (Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos) ->
+      Infer s InferResult
+    inferElem tv (e, _) = do
+      r <- infer e
+      unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
+      pure r
+
+-- | Infer an array comprehension @[body | x <- gen, ... if cond]@.
+-- Each selector binds a variable into scope for subsequent selectors,
+-- the body, and the optional condition.
+inferArrayComp ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  SourcePos ->
+  NonEmpty Selector ->
+  Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos) ->
+  SourcePos ->
+  Infer s InferResult
+inferArrayComp _expr loc open body pipe (toList -> sels) cond close = do
+  checkVarOverlap sels mempty
+
+  cr <- processSels sels
+  merged <- mergeImplMaps loc $ cr.bodyResult.typ.impl : cr.condImpl : cr.selImpls
+  rebuiltSels <-
+    toList cr.rebuiltSels & \case
+      h : t -> pure $ fmap fromSelector (h :| t)
+      -- Not possible in practice
+      [] -> throwError []
+
+  let arrTy :: ImplType
+      arrTy = ImplType merged . TArray $ cr.bodyResult.typ.body
+
+  pure
+    InferResult
+      { expr = ArrayComp open cr.bodyResult.expr pipe rebuiltSels cr.condExpr close
+      , typ = arrTy
+      , tcs = cr.bodyResult.tcs <> cr.condTcs <> cr.selTcs
+      }
+  where
+    -- Check for duplicate variable names in selectors. Uses a `Map` to track
+    -- first-occurrence locations for O(n log n) instead of O(n^2).
+    checkVarOverlap ::
+      [Selector] ->
+      Map.Map Ident (Location SourcePos) ->
+      Infer s ()
+    checkVarOverlap [] _ = pure ()
+    checkVarOverlap (sel : rest) seen =
+      case Map.lookup sel.ident seen of
+        Just prev ->
+          throwError
+            [ VarMultipleOccurrence sel.ident prev $
+                elementPosition sel.identPos sel.ident
+            ]
+        Nothing ->
+          checkVarOverlap rest
+            . flip (Map.insert sel.ident) seen
+            $ elementPosition sel.identPos sel.ident
+
+    -- Process selectors left-to-right, nesting `inEnv` calls so each
+    -- subsequent selector (and the body/condition) sees all prior bindings.
+    -- Returns a `CompResult` with rebuilt selectors in forward order
+    -- (built during unwinding via `(<|)`).
+    processSels :: [Selector] -> Infer s CompResult
+    processSels = \case
+      [] -> do
+        rBody <- infer body
+        (ce, ci, ct) <- inferCond
+        pure
+          CompResult
+            { rebuiltSels = mempty
+            , selImpls = []
+            , selTcs = mempty
+            , bodyResult = rBody
+            , condExpr = ce
+            , condImpl = ci
+            , condTcs = ct
+            }
+      (sel : rest) -> do
+        (rGen, _, binding) <- inferSel sel
+        inEnv binding $
+          processSels rest <&> \cr ->
+            cr
+              { rebuiltSels = sel{gen = rGen.expr} <| cr.rebuiltSels
+              , selImpls = rGen.typ.impl : cr.selImpls
+              , selTcs = rGen.tcs <> cr.selTcs
+              }
+
+    -- Infer a single selector: infer the generator, unify with `TArray tv`,
+    -- attach metadata, and build the environment binding.
+    inferSel ::
+      Selector ->
+      Infer s (InferResult, InfernoType, (ExtIdent, TypeMetadata TCScheme))
+    inferSel sel = do
+      rGen <- infer sel.gen
+      tv <- TVar <$> freshTV
+      unify
+        [UnificationFail rGen.tcs rGen.typ.body (TArray tv) $ blockPosition sel.gen]
+        rGen.typ.body
+        (TArray tv)
+
+      let Ident x = sel.ident
+          xExt :: ExtIdent
+          xExt = ExtIdent $ Right x
+
+          varExpr :: Expr () ()
+          varExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+
+      attachTypeToPosition (elementPosition sel.identPos sel.ident) $
+        TypeMetadata
+          { identExpr = varExpr
+          , ty = (rGen.tcs, ImplType rGen.typ.impl tv)
+          , docs = Nothing
+          }
+      pure
+        ( rGen
+        , tv
+        ,
+          ( xExt
+          , TypeMetadata
+              { identExpr = varExpr
+              , ty = ForallTC [] rGen.tcs $ ImplType rGen.typ.impl tv
+              , docs = Nothing
+              }
+          )
+        )
+
+    -- Infer the optional condition expression, unifying with `bool`.
+    inferCond ::
+      Infer
+        s
+        ( Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos)
+        , Map.Map ExtIdent InfernoType
+        , Set.Set TypeClass
+        )
+    inferCond = case cond of
+      Nothing -> pure (Nothing, Map.empty, Set.empty)
+      Just (p, eCond) -> do
+        rCond <- infer eCond
+        unify
+          [UnificationFail rCond.tcs rCond.typ.body typeBool $ blockPosition eCond]
+          rCond.typ.body
+          typeBool
+        pure (Just (p, rCond.expr), rCond.typ.impl, rCond.tcs)
+
+    fromSelector ::
+      Selector ->
+      (SourcePos, Ident, SourcePos, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)
+    fromSelector s = (s.identPos, s.ident, s.arrowPos, s.gen, s.commaPos)
 
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
