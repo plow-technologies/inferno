@@ -34,11 +34,14 @@ import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty ((:|)))
-import qualified Data.Map as Map
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Sequence (Seq, (<|))
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import Data.Traversable (for)
 import Data.Tuple.Extra (fst3, snd3, thd3)
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
@@ -72,7 +75,6 @@ import Inferno.Types.Syntax
         InterpolatedString,
         Lit,
         Record,
-        RecordField,
         Var
       ),
     ExtIdent (ExtIdent),
@@ -132,7 +134,7 @@ data Constraint
 data InferResult = InferResult
   { expr :: Expr (Pinned VCObjectHash) SourcePos
   , typ :: ImplType
-  , tcs :: !(Set.Set TypeClass)
+  , tcs :: !(Set TypeClass)
   }
 
 -- | A single branch of a @match@ expression
@@ -157,12 +159,12 @@ data Selector = Selector
 -- array comprehension. Built during the @processSels@ unwinding.
 data CompResult = CompResult
   { rebuiltSels :: !(Seq Selector)
-  , selImpls :: ![Map.Map ExtIdent InfernoType]
-  , selTcs :: !(Set.Set TypeClass)
+  , selImpls :: ![Map ExtIdent InfernoType]
+  , selTcs :: !(Set TypeClass)
   , bodyResult :: !InferResult
   , condExpr :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
-  , condImpl :: !(Map.Map ExtIdent InfernoType)
-  , condTcs :: !(Set.Set TypeClass)
+  , condImpl :: !(Map ExtIdent InfernoType)
+  , condTcs :: !(Set TypeClass)
   }
 
 -- | One side of a record-field merge: remaining sorted fields,
@@ -174,7 +176,7 @@ data RecordSide = RecordSide
   }
 
 -- | Virtual record fields for @ImplType@
-instance HasField "impl" ImplType (Map.Map ExtIdent InfernoType) where
+instance HasField "impl" ImplType (Map ExtIdent InfernoType) where
   getField (ImplType m _) = m
 
 instance HasField "body" ImplType InfernoType where
@@ -234,10 +236,10 @@ data InferRefs s = InferRefs
   , typeMap ::
       !( STRef
           s
-          (Map.Map (Location SourcePos) (TypeMetadata (Set.Set TypeClass, ImplType)))
+          (Map (Location SourcePos) (TypeMetadata (Set TypeClass, ImplType)))
        )
-  , modules :: !(STRef s (Map.Map ModuleName (Module ())))
-  , tyClasses :: !(Set.Set TypeClass)
+  , modules :: !(STRef s (Map ModuleName (Module ())))
+  , tyClasses :: !(Set TypeClass)
   , patternsToCheck ::
       !( STRef
           s
@@ -372,7 +374,7 @@ zonk = \case
   where
     -- Zonk a record's row variable; if it resolves to another @TRecord@,
     -- zonk the new fields, merge, and keep going.
-    zonkRecord :: Map.Map Ident InfernoType -> RestOfRecord -> Infer s InfernoType
+    zonkRecord :: Map Ident InfernoType -> RestOfRecord -> Infer s InfernoType
     zonkRecord fs = \case
       RowAbsent -> pure $ TRecord fs RowAbsent
       RowVar tv ->
@@ -409,7 +411,7 @@ inEnv (x, meta) =
 -- | Record a type metadata entry for the given source location.
 attachTypeToPosition ::
   Location SourcePos ->
-  TypeMetadata (Set.Set TypeClass, ImplType) ->
+  TypeMetadata (Set TypeClass, ImplType) ->
   Infer s ()
 attachTypeToPosition k meta =
   asks (.refs.typeMap) >>= \ref ->
@@ -419,18 +421,23 @@ attachTypeToPosition k meta =
 -- types immediately (eager unification replaces the old constraint-based
 -- approach).
 mergeImplMaps ::
+  forall s.
   Location SourcePos ->
-  [Map.Map ExtIdent InfernoType] ->
-  Infer s (Map.Map ExtIdent InfernoType)
+  [Map ExtIdent InfernoType] ->
+  Infer s (Map ExtIdent InfernoType)
 mergeImplMaps loc =
-  foldl'
-    ( \acc m -> do
-        merged <- acc
-        for_ (Map.toList $ Map.intersectionWith (,) merged m) $ \(ident, (t1, t2)) ->
+  flip foldl' (pure Map.empty) $
+    \acc m -> merge m =<< acc
+  where
+    merge ::
+      Map ExtIdent InfernoType ->
+      Map ExtIdent InfernoType ->
+      Infer s (Map ExtIdent InfernoType)
+    merge m merged = do
+      for_ (Map.toList (Map.intersectionWith (,) merged m)) $
+        \(ident, (t1, t2)) ->
           unify [ImplicitVarTypeOverlap mempty ident t1 t2 loc] t1 t2
-        pure $ Map.union merged m
-    )
-    (pure Map.empty)
+      pure $ Map.union merged m
 
 -- | Check for duplicate field names in a record literal.
 checkDuplicateFields ::
@@ -439,7 +446,7 @@ checkDuplicateFields ::
   Infer s ()
 checkDuplicateFields loc = go mempty
   where
-    go :: Set.Set Ident -> [(Ident, a, b)] -> Infer s ()
+    go :: Set Ident -> [(Ident, a, b)] -> Infer s ()
     go _ [] = pure ()
     go seen ((f, _, _) : rest)
       | Set.member f seen = throwError [DuplicateRecordField f loc]
@@ -450,7 +457,7 @@ checkDuplicateFields loc = go mempty
 lookupEnv ::
   Location SourcePos ->
   Either VCObjectHash ExtIdent ->
-  Infer s (TypeMetadata (Set.Set TypeClass, ImplType))
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
 lookupEnv loc x =
   asks (.env) >>= \env ->
     case either (`Env.lookupPinned` env) (`Env.lookup` env) x of
@@ -472,7 +479,7 @@ lookupPinned ::
   Location SourcePos ->
   Pinned VCObjectHash ->
   Namespace ->
-  Infer s (TypeMetadata (Set.Set TypeClass, ImplType))
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
 lookupPinned loc pin ns =
   maybe
     (throwError [UnboundNameInNamespace LocalScope (Right ns) loc])
@@ -482,7 +489,7 @@ lookupPinned loc pin ns =
 -- | Instantiate a type scheme by replacing each quantified variable
 -- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
 -- build a local 'Subst' and 'apply' it.
-instantiate :: TCScheme -> Infer s (Set.Set TypeClass, ImplType)
+instantiate :: TCScheme -> Infer s (Set TypeClass, ImplType)
 instantiate (ForallTC as tcs t) = do
   traverse (const (fmap TVar freshTV)) as <&> \freshVars ->
     let sub :: Subst
@@ -635,8 +642,8 @@ unifyRowVars = \cases
 -- runs the record unification algorithm, and freezes the result to a 'Subst'.
 unifyRecords ::
   [TypeError SourcePos] ->
-  (Map.Map Ident InfernoType, RestOfRecord) ->
-  (Map.Map Ident InfernoType, RestOfRecord) ->
+  (Map Ident InfernoType, RestOfRecord) ->
+  (Map Ident InfernoType, RestOfRecord) ->
   Either [TypeError SourcePos] Subst
 unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
   where
@@ -733,7 +740,7 @@ freezeUFToSubst n v =
 
     -- Resolve a record's row variable tail, merging fields from any
     -- row variable expansion (mirrors @zonkRecord@ in @zonk@)
-    resolveRecord :: Map.Map Ident InfernoType -> RestOfRecord -> ST s InfernoType
+    resolveRecord :: Map Ident InfernoType -> RestOfRecord -> ST s InfernoType
     resolveRecord fs = \case
       RowAbsent -> pure $ TRecord fs RowAbsent
       RowVar tv@(TV i) ->
@@ -817,7 +824,7 @@ inferVarExpl ::
   Infer s InferResult
 inferVarExpl expr loc pos mHash x = do
   meta <- lookupEnv loc $ maybe (Right x) Left $ pinnedToMaybe mHash
-  let tcs :: Set.Set TypeClass
+  let tcs :: Set TypeClass
       tcs = fst meta.ty
 
       iType :: ImplType
@@ -909,18 +916,19 @@ inferInterp ::
   SomeIStr (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos) ->
   SourcePos ->
   Infer s InferResult
-inferInterp expr loc p1 xs end = do
+inferInterp expr loc p xs end = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) $ removeComments expr
       , ty = (Set.empty, ImplType Map.empty typeText)
       , docs = Nothing
       }
+
   (parts, impls, tcSets) <- fmap unzip3 . traverse inferPart $ toEitherList xs
   merged <- mergeImplMaps loc impls
   pure
     InferResult
-      { expr = InterpolatedString p1 (fromEitherList parts) end
+      { expr = InterpolatedString p (fromEitherList parts) end
       , typ = ImplType merged typeText
       , tcs = mconcat tcSets
       }
@@ -935,8 +943,8 @@ inferInterp expr loc p1 xs end = do
       Infer
         s
         ( Either Text (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos)
-        , Map.Map ExtIdent InfernoType
-        , Set.Set TypeClass
+        , Map ExtIdent InfernoType
+        , Set TypeClass
         )
     inferPart = \case
       Left str -> pure (Left str, Map.empty, Set.empty)
@@ -960,7 +968,7 @@ inferRecord expr loc open fes close = do
   let names :: [Ident]
       names = fmap fst3 fes
 
-      fieldTypes :: Map.Map Ident InfernoType
+      fieldTypes :: Map Ident InfernoType
       fieldTypes = Map.fromList $ zip names (fmap (.typ.body) results)
 
       rebuiltFes :: [(Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)]
@@ -1000,11 +1008,13 @@ inferRecField ::
   Ident ->
   Infer s InferResult
 inferRecField expr loc pos (Ident recN) fieldName = do
-  r <- infer $ Var pos Local LocalScope . Expl . ExtIdent $ Right recN
+  r <- infer . Var pos Local LocalScope . Expl . ExtIdent $ Right recN
   fieldTv <- TVar <$> freshTV
   rowTv <- freshTV
+
   let recTy :: InfernoType
       recTy = TRecord (Map.singleton fieldName fieldTv) $ RowVar rowTv
+
   unify [UnificationFail r.tcs r.typ.body recTy loc] r.typ.body recTy
   pure
     InferResult
@@ -1024,10 +1034,12 @@ inferArray ::
   Infer s InferResult
 inferArray expr loc open elems close = do
   elemTv <- TVar <$> freshTV
-  results <- traverse (inferElem elemTv) elems
+  results <- for elems $ inferElem elemTv
   merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
   let arrTy :: ImplType
       arrTy = ImplType merged $ TArray elemTv
+
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) $ removeComments expr
@@ -1045,10 +1057,10 @@ inferArray expr loc open elems close = do
       InfernoType ->
       (Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos) ->
       Infer s InferResult
-    inferElem tv (e, _) = do
-      r <- infer e
-      unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
-      pure r
+    inferElem tv (e, _) =
+      infer e >>= \r ->
+        r <$
+          unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
 
 -- | Infer an array comprehension @[body | x <- gen, ... if cond]@.
 -- Each selector binds a variable into scope for subsequent selectors,
@@ -1074,13 +1086,10 @@ inferArrayComp _expr loc open body pipe (toList -> sels) cond close = do
       -- Not possible in practice
       [] -> throwError []
 
-  let arrTy :: ImplType
-      arrTy = ImplType merged . TArray $ cr.bodyResult.typ.body
-
   pure
     InferResult
       { expr = ArrayComp open cr.bodyResult.expr pipe rebuiltSels cr.condExpr close
-      , typ = arrTy
+      , typ = ImplType merged . TArray $ cr.bodyResult.typ.body
       , tcs = cr.bodyResult.tcs <> cr.condTcs <> cr.selTcs
       }
   where
@@ -1088,7 +1097,7 @@ inferArrayComp _expr loc open body pipe (toList -> sels) cond close = do
     -- first-occurrence locations for O(n log n) instead of O(n^2).
     checkVarOverlap ::
       [Selector] ->
-      Map.Map Ident (Location SourcePos) ->
+      Map Ident (Location SourcePos) ->
       Infer s ()
     checkVarOverlap [] _ = pure ()
     checkVarOverlap (sel : rest) seen =
@@ -1176,8 +1185,8 @@ inferArrayComp _expr loc open body pipe (toList -> sels) cond close = do
       Infer
         s
         ( Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos)
-        , Map.Map ExtIdent InfernoType
-        , Set.Set TypeClass
+        , Map ExtIdent InfernoType
+        , Set TypeClass
         )
     inferCond = case cond of
       Nothing -> pure (Nothing, Map.empty, Set.empty)
@@ -1206,20 +1215,20 @@ infer = undefined
 -- provided that `<ty>` contains no free variables
 -- otherwise we want to create a closure `fun var$n -> e[var$n/?var$n]`
 closeOverTypeReps ::
-  Map.Map ExtIdent InfernoType ->
+  Map ExtIdent InfernoType ->
   Expr (Pinned VCObjectHash) SourcePos ->
-  (Maybe TypeClass, Map.Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
+  (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
 closeOverTypeReps = undefined
 
 -- | Solve for the top level type of an expression in a given environment
 inferExpr ::
-  Map.Map ModuleName (PinnedModule m) ->
+  Map ModuleName (PinnedModule m) ->
   Expr (Pinned VCObjectHash) SourcePos ->
   Either
     [TypeError SourcePos]
     ( Expr (Pinned VCObjectHash) SourcePos
     , TCScheme
-    , Map.Map (Location SourcePos) (TypeMetadata TCScheme)
+    , Map (Location SourcePos) (TypeMetadata TCScheme)
     )
 inferExpr = undefined
 
@@ -1227,7 +1236,7 @@ inferExpr = undefined
 -- @inputTys@ and @outputTy@ have no free variables) this function computes
 -- the runtime reps
 inferTypeReps ::
-  Set.Set TypeClass ->
+  Set TypeClass ->
   TCScheme ->
   [InfernoType] ->
   InfernoType ->
@@ -1235,7 +1244,7 @@ inferTypeReps ::
 inferTypeReps = undefined
 
 inferPossibleTypes ::
-  Set.Set TypeClass ->
+  Set TypeClass ->
   TCScheme ->
   [Maybe InfernoType] ->
   Maybe InfernoType ->
@@ -1243,9 +1252,9 @@ inferPossibleTypes ::
 inferPossibleTypes = undefined
 
 findTypeClassWitnesses ::
-  Set.Set TypeClass ->
+  Set TypeClass ->
   Maybe Int ->
-  Set.Set TypeClass ->
-  Set.Set TV ->
+  Set TypeClass ->
+  Set TV ->
   [Subst]
 findTypeClassWitnesses = undefined
