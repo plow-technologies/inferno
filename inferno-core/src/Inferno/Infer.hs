@@ -1,7 +1,10 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -55,7 +58,8 @@ import Inferno.Infer.Env
 import qualified Inferno.Infer.Env as Env
 import Inferno.Infer.Error
   ( TypeError
-      ( DuplicateRecordField,
+      ( AnnotationUnificationFail,
+        DuplicateRecordField,
         ExpectedFunction,
         ImplicitVarTypeOverlap,
         InfiniteType,
@@ -75,6 +79,8 @@ import Inferno.Types.Syntax
         ArrayComp,
         InterpolatedString,
         Lam,
+        Let,
+        LetAnnot,
         Lit,
         Record,
         Var
@@ -167,6 +173,30 @@ data CompResult = CompResult
   , condExpr :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
   , condImpl :: !(Map ExtIdent InfernoType)
   , condTcs :: !(Set TypeClass)
+  }
+
+-- | Components of a @let@ binding (both explicit and implicit).
+data LetBinding = LetBinding
+  { letPos :: !SourcePos
+  , varPos :: !SourcePos
+  , ident :: !ExtIdent
+  , eqPos :: !SourcePos
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , inPos :: !SourcePos
+  , inExpr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of a type-annotated @let@ binding.
+data LetAnnotBinding = LetAnnotBinding
+  { letPos :: !SourcePos
+  , varPos :: !SourcePos
+  , ident :: !ExtIdent
+  , annotPos :: !SourcePos
+  , scheme :: !TCScheme
+  , eqPos :: !SourcePos
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , inPos :: !SourcePos
+  , inExpr :: !(Expr (Pinned VCObjectHash) SourcePos)
   }
 
 -- | One side of a record-field merge: remaining sorted fields,
@@ -453,6 +483,14 @@ checkDuplicateFields loc = go mempty
     go seen ((f, _, _) : rest)
       | Set.member f seen = throwError [DuplicateRecordField f loc]
       | otherwise = go (Set.insert f seen) rest
+
+-- | Defer a typeclass constraint for later resolution. Appends to the
+-- shared @deferred@ list; 'resolveTypeClasses' processes these after
+-- the full inference traversal.
+deferTC :: Location SourcePos -> TypeClass -> Infer s ()
+deferTC loc tc =
+  asks (.refs.deferred) >>= \ref ->
+    liftST . modifySTRef' ref $ ((loc, tc) :)
 
 -- | Look up a variable (by hash or name) in the environment, instantiate
 -- its scheme, and return the metadata with the instantiated type.
@@ -780,8 +818,8 @@ inferLitInt expr loc pos l = do
       }
   pure
     InferResult
-      { expr = App expr (Var pos Local LocalScope $ Impl i)
-      , typ = ImplType (Map.singleton i $ TRep tv) tv
+      { expr = App expr . Var pos Local LocalScope $ Impl i
+      , typ = flip ImplType tv . Map.singleton i $ TRep tv
       , tcs = Set.singleton tyCls
       }
 
@@ -799,7 +837,12 @@ inferLitOther expr loc l = do
       , ty = (Set.empty, ImplType Map.empty t)
       , docs = Nothing
       }
-  pure InferResult{expr = expr, typ = ImplType Map.empty t, tcs = Set.empty}
+  pure
+    InferResult
+      { expr
+      , typ = ImplType Map.empty t
+      , tcs = Set.empty
+      }
   where
     t :: InfernoType
     t = litType l
@@ -845,7 +888,7 @@ inferVarExpl expr loc pos mHash x = do
     Nothing ->
       pure
         InferResult
-          { expr = expr
+          { expr
           , typ = iType
           , tcs = Set.filter (not . isRepTC) tcs
           }
@@ -874,7 +917,12 @@ inferVarImpl expr loc x = do
       , ty = (Set.empty, implTy)
       , docs = Nothing
       }
-  pure InferResult{expr = expr, typ = implTy, tcs = Set.empty}
+  pure
+    InferResult
+      { expr
+      , typ = implTy
+      , tcs = Set.empty
+      }
 
 -- | Infer a prefix-used operator (e.g. @(+)@). Op vars must always be pinned.
 inferOpVar ::
@@ -888,7 +936,7 @@ inferOpVar expr loc pin ident =
     attachTypeToPosition loc meta
     pure
       InferResult
-        { expr = expr
+        { expr
         , typ = snd meta.ty
         , tcs = fst meta.ty
         }
@@ -907,7 +955,12 @@ inferEnum expr loc pin ident =
       meta
         { identExpr = bimap (const ()) (const ()) expr
         }
-    pure InferResult{expr = expr, typ = snd meta.ty, tcs = Set.empty}
+    pure
+      InferResult
+        { expr
+        , typ = snd meta.ty
+        , tcs = Set.empty
+        }
 
 -- | Infer an interpolated string. Each embedded expression is inferred
 -- independently; the overall type is @text@. Implicit maps are merged eagerly.
@@ -1020,7 +1073,7 @@ inferRecField expr loc pos (Ident recN) fieldName = do
   unify [UnificationFail r.tcs r.typ.body recTy loc] r.typ.body recTy
   pure
     InferResult
-      { expr = expr
+      { expr
       , typ = ImplType r.typ.impl fieldTv
       , tcs = r.tcs
       }
@@ -1050,7 +1103,7 @@ inferArray expr loc open elems close = do
       }
   pure
     InferResult
-      { expr = Array open (zipWith (\(_, p) r -> (r.expr, p)) elems results) close
+      { expr = Array open (zip (fmap (.expr) results) (fmap snd elems)) close
       , typ = arrTy
       , tcs = foldMap (.tcs) results
       }
@@ -1061,8 +1114,8 @@ inferArray expr loc open elems close = do
       Infer s InferResult
     inferElem tv (e, _) =
       infer e >>= \r ->
-        r <$
-          unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
+        r
+          <$ unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
 
 -- | Infer an array comprehension @[body | x <- gen, ... if cond]@.
 -- Each selector binds a variable into scope for subsequent selectors,
@@ -1077,7 +1130,7 @@ inferArrayComp ::
   Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos) ->
   SourcePos ->
   Infer s InferResult
-inferArrayComp _expr loc open body pipe (toList -> sels) cond close = do
+inferArrayComp _ loc open body pipe (toList -> sels) cond close = do
   checkVarOverlap sels mempty
 
   cr <- processSels sels
@@ -1293,9 +1346,8 @@ inferApp loc e1 e2 = do
       unify [UnificationFail tcs resTy tv loc] resTy tv
     fnTy ->
       unify
-        [
-          ExpectedFunction tcs (r2.typ.body `TArr` tv) fnTy
-           $ blockPosition e1
+        [ ExpectedFunction tcs (r2.typ.body `TArr` tv) fnTy $
+            blockPosition e1
         ]
         fnTy
         $ r2.typ.body `TArr` tv
@@ -1304,7 +1356,112 @@ inferApp loc e1 e2 = do
     InferResult
       { expr = App r1.expr r2.expr
       , typ = ImplType merged tv
-      , tcs = tcs
+      , tcs
+      }
+
+-- | Infer an explicit let binding @let x = e1 in e2@. The bound variable
+-- is non-generalized (monomorphic within @e2@).
+inferLet :: Location SourcePos -> LetBinding -> Infer s InferResult
+inferLet loc lb = do
+  r1 <- infer lb.rhs
+
+  let binding :: (ExtIdent, TypeMetadata TCScheme)
+      binding =
+        ( lb.ident
+        , TypeMetadata
+            { identExpr = Var () () LocalScope $ Expl lb.ident
+            , ty = ForallTC [] r1.tcs $ ImplType r1.typ.impl r1.typ.body
+            , docs = Nothing
+            }
+        )
+
+  r2 <- inEnv binding $ infer lb.inExpr
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
+
+  attachTypeToPosition (elementPosition lb.varPos (Expl lb.ident)) $
+    TypeMetadata
+      { identExpr = Var () () LocalScope $ Expl lb.ident
+      , ty = (r1.tcs, ImplType r1.typ.impl r1.typ.body)
+      , docs = Nothing
+      }
+
+  pure
+    InferResult
+      { expr = Let lb.letPos lb.varPos (Expl lb.ident) lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs = r1.tcs <> r2.tcs
+      }
+
+-- | Infer an implicit let binding @let ?x = e1 in e2@. If @?x@ appears in
+-- @e2@'s implicit map, its type is unified with @e1@'s body type.
+inferLetImpl :: Location SourcePos -> LetBinding -> Infer s InferResult
+inferLetImpl loc lb = do
+  r1 <- infer lb.rhs
+  r2 <- infer lb.inExpr
+
+  -- If `x` is in `r2`'s implicits, unify with `r1`'s body; otherwise
+  -- create a fresh var (the unification still constrains `r1`'s type).
+  implTv <- maybe (fmap TVar freshTV) pure $ Map.lookup lb.ident r2.typ.impl
+
+  let tcs :: Set TypeClass
+      tcs = r1.tcs <> r2.tcs
+
+  unify [ImplicitVarTypeOverlap tcs lb.ident implTv r1.typ.body loc] implTv r1.typ.body
+  merged <-
+    mergeImplMaps
+      loc
+      [ r1.typ.impl
+      , Map.withoutKeys r2.typ.impl $
+          Set.singleton lb.ident
+      ]
+  pure
+    InferResult
+      { expr = Let lb.letPos lb.varPos (Impl lb.ident) lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs
+      }
+
+-- | Infer a type-annotated let binding @let x : T = e1 in e2@. Instantiates
+-- the annotation, unifies it with @e1@'s inferred type, and defers the
+-- annotation's typeclass constraints for later resolution.
+inferLetAnnot :: Location SourcePos -> LetAnnotBinding -> Infer s InferResult
+inferLetAnnot loc lb = do
+  r1 <- infer lb.rhs
+  (annotTcs, ImplType annotImpl annotBody) <- instantiate lb.scheme
+
+  unify
+    [AnnotationUnificationFail r1.tcs r1.typ.body annotBody $ blockPosition lb.rhs]
+    r1.typ.body
+    annotBody
+
+  attachTypeToPosition (elementPosition lb.varPos (Expl lb.ident)) $
+    TypeMetadata
+      { identExpr = Var () () LocalScope $ Expl lb.ident
+      , ty = (annotTcs, ImplType annotImpl annotBody)
+      , docs = Nothing
+      }
+
+  let binding :: (ExtIdent, TypeMetadata TCScheme)
+      binding =
+        ( lb.ident
+        , TypeMetadata
+            { identExpr = Var () () LocalScope $ Expl lb.ident
+            , ty = ForallTC [] annotTcs $ ImplType annotImpl annotBody
+            , docs = Nothing
+            }
+        )
+
+  r2 <- inEnv binding $ infer lb.inExpr
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl, annotImpl]
+
+  -- Defer annotation typeclasses for post-inference resolution
+  for_ annotTcs $ deferTC loc
+
+  pure
+    InferResult
+      { expr = LetAnnot lb.letPos lb.varPos lb.ident lb.annotPos lb.scheme lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs = r1.tcs <> r2.tcs <> annotTcs
       }
 
 -------------------------------------------------------------------------------
