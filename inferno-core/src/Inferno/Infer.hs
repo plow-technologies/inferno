@@ -24,7 +24,7 @@ module Inferno.Infer
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (join, when, (<=<))
+import Control.Monad (foldM, join, void, when, (<=<))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
@@ -36,6 +36,7 @@ import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe)
@@ -62,18 +63,22 @@ import Inferno.Infer.Error
   ( TypeError
       ( AnnotationUnificationFail,
         AssertConditionMustBeBool,
+        CaseBranchesMustBeEqType,
         DuplicateRecordField,
         ExpectedFunction,
         IfBranchesMustBeEqType,
         IfConditionMustBeBool,
         ImplicitVarTypeOverlap,
         InfiniteType,
+        PatternUnificationFail,
+        PatternsMustBeEqType,
         UnboundExtIdent,
         UnboundNameInNamespace,
         UnificationFail,
         VarMultipleOccurrence
       ),
   )
+import Inferno.Module.Builtin (emptyHash, oneHash)
 import Inferno.Types.Module (Module, PinnedModule)
 import Inferno.Types.Syntax
   ( BlockUtils (blockPosition, removeComments),
@@ -83,6 +88,7 @@ import Inferno.Types.Syntax
         Array,
         ArrayComp,
         Assert,
+        Enum,
         If,
         InterpolatedString,
         Lam,
@@ -101,7 +107,19 @@ import Inferno.Types.Syntax
     InfixFixity,
     Lit (LDouble, LHex, LInt, LText),
     ModuleName (ModuleName),
-    Pat,
+    Pat
+      ( PArray,
+        PCommentAbove,
+        PCommentAfter,
+        PCommentBelow,
+        PEmpty,
+        PEnum,
+        PLit,
+        POne,
+        PRecord,
+        PTuple,
+        PVar
+      ),
     RestOfRecord (RowAbsent, RowVar),
     Scoped (LocalScope),
     SomeIStr,
@@ -109,6 +127,7 @@ import Inferno.Types.Syntax
     fromEitherList,
     fromScoped,
     incSourceCol,
+    patternToExpr,
     tListFromList,
     tListToList,
     toEitherList,
@@ -133,6 +152,7 @@ import Inferno.Types.Type
     TypeClass (TypeClass),
     typeBool,
     typeDouble,
+    typeInt,
     typeText,
     typeWord64,
   )
@@ -161,12 +181,22 @@ data InferResult = InferResult
   , tcs :: !(Set TypeClass)
   }
 
--- | A single branch of a @match@ expression
+-- | A single branch of a @match@ expression.
 data CaseBranch = CaseBranch
   { barPos :: SourcePos
   , pat :: Pat (Pinned VCObjectHash) SourcePos
   , arrPos :: SourcePos
   , body :: Expr (Pinned VCObjectHash) SourcePos
+  }
+
+-- | Result of 'inferCase'. Contains the inferred scrutinee, the
+-- branches with updated body expressions, and the overall type.
+-- The caller ('infer') is responsible for assembling the 'Case' 'Expr'.
+data CaseResult = CaseResult
+  { scrutExpr :: Expr (Pinned VCObjectHash) SourcePos
+  , branches :: NonEmpty CaseBranch
+  , typ :: ImplType
+  , tcs :: !(Set TypeClass)
   }
 
 -- | A single selector in an array comprehension (@x <- gen@).
@@ -1688,6 +1718,263 @@ inferAssert loc assertPos cond inPos e = do
       , typ = ImplType merged rb.typ.body
       , tcs
       }
+
+-- | Infer a @match e { | p1 -> e1 | p2 -> e2 ... }@ expression.
+-- Infers the scrutinee, generates pattern constraints, unifies all
+-- pattern types with the scrutinee, and unifies all branch body types.
+-- Returns a 'CaseResult'; the caller assembles the final 'Case' 'Expr'.
+inferCase ::
+  forall s.
+  Location SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  NonEmpty CaseBranch ->
+  Infer s CaseResult
+inferCase loc scrut branches = do
+  -- Check for duplicate variable bindings within each pattern
+  for_ branches $ void . checkVarOverlap mempty . (.pat)
+
+  r <- infer scrut
+  patResults <- for branches $ mkPatConstraint . (.pat)
+
+  -- Register patterns for exhaustiveness checking
+  addCasePatterns loc $ toList pats
+
+  let patTys :: NonEmpty InfernoType
+      patTys = fmap fst patResults
+
+  -- Infer each branch body with the pattern variables in scope
+  bodyResults <-
+    for (NonEmpty.zip (fmap snd patResults) branches) $ \(vars, branch) ->
+      foldr (inEnv . bindVar) (infer branch.body) vars
+
+  merged <-
+    mergeImplMaps loc $
+      r.typ.impl : toList (fmap (.typ.impl) bodyResults)
+
+  let tcs :: Set TypeClass
+      tcs = r.tcs <> foldMap (.tcs) bodyResults
+
+      mk :: InfernoType -> Pat (Pinned VCObjectHash) SourcePos -> Infer s ()
+      mk t p = unify [PatternUnificationFail t r.typ.body p $ blockPosition p] t r.typ.body
+
+  -- All pattern types must be equal to each other
+  unifyPairs (toList pats) (toList patTys) $
+    \p1 t1 p2 t2 ->
+      [PatternsMustBeEqType tcs t1 t2 p1 p2 (blockPosition p1) (blockPosition p2)]
+
+  -- Each pattern type must equal the scrutinee type
+  zipWithM_ mk (toList patTys) $ toList pats
+
+  -- All branch body types must be equal
+  unifyPairs (toList $ fmap (.body) branches) (toList $ fmap (.typ.body) bodyResults) $ \e1 t1 e2 t2 ->
+    [CaseBranchesMustBeEqType tcs t1 t2 (blockPosition e1) (blockPosition e2)]
+
+  let rebuiltBranches :: NonEmpty CaseBranch
+      rebuiltBranches =
+        NonEmpty.zip branches bodyResults
+          <&> \(b, res) -> CaseBranch b.barPos b.pat b.arrPos res.expr
+
+  pure
+    CaseResult
+      { scrutExpr = r.expr
+      , branches = rebuiltBranches
+      , typ = ImplType merged (NonEmpty.head bodyResults).typ.body
+      , tcs
+      }
+  where
+    bindVar :: (Ident, TypeMetadata TCScheme) -> (ExtIdent, TypeMetadata TCScheme)
+    bindVar (Ident x, meta) = (ExtIdent $ Right x, meta)
+
+    pats :: NonEmpty (Pat (Pinned VCObjectHash) SourcePos)
+    pats = fmap (.pat) branches
+
+    -- For each distinct pair `(a_i, t_i)` and `(a_j, t_j)` where `i < j`,
+    -- call `unify (mkErr a_i t_i a_j t_j) t_i t_j`.
+    unifyPairs ::
+      forall a.
+      [a] ->
+      [InfernoType] ->
+      (a -> InfernoType -> a -> InfernoType -> [TypeError SourcePos]) ->
+      Infer s ()
+    unifyPairs as ts mkErr = go $ zip as ts
+      where
+        go :: [(a, InfernoType)] -> Infer s ()
+        go = \case
+          [] -> pure ()
+          (a1, t1) : rest -> do
+            for_ rest $ \(a2, t2) -> unify (mkErr a1 t1 a2 t2) t1 t2
+            go rest
+
+    addCasePatterns ::
+      Location SourcePos ->
+      [Pat (Pinned VCObjectHash) SourcePos] ->
+      Infer s ()
+    addCasePatterns k ps =
+      asks (.refs.patternsToCheck) >>= \ref ->
+        liftST . modifySTRef' ref $ ((k, ps) :)
+
+    -- Check that no variable appears more than once in a pattern.
+    -- Threads a map of seen variables and their locations through the
+    -- recursive walk; throws on duplicate.
+    checkVarOverlap ::
+      Map Ident (Location SourcePos) ->
+      Pat (Pinned VCObjectHash) SourcePos ->
+      Infer s (Map Ident (Location SourcePos))
+    checkVarOverlap vars pat = case pat of
+      PVar _ (Just x) ->
+        maybe
+          (pure (Map.insert x (blockPosition pat) vars))
+          (throwError . pure . VarMultipleOccurrence x (blockPosition pat))
+          $ Map.lookup x vars
+      POne _ p -> checkVarOverlap vars p
+      PArray _ ps _ -> foldM checkVarOverlap vars $ fmap fst ps
+      PTuple _ ps _ -> foldM checkVarOverlap vars . fmap fst $ tListToList ps
+      PRecord _ ps _ -> foldM checkVarOverlap vars $ fmap snd3 ps
+      _ -> pure vars
+
+    -- Infer the type of a pattern and return any variables it binds.
+    mkPatConstraint ::
+      Pat (Pinned VCObjectHash) SourcePos ->
+      Infer s (InfernoType, [(Ident, TypeMetadata TCScheme)])
+    mkPatConstraint pat = case pat of
+      PVar _ (Just (Ident x)) ->
+        (freshTV >>=) . (. TVar) $ \tv -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+              , ty = (mempty, ImplType mempty tv)
+              , docs = Nothing
+              }
+          pure
+            ( tv
+            ,
+              [
+                ( Ident x
+                , TypeMetadata
+                    { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+                    , ty = ForallTC mempty mempty $ ImplType mempty tv
+                    , docs = Nothing
+                    }
+                )
+              ]
+            )
+      PVar _ Nothing ->
+        (freshTV >>=) . (. TVar) $ \tv -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty tv)
+              , docs = Nothing
+              }
+          pure (tv, mempty)
+      PEnum _ pin sc i ->
+        lookupPinned patLoc pin (EnumNamespace i) >>= \meta -> do
+          attachTypeToPosition patLoc $ meta{identExpr = Enum () () sc i}
+          pure ((snd meta.ty).body, mempty)
+      PLit _ l -> do
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = Lit () l
+            , ty = (mempty, ImplType mempty t)
+            , docs = Nothing
+            }
+        pure (t, mempty)
+        where
+          t :: InfernoType
+          t = case l of
+            LInt _ -> typeInt
+            LDouble _ -> typeDouble
+            LHex _ -> typeWord64
+            LText _ -> typeText
+      POne _ p -> do
+        (t, vars) <- mkPatConstraint p
+        meta <- lookupEnv patLoc $ Left oneHash
+        attachTypeToPosition patLoc $
+          meta
+            { ty = (mempty, ImplType mempty . TArr t $ TOptional t)
+            }
+        pure (TOptional t, vars)
+      PEmpty _ ->
+        lookupEnv patLoc (Left emptyHash) >>= \meta -> do
+          attachTypeToPosition patLoc meta
+          pure ((snd meta.ty).body, mempty)
+      PArray _ [] _ -> do
+        (freshTV >>=) . (. TArray . TVar) $ \t -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty t)
+              , docs = Nothing
+              }
+          pure (t, mempty)
+      PArray _ ((p, _) : ps) _ -> do
+        (t, vars1) <- mkPatConstraint p
+        vars2 <- inferArrayPatElems t ps
+
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+            , ty = (mempty, ImplType mempty $ TArray t)
+            , docs = Nothing
+            }
+        pure (TArray t, vars1 <> vars2)
+      PTuple _ ps _ ->
+        traverse (mkPatConstraint . fst) (tListToList ps) >>= \results -> do
+          let tupTy :: InfernoType
+              tupTy = TTuple . tListFromList $ fmap fst results
+
+              vars :: [(Ident, TypeMetadata TCScheme)]
+              vars = concatMap snd results
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty tupTy)
+              , docs = Nothing
+              }
+          pure (tupTy, vars)
+      PRecord _ fs _ -> do
+        checkDuplicateFields patLoc fs
+        results <- traverse (mkPatConstraint . snd3) fs
+
+        let fields :: Map Ident InfernoType
+            fields =
+              Map.fromList $
+                zip (fmap fst3 fs) $
+                  fmap fst results
+
+            vars :: [(Ident, TypeMetadata TCScheme)]
+            vars = concatMap snd results
+
+            recTy :: InfernoType
+            recTy = TRecord fields RowAbsent
+
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+            , ty = (mempty, ImplType mempty recTy)
+            , docs = Nothing
+            }
+        pure (recTy, vars)
+      PCommentAbove _ p -> mkPatConstraint p
+      PCommentAfter p _ -> mkPatConstraint p
+      PCommentBelow p _ -> mkPatConstraint p
+      where
+        patLoc :: Location SourcePos
+        patLoc = blockPosition pat
+
+    -- Infer remaining elements of an array pattern, unifying each with the
+    -- first element's type.
+    inferArrayPatElems ::
+      InfernoType ->
+      [(Pat (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+      Infer s [(Ident, TypeMetadata TCScheme)]
+    inferArrayPatElems = \cases
+      _ [] -> pure []
+      t ((p, _) : rest) -> do
+        (tp, vars1) <- mkPatConstraint p
+        unify [UnificationFail mempty t tp $ blockPosition p] t tp
+        vars2 <- inferArrayPatElems t rest
+        pure $ vars1 <> vars2
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
