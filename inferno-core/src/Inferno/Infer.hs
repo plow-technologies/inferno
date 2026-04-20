@@ -63,6 +63,8 @@ import Inferno.Infer.Error
       ( AnnotationUnificationFail,
         DuplicateRecordField,
         ExpectedFunction,
+        IfBranchesMustBeEqType,
+        IfConditionMustBeBool,
         ImplicitVarTypeOverlap,
         InfiniteType,
         UnboundExtIdent,
@@ -79,6 +81,7 @@ import Inferno.Types.Syntax
       ( App,
         Array,
         ArrayComp,
+        If,
         InterpolatedString,
         Lam,
         Let,
@@ -225,6 +228,16 @@ data PreOpBinding = PreOpBinding
   , modNm :: !(Scoped ModuleName)
   , op :: !Ident
   , operand :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an @if cond then tr else fl@ expression.
+data IfBinding = IfBinding
+  { ifPos :: !SourcePos
+  , cond :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , thenPos :: !SourcePos
+  , tr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , elsePos :: !SourcePos
+  , fl :: !(Expr (Pinned VCObjectHash) SourcePos)
   }
 
 -- | Components of an array comprehension @[body | sels if cond]@.
@@ -1579,6 +1592,33 @@ inferPreOp loc pb = do
   where
     opLoc :: Location SourcePos
     opLoc = mkOpLoc pb.opPos pb.op pb.modNm
+
+-- | Infer an @if cond then tr else fl@ expression. Unifies the
+-- condition with @bool@ and unifies both branches.
+inferIf :: Location SourcePos -> IfBinding -> Infer s InferResult
+inferIf loc ib = do
+  rc <- infer ib.cond
+  rt <- infer ib.tr
+  rf <- infer ib.fl
+  merged <- mergeImplMaps loc [rc.typ.impl, rt.typ.impl, rf.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = rc.tcs <> rt.tcs <> rf.tcs
+
+  unify [IfConditionMustBeBool tcs rc.typ.body $ blockPosition ib.cond] rc.typ.body typeBool
+  unify
+    [ IfBranchesMustBeEqType tcs rt.typ.body rf.typ.body (blockPosition ib.tr) $
+        blockPosition ib.fl
+    ]
+    rt.typ.body
+    rf.typ.body
+
+  pure
+    InferResult
+      { expr = If ib.ifPos rc.expr ib.thenPos rt.expr ib.elsePos rf.expr
+      , typ = ImplType merged rt.typ.body
+      , tcs
+      }
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
