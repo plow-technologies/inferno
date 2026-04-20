@@ -90,6 +90,7 @@ import Inferno.Types.Syntax
         Op,
         PreOp,
         Record,
+        Tuple,
         Var
       ),
     ExtIdent (ExtIdent),
@@ -102,9 +103,12 @@ import Inferno.Types.Syntax
     RestOfRecord (RowAbsent, RowVar),
     Scoped (LocalScope),
     SomeIStr,
+    TList,
     fromEitherList,
     fromScoped,
     incSourceCol,
+    tListFromList,
+    tListToList,
     toEitherList,
   )
 import Inferno.Types.Type
@@ -1619,6 +1623,43 @@ inferIf loc ib = do
       , typ = ImplType merged rt.typ.body
       , tcs
       }
+
+-- | Infer a tuple expression @(e1, e2, ...)@. Infers each element,
+-- merges implicit maps, and wraps the result types in @TTuple@.
+inferTuple ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  TList (Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos) ->
+  SourcePos ->
+  Infer s InferResult
+inferTuple expr loc open elems close = do
+  results <- traverse (infer . fst) elemList
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
+  let tupTy :: ImplType
+      tupTy = ImplType merged . TTuple . tListFromList $ fmap (.typ.body) results
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (mempty, tupTy)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr =
+          flip (Tuple open) close . tListFromList $
+            zip (fmap (.expr) results) commas
+      , typ = tupTy
+      , tcs = foldMap (.tcs) results
+      }
+  where
+    elemList :: [(Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)]
+    elemList = tListToList elems
+
+    commas :: [Maybe SourcePos]
+    commas = fmap snd elemList
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
