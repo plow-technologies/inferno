@@ -61,6 +61,7 @@ import qualified Inferno.Infer.Env as Env
 import Inferno.Infer.Error
   ( TypeError
       ( AnnotationUnificationFail,
+        AssertConditionMustBeBool,
         DuplicateRecordField,
         ExpectedFunction,
         IfBranchesMustBeEqType,
@@ -81,6 +82,7 @@ import Inferno.Types.Syntax
       ( App,
         Array,
         ArrayComp,
+        Assert,
         If,
         InterpolatedString,
         Lam,
@@ -1660,6 +1662,32 @@ inferTuple expr loc open elems close = do
 
     commas :: [Maybe SourcePos]
     commas = fmap snd elemList
+
+-- | Infer an @assert cond in e@ expression. Unifies the condition
+-- with @bool@ and returns the body type unchanged.
+inferAssert ::
+  Location SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferAssert loc assertPos cond inPos e = do
+  rc <- infer cond
+  rb <- infer e
+  merged <- mergeImplMaps loc [rc.typ.impl, rb.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = rc.tcs <> rb.tcs
+
+  unify [AssertConditionMustBeBool tcs rc.typ.body $ blockPosition cond] rc.typ.body typeBool
+
+  pure
+    InferResult
+      { expr = Assert assertPos rc.expr inPos rb.expr
+      , typ = ImplType merged rb.typ.body
+      , tcs
+      }
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
