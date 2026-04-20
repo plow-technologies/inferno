@@ -95,6 +95,7 @@ import Inferno.Types.Syntax
         Let,
         LetAnnot,
         Lit,
+        One,
         Op,
         PreOp,
         Record,
@@ -1975,6 +1976,48 @@ inferCase loc scrut branches = do
         unify [UnificationFail mempty t tp $ blockPosition p] t tp
         vars2 <- inferArrayPatElems t rest
         pure $ vars1 <> vars2
+
+-- | Infer @Some e@. Infers the inner expression, wraps its type in
+-- @TOptional@, and attaches the metadata from the builtin `oneHash`.
+inferOne ::
+  Location SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferOne loc pos e = do
+  r <- infer e
+  meta <- lookupEnv loc $ Left oneHash
+
+  let resTy :: ImplType
+      resTy = ImplType r.typ.impl $ TOptional r.typ.body
+
+  attachTypeToPosition
+    loc
+    meta
+      { ty = (mempty, resTy)
+      }
+  pure
+    InferResult
+      { expr = One pos r.expr
+      , typ = resTy
+      , tcs = r.tcs
+      }
+
+-- | Infer @None@. Looks up the builtin `emptyHash` to get the polymorphic
+-- @optional a@ type, instantiates it, and attaches the metadata.
+inferEmpty ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Infer s InferResult
+inferEmpty expr loc =
+  lookupEnv loc (Left emptyHash) >>= \meta -> do
+    attachTypeToPosition loc meta
+    pure
+      InferResult
+        { expr
+        , typ = snd meta.ty
+        , tcs = mempty
+        }
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
