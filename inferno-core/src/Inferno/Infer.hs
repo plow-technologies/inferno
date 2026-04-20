@@ -72,6 +72,8 @@ import Inferno.Infer.Error
         InfiniteType,
         PatternUnificationFail,
         PatternsMustBeEqType,
+        ModuleDoesNotExist,
+        ModuleNameTaken,
         UnboundExtIdent,
         UnboundNameInNamespace,
         UnificationFail,
@@ -97,17 +99,20 @@ import Inferno.Types.Syntax
         Lit,
         One,
         Op,
+        OpenModule,
         PreOp,
         Record,
+        RenameModule,
         Tuple,
         Var
       ),
     ExtIdent (ExtIdent),
     Ident (Ident),
     ImplExpl (Expl, Impl),
+    Import,
     InfixFixity,
     Lit (LDouble, LHex, LInt, LText),
-    ModuleName (ModuleName),
+    ModuleName (ModuleName, unModuleName),
     Pat
       ( PArray,
         PCommentAbove,
@@ -285,6 +290,26 @@ data ArrayCompBinding = ArrayCompBinding
   , sels :: !(NonEmpty Selector)
   , cond :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
   , close :: !SourcePos
+  }
+
+-- | Components of a @let module NewName = OldName in e@ expression.
+data RenameModuleBinding = RenameModuleBinding
+  { namePos :: !SourcePos
+  , newNm :: !ModuleName
+  , oldPos :: !SourcePos
+  , oldNm :: !ModuleName
+  , inPos :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an @open Module (imports) in e@ expression.
+data OpenModuleBinding = OpenModuleBinding
+  { openPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , modNm :: !ModuleName
+  , imports :: ![(Import SourcePos, Maybe SourcePos)]
+  , inPos :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
   }
 
 -- | One side of a record-field merge: remaining sorted fields,
@@ -2018,6 +2043,45 @@ inferEmpty expr loc =
         , typ = snd meta.ty
         , tcs = mempty
         }
+
+-- | Infer @let module NewName = OldName in e@. Temporarily aliases an existing
+-- module under a new name while inferring the body expression.
+inferRenameModule :: RenameModuleBinding -> Infer s InferResult
+inferRenameModule rb = do
+  ref <- asks (.refs.modules)
+  mods <- liftST $ readSTRef ref
+  when (rb.newNm `Map.member` mods) $
+    throwError [ModuleNameTaken rb.newNm $ elementPosition rb.namePos rb.newNm]
+  Map.lookup rb.oldNm mods & \case
+    Nothing -> throwError [ModuleDoesNotExist rb.oldNm (rb.oldPos, rb.inPos)]
+    Just oldMod -> do
+      liftST . writeSTRef ref $ Map.insert rb.newNm oldMod mods
+      r <- infer rb.body
+      -- Restore the original module map (remove the alias)
+      liftST . modifySTRef' ref $ Map.delete rb.newNm
+      pure
+        InferResult
+          { expr = RenameModule rb.namePos rb.newNm rb.oldPos rb.oldNm rb.inPos r.expr
+          , typ = r.typ
+          , tcs = r.tcs
+          }
+
+-- | Infer @open ModuleName (imports) in e@. Verifies the module exists
+-- and infers the body (imports are resolved during parsing/pinning).
+inferOpenModule :: OpenModuleBinding -> Infer s InferResult
+inferOpenModule ob = do
+  mods <- liftST . readSTRef =<< asks (.refs.modules)
+  Map.lookup ob.modNm mods & \case
+    Nothing ->
+      throwError [ModuleDoesNotExist ob.modNm $ elementPosition ob.openPos ob.modNm]
+    Just _ -> do
+      infer ob.body <&> \r ->
+        InferResult
+          { expr =
+            OpenModule ob.openPos ob.pin ob.modNm ob.imports ob.inPos r.expr
+          , typ = r.typ
+          , tcs = r.tcs
+          }
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
