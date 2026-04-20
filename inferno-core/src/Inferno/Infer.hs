@@ -39,11 +39,13 @@ import Data.List (find)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Sequence (Seq, (<|))
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
+import qualified Data.Text as Text
 import Data.Traversable (for)
 import Data.Tuple.Extra (fst3, snd3, thd3)
 import qualified Data.Vector.Mutable as Vector.Mutable
@@ -82,19 +84,24 @@ import Inferno.Types.Syntax
         Let,
         LetAnnot,
         Lit,
+        Op,
+        PreOp,
         Record,
         Var
       ),
     ExtIdent (ExtIdent),
     Ident (Ident),
     ImplExpl (Expl, Impl),
+    InfixFixity,
     Lit (LDouble, LHex, LInt, LText),
-    ModuleName,
+    ModuleName (ModuleName),
     Pat,
     RestOfRecord (RowAbsent, RowVar),
     Scoped (LocalScope),
     SomeIStr,
     fromEitherList,
+    fromScoped,
+    incSourceCol,
     toEitherList,
   )
 import Inferno.Types.Type
@@ -197,6 +204,37 @@ data LetAnnotBinding = LetAnnotBinding
   , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
   , inPos :: !SourcePos
   , inExpr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an infix operator application @e1 `op` e2@.
+data OpBinding = OpBinding
+  { lhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , opPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , opMeta :: !(Int, InfixFixity)
+  , modNm :: !(Scoped ModuleName)
+  , op :: !Ident
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of a prefix operator application @op e@.
+data PreOpBinding = PreOpBinding
+  { opPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , opLvl :: !Int
+  , modNm :: !(Scoped ModuleName)
+  , op :: !Ident
+  , operand :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an array comprehension @[body | sels if cond]@.
+data ArrayCompBinding = ArrayCompBinding
+  { open :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , pipe :: !SourcePos
+  , sels :: !(NonEmpty Selector)
+  , cond :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
+  , close :: !SourcePos
   }
 
 -- | One side of a record-field merge: remaining sorted fields,
@@ -1120,20 +1158,11 @@ inferArray expr loc open elems close = do
 -- | Infer an array comprehension @[body | x <- gen, ... if cond]@.
 -- Each selector binds a variable into scope for subsequent selectors,
 -- the body, and the optional condition.
-inferArrayComp ::
-  Expr (Pinned VCObjectHash) SourcePos ->
-  Location SourcePos ->
-  SourcePos ->
-  Expr (Pinned VCObjectHash) SourcePos ->
-  SourcePos ->
-  NonEmpty Selector ->
-  Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos) ->
-  SourcePos ->
-  Infer s InferResult
-inferArrayComp _ loc open body pipe (toList -> sels) cond close = do
-  checkVarOverlap sels mempty
+inferArrayComp :: Location SourcePos -> ArrayCompBinding -> Infer s InferResult
+inferArrayComp loc ac = do
+  checkVarOverlap selList mempty
 
-  cr <- processSels sels
+  cr <- processSels selList
   merged <- mergeImplMaps loc $ cr.bodyResult.typ.impl : cr.condImpl : cr.selImpls
   rebuiltSels <-
     toList cr.rebuiltSels & \case
@@ -1143,11 +1172,14 @@ inferArrayComp _ loc open body pipe (toList -> sels) cond close = do
 
   pure
     InferResult
-      { expr = ArrayComp open cr.bodyResult.expr pipe rebuiltSels cr.condExpr close
+      { expr = ArrayComp ac.open cr.bodyResult.expr ac.pipe rebuiltSels cr.condExpr ac.close
       , typ = ImplType merged . TArray $ cr.bodyResult.typ.body
       , tcs = cr.bodyResult.tcs <> cr.condTcs <> cr.selTcs
       }
   where
+    selList :: [Selector]
+    selList = toList ac.sels
+
     -- Check for duplicate variable names in selectors. Uses a `Map` to track
     -- first-occurrence locations for O(n log n) instead of O(n^2).
     checkVarOverlap ::
@@ -1174,7 +1206,7 @@ inferArrayComp _ loc open body pipe (toList -> sels) cond close = do
     processSels :: [Selector] -> Infer s CompResult
     processSels = \case
       [] -> do
-        rBody <- infer body
+        rBody <- infer ac.body
         (ce, ci, ct) <- inferCond
         pure
           CompResult
@@ -1243,7 +1275,7 @@ inferArrayComp _ loc open body pipe (toList -> sels) cond close = do
         , Map ExtIdent InfernoType
         , Set TypeClass
         )
-    inferCond = case cond of
+    inferCond = case ac.cond of
       Nothing -> pure (Nothing, Map.empty, Set.empty)
       Just (p, eCond) -> do
         rCond <- infer eCond
@@ -1459,10 +1491,149 @@ inferLetAnnot loc lb = do
 
   pure
     InferResult
-      { expr = LetAnnot lb.letPos lb.varPos lb.ident lb.annotPos lb.scheme lb.eqPos r1.expr lb.inPos r2.expr
+      { expr =
+          LetAnnot lb.letPos lb.varPos lb.ident lb.annotPos lb.scheme lb.eqPos r1.expr lb.inPos r2.expr
       , typ = ImplType merged r2.typ.body
       , tcs = r1.tcs <> r2.tcs <> annotTcs
       }
+
+-- | Infer an infix operator application @e1 `op` e2@. Looks up the operator
+-- (must be pinned), decomposes its type into @u1 -> u2 -> u3@, and unifies
+-- each component with the operand types.
+inferOp :: Location SourcePos -> OpBinding -> Infer s InferResult
+inferOp loc ob = do
+  r1 <- infer ob.lhs
+  r2 <- infer ob.rhs
+  meta <- lookupPinnedOp opLoc ob.pin
+
+  let opTcs :: Set TypeClass
+      opTcs = fst meta.ty
+
+  (u1, u2, u3) <- opDecompose opLoc opTcs $ snd meta.ty
+  tv <- TVar <$> freshTV
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = r1.tcs <> r2.tcs
+
+  unify [UnificationFail tcs u1 r1.typ.body $ blockPosition ob.lhs] u1 r1.typ.body
+  unify [UnificationFail tcs u2 r2.typ.body $ blockPosition ob.rhs] u2 r2.typ.body
+  unify [UnificationFail tcs u3 tv loc] u3 tv
+
+  attachTypeToPosition opLoc $
+    meta
+      { ty =
+          ( opTcs
+          , ImplType Map.empty $ r1.typ.body `TArr` (r2.typ.body `TArr` tv)
+          )
+      }
+
+  for_ opTcs $ deferTC opLoc
+
+  pure
+    InferResult
+      { expr = Op r1.expr ob.opPos ob.pin ob.opMeta ob.modNm ob.op r2.expr
+      , typ = ImplType merged tv
+      , tcs = tcs <> opTcs
+      }
+  where
+    opLoc :: Location SourcePos
+    opLoc = mkOpLoc ob.opPos ob.op ob.modNm
+
+-- | Infer a prefix operator application @op e@. Looks up the operator
+-- (must be pinned), decomposes its type into @u1 -> u2@, and unifies
+-- each component with the operand type.
+inferPreOp :: Location SourcePos -> PreOpBinding -> Infer s InferResult
+inferPreOp loc pb = do
+  r <- infer pb.operand
+  meta <- lookupPinnedOp opLoc pb.pin
+
+  let opTcs :: Set TypeClass
+      opTcs = fst meta.ty
+
+  (u1, u2) <- preOpDecompose opLoc opTcs $ snd meta.ty
+  tv <- TVar <$> freshTV
+
+  unify [UnificationFail r.tcs u1 r.typ.body $ blockPosition pb.operand] u1 r.typ.body
+  unify [UnificationFail r.tcs u2 tv loc] u2 tv
+
+  attachTypeToPosition opLoc $
+    meta
+      { ty = (opTcs, ImplType Map.empty $ r.typ.body `TArr` tv)
+      }
+
+  for_ opTcs $ deferTC opLoc
+
+  pure
+    InferResult
+      { expr = PreOp pb.opPos pb.pin pb.opLvl pb.modNm pb.op r.expr
+      , typ = ImplType r.typ.impl tv
+      , tcs = r.tcs <> opTcs
+      }
+  where
+    opLoc :: Location SourcePos
+    opLoc = mkOpLoc pb.opPos pb.op pb.modNm
+
+-- | Compute the source location span for an operator, accounting for
+-- an optional module prefix (e.g. @Module.+@).
+mkOpLoc :: SourcePos -> Ident -> Scoped ModuleName -> Location SourcePos
+mkOpLoc pos op modNm =
+  (pos, incSourceCol ePos . fromScoped 0 $ fmap modLen modNm)
+  where
+    ePos :: SourcePos
+    ePos = snd $ elementPosition pos op
+
+    modLen :: ModuleName -> Int
+    modLen (ModuleName nm) = Text.length nm + 1
+
+-- | Look up a pinned operator in the environment. Operators must always
+-- be pinned; uses @error@ for the impossible unpinned case.
+lookupPinnedOp ::
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
+lookupPinnedOp loc pin =
+  lookupEnv loc
+    . Left
+    . fromMaybe (error "internal error: operators must always be pinned")
+    $ pinnedToMaybe pin
+
+-- | Decompose a binary operator type @a -> b -> c@ into its three components.
+-- If the type doesn't match, creates fresh vars and unifies, producing a
+-- proper @ExpectedFunction@ error on failure.
+opDecompose ::
+  Location SourcePos ->
+  Set TypeClass ->
+  ImplType ->
+  Infer s (InfernoType, InfernoType, InfernoType)
+opDecompose opLoc tcs = \case
+  ImplType _ (t1 `TArr` (t2 `TArr` t3)) -> pure (t1, t2, t3)
+  ImplType _ t -> do
+    a <- TVar <$> freshTV
+    b <- TVar <$> freshTV
+    c <- TVar <$> freshTV
+    let expected :: InfernoType
+        expected = a `TArr` (b `TArr` c)
+    unify [ExpectedFunction tcs expected t opLoc] t expected
+    pure (a, b, c)
+
+-- | Decompose a prefix operator type @a -> b@ into its two components.
+-- If the type doesn't match, creates fresh vars and unifies, producing a
+-- proper @ExpectedFunction@ error on failure.
+preOpDecompose ::
+  Location SourcePos ->
+  Set TypeClass ->
+  ImplType ->
+  Infer s (InfernoType, InfernoType)
+preOpDecompose opLoc tcs = \case
+  ImplType _ (t1 `TArr` t2) -> pure (t1, t2)
+  ImplType _ t -> do
+    a <- TVar <$> freshTV
+    b <- TVar <$> freshTV
+    let expected :: InfernoType
+        expected = a `TArr` b
+    unify [ExpectedFunction tcs expected t opLoc] t expected
+    pure (a, b)
 
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
