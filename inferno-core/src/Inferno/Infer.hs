@@ -6,7 +6,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
@@ -48,6 +47,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Traversable (for)
 import Data.Tuple.Extra (fst3, snd3, thd3)
+import Data.Vector.Mutable (STVector)
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
 import Inferno.Infer.Env
@@ -283,7 +283,7 @@ data UFContent
 
 -- | Mutable union-find store, indexed by @unTV :: Int@.
 -- Backed by a growable @MVector@ in @ST@.
-type UFStore s = STRef s (Vector.Mutable.STVector s UFContent)
+type UFStore s = STRef s (STVector s UFContent)
 
 -- | The inference monad: @ReaderT@ over @ExceptT@ over @ST@.
 -- All mutable state lives in @STRef@s.
@@ -323,7 +323,7 @@ liftST :: ST s a -> Infer s a
 liftST = lift . lift
 
 -- | Run an @ST@ action with the current UF store vector.
-withStore :: (Vector.Mutable.STVector s UFContent -> ST s a) -> Infer s a
+withStore :: (STVector s UFContent -> ST s a) -> Infer s a
 withStore f = liftST . (f <=< readSTRef) =<< asks (.refs.ufStore)
 
 -------------------------------------------------------------------------------
@@ -496,7 +496,7 @@ mergeImplMaps ::
   [Map ExtIdent InfernoType] ->
   Infer s (Map ExtIdent InfernoType)
 mergeImplMaps loc =
-  flip foldl' (pure Map.empty) $
+  flip foldl' (pure mempty) $
     \acc m -> merge m =<< acc
   where
     merge ::
@@ -747,7 +747,7 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
               , ufStore = stRef
               , typeMap = tmRef
               , modules = modsRef
-              , tyClasses = Set.empty
+              , tyClasses = mempty
               , patternsToCheck = patsRef
               , deferred = defRef
               }
@@ -759,16 +759,22 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
           doUnify =
             unifyRecordFields
               err
-              RecordSide{fields = Map.toAscList fs1, ror = ror1, new = mempty}
-              RecordSide{fields = Map.toAscList fs2, ror = ror2, new = mempty}
+              RecordSide
+                { fields = Map.toAscList fs1
+                , ror = ror1
+                , new = mempty
+                }
+              RecordSide
+                { fields = Map.toAscList fs2
+                , ror = ror2
+                , new = mempty
+                }
               mempty
 
-      runExceptT (runReaderT doUnify ctx) >>= \case
-        Left errs -> pure $ Left errs
-        Right () -> do
-          n <- readSTRef cRef
-          v <- readSTRef stRef
-          freezeUFToSubst n v
+          freeze :: ST s (Either [TypeError SourcePos] Subst)
+          freeze = join $ freezeUFToSubst <$> readSTRef cRef <*> readSTRef stRef
+
+      either (pure . Left) (const freeze) =<< runExceptT (runReaderT doUnify ctx)
 
 -- | Freeze the UF store into a 'Subst'. For each TV @0..n-1@, fully
 -- resolve its type (transitively resolving all inner @TVar@s) and add
@@ -776,7 +782,7 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
 freezeUFToSubst ::
   forall s.
   Int ->
-  Vector.Mutable.STVector s UFContent ->
+  STVector s UFContent ->
   ST s (Either [TypeError SourcePos] Subst)
 freezeUFToSubst n v =
   Right . Subst . Map.fromList <$> go 0
@@ -851,7 +857,7 @@ inferLitInt expr loc pos l = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = Lit () l
-      , ty = (Set.singleton tyCls, ImplType Map.empty tv)
+      , ty = (Set.singleton tyCls, ImplType mempty tv)
       , docs = Nothing
       }
   pure
@@ -872,14 +878,14 @@ inferLitOther expr loc l = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = Lit () l
-      , ty = (Set.empty, ImplType Map.empty t)
+      , ty = (mempty, ImplType mempty t)
       , docs = Nothing
       }
   pure
     InferResult
       { expr
-      , typ = ImplType Map.empty t
-      , tcs = Set.empty
+      , typ = ImplType mempty t
+      , tcs = mempty
       }
   where
     t :: InfernoType
@@ -952,14 +958,14 @@ inferVarImpl expr loc x = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) expr
-      , ty = (Set.empty, implTy)
+      , ty = (mempty, implTy)
       , docs = Nothing
       }
   pure
     InferResult
       { expr
       , typ = implTy
-      , tcs = Set.empty
+      , tcs = mempty
       }
 
 -- | Infer a prefix-used operator (e.g. @(+)@). Op vars must always be pinned.
@@ -997,7 +1003,7 @@ inferEnum expr loc pin ident =
       InferResult
         { expr
         , typ = snd meta.ty
-        , tcs = Set.empty
+        , tcs = mempty
         }
 
 -- | Infer an interpolated string. Each embedded expression is inferred
@@ -1013,7 +1019,7 @@ inferInterp expr loc p xs end = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) $ removeComments expr
-      , ty = (Set.empty, ImplType Map.empty typeText)
+      , ty = (mempty, ImplType mempty typeText)
       , docs = Nothing
       }
 
@@ -1040,7 +1046,7 @@ inferInterp expr loc p xs end = do
         , Set TypeClass
         )
     inferPart = \case
-      Left str -> pure (Left str, Map.empty, Set.empty)
+      Left str -> pure (Left str, mempty, mempty)
       Right (p1, e, p2) ->
         infer e <&> \r -> (Right (p1, r.expr, p2), r.typ.impl, r.tcs)
 
@@ -1079,7 +1085,7 @@ inferRecord expr loc open fes close = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) $ removeComments expr
-      , ty = (Set.empty, recTy)
+      , ty = (mempty, recTy)
       , docs = Nothing
       }
 
@@ -1136,7 +1142,7 @@ inferArray expr loc open elems close = do
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = bimap (const ()) (const ()) $ removeComments expr
-      , ty = (Set.empty, arrTy)
+      , ty = (mempty, arrTy)
       , docs = Nothing
       }
   pure
@@ -1276,7 +1282,7 @@ inferArrayComp loc ac = do
         , Set TypeClass
         )
     inferCond = case ac.cond of
-      Nothing -> pure (Nothing, Map.empty, Set.empty)
+      Nothing -> pure (Nothing, mempty, mempty)
       Just (p, eCond) -> do
         rCond <- infer eCond
         unify
@@ -1329,7 +1335,7 @@ inferLam funPos args arrowPos bodyExpr =
       ( x
       , TypeMetadata
           { identExpr = Var () () LocalScope $ Expl x
-          , ty = ForallTC [] Set.empty $ ImplType Map.empty tv
+          , ty = ForallTC [] mempty $ ImplType mempty tv
           , docs = Nothing
           }
       )
@@ -1344,14 +1350,14 @@ inferLam funPos args arrowPos bodyExpr =
           attachTypeToPosition (elementPosition pos (Just (Ident i))) $
             TypeMetadata
               { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right i
-              , ty = (Set.empty, ImplType Map.empty tv)
+              , ty = (mempty, ImplType mempty tv)
               , docs = Nothing
               }
       Nothing ->
         attachTypeToPosition (elementPosition @(Maybe Ident) pos Nothing) $
           TypeMetadata
             { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right "_"
-            , ty = (Set.empty, ImplType Map.empty tv)
+            , ty = (mempty, ImplType mempty tv)
             , docs = Nothing
             }
 
@@ -1524,7 +1530,7 @@ inferOp loc ob = do
     meta
       { ty =
           ( opTcs
-          , ImplType Map.empty $ r1.typ.body `TArr` (r2.typ.body `TArr` tv)
+          , ImplType mempty $ r1.typ.body `TArr` (r2.typ.body `TArr` tv)
           )
       }
 
@@ -1559,7 +1565,7 @@ inferPreOp loc pb = do
 
   attachTypeToPosition opLoc $
     meta
-      { ty = (opTcs, ImplType Map.empty $ r.typ.body `TArr` tv)
+      { ty = (opTcs, ImplType mempty $ r.typ.body `TArr` tv)
       }
 
   for_ opTcs $ deferTC opLoc
