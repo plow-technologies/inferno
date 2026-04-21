@@ -34,7 +34,6 @@ import Data.Bifunctor (bimap)
 import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about lower GHC versions
 import Data.Function ((&))
 import Data.Functor (($>), (<&>))
-import Data.List (find)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
@@ -471,7 +470,8 @@ readRoot :: TV -> Infer s (Int, Maybe InfernoType)
 readRoot (TV ri) =
   withStore (`Vector.Mutable.read` ri) >>= \case
     UFRoot rank mt -> pure (rank, mt)
-    UFLink _ -> pure (0, Nothing) -- unreachable after ufFind
+    -- NOTE: unreachable after ufFind
+    UFLink _ -> pure (0, Nothing)
 
 -- | Union two type variables by rank. If either root already has a
 -- resolved type, the other root inherits it. If both have resolved
@@ -482,7 +482,7 @@ ufUnion a b =
     when (ra /= rb) $ do
       (rankA, mA) <- readRoot ra
       (rankB, mB) <- readRoot rb
-      merged <- case (mA, mB) of
+      merged <- (mA, mB) & \case
         (Just tA, Just tB) -> unify [] tA tB $> mA
         _ -> pure $ mA <|> mB
       withStore $ \v ->
@@ -1134,22 +1134,25 @@ inferVarExpl expr loc pos mHash x = do
       iType :: ImplType
       iType = snd meta.ty
   attachTypeToPosition loc meta
-  case find isRepTC $ Set.toList tcs of
-    Just (TypeClass _ repTys) -> do
+  let repAndNon :: (Set TypeClass, Set TypeClass)
+      repAndNon = Set.partition isRepTC tcs
+      (repTcs, nonRepTcs) = repAndNon
+  Set.lookupMin repTcs & \case
+    Just (TypeClass _ repTys) ->
       traverse mkRepImpl repTys <&> \repImpls ->
         InferResult
           { expr =
               foldl' App expr $
                 fmap (Var pos Local LocalScope . Impl . fst) repImpls
           , typ = ImplType (iType.impl `Map.union` Map.fromList repImpls) iType.body
-          , tcs = Set.filter (not . isRepTC) tcs
+          , tcs = nonRepTcs
           }
     Nothing ->
       pure
         InferResult
           { expr
           , typ = iType
-          , tcs = Set.filter (not . isRepTC) tcs
+          , tcs = nonRepTcs
           }
   where
     isRepTC :: TypeClass -> Bool
