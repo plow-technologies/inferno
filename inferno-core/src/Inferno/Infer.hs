@@ -70,10 +70,10 @@ import Inferno.Infer.Error
         IfConditionMustBeBool,
         ImplicitVarTypeOverlap,
         InfiniteType,
-        PatternUnificationFail,
-        PatternsMustBeEqType,
         ModuleDoesNotExist,
         ModuleNameTaken,
+        PatternUnificationFail,
+        PatternsMustBeEqType,
         UnboundExtIdent,
         UnboundNameInNamespace,
         UnificationFail,
@@ -84,17 +84,19 @@ import Inferno.Module.Builtin (emptyHash, oneHash)
 import Inferno.Types.Module (Module, PinnedModule)
 import Inferno.Types.Syntax
   ( BlockUtils (blockPosition, removeComments),
-    ElementPosition (elementPosition),
     Comment,
+    ElementPosition (elementPosition),
     Expr
       ( App,
         Array,
         ArrayComp,
         Assert,
         Bracketed,
+        Case,
         CommentAbove,
         CommentAfter,
         CommentBelow,
+        Empty,
         Enum,
         If,
         InterpolatedString,
@@ -104,9 +106,11 @@ import Inferno.Types.Syntax
         Lit,
         One,
         Op,
+        OpVar,
         OpenModule,
         PreOp,
         Record,
+        RecordField,
         RenameModule,
         Tuple,
         TypeRep,
@@ -914,6 +918,136 @@ freezeUFToSubst n v =
           TRecord extra ror ->
             (`resolveRecord` ror) . Map.union fs =<< traverse resolveType extra
           _ -> pure $ TRecord fs RowAbsent
+
+-------------------------------------------------------------------------------
+-- Inference
+-------------------------------------------------------------------------------
+
+-- | Top-level inference dispatcher. Pattern-matches on the expression
+-- constructor and delegates to the appropriate helper.
+infer :: Expr (Pinned VCObjectHash) SourcePos -> Infer s InferResult
+infer expr = case expr of
+  -- Literals: ints get a @numeric@ typeclass constraint; others are ground
+  --
+  -- NOTE: due to constraint above `int` inference MUST come before other
+  -- `Lit` inference. Do NOT re-order these two or the typechecker will fail
+  Lit pos l@(LInt _) -> inferLitInt expr loc pos l
+  Lit _ l -> inferLitOther expr loc l
+  Var pos pin _ (Expl x) -> inferVarExpl expr loc pos pin x
+  Var _ _ _ (Impl x) -> inferVarImpl expr loc x
+  OpVar _ pin _ ident -> inferOpVar expr loc pin ident
+  Enum _ pin _ ident -> inferEnum expr loc pin ident
+  InterpolatedString p xs end -> inferInterp expr loc p xs end
+  Record open fes close -> inferRecord expr loc open fes close
+  RecordField pos recNm fieldNm -> inferRecField expr loc pos recNm fieldNm
+  Array open elems close -> inferArray expr loc open elems close
+  ArrayComp open body pipe rawSels cond close ->
+    inferArrayComp
+      loc
+      ArrayCompBinding
+        { open
+        , body
+        , pipe
+        , sels = fmap toSel rawSels
+        , cond
+        , close
+        }
+  Lam funPos args arrowPos body -> inferLam funPos args arrowPos body
+  App e1 e2 -> inferApp loc e1 e2
+  Let letPos varPos (Expl ident) eqPos rhs inPos inExpr ->
+    inferLet
+      loc
+      LetBinding{letPos, varPos, ident, eqPos, rhs, inPos, inExpr}
+  Let letPos varPos (Impl ident) eqPos rhs inPos inExpr ->
+    inferLetImpl
+      loc
+      LetBinding{letPos, varPos, ident, eqPos, rhs, inPos, inExpr}
+  LetAnnot letPos varPos ident annotPos scheme eqPos rhs inPos inExpr ->
+    inferLetAnnot
+      loc
+      LetAnnotBinding{letPos, varPos, ident, annotPos, scheme, eqPos, rhs, inPos, inExpr}
+  Op lhs opPos pin opMeta modNm op rhs ->
+    inferOp
+      loc
+      OpBinding{lhs, opPos, pin, opMeta, modNm, op, rhs}
+  PreOp opPos pin opLvl modNm op operand ->
+    inferPreOp
+      loc
+      PreOpBinding{opPos, pin, opLvl, modNm, op, operand}
+  If ifPos cond thenPos tr elsePos fl ->
+    inferIf
+      loc
+      IfBinding{ifPos, cond, thenPos, tr, elsePos, fl}
+  Tuple open elems close -> inferTuple expr loc open elems close
+  Assert assertPos cond inPos e -> inferAssert loc assertPos cond inPos e
+  Case matchPos scrut openPos rawBranches closePos ->
+    inferCase loc scrut (fmap toBranch rawBranches) <&> \cr ->
+      InferResult
+        { expr = Case matchPos cr.scrutExpr openPos (fmap fromBranch cr.branches) closePos
+        , typ = cr.typ
+        , tcs = cr.tcs
+        }
+  One pos e -> inferOne loc pos e
+  Empty _ -> inferEmpty expr loc
+  RenameModule namePos newNm oldPos oldNm inPos body ->
+    inferRenameModule
+      RenameModuleBinding
+        { namePos
+        , newNm
+        , oldPos
+        , oldNm
+        , inPos
+        , body
+        }
+  OpenModule openPos pin modNm imports inPos body ->
+    inferOpenModule
+      OpenModuleBinding
+        { openPos
+        , pin
+        , modNm
+        , imports
+        , inPos
+        , body
+        }
+  TypeRep _ t -> inferTypeRep expr t
+  -- Syntactic wrappers (these are structurally transparent)
+  CommentAbove c e -> inferCommentAbove c e
+  CommentAfter e c -> inferCommentAfter e c
+  CommentBelow e c -> inferCommentBelow e c
+  Bracketed p1 e p2 -> inferBracketed p1 e p2
+  where
+    loc :: Location SourcePos
+    loc = blockPosition expr
+
+    toSel ::
+      ( SourcePos
+      , Ident
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      , Maybe SourcePos
+      ) ->
+      Selector
+    toSel (identPos, ident, arrowPos, gen, commaPos) =
+      Selector{identPos, ident, arrowPos, gen, commaPos}
+
+    toBranch ::
+      ( SourcePos
+      , Pat (Pinned VCObjectHash) SourcePos
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      ) ->
+      CaseBranch
+    toBranch (barPos, pat, arrPos, body) =
+      CaseBranch{barPos, pat, arrPos, body}
+
+    fromBranch ::
+      CaseBranch ->
+      ( SourcePos
+      , Pat (Pinned VCObjectHash) SourcePos
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      )
+    fromBranch b = (b.barPos, b.pat, b.arrPos, b.body)
 
 -------------------------------------------------------------------------------
 -- Inference Helpers
@@ -2084,7 +2218,7 @@ inferOpenModule ob = do
       infer ob.body <&> \r ->
         InferResult
           { expr =
-            OpenModule ob.openPos ob.pin ob.modNm ob.imports ob.inPos r.expr
+              OpenModule ob.openPos ob.pin ob.modNm ob.imports ob.inPos r.expr
           , typ = r.typ
           , tcs = r.tcs
           }
@@ -2186,9 +2320,6 @@ preOpDecompose opLoc tcs = \case
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
 -------------------------------------------------------------------------------
-
-infer :: Expr (Pinned VCObjectHash) SourcePos -> forall s. Infer s InferResult
-infer = undefined
 
 -- Given a map of implicit types containing `rep of <ty>` variables, and an expression `e`
 -- we want to either substitute any implicit variable `?var$n : rep of <ty>` with a `RuntimeRep <ty>`,
