@@ -109,6 +109,7 @@ import Inferno.Types.Syntax
         Record,
         RenameModule,
         Tuple,
+        TypeRep,
         Var
       ),
     ExtIdent (ExtIdent),
@@ -2090,21 +2091,36 @@ inferOpenModule ob = do
 
 -- | Infer a comment or bracketed wrapper. These are structurally transparent;
 -- the inner expression is inferred and the wrapper is preserved.
-inferCommentAbove :: Comment SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> Infer s InferResult
+inferCommentAbove ::
+  Comment SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> Infer s InferResult
 inferCommentAbove c e =
   infer e <&> \r -> r{expr = CommentAbove c r.expr}
 
-inferCommentAfter :: Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
+inferCommentAfter ::
+  Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
 inferCommentAfter e c =
   infer e <&> \r -> r{expr = CommentAfter r.expr c}
 
-inferCommentBelow :: Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
+inferCommentBelow ::
+  Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
 inferCommentBelow e c =
   infer e <&> \r -> r{expr = CommentBelow r.expr c}
 
-inferBracketed :: SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> SourcePos -> Infer s InferResult
+inferBracketed ::
+  SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> SourcePos -> Infer s InferResult
 inferBracketed p1 e p2 =
   infer e <&> \r -> r{expr = Bracketed p1 r.expr p2}
+
+-- | Infer a @TypeRep@. Produces @TRep t@ directly with no constraints.
+inferTypeRep ::
+  Expr (Pinned VCObjectHash) SourcePos -> InfernoType -> Infer s InferResult
+inferTypeRep expr t =
+  pure
+    InferResult
+      { expr
+      , typ = ImplType mempty $ TRep t
+      , tcs = mempty
+      }
 
 -- | Compute the source location span for an operator, accounting for
 -- an optional module prefix (e.g. @Module.+@).
