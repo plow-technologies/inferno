@@ -17,8 +17,9 @@ import qualified Data.Set as Set
 import Data.Text (Text, pack)
 import qualified Data.Text as Text
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
-import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
+import Inferno.Infer (closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
+import Inferno.Infer.Error (TypeError (..))
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Parse (parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
