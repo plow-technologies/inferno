@@ -121,7 +121,7 @@ import Inferno.Types.Syntax
     Import,
     InfixFixity,
     Lit (LDouble, LHex, LInt, LText),
-    ModuleName (ModuleName, unModuleName),
+    ModuleName (ModuleName),
     Pat
       ( PArray,
         PCommentAbove,
@@ -482,9 +482,10 @@ ufUnion a b =
     when (ra /= rb) $ do
       (rankA, mA) <- readRoot ra
       (rankB, mB) <- readRoot rb
-      merged <- (mA, mB) & \case
-        (Just tA, Just tB) -> unify [] tA tB $> mA
-        _ -> pure $ mA <|> mB
+      merged <-
+        (mA, mB) & \case
+          (Just tA, Just tB) -> unify [] tA tB $> mA
+          _ -> pure $ mA <|> mB
       withStore $ \v ->
         case compare rankA rankB of
           LT -> do
@@ -569,8 +570,8 @@ attachTypeToPosition ::
   TypeMetadata (Set TypeClass, ImplType) ->
   Infer s ()
 attachTypeToPosition k meta =
-  asks (.refs.typeMap) >>= \ref ->
-    liftST . modifySTRef' ref $ Map.insert k meta
+  liftST . (`modifySTRef'` Map.insert k meta)
+    =<< asks (.refs.typeMap)
 
 -- | Merge a list of implicit maps. When two maps share a key, 'unify' the
 -- types immediately (eager unification replaces the old constraint-based
@@ -602,18 +603,19 @@ checkDuplicateFields ::
 checkDuplicateFields loc = go mempty
   where
     go :: Set Ident -> [(Ident, a, b)] -> Infer s ()
-    go _ [] = pure ()
-    go seen ((f, _, _) : rest)
-      | Set.member f seen = throwError [DuplicateRecordField f loc]
-      | otherwise = go (Set.insert f seen) rest
+    go = \cases
+      _ [] -> pure ()
+      seen ((f, _, _) : rest)
+        | Set.member f seen -> throwError [DuplicateRecordField f loc]
+        | otherwise -> go (Set.insert f seen) rest
 
 -- | Defer a typeclass constraint for later resolution. Appends to the
 -- shared @deferred@ list; 'resolveTypeClasses' processes these after
 -- the full inference traversal.
 deferTC :: Location SourcePos -> TypeClass -> Infer s ()
 deferTC loc tc =
-  asks (.refs.deferred) >>= \ref ->
-    liftST . modifySTRef' ref $ ((loc, tc) :)
+  liftST . (`modifySTRef'` ((loc, tc) :))
+    =<< asks (.refs.deferred)
 
 -- | Look up a variable (by hash or name) in the environment, instantiate
 -- its scheme, and return the metadata with the instantiated type.
@@ -627,13 +629,11 @@ lookupEnv loc x =
       Nothing ->
         throwError
           [ either
-              (\hsh -> UnboundNameInNamespace LocalScope (Left hsh) loc)
-              (\i -> UnboundExtIdent LocalScope i loc)
+              (flip (UnboundNameInNamespace LocalScope) loc . Left)
+              (flip (UnboundExtIdent LocalScope) loc)
               x
           ]
-      Just meta -> do
-        iTy <- instantiate meta.ty
-        pure meta{ty = iTy}
+      Just meta -> instantiate meta.ty <&> \ty -> meta{ty}
 
 -- | Look up a pinned hash that must exist (e.g. op vars, enums).
 -- If the 'Pinned' value is 'Local' (not pinned), throws
@@ -653,7 +653,7 @@ lookupPinned loc pin ns =
 -- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
 -- build a local 'Subst' and 'apply' it.
 instantiate :: TCScheme -> Infer s (Set TypeClass, ImplType)
-instantiate (ForallTC as tcs t) = do
+instantiate (ForallTC as tcs t) =
   traverse (const (fmap TVar freshTV)) as <&> \freshVars ->
     let sub :: Subst
         sub = Subst . Map.fromList $ zip as freshVars
@@ -731,9 +731,10 @@ unifyRecordFields err = \cases
     for_ pairs . uncurry $ unify err
     -- Build new record types for the row variable expansions, then unify
     -- the row variables
-    tail1 <- expandRowVar err s1.ror s1.new
-    tail2 <- expandRowVar err s2.ror s2.new
-    unifyRowVars err tail1 tail2
+    join $
+      unifyRowVars err
+        <$> expandRowVar err s1.ror s1.new
+        <*> expandRowVar err s2.ror s2.new
   -- Left exhausted, right has fields remaining
   s1@RecordSide{fields = []} s2@RecordSide{fields = (f2, t2) : ts2} pairs ->
     (freshTV >>=) . (. TVar) $ \tv ->
@@ -948,32 +949,73 @@ infer expr = case expr of
         { open
         , body
         , pipe
-        , sels = fmap toSel rawSels
         , cond
         , close
+        , sels = fmap toSel rawSels
         }
   Lam funPos args arrowPos body -> inferLam funPos args arrowPos body
   App e1 e2 -> inferApp loc e1 e2
   Let letPos varPos (Expl ident) eqPos rhs inPos inExpr ->
     inferLet
       loc
-      LetBinding{letPos, varPos, ident, eqPos, rhs, inPos, inExpr}
+      LetBinding
+        { letPos
+        , varPos
+        , ident
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
   Let letPos varPos (Impl ident) eqPos rhs inPos inExpr ->
     inferLetImpl
       loc
-      LetBinding{letPos, varPos, ident, eqPos, rhs, inPos, inExpr}
+      LetBinding
+        { letPos
+        , varPos
+        , ident
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
   LetAnnot letPos varPos ident annotPos scheme eqPos rhs inPos inExpr ->
     inferLetAnnot
       loc
-      LetAnnotBinding{letPos, varPos, ident, annotPos, scheme, eqPos, rhs, inPos, inExpr}
+      LetAnnotBinding
+        { letPos
+        , varPos
+        , ident
+        , annotPos
+        , scheme
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
   Op lhs opPos pin opMeta modNm op rhs ->
     inferOp
       loc
-      OpBinding{lhs, opPos, pin, opMeta, modNm, op, rhs}
+      OpBinding
+        { lhs
+        , opPos
+        , pin
+        , opMeta
+        , modNm
+        , op
+        , rhs
+        }
   PreOp opPos pin opLvl modNm op operand ->
     inferPreOp
       loc
-      PreOpBinding{opPos, pin, opLvl, modNm, op, operand}
+      PreOpBinding
+        { opPos
+        , pin
+        , opLvl
+        , modNm
+        , op
+        , operand
+        }
   If ifPos cond thenPos tr elsePos fl ->
     inferIf
       loc
@@ -983,7 +1025,8 @@ infer expr = case expr of
   Case matchPos scrut openPos rawBranches closePos ->
     inferCase loc scrut (fmap toBranch rawBranches) <&> \cr ->
       InferResult
-        { expr = Case matchPos cr.scrutExpr openPos (fmap fromBranch cr.branches) closePos
+        { expr =
+            Case matchPos cr.scrutExpr openPos (fmap fromBranch cr.branches) closePos
         , typ = cr.typ
         , tcs = cr.tcs
         }
@@ -1028,7 +1071,13 @@ infer expr = case expr of
       ) ->
       Selector
     toSel (identPos, ident, arrowPos, gen, commaPos) =
-      Selector{identPos, ident, arrowPos, gen, commaPos}
+      Selector
+        { identPos
+        , ident
+        , arrowPos
+        , gen
+        , commaPos
+        }
 
     toBranch ::
       ( SourcePos
@@ -1038,7 +1087,12 @@ infer expr = case expr of
       ) ->
       CaseBranch
     toBranch (barPos, pat, arrPos, body) =
-      CaseBranch{barPos, pat, arrPos, body}
+      CaseBranch
+        { barPos
+        , pat
+        , arrPos
+        , body
+        }
 
     fromBranch ::
       CaseBranch ->
