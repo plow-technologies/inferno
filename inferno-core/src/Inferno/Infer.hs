@@ -2573,7 +2573,7 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
         tryType :: InfernoType -> [Subst]
         tryType t =
           let cs' :: [TypeClass]
-              cs' = fmap (apply . Subst $ Map.singleton tv t) cs
+              cs' = flip fmap cs . apply . Subst $ Map.singleton tv t
            in bool
                 mempty
                 (search (Map.insert tv t acc) rest cs')
