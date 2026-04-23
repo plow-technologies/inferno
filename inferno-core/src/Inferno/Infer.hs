@@ -2472,12 +2472,14 @@ resolveTypeClasses = do
                   subs -> do
                     let definite :: Map TV InfernoType
                         definite = agreedBindings subs
+
                         madeProgress :: Bool
                         madeProgress = not $ Map.null definite
+
                     when madeProgress $
                       for_ (Map.toList definite) $ \(tv, t) ->
                         unify mempty (TVar tv) t
-                    pure $ Worklist ((loc, tc) : acc) (progress || madeProgress)
+                    pure . Worklist ((loc, tc) : acc) $ progress || madeProgress
       where
         matching :: [TypeClass]
         matching = filter ((nm ==) . (.className)) $ Set.toList allClasses
