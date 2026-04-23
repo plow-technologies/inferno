@@ -30,15 +30,17 @@ import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
+import Data.Bool (bool)
 import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about lower GHC versions
 import Data.Function ((&))
 import Data.Functor (($>), (<&>))
+import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
 import Data.Sequence (Seq, (<|))
 import Data.Set (Set)
@@ -46,7 +48,7 @@ import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Traversable (for)
-import Data.Tuple.Extra (fst3, snd3, thd3)
+import Data.Tuple.Extra (dupe, fst3, snd3, thd3)
 import Data.Vector.Mutable (STVector)
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
@@ -73,6 +75,8 @@ import Inferno.Infer.Error
         ModuleNameTaken,
         PatternUnificationFail,
         PatternsMustBeEqType,
+        TypeClassNoPartialMatch,
+        TypeClassNotFoundError,
         UnboundExtIdent,
         UnboundNameInNamespace,
         UnificationFail,
@@ -147,6 +151,7 @@ import Inferno.Types.Syntax
     tListToList,
     toEitherList,
   )
+import qualified Inferno.Types.Syntax
 import Inferno.Types.Type
   ( ImplType (ImplType),
     InfernoType
@@ -423,7 +428,7 @@ ensureCapacity i =
       readSTRef storeRef >>= \v ->
         let cap0, cap1 :: Int
             cap0 = Vector.Mutable.length v
-            cap1 = max (cap0 * 2) (i + 1)
+            cap1 = max (cap0 * 2) $ i + 1
          in when (i >= cap0) $
               writeSTRef storeRef =<< Vector.Mutable.grow v (cap1 - cap0)
 
@@ -446,11 +451,12 @@ ufFind :: TV -> Infer s TV
 ufFind tv@(TV i) =
   withStore (`Vector.Mutable.read` i) >>= \case
     UFRoot _ _ -> pure tv
-    UFLink parent -> do
-      root <- ufFind parent
-      -- Path compression
-      when (root /= parent) $ withStore $ \v -> Vector.Mutable.write v i $ UFLink root
-      pure root
+    UFLink parent ->
+      ufFind parent >>= \root -> do
+        -- Path compression
+        when (root /= parent) . withStore $
+          \v -> Vector.Mutable.write v i $ UFLink root
+        pure root
 
 -- | 'ufFind' in CPS style.
 withFind :: TV -> (TV -> Infer s a) -> Infer s a
@@ -839,7 +845,11 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
               }
 
           ctx :: InferCtx s
-          ctx = InferCtx{env = mempty, refs = refs}
+          ctx =
+            InferCtx
+              { env = mempty
+              , refs
+              }
 
           doUnify :: Infer s ()
           doUnify =
@@ -2375,6 +2385,221 @@ preOpDecompose opLoc tcs = \case
     pure (a, b)
 
 -------------------------------------------------------------------------------
+-- Typeclass Resolution
+-------------------------------------------------------------------------------
+
+-- | Try to match (possibly polymorphic) constraint params against ground
+-- instance params. Returns the variable-to-type bindings if successful.
+tryMatchInstance :: [InfernoType] -> [InfernoType] -> Maybe (Map TV InfernoType)
+tryMatchInstance cps ips
+  | length cps /= length ips = Nothing
+  | otherwise = foldM matchType mempty $ zip cps ips
+
+-- | Structurally match a constraint type against an instance type,
+-- accumulating variable bindings. Fails on structural mismatch or
+-- inconsistent variable bindings.
+matchType ::
+  Map TV InfernoType ->
+  (InfernoType, InfernoType) ->
+  Maybe (Map TV InfernoType)
+matchType acc = \case
+  (TVar tv, t) ->
+    case Map.lookup tv acc of
+      Just existing
+        | existing /= t -> Nothing
+      _ -> Just $ Map.insert tv t acc
+  (TBase a, TBase b)
+    | a == b -> Just acc
+  (TArr a1 b1, TArr a2 b2) ->
+    (`matchType` (b1, b2)) =<< matchType acc (a1, a2)
+  (TArray a, TArray b) -> matchType acc (a, b)
+  (TSeries a, TSeries b) -> matchType acc (a, b)
+  (TOptional a, TOptional b) -> matchType acc (a, b)
+  (TRep a, TRep b) -> matchType acc (a, b)
+  (TTuple ts1, TTuple ts2)
+    | length ts1 == length ts2 ->
+        foldM matchType acc . zip (toList ts1) $ toList ts2
+  (TRecord fs1 RowAbsent, TRecord fs2 RowAbsent)
+    | Map.keys fs1 == Map.keys fs2 ->
+        foldM matchType acc . zip (Map.elems fs1) $ Map.elems fs2
+  _ -> Nothing
+
+-- | Resolve deferred typeclass constraints using a worklist algorithm.
+-- Called after the full 'infer' traversal. Each constraint is zonked,
+-- matched against known instances, and resolved via 'unify' when
+-- unambiguous. Constraints with multiple matches are partially resolved
+-- (applying agreed-upon bindings) and re-queued. The loop repeats until
+-- no more progress can be made; remaining unresolved constraints are
+-- written back to 'deferred' for later phases.
+resolveTypeClasses :: forall s. Infer s ()
+resolveTypeClasses = do
+  allClasses <- asks (.refs.tyClasses)
+  defRef <- asks (.refs.deferred)
+  raw <- liftST $ readSTRef defRef
+  zonked <- for raw $ \(loc, tc) -> (loc,) <$> zonkTC tc
+  liftST . writeSTRef defRef . (.remaining) =<< worklist allClasses zonked
+  where
+    worklist :: Set TypeClass -> [(Location SourcePos, TypeClass)] -> Infer s Worklist
+    worklist = \cases
+      _ [] -> pure $ Worklist mempty False
+      allClasses cs ->
+        foldM (resolveOne allClasses) (Worklist mempty False) cs >>= \case
+          (Worklist r@(_ : _) True) -> worklist allClasses r
+          w -> pure w
+
+    resolveOne ::
+      Set TypeClass ->
+      Worklist ->
+      (Location SourcePos, TypeClass) ->
+      Infer s Worklist
+    resolveOne allClasses (Worklist acc progress) (loc, TypeClass nm tys) =
+      (traverse zonk tys >>=) . (. first (TypeClass nm) . dupe) $ \case
+        (tc, zonkedTys)
+          | Set.null $ ftv tc ->
+              bool
+                (throwError [TypeClassNoPartialMatch tc loc])
+                (pure (Worklist acc True))
+                $ Set.member tc allClasses
+          | otherwise -> case matching of
+              [] -> throwError [TypeClassNotFoundError allClasses tc loc]
+              _ ->
+                case mapMaybe (tryMatchInstance zonkedTys . (.params)) matching of
+                  [] -> throwError [TypeClassNoPartialMatch tc loc]
+                  [sub] -> do
+                    for_ (Map.toList sub) $ \(tv, t) ->
+                      unify mempty (TVar tv) t
+                    pure $ Worklist acc True
+                  subs -> do
+                    let definite :: Map TV InfernoType
+                        definite = agreedBindings subs
+                        madeProgress :: Bool
+                        madeProgress = not $ Map.null definite
+                    when madeProgress $
+                      for_ (Map.toList definite) $ \(tv, t) ->
+                        unify mempty (TVar tv) t
+                    pure $ Worklist ((loc, tc) : acc) (progress || madeProgress)
+      where
+        matching :: [TypeClass]
+        matching = filter ((nm ==) . (.className)) $ Set.toList allClasses
+
+    -- \| Compute agreed-upon variable bindings across multiple substitutions;
+    -- only keeps variables where ALL substitutions assign the same type.
+    agreedBindings :: [Map TV InfernoType] -> Map TV InfernoType
+    agreedBindings = \case
+      [] -> mempty
+      s : ss ->
+        Map.mapMaybe id
+          . foldl' (Map.intersectionWith agree) (fmap Just s)
+          $ fmap (fmap Just) ss
+      where
+        agree :: (Eq a) => Maybe a -> Maybe a -> Maybe a
+        agree a b
+          | a == b = a
+          | otherwise = Nothing
+
+-- | Accumulator for the typeclass worklist: the unresolved constraints
+-- carried forward, and whether any progress was made in this pass.
+data Worklist = Worklist
+  { remaining :: ![(Location SourcePos, TypeClass)]
+  , progress :: !Bool
+  }
+
+-- | Find all satisfying type-variable assignments for a set of typeclass
+-- constraints via backtracking search.
+--
+-- Given known typeclass instances (`allClasses`), an optional solution count
+-- limit (`mLimit`), the constraints to satisfy (`tyCls`), and the set of
+-- type variables of interest (`tvs`), returns a list of substitutions that
+-- make all constraints ground and satisfied.
+--
+-- `tvs` is used to deduplicate solutions: two substitutions that agree on
+-- every variable in `tvs` are considered equivalent, and only the first is
+-- kept. This matches the behavior of the previous SAT-based implementation,
+-- where exclusion clauses were projected onto `tvs`. In practice `tvs`
+-- almost always covers all constraint variables, so the dedup is rarely
+-- exercised; it is retained for parity with callers (e.g. LSP, which passes
+-- `ftv typ` rather than all constraint variables).
+findTypeClassWitnesses ::
+  Set TypeClass ->
+  Maybe Int ->
+  Set TypeClass ->
+  Set TV ->
+  [Subst]
+findTypeClassWitnesses allClasses mLimit tyCls tvs
+  | Set.null tyCls = [mempty]
+  | otherwise =
+      maybe id take mLimit
+        . dedupOnTvs
+        . search mempty ordered
+        $ Set.toList tyCls
+  where
+    -- Keep only solutions whose projection onto `tvs` has not been seen before
+    dedupOnTvs :: [Subst] -> [Subst]
+    dedupOnTvs = go Set.empty
+      where
+        go :: Set (Map TV InfernoType) -> [Subst] -> [Subst]
+        go = \cases
+          _ [] -> mempty
+          seen (sub@(Subst m) : rest) ->
+            let key :: Map TV InfernoType
+                key = Map.restrictKeys m tvs
+             in bool (go seen rest) (sub : go (Set.insert key seen) rest) $
+                  Set.notMember key seen
+
+    -- For each TV in the constraints, the set of possible ground types
+    initDomains :: Map TV (Set InfernoType)
+    initDomains = computeDomains $ Set.toList tyCls
+
+    -- All TVs in constraint params, ordered smallest-domain-first (fail-first)
+    ordered :: [TV]
+    ordered =
+      sortOn (maybe 0 Set.size . (`Map.lookup` initDomains))
+        . Set.toList
+        . Set.unions
+        $ fmap ftv (Set.toList tyCls)
+
+    -- Recursive backtracking: assign one TV at a time, check ground
+    -- constraints after each assignment
+    search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Subst]
+    search acc [] cs =
+      bool mempty [Subst acc] $ all (`Set.member` allClasses) cs
+    search acc (tv : rest) cs =
+      maybe mempty (concatMap tryType . Set.toList)
+        . Map.lookup tv
+        $ computeDomains cs
+      where
+        tryType :: InfernoType -> [Subst]
+        tryType t =
+          let cs' :: [TypeClass]
+              cs' = fmap (apply . Subst $ Map.singleton tv t) cs
+           in bool
+                mempty
+                (search (Map.insert tv t acc) rest cs')
+                $ allGroundSatisfied cs'
+
+    -- True when every fully-ground constraint is in `allClasses`
+    allGroundSatisfied :: [TypeClass] -> Bool
+    allGroundSatisfied =
+      all $ (||) <$> not . Set.null . ftv <*> (`Set.member` allClasses)
+
+    -- Compute possible ground types for each TV by matching each
+    -- constraint against known instances. Domains for TVs that appear
+    -- in multiple constraints are intersected.
+    computeDomains :: [TypeClass] -> Map TV (Set InfernoType)
+    computeDomains = foldl' merge mempty
+      where
+        merge :: Map TV (Set InfernoType) -> TypeClass -> Map TV (Set InfernoType)
+        merge acc (TypeClass nm tys) =
+          let subs :: [Map TV InfernoType]
+              subs =
+                mapMaybe (tryMatchInstance tys . (.params))
+                  . filter ((nm ==) . (.className))
+                  $ Set.toList allClasses
+           in Map.unionWith Set.intersection acc
+                . Map.unionsWith Set.union
+                $ fmap (fmap Set.singleton) subs
+
+-------------------------------------------------------------------------------
 -- Stubs for Later Phases
 -------------------------------------------------------------------------------
 
@@ -2418,11 +2643,3 @@ inferPossibleTypes ::
   Maybe InfernoType ->
   Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
 inferPossibleTypes = undefined
-
-findTypeClassWitnesses ::
-  Set TypeClass ->
-  Maybe Int ->
-  Set TypeClass ->
-  Set TV ->
-  [Subst]
-findTypeClassWitnesses = undefined
