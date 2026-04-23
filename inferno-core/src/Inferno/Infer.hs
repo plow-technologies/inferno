@@ -2484,7 +2484,7 @@ resolveTypeClasses = do
         matching :: [TypeClass]
         matching = filter ((nm ==) . (.className)) $ Set.toList allClasses
 
-    -- \| Compute agreed-upon variable bindings across multiple substitutions;
+    -- Compute agreed-upon variable bindings across multiple substitutions;
     -- only keeps variables where ALL substitutions assign the same type.
     agreedBindings :: [Map TV InfernoType] -> Map TV InfernoType
     agreedBindings = \case
