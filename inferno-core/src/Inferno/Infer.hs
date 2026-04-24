@@ -24,7 +24,7 @@ module Inferno.Infer
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (foldM, join, void, when, (<=<))
+import Control.Monad (foldM, join, unless, void, when, (<=<))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
 import Control.Monad.Extra (whenM, zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
@@ -32,7 +32,7 @@ import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap, first)
 import Data.Bool (bool)
-import Data.Foldable (foldl', for_, toList) -- foldl': see CLAUDE.md note about lower GHC versions
+import Data.Foldable (foldMap, foldl', for_, toList) -- foldl'/foldMap: DO NOT REMOVE; needed for older GHC compat
 import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import Data.List (sortOn)
@@ -49,6 +49,8 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Traversable (for)
 import Data.Tuple.Extra (dupe, fst3, snd3, thd3)
+import Data.Vector (Vector, (!?))
+import qualified Data.Vector as Vector
 import Data.Vector.Mutable (STVector)
 import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
@@ -65,6 +67,7 @@ import Inferno.Infer.Error
       ( AnnotationUnificationFail,
         AssertConditionMustBeBool,
         CaseBranchesMustBeEqType,
+        CouldNotFindTypeclassWitness,
         DuplicateRecordField,
         ExpectedFunction,
         IfBranchesMustBeEqType,
@@ -73,6 +76,7 @@ import Inferno.Infer.Error
         InfiniteType,
         ModuleDoesNotExist,
         ModuleNameTaken,
+        NonExhaustivePatternMatch,
         PatternUnificationFail,
         PatternsMustBeEqType,
         TypeClassNoPartialMatch,
@@ -80,11 +84,29 @@ import Inferno.Infer.Error
         UnboundExtIdent,
         UnboundNameInNamespace,
         UnificationFail,
+        UselessPattern,
         VarMultipleOccurrence
       ),
   )
-import Inferno.Module.Builtin (emptyHash, oneHash)
-import Inferno.Types.Module (Module, PinnedModule)
+import Inferno.Infer.Exhaustiveness
+  ( Pattern (W),
+    cEmpty,
+    cEnum,
+    cInf,
+    cOne,
+    cRecord,
+    cTuple,
+    checkUsefullness,
+    exhaustive,
+    mkEnumArrayPat,
+    mkEnumText,
+  )
+import Inferno.Module.Builtin (builtinModule, emptyHash, oneHash)
+import Inferno.Types.Module
+  ( Module (moduleObjects, moduleTypeClasses),
+    PinnedModule,
+    pinnedModuleHashToTy,
+  )
 import Inferno.Types.Syntax
   ( BlockUtils (blockPosition, removeComments),
     Comment,
@@ -153,7 +175,8 @@ import Inferno.Types.Syntax
   )
 import qualified Inferno.Types.Syntax
 import Inferno.Types.Type
-  ( ImplType (ImplType),
+  ( BaseType (TEnum),
+    ImplType (ImplType),
     InfernoType
       ( TArr,
         TArray,
@@ -176,9 +199,147 @@ import Inferno.Types.Type
     typeText,
     typeWord64,
   )
-import Inferno.Types.VersionControl (Pinned (Local), VCObjectHash, pinnedToMaybe)
+import Inferno.Types.VersionControl
+  ( Pinned (Local),
+    VCObjectHash,
+    pinnedToMaybe,
+    vcHash,
+  )
 import Prettyprinter (Pretty (pretty), (<+>))
 import Text.Megaparsec (SourcePos)
+
+-------------------------------------------------------------------------------
+-- Main inference utilities
+-------------------------------------------------------------------------------
+
+-- | Solve for the top-level type of an expression in a given environment.
+-- Runs the full pipeline: infer, resolve typeclasses, check exhaustiveness,
+-- freeze UF state, and close over the result.
+inferExpr ::
+  Map ModuleName (PinnedModule m) ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Either
+    [TypeError SourcePos]
+    ( Expr (Pinned VCObjectHash) SourcePos
+    , TCScheme
+    , Map (Location SourcePos) (TypeMetadata TCScheme)
+    )
+inferExpr allModules e = runST $ do
+  refs <- initRefs allModules tyCls
+  runExceptT . flip runReaderT (InferCtx env refs) $ do
+    r <- infer e
+    resolveTypeClasses
+
+    -- Build enum sigs and check exhaustiveness
+    checkPatternExhaustiveness . buildEnumSigs . Map.unions $
+      pinnedModuleHashToTy builtinModule
+        : fmap pinnedModuleHashToTy (Map.elems allModules)
+
+    -- Freeze the UF state into a `Subst`
+    n <- liftST . readSTRef $ refs.count
+    subst <-
+      either throwError pure
+        =<< liftST (freezeUFToSubst n =<< readSTRef refs.ufStore)
+
+    -- Zonk the result type through the frozen substitution
+    let subTy :: ImplType
+        subTy = apply subst r.typ
+
+    -- Collect remaining typeclass constraints
+    cls <-
+      filterInstantiatedTCs . Set.fromList . fmap (apply subst . snd)
+        <$> liftST (readSTRef refs.deferred)
+    tm <- liftST $ readSTRef refs.typeMap
+
+    -- Free type variables across the type and remaining constraints
+    let tvs :: Set TV
+        tvs = ftv subTy <> foldMap ftv cls
+
+    -- Assemble the final result from a witness substitution and the
+    -- `closeOverTypeReps` output. Pure; all mutable state has been read above.
+    let mkResult ::
+          Subst ->
+          (Maybe TypeClass, Map ExtIdent InfernoType,
+           Expr (Pinned VCObjectHash) SourcePos) ->
+          ( Expr (Pinned VCObjectHash) SourcePos
+          , TCScheme
+          , Map (Location SourcePos) (TypeMetadata TCScheme)
+          )
+        mkResult sub (mRepTC, impl, expr) =
+          let comb :: Subst
+              comb = sub <> subst
+
+              tcs :: Set TypeClass
+              tcs =
+                filterInstantiatedTCs (Set.map (apply sub) cls)
+                  <> maybe mempty Set.singleton mRepTC
+
+              ty :: TCScheme
+              ty =
+                closeOver tcs . apply sub
+                  $ ImplType impl subTy.body
+
+              zonkMeta ::
+                TypeMetadata (Set TypeClass, ImplType) ->
+                TypeMetadata TCScheme
+              zonkMeta meta =
+                meta
+                  { ty =
+                    flip closeOver (apply comb (snd meta.ty))
+                      . filterInstantiatedTCs
+                      . Set.map (apply comb)
+                      $ fst meta.ty
+                  }
+
+           in (expr, ty, fmap zonkMeta tm)
+
+    -- NOTE: `closeOverTypeReps` is currently a stub; using it here for the
+    -- correct wiring. It will be implemented in a later phase.
+    let wits :: [Subst]
+        wits
+          | Set.null cls = [mempty]
+          | otherwise = findTypeClassWitnesses tyCls (Just 2) cls tvs
+
+    wits & \case
+      [] -> throwError [CouldNotFindTypeclassWitness cls $ blockPosition e]
+      -- Unique solution; apply it
+      [sub] ->
+        pure . mkResult sub . flip closeOverTypeReps r.expr $
+          fmap (apply sub) subTy.impl
+      -- Multiple solutions; apply only substitutions that do not affect
+      -- the outer type's free variables (safe partial resolution)
+      Subst s : _ ->
+        pure . mkResult sub . flip closeOverTypeReps r.expr $
+          fmap (apply sub) subTy.impl
+        where
+          dep :: Set TV
+          dep = Set.foldl' addDep seed cls
+
+          addDep :: Set TV -> TypeClass -> Set TV
+          addDep acc c
+            | Set.null inter = acc
+            | otherwise = ftvC <> acc
+            where
+              ftvC :: Set TV
+              ftvC = ftv c
+
+              inter :: Set TV
+              inter = ftvC `Set.intersection` acc
+
+          seed :: Set TV
+          seed = ftv subTy.body <> Map.foldrWithKey explFtv mempty subTy.impl
+
+          explFtv :: ExtIdent -> InfernoType -> Set TV -> Set TV
+          explFtv = \cases
+            (ExtIdent (Right _)) t acc -> ftv t <> acc
+            _ _ acc -> acc
+
+          sub :: Subst
+          sub = Subst $ Set.foldr Map.delete s dep
+  where
+    env :: Env
+    tyCls :: Set TypeClass
+    (env, tyCls) = openBuiltinEnv allModules
 
 -------------------------------------------------------------------------------
 -- Types
@@ -2615,17 +2776,152 @@ closeOverTypeReps ::
   (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
 closeOverTypeReps = undefined
 
--- | Solve for the top level type of an expression in a given environment
-inferExpr ::
+-------------------------------------------------------------------------------
+-- Pattern Exhaustiveness
+-------------------------------------------------------------------------------
+
+-- | Convert a parsed pattern into the abstract 'Pattern' representation
+-- used by the exhaustiveness checker.
+mkPattern :: Pat (Pinned VCObjectHash) SourcePos -> Pattern
+mkPattern = \case
+  PVar _ _ -> W
+  PEnum _ pin _ ident@(Ident i) ->
+    -- Unfortunately needs to be partial based on signature. Enums are always
+    -- pinned in practice
+    maybe (error "internal error: unpinned enum in pattern") mkE $
+      pinnedToMaybe pin
+    where
+      mkE :: VCObjectHash -> Pattern
+      mkE h = cEnum (vcHash (ident, h)) i
+  PLit _ l -> case l of
+    LInt v -> cInf v
+    LDouble v -> cInf v
+    LHex v -> cInf v
+    LText v -> cInf $ mkEnumText v
+  POne _ p -> cOne $ mkPattern p
+  PEmpty _ -> cEmpty
+  PArray _ ps _ -> cInf $ mkEnumArrayPat ps
+  PTuple _ ps _ -> cTuple . fmap (mkPattern . fst) $ tListToList ps
+  PRecord _ ps _ -> cRecord (Set.fromList fs) $ fmap mkPattern pats
+    where
+      (fs, pats, _) = unzip3 $ sortOn fst3 ps
+  PCommentAbove _ p -> mkPattern p
+  PCommentAfter p _ -> mkPattern p
+  PCommentBelow p _ -> mkPattern p
+
+-- | Build a map from each enum constructor hash to the set of all
+-- sibling constructors (hash, name) for the same enum type. Used by the
+-- exhaustiveness checker to know the full set of constructors.
+buildEnumSigs ::
+  Map VCObjectHash (TypeMetadata TCScheme) ->
+  Map VCObjectHash (Set (VCObjectHash, Text))
+buildEnumSigs =
+  Map.foldrWithKey addEnum mempty . fmap (.ty)
+  where
+    addEnum ::
+      VCObjectHash ->
+      TCScheme ->
+      Map VCObjectHash (Set (VCObjectHash, Text)) ->
+      Map VCObjectHash (Set (VCObjectHash, Text))
+    addEnum h (ForallTC _ _ impl) acc = case impl.body of
+      TBase (TEnum _ cs) ->
+         Map.union acc . Map.fromList . fmap (allCs <$) $ Set.toList allCs
+        where
+          allCs :: Set (VCObjectHash, Text)
+          allCs = Set.map (mkC h) cs
+      _ -> acc
+
+    mkC :: VCObjectHash -> Ident -> (VCObjectHash, Text)
+    mkC h c@(Ident i) = (vcHash (c, h), i)
+
+-- | Check exhaustiveness and usefulness of all patterns collected during
+-- inference. Reads from the @patternsToCheck@ ref. Throws on failure.
+checkPatternExhaustiveness ::
+  Map VCObjectHash (Set (VCObjectHash, Text)) ->
+  Infer s ()
+checkPatternExhaustiveness sigs = do
+  asks (.refs.patternsToCheck) >>= liftST . readSTRef >>= \pats ->
+    let errs :: [TypeError SourcePos]
+        errs = concatMap (uncurry check) pats
+    in unless (null errs) $ throwError errs
+  where
+    check ::
+      Location SourcePos ->
+      [Pat (Pinned VCObjectHash) SourcePos] ->
+      [TypeError SourcePos]
+    check loc ps =
+      maybe
+        (fmap (mkUseless loc v) (checkUsefullness sigs matrix))
+        (fmap (`NonExhaustivePatternMatch` loc))
+        $ exhaustive sigs matrix
+      where
+        v :: Vector (Pat (Pinned VCObjectHash) SourcePos)
+        v = Vector.fromList ps
+
+        matrix :: [[Pattern]]
+        matrix = fmap (pure . mkPattern) ps
+
+    mkUseless ::
+      Location SourcePos ->
+      Vector (Pat (Pinned VCObjectHash) SourcePos) ->
+      (Int, Int) ->
+      TypeError SourcePos
+    mkUseless loc v (i, j)
+      | i == j = UselessPattern Nothing patLoc
+      | otherwise = UselessPattern (v !? j) patLoc
+      where
+        patLoc :: Location SourcePos
+        patLoc = maybe loc blockPosition $ v !? i
+
+-- | Keep only typeclass constraints that still have free type variables
+-- (i.e. are not fully instantiated).
+filterInstantiatedTCs :: Set TypeClass -> Set TypeClass
+filterInstantiatedTCs = Set.filter $ not . Set.null . ftv
+
+-------------------------------------------------------------------------------
+-- Top-Level Wrapper
+-------------------------------------------------------------------------------
+
+-- | Build the initial typing environment from the builtin module and all
+-- pinned modules. Returns the environment (with pinned type mappings)
+-- and the set of all in-scope typeclass instances.
+openBuiltinEnv ::
   Map ModuleName (PinnedModule m) ->
-  Expr (Pinned VCObjectHash) SourcePos ->
-  Either
-    [TypeError SourcePos]
-    ( Expr (Pinned VCObjectHash) SourcePos
-    , TCScheme
-    , Map (Location SourcePos) (TypeMetadata TCScheme)
-    )
-inferExpr = undefined
+  (Env, Set TypeClass)
+openBuiltinEnv mods =
+  ( mempty
+      { Env.pinnedTypes =
+          Map.unions $
+            snd3 builtinModule.moduleObjects
+              : fmap pinnedModuleHashToTy (Map.elems mods)
+      }
+  , builtinModule.moduleTypeClasses <> foldMap (.moduleTypeClasses) mods
+  )
+
+-- | Allocate all mutable refs for a fresh inference run.
+initRefs ::
+  forall s m.
+  Map ModuleName (PinnedModule m) ->
+  Set TypeClass ->
+  ST s (InferRefs s)
+initRefs mods tyClasses = do
+  count <- newSTRef 0
+  v <- Vector.Mutable.replicate 128 $ UFRoot 0 Nothing
+  ufStore <- newSTRef v
+  typeMap <- newSTRef mempty
+  modules <- newSTRef $ mods <&> \m -> m{moduleObjects = ()}
+  patternsToCheck <- newSTRef mempty
+  deferred <- newSTRef mempty
+  pure
+    InferRefs
+      { count
+      , ufStore
+      , typeMap
+      , modules
+      , tyClasses
+      , patternsToCheck
+      , deferred
+      }
 
 -- | Given a type signature and some concrete assignment of types (assumes
 -- @inputTys@ and @outputTy@ have no free variables) this function computes
