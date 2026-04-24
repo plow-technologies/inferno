@@ -26,7 +26,7 @@ where
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, join, unless, void, when, (<=<))
 import Control.Monad.Except (ExceptT, runExceptT, throwError)
-import Control.Monad.Extra (whenM, zipWithM_)
+import Control.Monad.Extra (zipWithM_)
 import Control.Monad.Reader (ReaderT, asks, local, runReaderT)
 import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans (lift)
@@ -259,8 +259,10 @@ inferExpr allModules e = runST $ do
     -- `closeOverTypeReps` output. Pure; all mutable state has been read above.
     let mkResult ::
           Subst ->
-          (Maybe TypeClass, Map ExtIdent InfernoType,
-           Expr (Pinned VCObjectHash) SourcePos) ->
+          ( Maybe TypeClass
+          , Map ExtIdent InfernoType
+          , Expr (Pinned VCObjectHash) SourcePos
+          ) ->
           ( Expr (Pinned VCObjectHash) SourcePos
           , TCScheme
           , Map (Location SourcePos) (TypeMetadata TCScheme)
@@ -276,8 +278,8 @@ inferExpr allModules e = runST $ do
 
               ty :: TCScheme
               ty =
-                closeOver tcs . apply sub
-                  $ ImplType impl subTy.body
+                closeOver tcs . apply sub $
+                  ImplType impl subTy.body
 
               zonkMeta ::
                 TypeMetadata (Set TypeClass, ImplType) ->
@@ -285,12 +287,11 @@ inferExpr allModules e = runST $ do
               zonkMeta meta =
                 meta
                   { ty =
-                    flip closeOver (apply comb (snd meta.ty))
-                      . filterInstantiatedTCs
-                      . Set.map (apply comb)
-                      $ fst meta.ty
+                      flip closeOver (apply comb (snd meta.ty))
+                        . filterInstantiatedTCs
+                        . Set.map (apply comb)
+                        $ fst meta.ty
                   }
-
            in (expr, ty, fmap zonkMeta tm)
 
     -- NOTE: `closeOverTypeReps` is currently a stub; using it here for the
@@ -718,9 +719,10 @@ zonkImplType (ImplType impl body) =
 zonkTC :: TypeClass -> Infer s TypeClass
 zonkTC (TypeClass nm tys) = TypeClass nm <$> traverse zonk tys
 
--- | Check whether @tv@ occurs in @t@ (after zonking).
-occursIn :: TV -> InfernoType -> Infer s Bool
-occursIn tv t = (tv `Set.member`) . ftv <$> zonk t
+-- | Check whether @tv@ occurs in @t@. Callers must zonk @t@ first;
+-- 'unify' already does this before reaching the occurs-check branches.
+occursIn :: TV -> InfernoType -> Bool
+occursIn tv = Set.member tv . ftv
 
 -------------------------------------------------------------------------------
 -- Type Map and Environment Helpers
@@ -840,10 +842,10 @@ unify err t1 t2 = join $ go <$> zonk t1 <*> zonk t2
       a b | a == b -> pure ()
       (TVar a) (TVar b) -> ufUnion a b
       (TVar a) t -> do
-        whenM (occursIn a t) $ throwError infiniteErrs
+        when (occursIn a t) $ throwError infiniteErrs
         ufBind a t
       t (TVar a) -> do
-        whenM (occursIn a t) $ throwError infiniteErrs
+        when (occursIn a t) $ throwError infiniteErrs
         ufBind a t
       (TArr a1 b1) (TArr a2 b2) -> unify err a1 a2 *> unify err b1 b2
       (TArray a) (TArray b) -> unify err a b
@@ -1294,6 +1296,7 @@ inferLitInt expr loc pos l = do
   let tyCls :: TypeClass
       tyCls = TypeClass "numeric" [tv]
 
+  deferTC loc tyCls
   attachTypeToPosition loc $
     TypeMetadata
       { identExpr = Lit () l
@@ -1362,6 +1365,7 @@ inferVarExpl expr loc pos mHash x = do
   let repAndNon :: (Set TypeClass, Set TypeClass)
       repAndNon = Set.partition isRepTC tcs
       (repTcs, nonRepTcs) = repAndNon
+  for_ nonRepTcs $ deferTC loc
   Set.lookupMin repTcs & \case
     Just (TypeClass _ repTys) ->
       traverse mkRepImpl repTys <&> \repImpls ->
@@ -1421,6 +1425,7 @@ inferOpVar ::
 inferOpVar expr loc pin ident =
   lookupPinned loc pin (OpNamespace ident) >>= \meta -> do
     attachTypeToPosition loc meta
+    for_ (fst meta.ty) $ deferTC loc
     pure
       InferResult
         { expr
@@ -2722,14 +2727,15 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
         $ fmap ftv (Set.toList tyCls)
 
     -- Recursive backtracking: assign one TV at a time, check ground
-    -- constraints after each assignment
+    -- constraints after each assignment. Domains are computed once from
+    -- the initial constraints; `allGroundSatisfied` provides forward
+    -- checking after each assignment.
     search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Subst]
     search acc [] cs =
       bool mempty [Subst acc] $ all (`Set.member` allClasses) cs
     search acc (tv : rest) cs =
-      maybe mempty (concatMap tryType . Set.toList)
-        . Map.lookup tv
-        $ computeDomains cs
+      maybe mempty (concatMap tryType . Set.toList) $
+        Map.lookup tv initDomains
       where
         tryType :: InfernoType -> [Subst]
         tryType t =
@@ -2825,7 +2831,7 @@ buildEnumSigs =
       Map VCObjectHash (Set (VCObjectHash, Text))
     addEnum h (ForallTC _ _ impl) acc = case impl.body of
       TBase (TEnum _ cs) ->
-         Map.union acc . Map.fromList . fmap (allCs <$) $ Set.toList allCs
+        Map.union acc . Map.fromList . fmap (allCs <$) $ Set.toList allCs
         where
           allCs :: Set (VCObjectHash, Text)
           allCs = Set.map (mkC h) cs
@@ -2843,7 +2849,7 @@ checkPatternExhaustiveness sigs = do
   asks (.refs.patternsToCheck) >>= liftST . readSTRef >>= \pats ->
     let errs :: [TypeError SourcePos]
         errs = concatMap (uncurry check) pats
-    in unless (null errs) $ throwError errs
+     in unless (null errs) $ throwError errs
   where
     check ::
       Location SourcePos ->
