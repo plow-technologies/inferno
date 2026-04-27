@@ -7,7 +7,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Infer
@@ -31,7 +30,7 @@ import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap, first)
 import Data.Bool (bool)
 import Data.Foldable (foldMap, foldl', for_, toList) -- foldl'/foldMap: DO NOT REMOVE; needed for older GHC compat
-import Data.Function ((&))
+import Data.Function (on, (&))
 import Data.Functor (($>), (<&>))
 import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty ((:|)))
@@ -167,6 +166,7 @@ import Inferno.Types.Syntax
     fromScoped,
     incSourceCol,
     patternToExpr,
+    substInternalIdents,
     tListFromList,
     tListToList,
     toEitherList,
@@ -2685,10 +2685,6 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
                 . Map.unionsWith Set.union
                 $ fmap (fmap Set.singleton) subs
 
--------------------------------------------------------------------------------
--- Stubs for Later Phases
--------------------------------------------------------------------------------
-
 -- Given a map of implicit types containing `rep of <ty>` variables, and an expression `e`
 -- we want to either substitute any implicit variable `?var$n : rep of <ty>` with a `RuntimeRep <ty>`,
 -- provided that `<ty>` contains no free variables
@@ -2696,8 +2692,82 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
 closeOverTypeReps ::
   Map ExtIdent InfernoType ->
   Expr (Pinned VCObjectHash) SourcePos ->
-  (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
-closeOverTypeReps = undefined
+  ( Maybe TypeClass
+  , Map ExtIdent InfernoType
+  , Expr (Pinned VCObjectHash) SourcePos
+  )
+closeOverTypeReps implTys expr
+  | Map.null tReps = (Nothing, implTys, expr)
+  | null withTypeHole = (Nothing, rest, expr')
+  | otherwise =
+      let lamList :: NonEmpty (SourcePos, Maybe ExtIdent)
+          lamList =
+            NonEmpty.fromList
+              . fmap ((pos,) . Just . fst . NonEmpty.head)
+              $ grouped
+
+          tc :: TypeClass
+          tc =
+            TypeClass "rep"
+              . fmap (extractRep . snd . NonEmpty.head)
+              $ grouped
+       in (Just tc, rest, Lam pos lamList pos expr')
+  where
+    tReps :: Map ExtIdent InfernoType
+    rest :: Map ExtIdent InfernoType
+    (tReps, rest) = flip Map.partition implTys $ \case
+      TRep _ -> True
+      _ -> False
+
+    fullyInstantiated :: Map ExtIdent InfernoType
+    (fullyInstantiated, withTypeHole) = Map.partition (Set.null . ftv) tReps
+
+    insertInst ::
+      Map Int (Either Int InfernoType) ->
+      ExtIdent ->
+      InfernoType ->
+      Map Int (Either Int InfernoType)
+    insertInst = \cases
+      acc (ExtIdent (Left i)) (TRep ty) -> Map.insert i (Right ty) acc
+      acc _ _ -> acc
+
+    fullyInstantiatedMap :: Map Int (Either Int InfernoType)
+    fullyInstantiatedMap = Map.foldlWithKey' insertInst mempty fullyInstantiated
+
+    grouped :: [NonEmpty (ExtIdent, InfernoType)]
+    grouped = NonEmpty.groupBy ((==) `on` snd) $ Map.toList withTypeHole
+
+    insertGrp ::
+      Map Int (Either Int InfernoType) ->
+      NonEmpty (ExtIdent, InfernoType) ->
+      Map Int (Either Int InfernoType)
+    insertGrp acc grp = case NonEmpty.head grp of
+      (ExtIdent (Left rep), _) -> foldl' (insertId rep) acc grp
+      _ -> acc
+
+    insertId ::
+      Int ->
+      Map Int (Either Int InfernoType) ->
+      (ExtIdent, InfernoType) ->
+      Map Int (Either Int InfernoType)
+    insertId = \cases
+      rep m (ExtIdent (Left j), _) -> Map.insert j (Left rep) m
+      _ m _ -> m
+
+    substIdMap :: Map Int (Either Int InfernoType)
+    substIdMap = foldl' insertGrp fullyInstantiatedMap grouped
+
+    pos :: SourcePos
+    (pos, _) = blockPosition expr
+
+    expr' :: Expr (Pinned VCObjectHash) SourcePos
+    expr' = substInternalIdents substIdMap expr
+
+    extractRep :: InfernoType -> InfernoType
+    extractRep = \case
+      TRep ty -> ty
+      ty -> ty
+
 
 -------------------------------------------------------------------------------
 -- Pattern Exhaustiveness
@@ -2846,6 +2916,9 @@ initRefs mods tyClasses = do
       , deferred
       }
 
+-------------------------------------------------------------------------------
+-- Stubs for Later Phases
+-------------------------------------------------------------------------------
 -- | Given a type signature and some concrete assignment of types (assumes
 -- @inputTys@ and @outputTy@ have no free variables) this function computes
 -- the runtime reps
