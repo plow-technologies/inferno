@@ -11,9 +11,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Infer
-  ( Constraint (UnifyConstraint, ClassConstraint),
-    Subst (Subst),
-    inferExpr,
+  ( inferExpr,
     closeOver,
     closeOverType,
     findTypeClassWitnesses,
@@ -188,11 +186,11 @@ import Inferno.Types.Type
         TTuple,
         TVar
       ),
-    Subst (Subst),
-    Substitutable (apply, ftv),
+    Substitutable (ftv),
     TCScheme (ForallTC),
     TV (TV, unTV),
     TypeClass (TypeClass),
+    substMap,
     typeBool,
     typeDouble,
     typeInt,
@@ -205,7 +203,6 @@ import Inferno.Types.VersionControl
     pinnedToMaybe,
     vcHash,
   )
-import Prettyprinter (Pretty (pretty), (<+>))
 import Text.Megaparsec (SourcePos)
 
 -------------------------------------------------------------------------------
@@ -235,84 +232,80 @@ inferExpr allModules e = runST $ do
       pinnedModuleHashToTy builtinModule
         : fmap pinnedModuleHashToTy (Map.elems allModules)
 
-    -- Freeze the UF state into a `Subst`
-    n <- liftST . readSTRef $ refs.count
-    subst <-
-      either throwError pure
-        =<< liftST (freezeUFToSubst n =<< readSTRef refs.ufStore)
-
-    -- Zonk the result type through the frozen substitution
-    let subTy :: ImplType
-        subTy = apply subst r.typ
-
-    -- Collect remaining typeclass constraints
+    -- Zonk the result type and deferred TCs directly from the UF store
+    subTy <- zonkImplType r.typ
     cls <-
-      filterInstantiatedTCs . Set.fromList . fmap (apply subst . snd)
-        <$> liftST (readSTRef refs.deferred)
-    tm <- liftST $ readSTRef refs.typeMap
+      fmap (filterInstantiatedTCs . Set.fromList)
+        . traverse (zonkTC . snd)
+        =<< liftST (readSTRef refs.deferred)
 
-    -- Free type variables across the type and remaining constraints
     let tvs :: Set TV
         tvs = ftv subTy <> foldMap ftv cls
 
-    -- Assemble the final result from a witness substitution and the
-    -- `closeOverTypeReps` output. Pure; all mutable state has been read above.
-    let mkResult ::
-          Subst ->
-          ( Maybe TypeClass
-          , Map ExtIdent InfernoType
-          , Expr (Pinned VCObjectHash) SourcePos
-          ) ->
-          ( Expr (Pinned VCObjectHash) SourcePos
-          , TCScheme
-          , Map (Location SourcePos) (TypeMetadata TCScheme)
-          )
-        mkResult sub (mRepTC, impl, expr) =
-          let comb :: Subst
-              comb = sub <> subst
-
-              tcs :: Set TypeClass
-              tcs =
-                filterInstantiatedTCs (Set.map (apply sub) cls)
-                  <> maybe mempty Set.singleton mRepTC
-
-              ty :: TCScheme
-              ty =
-                closeOver tcs . apply sub $
-                  ImplType impl subTy.body
-
-              zonkMeta ::
-                TypeMetadata (Set TypeClass, ImplType) ->
-                TypeMetadata TCScheme
-              zonkMeta meta =
-                meta
-                  { ty =
-                      flip closeOver (apply comb (snd meta.ty))
-                        . filterInstantiatedTCs
-                        . Set.map (apply comb)
-                        $ fst meta.ty
-                  }
-           in (expr, ty, fmap zonkMeta tm)
-
-    -- NOTE: `closeOverTypeReps` is currently a stub; using it here for the
-    -- correct wiring. It will be implemented in a later phase.
-    let wits :: [Subst]
+    -- Find typeclass witnesses and feed the chosen bindings into the UF
+    let wits :: [Map TV InfernoType]
         wits
           | Set.null cls = [mempty]
           | otherwise = findTypeClassWitnesses tyCls (Just 2) cls tvs
 
+    -- Feed the chosen witness bindings into the UF, then zonk the
+    -- full result (type, deferred TCs, typeMap) in one pass.
+    let applyWit :: Map TV InfernoType -> Infer s ()
+        applyWit = void . Map.traverseWithKey ufBind
+
+        finish ::
+          Infer
+            s
+            ( Expr (Pinned VCObjectHash) SourcePos
+            , TCScheme
+            , Map (Location SourcePos) (TypeMetadata TCScheme)
+            )
+        finish = do
+          ty <- zonkImplType r.typ
+          finalCls <-
+            fmap (filterInstantiatedTCs . Set.fromList)
+              . traverse (zonkTC . snd)
+              =<< liftST . readSTRef
+              =<< asks (.refs.deferred)
+
+          -- NOTE: `closeOverTypeReps` is currently a stub; using it here
+          -- for the correct wiring. It will be implemented in a later phase.
+          let res :: (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
+              res = closeOverTypeReps ty.impl r.expr
+
+              tcs :: Set TypeClass
+              tcs = finalCls <> maybe mempty Set.singleton (fst3 res)
+
+              scheme :: TCScheme
+              scheme = closeOver tcs $ ImplType (snd3 res) ty.body
+
+          tm <-
+            traverse zonkMeta
+              =<< liftST . readSTRef
+              =<< asks (.refs.typeMap)
+          pure (thd3 res, scheme, tm)
+
+        zonkMeta ::
+          TypeMetadata (Set TypeClass, ImplType) ->
+          Infer s (TypeMetadata TCScheme)
+        zonkMeta meta = do
+          t <- zonkImplType $ snd meta.ty
+          cs <-
+            Set.fromList
+              <$> traverse zonkTC (Set.toList $ fst meta.ty)
+          pure meta{ty = closeOver (filterInstantiatedTCs cs) t}
+
     wits & \case
       [] -> throwError [CouldNotFindTypeclassWitness cls $ blockPosition e]
-      -- Unique solution; apply it
-      [sub] ->
-        pure . mkResult sub . flip closeOverTypeReps r.expr $
-          fmap (apply sub) subTy.impl
-      -- Multiple solutions; apply only substitutions that do not affect
+      -- Unique solution; bind all witness assignments into the UF
+      [wit] -> applyWit wit *> finish
+      -- Multiple solutions; bind only assignments that do not affect
       -- the outer type's free variables (safe partial resolution)
-      Subst s : _ ->
-        pure . mkResult sub . flip closeOverTypeReps r.expr $
-          fmap (apply sub) subTy.impl
+      (s : _) -> applyWit wit *> finish
         where
+          wit :: Map TV InfernoType
+          wit = Set.foldr Map.delete s dep
+
           dep :: Set TV
           dep = Set.foldl' addDep seed cls
 
@@ -334,9 +327,6 @@ inferExpr allModules e = runST $ do
           explFtv = \cases
             (ExtIdent (Right _)) t acc -> ftv t <> acc
             _ _ acc -> acc
-
-          sub :: Subst
-          sub = Subst $ Set.foldr Map.delete s dep
   where
     env :: Env
     tyCls :: Set TypeClass
@@ -347,13 +337,6 @@ inferExpr allModules e = runST $ do
 -------------------------------------------------------------------------------
 
 type Location a = (a, a)
-
--- | A constraint emitted during inference.
-data Constraint
-  = -- | Two types that must be equal, with error context if unification fails.
-    UnifyConstraint !InfernoType !InfernoType ![TypeError SourcePos]
-  | -- | A typeclass obligation at a source location.
-    ClassConstraint !(Location SourcePos) !TypeClass
 
 -- | Result of inferring a sub-expression: the elaborated expression,
 -- its implicit type, and the generated typeclasses (for error context).
@@ -502,19 +485,6 @@ instance HasField "impl" ImplType (Map ExtIdent InfernoType) where
 
 instance HasField "body" ImplType InfernoType where
   getField (ImplType _ t) = t
-
-instance Substitutable Constraint where
-  apply s = \case
-    UnifyConstraint t1 t2 es -> UnifyConstraint (apply s t1) (apply s t2) es
-    ClassConstraint loc tc -> ClassConstraint loc $ apply s tc
-  ftv = \case
-    UnifyConstraint t1 t2 _ -> ftv t1 <> ftv t2
-    ClassConstraint _ tc -> ftv tc
-
-instance Pretty Constraint where
-  pretty = \case
-    UnifyConstraint t1 t2 _ -> pretty t1 <+> "~" <+> pretty t2
-    ClassConstraint _ tc -> pretty tc
 
 -------------------------------------------------------------------------------
 -- Union-Find Cell Representation
@@ -680,7 +650,7 @@ ufBind tv t = withFind tv $ \root@(TV ri) ->
 -- | Walk a type, replacing 'TVar's via 'ufProbe' and recursing structurally.
 -- For 'TRecord', when the row variable resolves to another record, merge
 -- the fields and continue zonking the new row variable (mirrors
--- @apply (Subst s) (TRecord ...)@ in @Syntax.hs@).
+-- @substMap s (TRecord ...)@ in @Syntax.hs@).
 zonk :: InfernoType -> Infer s InfernoType
 zonk = \case
   TVar tv ->
@@ -820,13 +790,16 @@ lookupPinned loc pin ns =
 
 -- | Instantiate a type scheme by replacing each quantified variable
 -- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
--- build a local 'Subst' and 'apply' it.
+-- build a local substitution map and apply it via 'substMap'.
 instantiate :: TCScheme -> Infer s (Set TypeClass, ImplType)
 instantiate (ForallTC as tcs t) =
   traverse (const (fmap TVar freshTV)) as <&> \freshVars ->
-    let sub :: Subst
-        sub = Subst . Map.fromList $ zip as freshVars
-     in (Set.map (apply sub) tcs, apply sub t)
+    let s :: Map TV InfernoType
+        s = Map.fromList $ zip as freshVars
+
+        substTC :: TypeClass -> TypeClass
+        substTC (TypeClass nm tys) = TypeClass nm $ fmap (substMap s) tys
+     in (Set.map substTC tcs, ImplType (fmap (substMap s) t.impl) (substMap s t.body))
 
 -------------------------------------------------------------------------------
 -- Core Unification
@@ -971,13 +944,13 @@ unifyRowVars = \cases
 -- Public `unifyRecords` (Pure, Self-Contained)
 -------------------------------------------------------------------------------
 
--- | Unify two record types purely. Creates a local UF in 'runST',
--- runs the record unification algorithm, and freezes the result to a 'Subst'.
+-- | Unify two record types purely. Creates a local UF in 'runST'
+-- and runs the record unification algorithm.
 unifyRecords ::
   [TypeError SourcePos] ->
   (Map Ident InfernoType, RestOfRecord) ->
   (Map Ident InfernoType, RestOfRecord) ->
-  Either [TypeError SourcePos] Subst
+  Either [TypeError SourcePos] ()
 unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
   where
     -- Compute the starting counter from the max TV in the inputs
@@ -986,7 +959,7 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
       maybe 0 ((+ 1) . unTV) . Set.lookupMax $
         ftv (TRecord fs1 ror1) <> ftv (TRecord fs2 ror2)
 
-    go :: forall s. ST s (Either [TypeError SourcePos] Subst)
+    go :: forall s. ST s (Either [TypeError SourcePos] ())
     go = do
       cRef <- newSTRef maxTV
       vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
@@ -1014,84 +987,23 @@ unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
               , refs
               }
 
-          doUnify :: Infer s ()
-          doUnify =
-            unifyRecordFields
-              err
-              RecordSide
-                { fields = Map.toAscList fs1
-                , ror = ror1
-                , new = mempty
-                }
-              RecordSide
-                { fields = Map.toAscList fs2
-                , ror = ror2
-                , new = mempty
-                }
-              mempty
-
-          freeze :: ST s (Either [TypeError SourcePos] Subst)
-          freeze = join $ freezeUFToSubst <$> readSTRef cRef <*> readSTRef stRef
-
-      either (pure . Left) (const freeze) =<< runExceptT (runReaderT doUnify ctx)
-
--- | Freeze the UF store into a 'Subst'. For each TV @0..n-1@, fully
--- resolve its type (transitively resolving all inner @TVar@s) and add
--- the mapping if it differs from the identity.
-freezeUFToSubst ::
-  forall s.
-  Int ->
-  STVector s UFContent ->
-  ST s (Either [TypeError SourcePos] Subst)
-freezeUFToSubst n v =
-  Right . Subst . Map.fromList <$> go 0
-  where
-    go :: Int -> ST s [(TV, InfernoType)]
-    go i
-      | i >= n = pure mempty
-      | otherwise = do
-          t <- resolveType =<< findRoot i
-          rest <- go $ i + 1
-          t & \case
-            TVar tv
-              | tv == TV i -> pure rest
-            _ -> pure $ (TV i, t) : rest
-
-    -- Chase @UFLink@ pointers to the root and return its stored type
-    findRoot :: Int -> ST s InfernoType
-    findRoot i =
-      Vector.Mutable.read v i >>= \case
-        UFLink (TV j) -> findRoot j
-        UFRoot _ (Just t) -> pure t
-        UFRoot _ Nothing -> pure . TVar $ TV i
-
-    -- Transitively resolve all @TVar@s within a type
-    resolveType :: InfernoType -> ST s InfernoType
-    resolveType = \case
-      TVar tv@(TV i) ->
-        findRoot i >>= \case
-          TVar u | u == tv -> pure $ TVar tv
-          t -> resolveType t
-      TBase b -> pure $ TBase b
-      TArr a b -> TArr <$> resolveType a <*> resolveType b
-      TArray t -> TArray <$> resolveType t
-      TSeries t -> TSeries <$> resolveType t
-      TOptional t -> TOptional <$> resolveType t
-      TTuple ts -> TTuple <$> traverse resolveType ts
-      TRep t -> TRep <$> resolveType t
-      TRecord fs ror -> (`resolveRecord` ror) =<< traverse resolveType fs
-
-    -- Resolve a record's row variable tail, merging fields from any
-    -- row variable expansion (mirrors @zonkRecord@ in @zonk@)
-    resolveRecord :: Map Ident InfernoType -> RestOfRecord -> ST s InfernoType
-    resolveRecord fs = \case
-      RowAbsent -> pure $ TRecord fs RowAbsent
-      RowVar tv@(TV i) ->
-        findRoot i >>= \case
-          TVar u | u == tv -> pure . TRecord fs $ RowVar tv
-          TRecord extra ror ->
-            (`resolveRecord` ror) . Map.union fs =<< traverse resolveType extra
-          _ -> pure $ TRecord fs RowAbsent
+      runExceptT . runReaderT doUnify $ ctx
+      where
+        doUnify :: Infer s ()
+        doUnify =
+          unifyRecordFields
+            err
+            RecordSide
+              { fields = Map.toAscList fs1
+              , ror = ror1
+              , new = mempty
+              }
+            RecordSide
+              { fields = Map.toAscList fs2
+              , ror = ror2
+              , new = mempty
+              }
+            mempty
 
 -------------------------------------------------------------------------------
 -- Inference
@@ -2692,7 +2604,7 @@ findTypeClassWitnesses ::
   Maybe Int ->
   Set TypeClass ->
   Set TV ->
-  [Subst]
+  [Map TV InfernoType]
 findTypeClassWitnesses allClasses mLimit tyCls tvs
   | Set.null tyCls = [mempty]
   | otherwise =
@@ -2702,16 +2614,16 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
         $ Set.toList tyCls
   where
     -- Keep only solutions whose projection onto `tvs` has not been seen before
-    dedupOnTvs :: [Subst] -> [Subst]
+    dedupOnTvs :: [Map TV InfernoType] -> [Map TV InfernoType]
     dedupOnTvs = go Set.empty
       where
-        go :: Set (Map TV InfernoType) -> [Subst] -> [Subst]
+        go :: Set (Map TV InfernoType) -> [Map TV InfernoType] -> [Map TV InfernoType]
         go = \cases
           _ [] -> mempty
-          seen (sub@(Subst m) : rest) ->
+          seen (m : rest) ->
             let key :: Map TV InfernoType
                 key = Map.restrictKeys m tvs
-             in bool (go seen rest) (sub : go (Set.insert key seen) rest) $
+             in bool (go seen rest) (m : go (Set.insert key seen) rest) $
                   Set.notMember key seen
 
     -- For each TV in the constraints, the set of possible ground types
@@ -2730,21 +2642,26 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
     -- constraints after each assignment. Domains are computed once from
     -- the initial constraints; `allGroundSatisfied` provides forward
     -- checking after each assignment.
-    search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Subst]
+    search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Map TV InfernoType]
     search acc [] cs =
-      bool mempty [Subst acc] $ all (`Set.member` allClasses) cs
+      bool mempty [acc] $ all (`Set.member` allClasses) cs
     search acc (tv : rest) cs =
       maybe mempty (concatMap tryType . Set.toList) $
         Map.lookup tv initDomains
       where
-        tryType :: InfernoType -> [Subst]
+        tryType :: InfernoType -> [Map TV InfernoType]
         tryType t =
           let cs' :: [TypeClass]
-              cs' = flip fmap cs . apply . Subst $ Map.singleton tv t
+              cs' = fmap (substTC tv t) cs
            in bool
                 mempty
                 (search (Map.insert tv t acc) rest cs')
                 $ allGroundSatisfied cs'
+
+    -- Substitute a single type variable in a typeclass constraint.
+    substTC :: TV -> InfernoType -> TypeClass -> TypeClass
+    substTC v t (TypeClass nm tys) =
+      TypeClass nm $ fmap (substMap $ Map.singleton v t) tys
 
     -- True when every fully-ground constraint is in `allClasses`
     allGroundSatisfied :: [TypeClass] -> Bool

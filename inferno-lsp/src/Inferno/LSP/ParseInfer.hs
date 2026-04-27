@@ -33,7 +33,8 @@ import Inferno.Types.Type
     TypeClass (..),
     TypeClassShape (..),
     TypeMetadata (..),
-    apply,
+    TV,
+    substMap,
     ftv,
     punctuate',
   )
@@ -681,7 +682,12 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
           case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
             [] -> error "we must always have at least one witness!"
             subs ->
-              let prettyList = map pretty $ nubOrd $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
+              let fTyp :: ImplType
+                  fTyp = filterOutImplicitTypeReps typ
+                  applyWit :: Map.Map TV InfernoType -> ImplType
+                  applyWit m = case fTyp of
+                    ImplType imp bod -> ImplType (fmap (substMap m) imp) (substMap m bod)
+                  prettyList = fmap pretty . nubOrd . sort $ fmap applyWit subs
                   prettyListMax10 = take 10 prettyList
                in if length prettyListMax10 == length prettyList
                     then sep $ unionTySig prettyList

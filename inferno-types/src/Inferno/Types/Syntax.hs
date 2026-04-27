@@ -97,6 +97,7 @@ module Inferno.Types.Syntax
     TypeMetadata (..),
     Substitutable (..),
     Subst (..),
+    substMap,
     Scheme (..),
     (.->),
     sch,
@@ -458,33 +459,37 @@ class Substitutable a where
   apply :: Subst -> a -> a
   ftv :: a -> Set.Set TV
 
+-- | Apply a raw `Map TV InfernoType` substitution to an `InfernoType`.
+-- This is the core substitution logic; `apply` on `Substitutable InfernoType`
+-- delegates to this.
+substMap :: Map.Map TV InfernoType -> InfernoType -> InfernoType
+substMap _ (TBase a) = TBase a
+substMap s t@(TVar a) = Map.findWithDefault t a s
+substMap s (t1 `TArr` t2) = substMap s t1 `TArr` substMap s t2
+substMap s (TArray t) = TArray $ substMap s t
+substMap s (TRecord ts trv) = case trv of
+  RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
+    TVar tv' -> TRecord ts' $ RowVar tv'
+    TRecord ts'' trv' ->
+      TRecord
+        ( Map.unionWithKey
+            (\f _ _ -> error $ "TRecord substitution with duplicate field " <> show f)
+            ts'
+            ts''
+        )
+        trv'
+    t -> error $ "TRecord substitution with unsupported RHS " <> show t
+  RowAbsent -> TRecord ts' RowAbsent
+  where
+    ts' :: Map.Map Ident InfernoType
+    ts' = fmap (substMap s) ts
+substMap s (TSeries t) = TSeries $ substMap s t
+substMap s (TOptional t) = TOptional $ substMap s t
+substMap s (TTuple ts) = TTuple $ fmap (substMap s) ts
+substMap s (TRep t) = TRep $ substMap s t
+
 instance Substitutable InfernoType where
-  apply _ (TBase a) = TBase a
-  apply (Subst s) t@(TVar a) = Map.findWithDefault t a s
-  apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
-  apply s (TArray t) = TArray $ apply s t
-  apply (Subst s) (TRecord ts trv) = case trv of
-    RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
-      TVar tv' -> TRecord ts' $ RowVar tv'
-      -- When performing unification, we will create substitutions that map some row vars
-      -- to a bunch of fields and a new row var, e.g. tv ~> f1: t1; f2: t2; tv'
-      -- We need to add any new fields to the fields of this record, and use the new row
-      -- var. E.g. {f0: t0; tv} ~> {f0: t0; f1: t1; f2: t2; tv'} under the above subst
-      TRecord ts'' trv' -> TRecord newFields trv'
-        where
-          newFields =
-            Map.unionWithKey
-              (\f _ _ -> error $ "TRecord susbstitution with duplicate field " <> show f)
-              ts'
-              ts''
-      t -> error $ "TRecord substitution with unsupported RHS " <> show t
-    RowAbsent -> TRecord ts' RowAbsent
-    where
-      ts' = fmap (apply $ Subst s) ts
-  apply s (TSeries t) = TSeries $ apply s t
-  apply s (TOptional t) = TOptional $ apply s t
-  apply s (TTuple ts) = TTuple $ fmap (apply s) ts
-  apply s (TRep t) = TRep $ apply s t
+  apply (Subst s) = substMap s
 
   ftv TBase{} = Set.empty
   ftv (TVar a) = Set.singleton a
