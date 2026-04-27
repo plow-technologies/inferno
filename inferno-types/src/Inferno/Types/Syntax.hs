@@ -95,8 +95,7 @@ module Inferno.Types.Syntax
     TypeClass (..),
     TypeClassShape (..),
     TypeMetadata (..),
-    Substitutable (..),
-    Subst (..),
+    Substitutable (ftv),
     substMap,
     Scheme (..),
     (.->),
@@ -133,7 +132,6 @@ import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
-import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
@@ -446,22 +444,10 @@ instance Pretty TCScheme where
           [] -> mempty
           precs -> encloseSep lbrace rbrace comma precs <+> "⇒" <> line
 
-newtype Subst = Subst (Map.Map TV InfernoType)
-  deriving stock (Eq, Ord)
-  deriving newtype (Semigroup, Monoid)
-
-instance Show Subst where
-  show (Subst m) = "[" <> xs <> "]"
-    where
-      xs = intercalate ", " $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
-
 class Substitutable a where
-  apply :: Subst -> a -> a
   ftv :: a -> Set.Set TV
 
 -- | Apply a raw `Map TV InfernoType` substitution to an `InfernoType`.
--- This is the core substitution logic; `apply` on `Substitutable InfernoType`
--- delegates to this.
 substMap :: Map.Map TV InfernoType -> InfernoType -> InfernoType
 substMap _ (TBase a) = TBase a
 substMap s t@(TVar a) = Map.findWithDefault t a s
@@ -489,8 +475,6 @@ substMap s (TTuple ts) = TTuple $ fmap (substMap s) ts
 substMap s (TRep t) = TRep $ substMap s t
 
 instance Substitutable InfernoType where
-  apply (Subst s) = substMap s
-
   ftv TBase{} = Set.empty
   ftv (TVar a) = Set.singleton a
   ftv (t1 `TArr` t2) = ftv t1 `Set.union` ftv t2
@@ -504,22 +488,15 @@ instance Substitutable InfernoType where
   ftv (TRep t) = ftv t
 
 instance Substitutable ImplType where
-  apply s (ImplType impl t) =
-    ImplType (Map.map (apply s) impl) $ apply s t
   ftv (ImplType impl t) = foldr (Set.union . ftv . snd) Set.empty (Map.toList impl) `Set.union` ftv t
 
 instance Substitutable TypeClass where
-  apply s (TypeClass n tys) = TypeClass n $ map (apply s) tys
-  ftv (TypeClass _ tys) = Set.unions $ map ftv tys
+  ftv (TypeClass _ tys) = Set.unions $ fmap ftv tys
 
 instance Substitutable TCScheme where
-  apply (Subst s) (ForallTC as tcs t) = ForallTC as (Set.map (apply s') tcs) (apply s' t)
-    where
-      s' = Subst $ foldr Map.delete s as
   ftv (ForallTC as tcs t) = (ftv t `Set.union` Set.unions (Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
 
 instance (Substitutable a) => Substitutable [a] where
-  apply = map . apply
   ftv = foldr (Set.union . ftv) Set.empty
 
 data Namespace
