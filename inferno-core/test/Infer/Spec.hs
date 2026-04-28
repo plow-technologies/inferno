@@ -360,8 +360,7 @@ inferTests = describe "infer" $
         case unifyRecords [] (Map.fromList ts1, trv1) (Map.fromList ts2, trv2) of
           Left errs ->
             trace ("unification returned errors " <> show errs) $ expectationFailure $ show errs
-          Right s' ->
-            trace ("unification returned " <> show s') $ pure ()
+          Right () -> pure ()
 
     unificationShouldFail (ts1, trv1) (ts2, trv2) = do
       let pr (ts, trv) = renderPretty (TRecord (Map.fromList ts) trv)
@@ -369,5 +368,5 @@ inferTests = describe "infer" $
         case unifyRecords [] (Map.fromList ts1, trv1) (Map.fromList ts2, trv2) of
           Left errs ->
             trace ("unification returned errors " <> show errs) $ pure ()
-          Right s' ->
-            trace ("unification returned " <> show s') $ expectationFailure "This unification should fail"
+          Right () ->
+            expectationFailure "This unification should fail"

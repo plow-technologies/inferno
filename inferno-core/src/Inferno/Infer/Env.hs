@@ -33,7 +33,7 @@ import Inferno.Types.Type
   ( ImplType (..),
     InfernoType (..),
     Namespace (..),
-    Substitutable (..),
+    Substitutable (ftv),
     TCScheme (..),
     TV (..),
     TypeClass (..),
@@ -52,14 +52,6 @@ data Env = TypeEnv
   , pinnedTypes :: Map.Map VCObjectHash (TypeMetadata TCScheme)
   }
   deriving (Eq, Show)
-
-instance Substitutable Env where
-  apply s env =
-    env
-      { types = Map.map (\meta -> meta{ty = apply s $ ty meta}) $ types env
-      }
-  ftv env =
-    ftv $ map ty $ Map.elems $ types env
 
 -- pinnedTypes should not have any free variables!!
 empty :: Env
