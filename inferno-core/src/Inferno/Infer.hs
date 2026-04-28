@@ -203,7 +203,7 @@ import Inferno.Types.VersionControl
     pinnedToMaybe,
     vcHash,
   )
-import Text.Megaparsec (SourcePos)
+import Text.Megaparsec (SourcePos (SourcePos), mkPos)
 
 -------------------------------------------------------------------------------
 -- Main inference utilities
@@ -815,10 +815,10 @@ unify err t1 t2 = join $ go <$> zonk t1 <*> zonk t2
       a b | a == b -> pure ()
       (TVar a) (TVar b) -> ufUnion a b
       (TVar a) t -> do
-        when (occursIn a t) $ throwError infiniteErrs
+        when (a `occursIn` t) $ throwError infiniteErrs
         ufBind a t
       t (TVar a) -> do
-        when (occursIn a t) $ throwError infiniteErrs
+        when (a `occursIn` t) $ throwError infiniteErrs
         ufBind a t
       (TArr a1 b1) (TArr a2 b2) -> unify err a1 a2 *> unify err b1 b2
       (TArray a) (TArray b) -> unify err a b
@@ -2530,13 +2530,13 @@ resolveTypeClasses = do
       Worklist ->
       (Location SourcePos, TypeClass) ->
       Infer s Worklist
-    resolveOne allClasses (Worklist acc progress) (loc, TypeClass nm tys) =
+    resolveOne allClasses wl (loc, TypeClass nm tys) =
       (traverse zonk tys >>=) . (. first (TypeClass nm) . dupe) $ \case
         (tc, zonkedTys)
           | Set.null $ ftv tc ->
               bool
                 (throwError [TypeClassNoPartialMatch tc loc])
-                (pure (Worklist acc True))
+                (pure (Worklist wl.remaining True))
                 $ Set.member tc allClasses
           | otherwise -> case matching of
               [] -> throwError [TypeClassNotFoundError allClasses tc loc]
@@ -2546,7 +2546,7 @@ resolveTypeClasses = do
                   [sub] -> do
                     for_ (Map.toList sub) $ \(tv, t) ->
                       unify mempty (TVar tv) t
-                    pure $ Worklist acc True
+                    pure $ Worklist wl.remaining True
                   subs -> do
                     let definite :: Map TV InfernoType
                         definite = agreedBindings subs
@@ -2554,10 +2554,10 @@ resolveTypeClasses = do
                         madeProgress :: Bool
                         madeProgress = not $ Map.null definite
 
-                    when madeProgress $
-                      for_ (Map.toList definite) $ \(tv, t) ->
-                        unify mempty (TVar tv) t
-                    pure . Worklist ((loc, tc) : acc) $ progress || madeProgress
+                    when madeProgress . for_ (Map.toList definite) $
+                      \(tv, t) -> unify mempty (TVar tv) t
+                    pure . Worklist ((loc, tc) : wl.remaining) $
+                      wl.progress || madeProgress
       where
         matching :: [TypeClass]
         matching = filter ((nm ==) . (.className)) $ Set.toList allClasses
@@ -2642,21 +2642,27 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
     -- constraints after each assignment. Domains are computed once from
     -- the initial constraints; `allGroundSatisfied` provides forward
     -- checking after each assignment.
+    --
+    -- IMPORTANT: domains are explored in descending order (`Set.toDescList`)
+    -- so that `TBase TDouble` is tried before `TBase TInt`. This ensures
+    -- unconstrained numeric literals default to `double`, matching the
+    -- language semantics. Callers like `inferTypeReps` take the first
+    -- solution (limit `Just 1`), so exploration order determines the default.
     search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Map TV InfernoType]
-    search acc [] cs =
-      bool mempty [acc] $ all (`Set.member` allClasses) cs
-    search acc (tv : rest) cs =
-      maybe mempty (concatMap tryType . Set.toList) $
-        Map.lookup tv initDomains
-      where
-        tryType :: InfernoType -> [Map TV InfernoType]
-        tryType t =
-          let cs' :: [TypeClass]
-              cs' = fmap (substTC tv t) cs
-           in bool
-                mempty
-                (search (Map.insert tv t acc) rest cs')
-                $ allGroundSatisfied cs'
+    search = \cases
+      acc [] cs -> bool mempty [acc] $ all (`Set.member` allClasses) cs
+      acc (tv : rest) cs ->
+        maybe mempty (concatMap tryType . Set.toDescList) $
+          Map.lookup tv initDomains
+        where
+          tryType :: InfernoType -> [Map TV InfernoType]
+          tryType t =
+            let classes :: [TypeClass]
+                classes = fmap (substTC tv t) cs
+             in bool
+                  mempty
+                  (search (Map.insert tv t acc) rest classes)
+                  $ allGroundSatisfied classes
 
     -- Substitute a single type variable in a typeclass constraint.
     substTC :: TV -> InfernoType -> TypeClass -> TypeClass
@@ -2767,7 +2773,6 @@ closeOverTypeReps implTys expr
     extractRep = \case
       TRep ty -> ty
       ty -> ty
-
 
 -------------------------------------------------------------------------------
 -- Pattern Exhaustiveness
@@ -2919,6 +2924,7 @@ initRefs mods tyClasses = do
 -------------------------------------------------------------------------------
 -- Stubs for Later Phases
 -------------------------------------------------------------------------------
+
 -- | Given a type signature and some concrete assignment of types (assumes
 -- @inputTys@ and @outputTy@ have no free variables) this function computes
 -- the runtime reps
@@ -2928,7 +2934,119 @@ inferTypeReps ::
   [InfernoType] ->
   InfernoType ->
   Either [TypeError SourcePos] [InfernoType]
-inferTypeReps = undefined
+inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputTy = runST go
+  where
+    go :: forall s. ST s (Either [TypeError SourcePos] [InfernoType])
+    go = do
+      cRef <- newSTRef maxTV
+      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
+      stRef <- newSTRef vecInit
+      tmRef <- newSTRef mempty
+      modsRef <- newSTRef mempty
+      patsRef <- newSTRef mempty
+      defRef <- newSTRef mempty
+      let refs :: InferRefs s
+          refs =
+            InferRefs
+              { count = cRef
+              , ufStore = stRef
+              , typeMap = tmRef
+              , modules = modsRef
+              , tyClasses = allTyCls
+              , patternsToCheck = patsRef
+              , deferred = defRef
+              }
+
+          ctx :: InferCtx s
+          ctx = InferCtx{env = mempty, refs}
+
+      runExceptT . flip runReaderT ctx $ do
+        -- Instantiate: create fresh TVs for each bound variable
+        for tvs (const freshTV) >>= \freshTVs -> do
+          let sub :: Map TV InfernoType
+              sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
+
+              substTC :: TypeClass -> TypeClass
+              substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
+
+              ty' :: InfernoType
+              ty' = substMap sub ty
+
+              tyCls' :: Set TypeClass
+              tyCls' = Set.map substTC tyCls
+
+          -- Unify the peeled function signature against concrete inputs/output
+          unifyArgs ty' inputTys
+
+          -- Register non-"rep" typeclasses as deferred and resolve them
+          liftST . writeSTRef defRef $ mkNonRep tyCls'
+
+          resolveTypeClasses
+
+          resolveReps defRef
+            -- Zonk the "rep" typeclass entries and resolve runtime reps
+            =<< traverse
+              zonkTC
+              (filter ( ("rep" ==) . (.className)) (Set.toList tyCls'))
+
+    mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
+    mkNonRep =
+      fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
+
+    -- Given zonked "rep" typeclass entries, resolve them to concrete types
+    resolveReps ::
+      STRef s [(Location SourcePos, TypeClass)] ->
+      [TypeClass] ->
+      Infer s [InfernoType]
+    resolveReps = \cases
+      _ [] -> pure []
+      defRef [TypeClass _ runtimeRepTys]
+        | Set.null (ftv runtimeRepTys) -> pure runtimeRepTys
+        | otherwise -> resolveWithWitness defRef runtimeRepTys [TypeClass "rep" runtimeRepTys]
+      defRef reps
+        | Set.null . ftv $ allParams reps -> pure $ allParams reps
+        | otherwise -> resolveWithWitness defRef (allParams reps) reps
+      where
+        allParams :: [TypeClass] -> [InfernoType]
+        allParams = concatMap (.params)
+
+    -- Attempt to find a typeclass witness for unresolved type variables
+    resolveWithWitness ::
+      forall s.
+      STRef s [(Location SourcePos, TypeClass)] ->
+      [InfernoType] ->
+      [TypeClass] ->
+      Infer s [InfernoType]
+    resolveWithWitness defRef tys reps =
+      (remaining >>=) . (. findWits) $ \case
+        [] -> throwError [CouldNotFindTypeclassWitness (Set.fromList reps) dummyLoc]
+        wit : _ -> pure $ fmap (substMap wit) tys
+      where
+        findWits :: Set TypeClass -> [Map TV InfernoType]
+        findWits = flip (findTypeClassWitnesses allTyCls (Just 1)) $ ftv tys
+
+        remaining :: Infer s (Set TypeClass)
+        remaining = fmap (Set.fromList . fmap snd) . liftST $ readSTRef defRef
+
+    maxTV :: Int
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        mconcat
+          [ ftv ty
+          , foldMap ftv $ Set.toList tyCls
+          , foldMap ftv inputTys
+          , ftv outputTy
+          ]
+
+    dummyLoc :: Location SourcePos
+    dummyLoc = dupe . SourcePos mempty (mkPos 1) $ mkPos 1
+
+    -- Peel `TArr` layers from the signature and unify with concrete types
+    unifyArgs :: InfernoType -> [InfernoType] -> Infer s ()
+    unifyArgs = \cases
+      (TArr a rest) (x : xs) -> unify mempty a x *> unifyArgs rest xs
+      t [] -> unify mempty t outputTy
+      _ _ -> throwError [UnificationFail mempty ty outputTy dummyLoc]
 
 inferPossibleTypes ::
   Set TypeClass ->
