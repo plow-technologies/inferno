@@ -34,6 +34,7 @@ library
     Inferno.Infer.Error
     Inferno.Infer.Exhaustiveness
     Inferno.Infer.Pinned
+    Inferno.Infer.UF
     Inferno.Instances.Arbitrary
     Inferno.Module
     Inferno.Module.Builtin
