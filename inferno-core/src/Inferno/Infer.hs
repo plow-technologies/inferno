@@ -239,14 +239,14 @@ inferExpr allModules e = runST $ do
     let tvs :: Set TV
         tvs = ftv subTy <> foldMap ftv cls
 
-    -- Find typeclass witnesses and feed the chosen bindings into the UF
+        -- Find typeclass witnesses and feed the chosen bindings into the UF
         wits :: [Map TV InfernoType]
         wits
           | Set.null cls = [mempty]
           | otherwise = findTypeClassWitnesses tyCls (Just 2) cls tvs
 
-    -- Feed the chosen witness bindings into the UF, then zonk the
-    -- full result (type, deferred TCs, typeMap) in one pass.
+        -- Feed the chosen witness bindings into the UF, then zonk the
+        -- full result (type, deferred TCs, typeMap) in one pass.
         applyWit :: Map TV InfernoType -> Infer s ()
         applyWit = void . Map.traverseWithKey ufBind
 
