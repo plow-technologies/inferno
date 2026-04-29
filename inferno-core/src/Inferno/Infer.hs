@@ -265,8 +265,6 @@ inferExpr allModules e = runST $ do
               =<< liftST . readSTRef
               =<< asks (.refs.deferred)
 
-          -- NOTE: `closeOverTypeReps` is currently a stub; using it here
-          -- for the correct wiring. It will be implemented in a later phase.
           let res :: (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
               res = closeOverTypeReps ty.impl r.expr
 
