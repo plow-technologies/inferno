@@ -30,13 +30,13 @@ import Inferno.Types.Type
     ImplType (ImplType),
     InfernoType (..),
     TCScheme (..),
+    TV,
     TypeClass (..),
     TypeClassShape (..),
     TypeMetadata (..),
-    TV,
-    substMap,
     ftv,
     punctuate',
+    substMap,
   )
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
