@@ -32,6 +32,7 @@ module Inferno.Infer.UF
     ensureCapacity,
     freshTV,
     freshTVRaw,
+    freshTVar,
     ufFind,
     withFind,
     ufProbe,
@@ -211,6 +212,9 @@ ensureCapacity i =
 -- | Allocate a fresh type variable, returning it as a 'TV'.
 freshTV :: Infer s TV
 freshTV = TV <$> freshTVRaw
+
+freshTVar :: Infer s InfernoType
+freshTVar = TVar <$> freshTV
 
 -- | Allocate a fresh type variable, returning the raw @Int@ index.
 freshTVRaw :: Infer s Int

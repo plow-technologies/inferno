@@ -24,7 +24,7 @@ import Control.Monad (foldM, unless, void, when)
 import Control.Monad.Except (runExceptT, throwError)
 import Control.Monad.Extra (zipWithM_)
 import Control.Monad.Reader (asks, local, runReaderT)
-import Control.Monad.ST (ST, runST)
+import Control.Monad.ST (runST)
 import Data.Bifunctor (bimap, first)
 import Data.Bool (bool)
 import Data.Foldable (foldMap, foldl', for_, toList) -- foldl'/foldMap: DO NOT REMOVE; needed for older GHC compat
@@ -37,7 +37,7 @@ import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, mapMaybe)
-import Data.STRef (STRef, modifySTRef', newSTRef, readSTRef, writeSTRef)
+import Data.STRef (STRef, modifySTRef', readSTRef, writeSTRef)
 import Data.Sequence (Seq, (<|))
 import Data.Set (Set)
 import qualified Data.Set as Set
@@ -47,7 +47,6 @@ import Data.Traversable (for)
 import Data.Tuple.Extra (dupe, fst3, snd3, thd3)
 import Data.Vector (Vector, (!?))
 import qualified Data.Vector as Vector
-import qualified Data.Vector.Mutable as Vector.Mutable
 import GHC.Records (HasField (getField))
 import Inferno.Infer.Env
   ( Env,
@@ -573,7 +572,7 @@ lookupPinned loc pin ns =
 -- build a local substitution map and apply it via 'substMap'.
 instantiate :: TCScheme -> Infer s (Set TypeClass, ImplType)
 instantiate (ForallTC as tcs t) =
-  traverse (const (fmap TVar freshTV)) as <&> \freshVars ->
+  traverse (const freshTVar) as <&> \freshVars ->
     let s :: Map TV InfernoType
         s = Map.fromList $ zip as freshVars
 
@@ -592,59 +591,20 @@ unifyRecords ::
   (Map Ident InfernoType, RestOfRecord) ->
   (Map Ident InfernoType, RestOfRecord) ->
   Either [TypeError SourcePos] ()
-unifyRecords err (fs1, ror1) (fs2, ror2) = runST go
+unifyRecords err (fs1, ror1) (fs2, ror2) =
+  runST $
+    runInfer maxTV mempty $
+      const $
+        unifyRecordFields
+          err
+          RecordSide{fields = Map.toAscList fs1, ror = ror1, new = mempty}
+          RecordSide{fields = Map.toAscList fs2, ror = ror2, new = mempty}
+          mempty
   where
-    -- Compute the starting counter from the max TV in the inputs
     maxTV :: Int
     maxTV =
       maybe 0 ((+ 1) . unTV) . Set.lookupMax $
         ftv (TRecord fs1 ror1) <> ftv (TRecord fs2 ror2)
-
-    go :: forall s. ST s (Either [TypeError SourcePos] ())
-    go = do
-      cRef <- newSTRef maxTV
-      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
-      stRef <- newSTRef vecInit
-      tmRef <- newSTRef mempty
-      modsRef <- newSTRef mempty
-      patsRef <- newSTRef mempty
-      defRef <- newSTRef mempty
-      let refs :: InferRefs s
-          refs =
-            InferRefs
-              { count = cRef
-              , ufStore = stRef
-              , typeMap = tmRef
-              , modules = modsRef
-              , tyClasses = mempty
-              , patternsToCheck = patsRef
-              , deferred = defRef
-              }
-
-          ctx :: InferCtx s
-          ctx =
-            InferCtx
-              { env = mempty
-              , refs
-              }
-
-      runExceptT . runReaderT doUnify $ ctx
-      where
-        doUnify :: Infer s ()
-        doUnify =
-          unifyRecordFields
-            err
-            RecordSide
-              { fields = Map.toAscList fs1
-              , ror = ror1
-              , new = mempty
-              }
-            RecordSide
-              { fields = Map.toAscList fs2
-              , ror = ror2
-              , new = mempty
-              }
-            mempty
 
 -------------------------------------------------------------------------------
 -- Inference
@@ -843,7 +803,7 @@ inferLitInt ::
   Lit ->
   Infer s InferResult
 inferLitInt expr loc pos l = do
-  tv <- TVar <$> freshTV
+  tv <- freshTVar
   i <- ExtIdent . Left <$> freshTVRaw
 
   let tyCls :: TypeClass
@@ -952,7 +912,7 @@ inferVarImpl ::
   ExtIdent ->
   Infer s InferResult
 inferVarImpl expr loc x = do
-  tv <- TVar <$> freshTV
+  tv <- freshTVar
   let implTy :: ImplType
       implTy = ImplType (Map.singleton x tv) tv
   attachTypeToPosition loc $
@@ -1109,7 +1069,7 @@ inferRecField ::
   Infer s InferResult
 inferRecField expr loc pos (Ident recN) fieldName = do
   r <- infer . Var pos Local LocalScope . Expl . ExtIdent $ Right recN
-  fieldTv <- TVar <$> freshTV
+  fieldTv <- freshTVar
   rowTv <- freshTV
 
   let recTy :: InfernoType
@@ -1133,7 +1093,7 @@ inferArray ::
   SourcePos ->
   Infer s InferResult
 inferArray expr loc open elems close = do
-  elemTv <- TVar <$> freshTV
+  elemTv <- freshTVar
   results <- for elems $ inferElem elemTv
   merged <- mergeImplMaps loc $ fmap (.typ.impl) results
 
@@ -1175,7 +1135,7 @@ inferArrayComp loc ac = do
     toList cr.rebuiltSels & \case
       h : t -> pure $ fmap fromSelector (h :| t)
       -- Not possible in practice
-      [] -> throwError []
+      [] -> throwError mempty
 
   pure
     InferResult
@@ -1193,18 +1153,19 @@ inferArrayComp loc ac = do
       [Selector] ->
       Map Ident (Location SourcePos) ->
       Infer s ()
-    checkVarOverlap [] _ = pure ()
-    checkVarOverlap (sel : rest) seen =
-      case Map.lookup sel.ident seen of
-        Just prev ->
-          throwError
-            [ VarMultipleOccurrence sel.ident prev $
-                elementPosition sel.identPos sel.ident
-            ]
-        Nothing ->
-          checkVarOverlap rest
-            . flip (Map.insert sel.ident) seen
-            $ elementPosition sel.identPos sel.ident
+    checkVarOverlap = \cases
+      [] _ -> pure ()
+      (sel : rest) seen ->
+        case Map.lookup sel.ident seen of
+          Just prev ->
+            throwError
+              [ VarMultipleOccurrence sel.ident prev $
+                  elementPosition sel.identPos sel.ident
+              ]
+          Nothing ->
+            checkVarOverlap rest
+              . flip (Map.insert sel.ident) seen
+              $ elementPosition sel.identPos sel.ident
 
     -- Process selectors left-to-right, nesting `inEnv` calls so each
     -- subsequent selector (and the body/condition) sees all prior bindings.
@@ -1218,7 +1179,7 @@ inferArrayComp loc ac = do
         pure
           CompResult
             { rebuiltSels = mempty
-            , selImpls = []
+            , selImpls = mempty
             , selTcs = mempty
             , bodyResult = rBody
             , condExpr = ce
@@ -1242,7 +1203,7 @@ inferArrayComp loc ac = do
       Infer s (InferResult, InfernoType, (ExtIdent, TypeMetadata TCScheme))
     inferSel sel = do
       rGen <- infer sel.gen
-      tv <- TVar <$> freshTV
+      tv <- freshTVar
       unify
         [UnificationFail rGen.tcs rGen.typ.body (TArray tv) $ blockPosition sel.gen]
         rGen.typ.body
@@ -1268,7 +1229,7 @@ inferArrayComp loc ac = do
           ( xExt
           , TypeMetadata
               { identExpr = varExpr
-              , ty = ForallTC [] rGen.tcs $ ImplType rGen.typ.impl tv
+              , ty = ForallTC mempty rGen.tcs $ ImplType rGen.typ.impl tv
               , docs = Nothing
               }
           )
@@ -1320,7 +1281,7 @@ inferLam funPos args arrowPos bodyExpr =
     processArgs = \case
       [] -> infer bodyExpr
       (pos, mx) : rest -> do
-        tv <- TVar <$> freshTV
+        tv <- freshTVar
         r <- maybe id (inEnv . mkBinding tv) mx $ processArgs rest
 
         attachArgMeta pos mx tv
@@ -1336,7 +1297,7 @@ inferLam funPos args arrowPos bodyExpr =
       ( x
       , TypeMetadata
           { identExpr = Var () () LocalScope $ Expl x
-          , ty = ForallTC [] mempty $ ImplType mempty tv
+          , ty = ForallTC mempty mempty $ ImplType mempty tv
           , docs = Nothing
           }
       )
@@ -1373,7 +1334,7 @@ inferApp ::
 inferApp loc e1 e2 = do
   r1 <- infer e1
   r2 <- infer e2
-  tv <- TVar <$> freshTV
+  tv <- freshTVar
   merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
 
   let tcs :: Set TypeClass
@@ -1409,7 +1370,7 @@ inferLet loc lb = do
         ( lb.ident
         , TypeMetadata
             { identExpr = Var () () LocalScope $ Expl lb.ident
-            , ty = ForallTC [] r1.tcs $ ImplType r1.typ.impl r1.typ.body
+            , ty = ForallTC mempty r1.tcs $ ImplType r1.typ.impl r1.typ.body
             , docs = Nothing
             }
         )
@@ -1485,7 +1446,7 @@ inferLetAnnot loc lb = do
         ( lb.ident
         , TypeMetadata
             { identExpr = Var () () LocalScope $ Expl lb.ident
-            , ty = ForallTC [] annotTcs $ ImplType annotImpl annotBody
+            , ty = ForallTC mempty annotTcs $ ImplType annotImpl annotBody
             , docs = Nothing
             }
         )
@@ -1517,7 +1478,7 @@ inferOp loc ob = do
       opTcs = fst meta.ty
 
   (u1, u2, u3) <- opDecompose opLoc opTcs $ snd meta.ty
-  tv <- TVar <$> freshTV
+  tv <- freshTVar
   merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
 
   let tcs :: Set TypeClass
@@ -1559,7 +1520,7 @@ inferPreOp loc pb = do
       opTcs = fst meta.ty
 
   (u1, u2) <- preOpDecompose opLoc opTcs $ snd meta.ty
-  tv <- TVar <$> freshTV
+  tv <- freshTVar
 
   unify [UnificationFail r.tcs u1 r.typ.body $ blockPosition pb.operand] u1 r.typ.body
   unify [UnificationFail r.tcs u2 tv loc] u2 tv
@@ -1790,7 +1751,7 @@ inferCase loc scrut branches = do
       Infer s (InfernoType, [(Ident, TypeMetadata TCScheme)])
     mkPatConstraint pat = case pat of
       PVar _ (Just (Ident x)) ->
-        (freshTV >>=) . (. TVar) $ \tv -> do
+        freshTVar >>= \tv -> do
           attachTypeToPosition patLoc $
             TypeMetadata
               { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
@@ -1811,7 +1772,7 @@ inferCase loc scrut branches = do
               ]
             )
       PVar _ Nothing ->
-        (freshTV >>=) . (. TVar) $ \tv -> do
+        freshTVar >>= \tv -> do
           attachTypeToPosition patLoc $
             TypeMetadata
               { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
@@ -1921,7 +1882,7 @@ inferCase loc scrut branches = do
       [(Pat (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
       Infer s [(Ident, TypeMetadata TCScheme)]
     inferArrayPatElems = \cases
-      _ [] -> pure []
+      _ [] -> pure mempty
       t ((p, _) : rest) -> do
         (tp, vars1) <- mkPatConstraint p
         unify [UnificationFail mempty t tp $ blockPosition p] t tp
@@ -2077,9 +2038,9 @@ opDecompose ::
 opDecompose opLoc tcs = \case
   ImplType _ (t1 `TArr` (t2 `TArr` t3)) -> pure (t1, t2, t3)
   ImplType _ t -> do
-    a <- TVar <$> freshTV
-    b <- TVar <$> freshTV
-    c <- TVar <$> freshTV
+    a <- freshTVar
+    b <- freshTVar
+    c <- freshTVar
     let expected :: InfernoType
         expected = a `TArr` (b `TArr` c)
     unify [ExpectedFunction tcs expected t opLoc] t expected
@@ -2096,8 +2057,8 @@ preOpDecompose ::
 preOpDecompose opLoc tcs = \case
   ImplType _ (t1 `TArr` t2) -> pure (t1, t2)
   ImplType _ t -> do
-    a <- TVar <$> freshTV
-    b <- TVar <$> freshTV
+    a <- freshTVar
+    b <- freshTVar
     let expected :: InfernoType
         expected = a `TArr` b
     unify [ExpectedFunction tcs expected t opLoc] t expected
@@ -2256,7 +2217,7 @@ findTypeClassWitnesses allClasses mLimit tyCls tvs
   where
     -- Keep only solutions whose projection onto `tvs` has not been seen before
     dedupOnTvs :: [Map TV InfernoType] -> [Map TV InfernoType]
-    dedupOnTvs = go Set.empty
+    dedupOnTvs = go mempty
       where
         go :: Set (Map TV InfernoType) -> [Map TV InfernoType] -> [Map TV InfernoType]
         go = \cases
@@ -2550,61 +2511,36 @@ inferTypeReps ::
   [InfernoType] ->
   InfernoType ->
   Either [TypeError SourcePos] [InfernoType]
-inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy = runST go
+inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
+  runST $ runInfer maxTV allTyCls $ \deferred ->
+    -- Instantiate: create fresh TVs for each bound variable
+    for tvs (const freshTV) >>= \freshTVs -> do
+      let sub :: Map TV InfernoType
+          sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
+
+          substTC :: TypeClass -> TypeClass
+          substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
+
+          ty :: InfernoType
+          ty = substMap sub impl.body
+
+          tyCls' :: Set TypeClass
+          tyCls' = Set.map substTC tyCls
+
+      -- Unify the peeled function signature against concrete inputs/output
+      unifyArgs ty inputTys
+
+      -- Register non-"rep" typeclasses as deferred and resolve them
+      liftST . writeSTRef deferred $ mkNonRep tyCls'
+
+      resolveTypeClasses
+
+      resolveReps deferred
+        -- Zonk the "rep" typeclass entries and resolve runtime reps
+        =<< traverse
+          zonkTC
+          (filter (("rep" ==) . (.className)) (Set.toList tyCls'))
   where
-    go :: forall s. ST s (Either [TypeError SourcePos] [InfernoType])
-    go = do
-      cRef <- newSTRef maxTV
-      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
-      stRef <- newSTRef vecInit
-      tmRef <- newSTRef mempty
-      modsRef <- newSTRef mempty
-      patsRef <- newSTRef mempty
-      defRef <- newSTRef mempty
-      let refs :: InferRefs s
-          refs =
-            InferRefs
-              { count = cRef
-              , ufStore = stRef
-              , typeMap = tmRef
-              , modules = modsRef
-              , tyClasses = allTyCls
-              , patternsToCheck = patsRef
-              , deferred = defRef
-              }
-
-          ctx :: InferCtx s
-          ctx = InferCtx{env = mempty, refs}
-
-      runExceptT . flip runReaderT ctx $ do
-        -- Instantiate: create fresh TVs for each bound variable
-        for tvs (const freshTV) >>= \freshTVs -> do
-          let sub :: Map TV InfernoType
-              sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
-
-              substTC :: TypeClass -> TypeClass
-              substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
-
-              ty :: InfernoType
-              ty = substMap sub impl.body
-
-              tyCls' :: Set TypeClass
-              tyCls' = Set.map substTC tyCls
-
-          -- Unify the peeled function signature against concrete inputs/output
-          unifyArgs ty inputTys
-
-          -- Register non-"rep" typeclasses as deferred and resolve them
-          liftST . writeSTRef defRef $ mkNonRep tyCls'
-
-          resolveTypeClasses
-
-          resolveReps defRef
-            -- Zonk the "rep" typeclass entries and resolve runtime reps
-            =<< traverse
-              zonkTC
-              (filter (("rep" ==) . (.className)) (Set.toList tyCls'))
-
     mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
     mkNonRep =
       fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
@@ -2615,7 +2551,7 @@ inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy = runST go
       [TypeClass] ->
       Infer s [InfernoType]
     resolveReps = \cases
-      _ [] -> pure []
+      _ [] -> pure mempty
       defRef [TypeClass _ runtimeRepTys]
         | Set.null (ftv runtimeRepTys) -> pure runtimeRepTys
         | otherwise -> resolveWithWitness defRef runtimeRepTys [TypeClass "rep" runtimeRepTys]
@@ -2671,77 +2607,44 @@ inferPossibleTypes ::
   Maybe InfernoType ->
   Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
 inferPossibleTypes allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
-  runST go
+  runST $ runInfer maxTV allTyCls $ \deferred ->
+    -- Instantiate: create fresh TVs for each bound variable
+    for tvs (const freshTV) >>= \freshTVs -> do
+      let sub :: Map TV InfernoType
+          sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
+
+          substTC :: TypeClass -> TypeClass
+          substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
+
+          ty :: InfernoType
+          ty = substMap sub impl.body
+
+          tyCls' :: Set TypeClass
+          tyCls' = Set.map substTC tyCls
+
+      -- Unify only the provided (`Just`) inputs/output against the signature
+      unifyPartial ty inputTys
+
+      -- Register non-"rep" typeclasses as deferred and resolve them
+      liftST . writeSTRef deferred $ mkNonRep tyCls'
+
+      resolveTypeClasses
+
+      -- Zonk the signature type, then peel args
+      zonkedTy <- zonk ty
+
+      let inTysFromSig :: [InfernoType]
+          outTyFromSig :: InfernoType
+          (inTysFromSig, outTyFromSig) = peelArgs zonkedTy
+
+      -- Get the remaining non-rep constraints for witness search
+      tyClsZonked <-
+        fmap (Set.fromList . fmap snd) . liftST $ readSTRef deferred
+      -- For each input position, find possible types
+      possibleIns <- traverse (findPossible tyClsZonked) $ zip inputTys inTysFromSig
+      possibleOut <- findPossible tyClsZonked (outputTy, outTyFromSig)
+      pure (possibleIns, possibleOut)
   where
-    go ::
-      forall s.
-      ST
-        s
-        ( Either
-            [TypeError SourcePos]
-            ([[InfernoType]], [InfernoType])
-        )
-    go = do
-      cRef <- newSTRef maxTV
-      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
-      stRef <- newSTRef vecInit
-      tmRef <- newSTRef mempty
-      modsRef <- newSTRef mempty
-      patsRef <- newSTRef mempty
-      defRef <- newSTRef mempty
-      let refs :: InferRefs s
-          refs =
-            InferRefs
-              { count = cRef
-              , ufStore = stRef
-              , typeMap = tmRef
-              , modules = modsRef
-              , tyClasses = allTyCls
-              , patternsToCheck = patsRef
-              , deferred = defRef
-              }
-
-          ctx :: InferCtx s
-          ctx = InferCtx{env = mempty, refs}
-
-      runExceptT . flip runReaderT ctx $ do
-        -- Instantiate: create fresh TVs for each bound variable
-        for tvs (const freshTV) >>= \freshTVs -> do
-          let sub :: Map TV InfernoType
-              sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
-
-              substTC :: TypeClass -> TypeClass
-              substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
-
-              ty :: InfernoType
-              ty = substMap sub impl.body
-
-              tyCls' :: Set TypeClass
-              tyCls' = Set.map substTC tyCls
-
-          -- Unify only the provided (`Just`) inputs/output against the signature
-          unifyPartial ty inputTys
-
-          -- Register non-"rep" typeclasses as deferred and resolve them
-          liftST . writeSTRef defRef $ mkNonRep tyCls'
-
-          resolveTypeClasses
-
-          -- Zonk the signature type, then peel args
-          zonkedTy <- zonk ty
-
-          let inTysFromSig :: [InfernoType]
-              outTyFromSig :: InfernoType
-              (inTysFromSig, outTyFromSig) = peelArgs zonkedTy
-
-          -- Get the remaining non-rep constraints for witness search
-          tyClsZonked <-
-            fmap (Set.fromList . fmap snd) . liftST $ readSTRef defRef
-          -- For each input position, find possible types
-          possibleIns <- traverse (findPossible tyClsZonked) $ zip inputTys inTysFromSig
-          possibleOut <- findPossible tyClsZonked (outputTy, outTyFromSig)
-          pure (possibleIns, possibleOut)
-
     mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
     mkNonRep =
       fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
@@ -2749,7 +2652,7 @@ inferPossibleTypes allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
     peelArgs :: InfernoType -> ([InfernoType], InfernoType)
     peelArgs = \case
       TArr a rest -> first (a :) $ peelArgs rest
-      t -> ([], t)
+      t -> (mempty, t)
 
     -- Unify only the `Just` positions; skip `Nothing`
     unifyPartial :: InfernoType -> [Maybe InfernoType] -> Infer s ()
