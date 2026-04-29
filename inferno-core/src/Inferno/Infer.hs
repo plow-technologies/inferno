@@ -30,6 +30,7 @@ import Control.Monad.Trans (lift)
 import Data.Bifunctor (bimap, first)
 import Data.Bool (bool)
 import Data.Foldable (foldMap, foldl', for_, toList) -- foldl'/foldMap: DO NOT REMOVE; needed for older GHC compat
+import Data.Foldable.Extra (notNull)
 import Data.Function (on, (&))
 import Data.Functor (($>), (<&>))
 import Data.List (sortOn)
@@ -2934,7 +2935,7 @@ inferTypeReps ::
   [InfernoType] ->
   InfernoType ->
   Either [TypeError SourcePos] [InfernoType]
-inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputTy = runST go
+inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy = runST go
   where
     go :: forall s. ST s (Either [TypeError SourcePos] [InfernoType])
     go = do
@@ -2969,14 +2970,14 @@ inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputT
               substTC :: TypeClass -> TypeClass
               substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
 
-              ty' :: InfernoType
-              ty' = substMap sub ty
+              ty :: InfernoType
+              ty = substMap sub impl.body
 
               tyCls' :: Set TypeClass
               tyCls' = Set.map substTC tyCls
 
           -- Unify the peeled function signature against concrete inputs/output
-          unifyArgs ty' inputTys
+          unifyArgs ty inputTys
 
           -- Register non-"rep" typeclasses as deferred and resolve them
           liftST . writeSTRef defRef $ mkNonRep tyCls'
@@ -2987,7 +2988,7 @@ inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputT
             -- Zonk the "rep" typeclass entries and resolve runtime reps
             =<< traverse
               zonkTC
-              (filter ( ("rep" ==) . (.className)) (Set.toList tyCls'))
+              (filter (("rep" ==) . (.className)) (Set.toList tyCls'))
 
     mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
     mkNonRep =
@@ -3032,7 +3033,7 @@ inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputT
     maxTV =
       maybe 0 ((+ 1) . unTV) . Set.lookupMax $
         mconcat
-          [ ftv ty
+          [ ftv impl.body
           , foldMap ftv $ Set.toList tyCls
           , foldMap ftv inputTys
           , ftv outputTy
@@ -3046,7 +3047,7 @@ inferTypeReps allTyCls (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputT
     unifyArgs = \cases
       (TArr a rest) (x : xs) -> unify mempty a x *> unifyArgs rest xs
       t [] -> unify mempty t outputTy
-      _ _ -> throwError [UnificationFail mempty ty outputTy dummyLoc]
+      _ _ -> throwError [UnificationFail mempty impl.body outputTy dummyLoc]
 
 inferPossibleTypes ::
   Set TypeClass ->
@@ -3054,4 +3055,121 @@ inferPossibleTypes ::
   [Maybe InfernoType] ->
   Maybe InfernoType ->
   Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
-inferPossibleTypes = undefined
+inferPossibleTypes allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
+  runST go
+  where
+    go ::
+      forall s.
+      ST
+        s
+        ( Either
+            [TypeError SourcePos]
+            ([[InfernoType]], [InfernoType])
+        )
+    go = do
+      cRef <- newSTRef maxTV
+      vecInit <- Vector.Mutable.replicate (max 128 (maxTV * 2)) $ UFRoot 0 Nothing
+      stRef <- newSTRef vecInit
+      tmRef <- newSTRef mempty
+      modsRef <- newSTRef mempty
+      patsRef <- newSTRef mempty
+      defRef <- newSTRef mempty
+      let refs :: InferRefs s
+          refs =
+            InferRefs
+              { count = cRef
+              , ufStore = stRef
+              , typeMap = tmRef
+              , modules = modsRef
+              , tyClasses = allTyCls
+              , patternsToCheck = patsRef
+              , deferred = defRef
+              }
+
+          ctx :: InferCtx s
+          ctx = InferCtx{env = mempty, refs}
+
+      runExceptT . flip runReaderT ctx $ do
+        -- Instantiate: create fresh TVs for each bound variable
+        for tvs (const freshTV) >>= \freshTVs -> do
+          let sub :: Map TV InfernoType
+              sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
+
+              substTC :: TypeClass -> TypeClass
+              substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
+
+              ty :: InfernoType
+              ty = substMap sub impl.body
+
+              tyCls' :: Set TypeClass
+              tyCls' = Set.map substTC tyCls
+
+          -- Unify only the provided (`Just`) inputs/output against the signature
+          unifyPartial ty inputTys
+
+          -- Register non-"rep" typeclasses as deferred and resolve them
+          liftST . writeSTRef defRef $ mkNonRep tyCls'
+
+          resolveTypeClasses
+
+          -- Zonk the signature type, then peel args
+          zonkedTy <- zonk ty
+
+          let inTysFromSig :: [InfernoType]
+              outTyFromSig :: InfernoType
+              (inTysFromSig, outTyFromSig) = peelArgs zonkedTy
+
+          -- Get the remaining non-rep constraints for witness search
+          tyClsZonked <-
+            fmap (Set.fromList . fmap snd) . liftST $ readSTRef defRef
+          -- For each input position, find possible types
+          possibleIns <- traverse (findPossible tyClsZonked) $ zip inputTys inTysFromSig
+          possibleOut <- findPossible tyClsZonked (outputTy, outTyFromSig)
+          pure (possibleIns, possibleOut)
+
+    mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
+    mkNonRep =
+      fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
+
+    peelArgs :: InfernoType -> ([InfernoType], InfernoType)
+    peelArgs = \case
+      TArr a rest -> first (a :) $ peelArgs rest
+      t -> ([], t)
+
+    -- Unify only the `Just` positions; skip `Nothing`
+    unifyPartial :: InfernoType -> [Maybe InfernoType] -> Infer s ()
+    unifyPartial = \cases
+      (TArr a rest) (Just x : xs) -> unify mempty a x *> unifyPartial rest xs
+      (TArr _ rest) (Nothing : xs) -> unifyPartial rest xs
+      t [] -> maybe (pure ()) (unify mempty t) outputTy
+      _ _ -> throwError [UnificationFail mempty impl.body impl.body dummyLoc]
+
+    -- For a given position, find all possible concrete types
+    findPossible ::
+      Set TypeClass ->
+      (Maybe InfernoType, InfernoType) ->
+      Infer s [InfernoType]
+    findPossible tyClsZonked = \case
+      (Just t, _) -> pure [t]
+      (Nothing, t)
+        | Set.null $ ftv t -> pure [t]
+        | otherwise ->
+            let wits :: [Map TV InfernoType]
+                wits = findTypeClassWitnesses allTyCls (Just 100) tyClsZonked $ ftv t
+             in bool
+                  (throwError [CouldNotFindTypeclassWitness tyClsZonked dummyLoc])
+                  (pure (fmap (`substMap` t) wits))
+                  $ notNull wits
+
+    maxTV :: Int
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        mconcat
+          [ ftv impl.body
+          , foldMap ftv $ Set.toList tyCls
+          , foldMap (foldMap ftv) inputTys
+          , foldMap ftv outputTy
+          ]
+
+    dummyLoc :: Location SourcePos
+    dummyLoc = dupe . SourcePos mempty (mkPos 1) $ mkPos 1
