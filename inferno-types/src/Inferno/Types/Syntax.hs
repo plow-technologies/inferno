@@ -95,8 +95,8 @@ module Inferno.Types.Syntax
     TypeClass (..),
     TypeClassShape (..),
     TypeMetadata (..),
-    Substitutable (..),
-    Subst (..),
+    Substitutable (ftv),
+    substMap,
     Scheme (..),
     (.->),
     sch,
@@ -132,7 +132,6 @@ import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Hashable (Hashable (hashWithSalt))
 import Data.Int (Int64)
 import qualified Data.IntMap as IntMap
-import Data.List (intercalate)
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map as Map
@@ -445,47 +444,37 @@ instance Pretty TCScheme where
           [] -> mempty
           precs -> encloseSep lbrace rbrace comma precs <+> "⇒" <> line
 
-newtype Subst = Subst (Map.Map TV InfernoType)
-  deriving stock (Eq, Ord)
-  deriving newtype (Semigroup, Monoid)
-
-instance Show Subst where
-  show (Subst m) = "[" <> xs <> "]"
-    where
-      xs = intercalate ", " $ map (\(x, t) -> unpack $ renderPretty x <> " ~> " <> renderPretty t) $ Map.toList m
-
 class Substitutable a where
-  apply :: Subst -> a -> a
   ftv :: a -> Set.Set TV
 
-instance Substitutable InfernoType where
-  apply _ (TBase a) = TBase a
-  apply (Subst s) t@(TVar a) = Map.findWithDefault t a s
-  apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
-  apply s (TArray t) = TArray $ apply s t
-  apply (Subst s) (TRecord ts trv) = case trv of
-    RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
-      TVar tv' -> TRecord ts' $ RowVar tv'
-      -- When performing unification, we will create substitutions that map some row vars
-      -- to a bunch of fields and a new row var, e.g. tv ~> f1: t1; f2: t2; tv'
-      -- We need to add any new fields to the fields of this record, and use the new row
-      -- var. E.g. {f0: t0; tv} ~> {f0: t0; f1: t1; f2: t2; tv'} under the above subst
-      TRecord ts'' trv' -> TRecord newFields trv'
-        where
-          newFields =
-            Map.unionWithKey
-              (\f _ _ -> error $ "TRecord susbstitution with duplicate field " <> show f)
-              ts'
-              ts''
-      t -> error $ "TRecord substitution with unsupported RHS " <> show t
-    RowAbsent -> TRecord ts' RowAbsent
-    where
-      ts' = fmap (apply $ Subst s) ts
-  apply s (TSeries t) = TSeries $ apply s t
-  apply s (TOptional t) = TOptional $ apply s t
-  apply s (TTuple ts) = TTuple $ fmap (apply s) ts
-  apply s (TRep t) = TRep $ apply s t
+-- | Apply a raw `Map TV InfernoType` substitution to an `InfernoType`.
+substMap :: Map.Map TV InfernoType -> InfernoType -> InfernoType
+substMap _ (TBase a) = TBase a
+substMap s t@(TVar a) = Map.findWithDefault t a s
+substMap s (t1 `TArr` t2) = substMap s t1 `TArr` substMap s t2
+substMap s (TArray t) = TArray $ substMap s t
+substMap s (TRecord ts trv) = case trv of
+  RowVar tv -> case Map.findWithDefault (TVar tv) tv s of
+    TVar tv' -> TRecord ts' $ RowVar tv'
+    TRecord ts'' trv' ->
+      TRecord
+        ( Map.unionWithKey
+            (\f _ _ -> error $ "TRecord substitution with duplicate field " <> show f)
+            ts'
+            ts''
+        )
+        trv'
+    t -> error $ "TRecord substitution with unsupported RHS " <> show t
+  RowAbsent -> TRecord ts' RowAbsent
+  where
+    ts' :: Map.Map Ident InfernoType
+    ts' = fmap (substMap s) ts
+substMap s (TSeries t) = TSeries $ substMap s t
+substMap s (TOptional t) = TOptional $ substMap s t
+substMap s (TTuple ts) = TTuple $ fmap (substMap s) ts
+substMap s (TRep t) = TRep $ substMap s t
 
+instance Substitutable InfernoType where
   ftv TBase{} = Set.empty
   ftv (TVar a) = Set.singleton a
   ftv (t1 `TArr` t2) = ftv t1 `Set.union` ftv t2
@@ -499,22 +488,15 @@ instance Substitutable InfernoType where
   ftv (TRep t) = ftv t
 
 instance Substitutable ImplType where
-  apply s (ImplType impl t) =
-    ImplType (Map.map (apply s) impl) $ apply s t
   ftv (ImplType impl t) = foldr (Set.union . ftv . snd) Set.empty (Map.toList impl) `Set.union` ftv t
 
 instance Substitutable TypeClass where
-  apply s (TypeClass n tys) = TypeClass n $ map (apply s) tys
-  ftv (TypeClass _ tys) = Set.unions $ map ftv tys
+  ftv (TypeClass _ tys) = Set.unions $ fmap ftv tys
 
 instance Substitutable TCScheme where
-  apply (Subst s) (ForallTC as tcs t) = ForallTC as (Set.map (apply s') tcs) (apply s' t)
-    where
-      s' = Subst $ foldr Map.delete s as
   ftv (ForallTC as tcs t) = (ftv t `Set.union` Set.unions (Set.elems $ Set.map ftv tcs)) `Set.difference` Set.fromList as
 
 instance (Substitutable a) => Substitutable [a] where
-  apply = map . apply
   ftv = foldr (Set.union . ftv) Set.empty
 
 data Namespace

@@ -31,8 +31,10 @@ library
     Inferno.Eval.Error
     Inferno.Infer
     Inferno.Infer.Env
+    Inferno.Infer.Error
     Inferno.Infer.Exhaustiveness
     Inferno.Infer.Pinned
+    Inferno.Infer.UF
     Inferno.Instances.Arbitrary
     Inferno.Module
     Inferno.Module.Builtin
@@ -45,7 +47,6 @@ library
     Inferno.Utils.QQ.Script
 
   other-modules:
-    Inferno.Infer.Error
     Inferno.Module.Prelude.Defs
     Inferno.Utils.QQ.Common
 
@@ -71,7 +72,6 @@ library
     , memory
     , mtl
     , parser-combinators
-    , picosat
     , prettyprinter
     , QuickCheck
     , quickcheck-arbitrary-adt
@@ -83,6 +83,7 @@ library
     , template-haskell
     , text
     , time
+    , vector
 
   default-language:   Haskell2010
   default-extensions:

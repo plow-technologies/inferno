@@ -1,15 +1,16 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Inferno.Infer
-  ( Constraint,
-    TypeError (..),
-    Subst (..),
-    inferExpr,
+  ( inferExpr,
     closeOver,
     closeOverType,
     findTypeClassWitnesses,
@@ -19,54 +20,69 @@ module Inferno.Infer
   )
 where
 
-import Control.Monad
-  ( foldM,
-    forM,
-    forM_,
-    when,
-  )
-import Control.Monad.Except
-  ( Except,
-    ExceptT,
-    MonadError (catchError, throwError),
-    runExcept,
-    runExceptT,
-  )
-import Control.Monad.Identity (Identity (runIdentity))
-import Control.Monad.Reader
-  ( MonadReader (ask, local),
-    ReaderT (ReaderT, runReaderT),
-  )
-import Control.Monad.State
-  ( MonadState (get, put, state),
-    StateT (StateT, runStateT),
-    evalStateT,
-    execState,
-    gets,
-    modify,
-  )
-import Data.Bifunctor (Bifunctor (first, second), bimap)
-import qualified Data.Bimap as Bimap
-import Data.Either (partitionEithers, rights)
-import Data.Foldable (foldl', toList)
-import Data.Generics.Product (HasType, getTyped, setTyped)
-import Data.List (find, sortOn, unzip4)
-import qualified Data.List.NonEmpty as NEList
-import qualified Data.Map as Map
-import qualified Data.Map.Merge.Lazy as Map
-import Data.Maybe (catMaybes, fromJust, mapMaybe)
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Sequence
+import Control.Monad (foldM, unless, void, when)
+import Control.Monad.Except (runExceptT, throwError)
+import Control.Monad.Extra (zipWithM_)
+import Control.Monad.Reader (asks, local, runReaderT)
+import Control.Monad.ST (runST)
+import Data.Bifunctor (bimap, first)
+import Data.Bool (bool)
+import Data.Foldable (foldMap, foldl', for_, toList) -- foldl'/foldMap: DO NOT REMOVE; needed for older GHC compat
+import Data.Foldable.Extra (notNull)
+import Data.Function (on, (&))
+import Data.Functor ((<&>))
+import Data.List (sortOn)
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.List.NonEmpty as NonEmpty
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe, mapMaybe)
+import Data.STRef (STRef, modifySTRef', readSTRef, writeSTRef)
+import Data.Sequence (Seq, (<|))
+import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Tuple.Extra (fst3, snd3)
-import Debug.Trace (trace)
+import Data.Traversable (for)
+import Data.Tuple.Extra (dupe, fst3, snd3, thd3)
+import Data.Vector (Vector, (!?))
+import qualified Data.Vector as Vector
 import GHC.Records (HasField (getField))
-import Inferno.Infer.Env (Env (..), TypeMetadata (..), closeOver, closeOverType)
+import Inferno.Infer.Env
+  ( Env,
+    Namespace (EnumNamespace, OpNamespace),
+    TypeMetadata (TypeMetadata, docs, identExpr, ty),
+    closeOver,
+    closeOverType,
+  )
 import qualified Inferno.Infer.Env as Env
-import Inferno.Infer.Error (TypeError (..), getLocFromErrs, getTypeClassFromErrs)
+import Inferno.Infer.Error
+  ( TypeError
+      ( AnnotationUnificationFail,
+        AssertConditionMustBeBool,
+        CaseBranchesMustBeEqType,
+        CouldNotFindTypeclassWitness,
+        DuplicateRecordField,
+        ExpectedFunction,
+        IfBranchesMustBeEqType,
+        IfConditionMustBeBool,
+        ImplicitVarTypeOverlap,
+        ModuleDoesNotExist,
+        ModuleNameTaken,
+        NonExhaustivePatternMatch,
+        PatternUnificationFail,
+        PatternsMustBeEqType,
+        TypeClassNoPartialMatch,
+        TypeClassNotFoundError,
+        UnboundExtIdent,
+        UnboundNameInNamespace,
+        UnificationFail,
+        UselessPattern,
+        VarMultipleOccurrence
+      ),
+  )
 import Inferno.Infer.Exhaustiveness
-  ( Pattern (..),
+  ( Pattern (W),
     cEmpty,
     cEnum,
     cInf,
@@ -78,20 +94,71 @@ import Inferno.Infer.Exhaustiveness
     mkEnumArrayPat,
     mkEnumText,
   )
+import Inferno.Infer.UF
 import Inferno.Module.Builtin (builtinModule, emptyHash, oneHash)
-import Inferno.Types.Module (Module (..), PinnedModule, pinnedModuleHashToTy)
+import Inferno.Types.Module
+  ( Module (moduleObjects, moduleTypeClasses),
+    PinnedModule,
+    pinnedModuleHashToTy,
+  )
 import Inferno.Types.Syntax
   ( BlockUtils (blockPosition, removeComments),
+    Comment,
     ElementPosition (elementPosition),
-    Expr (..),
-    ExtIdent (..),
-    Ident (..),
+    Expr
+      ( App,
+        Array,
+        ArrayComp,
+        Assert,
+        Bracketed,
+        Case,
+        CommentAbove,
+        CommentAfter,
+        CommentBelow,
+        Empty,
+        Enum,
+        If,
+        InterpolatedString,
+        Lam,
+        Let,
+        LetAnnot,
+        Lit,
+        One,
+        Op,
+        OpVar,
+        OpenModule,
+        PreOp,
+        Record,
+        RecordField,
+        RenameModule,
+        Tuple,
+        TypeRep,
+        Var
+      ),
+    ExtIdent (ExtIdent),
+    Ident (Ident),
     ImplExpl (Expl, Impl),
+    Import,
+    InfixFixity,
     Lit (LDouble, LHex, LInt, LText),
-    ModuleName (..),
-    Pat (..),
-    RestOfRecord (..),
-    Scoped (..),
+    ModuleName (ModuleName),
+    Pat
+      ( PArray,
+        PCommentAbove,
+        PCommentAfter,
+        PCommentBelow,
+        PEmpty,
+        PEnum,
+        PLit,
+        POne,
+        PRecord,
+        PTuple,
+        PVar
+      ),
+    RestOfRecord (RowAbsent, RowVar),
+    Scoped (LocalScope),
+    SomeIStr,
+    TList,
     fromEitherList,
     fromScoped,
     incSourceCol,
@@ -101,80 +168,178 @@ import Inferno.Types.Syntax
     tListToList,
     toEitherList,
   )
+import qualified Inferno.Types.Syntax
 import Inferno.Types.Type
   ( BaseType (TEnum),
-    ImplType (..),
-    InfernoType (..),
-    Subst (..),
-    Substitutable (..),
-    TCScheme (..),
-    TV (..),
+    ImplType (ImplType),
+    InfernoType
+      ( TArr,
+        TArray,
+        TBase,
+        TOptional,
+        TRecord,
+        TRep,
+        TSeries,
+        TTuple,
+        TVar
+      ),
+    Substitutable (ftv),
+    TCScheme (ForallTC),
+    TV (unTV),
     TypeClass (TypeClass),
+    substMap,
     typeBool,
     typeDouble,
     typeInt,
     typeText,
     typeWord64,
-    var,
-    (.->),
   )
-import Inferno.Types.VersionControl (Pinned (..), VCObjectHash, pinnedToMaybe, vcHash)
-import qualified Picosat
-import Prettyprinter (Pretty (pretty), (<+>))
-import System.IO.Unsafe (unsafePerformIO)
-import Text.Megaparsec (SourcePos (..), initialPos)
+import Inferno.Types.VersionControl
+  ( Pinned (Local),
+    VCObjectHash,
+    pinnedToMaybe,
+    vcHash,
+  )
+import Text.Megaparsec (SourcePos (SourcePos), mkPos)
 
 -------------------------------------------------------------------------------
--- Classes
+-- Main inference utilities
 -------------------------------------------------------------------------------
 
--- | Inference monad
-type Infer a =
-  ( ReaderT
-      Env -- Typing environment
-      ( StateT -- Inference state
-          InferState
-          ( Except -- Inference errors
-              [TypeError SourcePos]
-          )
-      )
-      a -- Result
-  )
+-- | Solve for the top-level type of an expression in a given environment.
+-- Runs the full pipeline: infer, resolve typeclasses, check exhaustiveness,
+-- freeze UF state, and close over the result.
+inferExpr ::
+  Map ModuleName (PinnedModule m) ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Either
+    [TypeError SourcePos]
+    ( Expr (Pinned VCObjectHash) SourcePos
+    , TCScheme
+    , Map (Location SourcePos) (TypeMetadata TCScheme)
+    )
+inferExpr allModules e = runST $ do
+  refs <- initRefs allModules tyCls
+  runExceptT . flip runReaderT (InferCtx env refs) $ do
+    r <- infer e
+    resolveTypeClasses
 
--- | Inference state
-data InferState = InferState
-  { count :: !Int
-  , typeMap :: !(Map.Map (Location SourcePos) (TypeMetadata (Set.Set TypeClass, ImplType)))
-  , modules :: !(Map.Map ModuleName (Module ()))
-  , typeClasses :: !(Set.Set TypeClass)
-  , patternsToCheck :: ![(Location SourcePos, [Pat (Pinned VCObjectHash) SourcePos])]
-  }
+    -- Build enum sigs and check exhaustiveness
+    checkPatternExhaustiveness . buildEnumSigs . Map.unions $
+      pinnedModuleHashToTy builtinModule
+        : fmap pinnedModuleHashToTy (Map.elems allModules)
 
--- | Initial inference state
-initInfer :: InferState
-initInfer = InferState{count = 0, typeMap = Map.empty, modules = Map.empty, typeClasses = Set.empty, patternsToCheck = []}
+    -- Zonk the result type and deferred TCs directly from the UF store
+    subTy <- zonkImplType r.typ
+    cls <-
+      fmap (filterInstantiatedTCs . Set.fromList)
+        . traverse (zonkTC . snd)
+        =<< liftST (readSTRef refs.deferred)
 
-type Constraint = Either (InfernoType, InfernoType, [TypeError SourcePos]) (Location SourcePos, TypeClass)
+    let tvs :: Set TV
+        tvs = ftv subTy <> foldMap ftv cls
 
-type Unifier = (Subst, [Constraint])
+        -- Find typeclass witnesses and feed the chosen bindings into the UF
+        wits :: [Map TV InfernoType]
+        wits
+          | Set.null cls = [mempty]
+          | otherwise = findTypeClassWitnesses tyCls (Just 2) cls tvs
 
--- | Constraint solver monad
-type Solve a = ReaderT (Set.Set TypeClass) (ExceptT [TypeError SourcePos] Identity) a
+        -- Feed the chosen witness bindings into the UF, then zonk the
+        -- full result (type, deferred TCs, typeMap) in one pass.
+        applyWit :: Map TV InfernoType -> Infer s ()
+        applyWit = void . Map.traverseWithKey ufBind
 
-type SolveState st a = ReaderT (Set.Set TypeClass) (StateT st (ExceptT [TypeError SourcePos] Identity)) a
+        finish ::
+          Infer
+            s
+            ( Expr (Pinned VCObjectHash) SourcePos
+            , TCScheme
+            , Map (Location SourcePos) (TypeMetadata TCScheme)
+            )
+        finish = do
+          ty <- zonkImplType r.typ
+          finalCls <-
+            fmap (filterInstantiatedTCs . Set.fromList)
+              . traverse (zonkTC . snd)
+              =<< liftST . readSTRef
+              =<< asks (.refs.deferred)
 
-type Location a = (a, a)
+          let res :: (Maybe TypeClass, Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
+              res = closeOverTypeReps ty.impl r.expr
+
+              tcs :: Set TypeClass
+              tcs = finalCls <> maybe mempty Set.singleton (fst3 res)
+
+              scheme :: TCScheme
+              scheme = closeOver tcs $ ImplType (snd3 res) ty.body
+
+          tm <-
+            traverse zonkMeta
+              =<< liftST . readSTRef
+              =<< asks (.refs.typeMap)
+          pure (thd3 res, scheme, tm)
+
+        zonkMeta ::
+          TypeMetadata (Set TypeClass, ImplType) ->
+          Infer s (TypeMetadata TCScheme)
+        zonkMeta meta = do
+          t <- zonkImplType $ snd meta.ty
+          cs <-
+            Set.fromList
+              <$> traverse zonkTC (Set.toList $ fst meta.ty)
+          pure meta{ty = closeOver (filterInstantiatedTCs cs) t}
+
+    wits & \case
+      [] -> throwError [CouldNotFindTypeclassWitness cls $ blockPosition e]
+      -- Unique solution; bind all witness assignments into the UF
+      [wit] -> applyWit wit *> finish
+      -- Multiple solutions; bind only assignments that do not affect
+      -- the outer type's free variables (safe partial resolution)
+      (s : _) -> applyWit wit *> finish
+        where
+          wit :: Map TV InfernoType
+          wit = Set.foldr Map.delete s dep
+
+          dep :: Set TV
+          dep = Set.foldl' addDep seed cls
+
+          addDep :: Set TV -> TypeClass -> Set TV
+          addDep acc c
+            | Set.null inter = acc
+            | otherwise = ftvC <> acc
+            where
+              ftvC :: Set TV
+              ftvC = ftv c
+
+              inter :: Set TV
+              inter = ftvC `Set.intersection` acc
+
+          seed :: Set TV
+          seed = ftv subTy.body <> Map.foldrWithKey explFtv mempty subTy.impl
+
+          explFtv :: ExtIdent -> InfernoType -> Set TV -> Set TV
+          explFtv = \cases
+            (ExtIdent (Right _)) t acc -> ftv t <> acc
+            _ _ acc -> acc
+  where
+    env :: Env
+    tyCls :: Set TypeClass
+    (env, tyCls) = openBuiltinEnv allModules
+
+-------------------------------------------------------------------------------
+-- Types
+-------------------------------------------------------------------------------
 
 -- | Result of inferring a sub-expression: the elaborated expression,
--- its implicit type, and the generated constraints.
+-- its implicit type, and the generated typeclasses (for error context).
 data InferResult = InferResult
   { expr :: Expr (Pinned VCObjectHash) SourcePos
   , typ :: ImplType
-  , constrs :: Seq Constraint
+  , tcs :: !(Set TypeClass)
   }
 
--- | A single branch of a @match@ expression; local record to avoid
--- repeatedly destructuring the raw 4-tuple from the AST.
+-- | A single branch of a @match@ expression.
 data CaseBranch = CaseBranch
   { barPos :: SourcePos
   , pat :: Pat (Pinned VCObjectHash) SourcePos
@@ -182,37 +347,2050 @@ data CaseBranch = CaseBranch
   , body :: Expr (Pinned VCObjectHash) SourcePos
   }
 
--- | Virtual record fields for `ImplType`, which has positional arguments. This
--- makes it much easier to access the relevant components when recursively calling
--- @infer@
-instance HasField "impl" ImplType (Map.Map ExtIdent InfernoType) where
+-- | Result of 'inferCase'. Contains the inferred scrutinee, the
+-- branches with updated body expressions, and the overall type.
+-- The caller ('infer') is responsible for assembling the 'Case' 'Expr'.
+data CaseResult = CaseResult
+  { scrutExpr :: Expr (Pinned VCObjectHash) SourcePos
+  , branches :: NonEmpty CaseBranch
+  , typ :: ImplType
+  , tcs :: !(Set TypeClass)
+  }
+
+-- | A single selector in an array comprehension (@x <- gen@).
+-- The @infer@ dispatcher constructs these from the raw 5-tuple in @ArrayComp@.
+data Selector = Selector
+  { identPos :: !SourcePos
+  , ident :: !Ident
+  , arrowPos :: !SourcePos
+  , gen :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , commaPos :: !(Maybe SourcePos)
+  }
+
+-- | Result of processing all selectors, body, and condition in an
+-- array comprehension. Built during the @processSels@ unwinding.
+data CompResult = CompResult
+  { rebuiltSels :: !(Seq Selector)
+  , selImpls :: ![Map ExtIdent InfernoType]
+  , selTcs :: !(Set TypeClass)
+  , bodyResult :: !InferResult
+  , condExpr :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
+  , condImpl :: !(Map ExtIdent InfernoType)
+  , condTcs :: !(Set TypeClass)
+  }
+
+-- | Components of a @let@ binding (both explicit and implicit).
+data LetBinding = LetBinding
+  { letPos :: !SourcePos
+  , varPos :: !SourcePos
+  , ident :: !ExtIdent
+  , eqPos :: !SourcePos
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , inPos :: !SourcePos
+  , inExpr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of a type-annotated @let@ binding.
+data LetAnnotBinding = LetAnnotBinding
+  { letPos :: !SourcePos
+  , varPos :: !SourcePos
+  , ident :: !ExtIdent
+  , annotPos :: !SourcePos
+  , scheme :: !TCScheme
+  , eqPos :: !SourcePos
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , inPos :: !SourcePos
+  , inExpr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an infix operator application @e1 `op` e2@.
+data OpBinding = OpBinding
+  { lhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , opPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , opMeta :: !(Int, InfixFixity)
+  , modNm :: !(Scoped ModuleName)
+  , op :: !Ident
+  , rhs :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of a prefix operator application @op e@.
+data PreOpBinding = PreOpBinding
+  { opPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , opLvl :: !Int
+  , modNm :: !(Scoped ModuleName)
+  , op :: !Ident
+  , operand :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an @if cond then tr else fl@ expression.
+data IfBinding = IfBinding
+  { ifPos :: !SourcePos
+  , cond :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , thenPos :: !SourcePos
+  , tr :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , elsePos :: !SourcePos
+  , fl :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an array comprehension @[body | sels if cond]@.
+data ArrayCompBinding = ArrayCompBinding
+  { open :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
+  , pipe :: !SourcePos
+  , sels :: !(NonEmpty Selector)
+  , cond :: !(Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos))
+  , close :: !SourcePos
+  }
+
+-- | Components of a @let module NewName = OldName in e@ expression.
+data RenameModuleBinding = RenameModuleBinding
+  { namePos :: !SourcePos
+  , newNm :: !ModuleName
+  , oldPos :: !SourcePos
+  , oldNm :: !ModuleName
+  , inPos :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Components of an @open Module (imports) in e@ expression.
+data OpenModuleBinding = OpenModuleBinding
+  { openPos :: !SourcePos
+  , pin :: !(Pinned VCObjectHash)
+  , modNm :: !ModuleName
+  , imports :: ![(Import SourcePos, Maybe SourcePos)]
+  , inPos :: !SourcePos
+  , body :: !(Expr (Pinned VCObjectHash) SourcePos)
+  }
+
+-- | Virtual record fields for @ImplType@
+instance HasField "impl" ImplType (Map ExtIdent InfernoType) where
   getField (ImplType m _) = m
 
 instance HasField "body" ImplType InfernoType where
   getField (ImplType _ t) = t
 
-instance Substitutable Constraint where
-  apply s (Left (t1, t2, es)) = Left (apply s t1, apply s t2, es)
-  apply s (Right (loc, tc)) = Right (loc, apply s tc)
-  ftv (Left (t1, t2, _)) = ftv t1 `Set.union` ftv t2
-  ftv (Right (_, tc)) = ftv tc
+-------------------------------------------------------------------------------
+-- Type Map and Environment Helpers
+-------------------------------------------------------------------------------
 
-instance Pretty Constraint where
-  pretty (Left (t1, t2, _errs)) = pretty t1 <+> "~" <+> pretty t2
-  pretty (Right (_loc, tc)) = pretty tc
+-- | Extend the typing environment for a local binding (scoped via @local@).
+inEnv :: (ExtIdent, TypeMetadata TCScheme) -> Infer s a -> Infer s a
+inEnv (x, meta) =
+  local $ \ctx -> ctx{env = Env.remove ctx.env x `Env.extend` (x, meta)}
+
+-- | Record a type metadata entry for the given source location.
+attachTypeToPosition ::
+  Location SourcePos ->
+  TypeMetadata (Set TypeClass, ImplType) ->
+  Infer s ()
+attachTypeToPosition k meta =
+  liftST . (`modifySTRef'` Map.insert k meta)
+    =<< asks (.refs.typeMap)
+
+-- | Merge a list of implicit maps. When two maps share a key, 'unify' the
+-- types immediately (eager unification replaces the old constraint-based
+-- approach).
+mergeImplMaps ::
+  forall s.
+  Location SourcePos ->
+  [Map ExtIdent InfernoType] ->
+  Infer s (Map ExtIdent InfernoType)
+mergeImplMaps loc =
+  flip foldl' (pure mempty) $
+    \acc m -> merge m =<< acc
+  where
+    merge ::
+      Map ExtIdent InfernoType ->
+      Map ExtIdent InfernoType ->
+      Infer s (Map ExtIdent InfernoType)
+    merge m merged = do
+      for_ (Map.toList (Map.intersectionWith (,) merged m)) $
+        \(ident, (t1, t2)) ->
+          unify [ImplicitVarTypeOverlap mempty ident t1 t2 loc] t1 t2
+      pure $ Map.union merged m
+
+-- | Check for duplicate field names in a record literal.
+checkDuplicateFields ::
+  Location SourcePos ->
+  [(Ident, a, b)] ->
+  Infer s ()
+checkDuplicateFields loc = go mempty
+  where
+    go :: Set Ident -> [(Ident, a, b)] -> Infer s ()
+    go = \cases
+      _ [] -> pure ()
+      seen ((f, _, _) : rest)
+        | Set.member f seen -> throwError [DuplicateRecordField f loc]
+        | otherwise -> go (Set.insert f seen) rest
+
+-- | Defer a typeclass constraint for later resolution. Appends to the
+-- shared @deferred@ list; 'resolveTypeClasses' processes these after
+-- the full inference traversal.
+deferTC :: Location SourcePos -> TypeClass -> Infer s ()
+deferTC loc tc =
+  liftST . (`modifySTRef'` ((loc, tc) :))
+    =<< asks (.refs.deferred)
+
+-- | Look up a variable (by hash or name) in the environment, instantiate
+-- its scheme, and return the metadata with the instantiated type.
+lookupEnv ::
+  Location SourcePos ->
+  Either VCObjectHash ExtIdent ->
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
+lookupEnv loc x =
+  asks (.env) >>= \env ->
+    case either (`Env.lookupPinned` env) (`Env.lookup` env) x of
+      Nothing ->
+        throwError
+          [ either
+              (flip (UnboundNameInNamespace LocalScope) loc . Left)
+              (flip (UnboundExtIdent LocalScope) loc)
+              x
+          ]
+      Just meta -> instantiate meta.ty <&> \ty -> meta{ty}
+
+-- | Look up a pinned hash that must exist (e.g. op vars, enums).
+-- If the 'Pinned' value is 'Local' (not pinned), throws
+-- 'UnboundNameInNamespace' with the given 'Namespace' for a proper error.
+lookupPinned ::
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Namespace ->
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
+lookupPinned loc pin ns =
+  maybe
+    (throwError [UnboundNameInNamespace LocalScope (Right ns) loc])
+    (lookupEnv loc . Left)
+    $ pinnedToMaybe pin
+
+-- | Instantiate a type scheme by replacing each quantified variable
+-- with a fresh UF cell. The scheme body is pure ('ImplType'), so we
+-- build a local substitution map and apply it via 'substMap'.
+instantiate :: TCScheme -> Infer s (Set TypeClass, ImplType)
+instantiate (ForallTC as tcs t) =
+  traverse (const freshTVar) as <&> \freshVars ->
+    let s :: Map TV InfernoType
+        s = Map.fromList $ zip as freshVars
+
+        substTC :: TypeClass -> TypeClass
+        substTC (TypeClass nm tys) = TypeClass nm $ fmap (substMap s) tys
+     in (Set.map substTC tcs, ImplType (fmap (substMap s) t.impl) (substMap s t.body))
+
+-------------------------------------------------------------------------------
+-- Public `unifyRecords` (Pure, Self-Contained)
+-------------------------------------------------------------------------------
+
+-- | Unify two record types purely. Creates a local UF in 'runST'
+-- and runs the record unification algorithm.
+unifyRecords ::
+  [TypeError SourcePos] ->
+  (Map Ident InfernoType, RestOfRecord) ->
+  (Map Ident InfernoType, RestOfRecord) ->
+  Either [TypeError SourcePos] ()
+unifyRecords err (fs1, ror1) (fs2, ror2) =
+  runST $
+    runInfer maxTV mempty $
+      const $
+        unifyRecordFields
+          err
+          RecordSide{fields = Map.toAscList fs1, ror = ror1, new = mempty}
+          RecordSide{fields = Map.toAscList fs2, ror = ror2, new = mempty}
+          mempty
+  where
+    maxTV :: Int
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        ftv (TRecord fs1 ror1) <> ftv (TRecord fs2 ror2)
 
 -------------------------------------------------------------------------------
 -- Inference
 -------------------------------------------------------------------------------
 
-filterInstantiatedTypeClasses :: Set.Set TypeClass -> Set.Set TypeClass
-filterInstantiatedTypeClasses = Set.filter $ not . Set.null . ftv
+-- | Top-level inference dispatcher. Pattern-matches on the expression
+-- constructor and delegates to the appropriate helper.
+infer :: Expr (Pinned VCObjectHash) SourcePos -> Infer s InferResult
+infer expr = case expr of
+  -- Literals: ints get a @numeric@ typeclass constraint; others are ground
+  --
+  -- NOTE: due to constraint above `int` inference MUST come before other
+  -- `Lit` inference. Do NOT re-order these two or the typechecker will fail
+  Lit pos l@(LInt _) -> inferLitInt expr loc pos l
+  Lit _ l -> inferLitOther expr loc l
+  Var pos pin _ (Expl x) -> inferVarExpl expr loc pos pin x
+  Var _ _ _ (Impl x) -> inferVarImpl expr loc x
+  OpVar _ pin _ ident -> inferOpVar expr loc pin ident
+  Enum _ pin _ ident -> inferEnum expr loc pin ident
+  InterpolatedString p xs end -> inferInterp expr loc p xs end
+  Record open fes close -> inferRecord expr loc open fes close
+  RecordField pos recNm fieldNm -> inferRecField expr loc pos recNm fieldNm
+  Array open elems close -> inferArray expr loc open elems close
+  ArrayComp open body pipe rawSels cond close ->
+    inferArrayComp
+      loc
+      ArrayCompBinding
+        { open
+        , body
+        , pipe
+        , cond
+        , close
+        , sels = fmap toSel rawSels
+        }
+  Lam funPos args arrowPos body -> inferLam funPos args arrowPos body
+  App e1 e2 -> inferApp loc e1 e2
+  Let letPos varPos (Expl ident) eqPos rhs inPos inExpr ->
+    inferLet
+      loc
+      LetBinding
+        { letPos
+        , varPos
+        , ident
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
+  Let letPos varPos (Impl ident) eqPos rhs inPos inExpr ->
+    inferLetImpl
+      loc
+      LetBinding
+        { letPos
+        , varPos
+        , ident
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
+  LetAnnot letPos varPos ident annotPos scheme eqPos rhs inPos inExpr ->
+    inferLetAnnot
+      loc
+      LetAnnotBinding
+        { letPos
+        , varPos
+        , ident
+        , annotPos
+        , scheme
+        , eqPos
+        , rhs
+        , inPos
+        , inExpr
+        }
+  Op lhs opPos pin opMeta modNm op rhs ->
+    inferOp
+      loc
+      OpBinding
+        { lhs
+        , opPos
+        , pin
+        , opMeta
+        , modNm
+        , op
+        , rhs
+        }
+  PreOp opPos pin opLvl modNm op operand ->
+    inferPreOp
+      loc
+      PreOpBinding
+        { opPos
+        , pin
+        , opLvl
+        , modNm
+        , op
+        , operand
+        }
+  If ifPos cond thenPos tr elsePos fl ->
+    inferIf
+      loc
+      IfBinding{ifPos, cond, thenPos, tr, elsePos, fl}
+  Tuple open elems close -> inferTuple expr loc open elems close
+  Assert assertPos cond inPos e -> inferAssert loc assertPos cond inPos e
+  Case matchPos scrut openPos rawBranches closePos ->
+    inferCase loc scrut (fmap toBranch rawBranches) <&> \cr ->
+      InferResult
+        { expr =
+            Case matchPos cr.scrutExpr openPos (fmap fromBranch cr.branches) closePos
+        , typ = cr.typ
+        , tcs = cr.tcs
+        }
+  One pos e -> inferOne loc pos e
+  Empty _ -> inferEmpty expr loc
+  RenameModule namePos newNm oldPos oldNm inPos body ->
+    inferRenameModule
+      RenameModuleBinding
+        { namePos
+        , newNm
+        , oldPos
+        , oldNm
+        , inPos
+        , body
+        }
+  OpenModule openPos pin modNm imports inPos body ->
+    inferOpenModule
+      OpenModuleBinding
+        { openPos
+        , pin
+        , modNm
+        , imports
+        , inPos
+        , body
+        }
+  TypeRep _ t -> inferTypeRep expr t
+  -- Syntactic wrappers (these are structurally transparent)
+  CommentAbove c e -> inferCommentAbove c e
+  CommentAfter e c -> inferCommentAfter e c
+  CommentBelow e c -> inferCommentBelow e c
+  Bracketed p1 e p2 -> inferBracketed p1 e p2
+  where
+    loc :: Location SourcePos
+    loc = blockPosition expr
 
+    toSel ::
+      ( SourcePos
+      , Ident
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      , Maybe SourcePos
+      ) ->
+      Selector
+    toSel (identPos, ident, arrowPos, gen, commaPos) =
+      Selector
+        { identPos
+        , ident
+        , arrowPos
+        , gen
+        , commaPos
+        }
+
+    toBranch ::
+      ( SourcePos
+      , Pat (Pinned VCObjectHash) SourcePos
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      ) ->
+      CaseBranch
+    toBranch (barPos, pat, arrPos, body) =
+      CaseBranch
+        { barPos
+        , pat
+        , arrPos
+        , body
+        }
+
+    fromBranch ::
+      CaseBranch ->
+      ( SourcePos
+      , Pat (Pinned VCObjectHash) SourcePos
+      , SourcePos
+      , Expr (Pinned VCObjectHash) SourcePos
+      )
+    fromBranch b = (b.barPos, b.pat, b.arrPos, b.body)
+
+-------------------------------------------------------------------------------
+-- Inference Helpers
+-------------------------------------------------------------------------------
+
+-- | Infer an integer literal. Creates a fresh type variable constrained by
+-- the @numeric@ typeclass, and wraps the expression with an implicit @TRep@
+-- argument (used for runtime representation dispatch).
+inferLitInt ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Lit ->
+  Infer s InferResult
+inferLitInt expr loc pos l = do
+  tv <- freshTVar
+  i <- ExtIdent . Left <$> freshTVRaw
+
+  let tyCls :: TypeClass
+      tyCls = TypeClass "numeric" [tv]
+
+  deferTC loc tyCls
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = Lit () l
+      , ty = (Set.singleton tyCls, ImplType mempty tv)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr = App expr . Var pos Local LocalScope $ Impl i
+      , typ = flip ImplType tv . Map.singleton i $ TRep tv
+      , tcs = Set.singleton tyCls
+      }
+
+-- | Infer a non-integer literal (@LDouble@, @LHex@, @LText@).
+-- The type is known ground; no typeclass constraint is needed.
+inferLitOther ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Lit ->
+  Infer s InferResult
+inferLitOther expr loc l = do
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = Lit () l
+      , ty = (mempty, ImplType mempty t)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr
+      , typ = ImplType mempty t
+      , tcs = mempty
+      }
+  where
+    t :: InfernoType
+    t = litType l
+
+    litType :: Lit -> InfernoType
+    litType = \case
+      LDouble _ -> typeDouble
+      LHex _ -> typeWord64
+      LText _ -> typeText
+      -- This is ugly but necessary. Int literals really must be inferred first,
+      -- see `infer`
+      LInt _ ->
+        error "internal typechecker error: ints MUST be inferred before other literals"
+
+-- | Infer an explicit variable reference. Looks up its type scheme in the
+-- environment, instantiates it, and handles @rep@ typeclass constraints by
+-- creating implicit @TRep@ arguments.
+inferVarExpl ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Pinned VCObjectHash ->
+  ExtIdent ->
+  Infer s InferResult
+inferVarExpl expr loc pos mHash x = do
+  meta <- lookupEnv loc $ maybe (Right x) Left $ pinnedToMaybe mHash
+  let tcs :: Set TypeClass
+      tcs = fst meta.ty
+
+      iType :: ImplType
+      iType = snd meta.ty
+  attachTypeToPosition loc meta
+  let repAndNon :: (Set TypeClass, Set TypeClass)
+      repAndNon = Set.partition isRepTC tcs
+      (repTcs, nonRepTcs) = repAndNon
+  for_ nonRepTcs $ deferTC loc
+  Set.lookupMin repTcs & \case
+    Just (TypeClass _ repTys) ->
+      traverse mkRepImpl repTys <&> \repImpls ->
+        InferResult
+          { expr =
+              foldl' App expr $
+                fmap (Var pos Local LocalScope . Impl . fst) repImpls
+          , typ = ImplType (iType.impl `Map.union` Map.fromList repImpls) iType.body
+          , tcs = nonRepTcs
+          }
+    Nothing ->
+      pure
+        InferResult
+          { expr
+          , typ = iType
+          , tcs = nonRepTcs
+          }
+  where
+    isRepTC :: TypeClass -> Bool
+    isRepTC (TypeClass nm _) = nm == "rep"
+
+    mkRepImpl :: InfernoType -> Infer s (ExtIdent, InfernoType)
+    mkRepImpl repTy =
+      (,TRep repTy) . ExtIdent . Left <$> freshTVRaw
+
+-- | Infer an implicit variable reference. Creates a fresh type variable
+-- and records it in the implicit map.
+inferVarImpl ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  ExtIdent ->
+  Infer s InferResult
+inferVarImpl expr loc x = do
+  tv <- freshTVar
+  let implTy :: ImplType
+      implTy = ImplType (Map.singleton x tv) tv
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) expr
+      , ty = (mempty, implTy)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr
+      , typ = implTy
+      , tcs = mempty
+      }
+
+-- | Infer a prefix-used operator (e.g. @(+)@). Op vars must always be pinned.
+inferOpVar ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Ident ->
+  Infer s InferResult
+inferOpVar expr loc pin ident =
+  lookupPinned loc pin (OpNamespace ident) >>= \meta -> do
+    attachTypeToPosition loc meta
+    for_ (fst meta.ty) $ deferTC loc
+    pure
+      InferResult
+        { expr
+        , typ = snd meta.ty
+        , tcs = fst meta.ty
+        }
+
+-- | Infer an enum constructor. Enums must always be pinned.
+inferEnum ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Ident ->
+  Infer s InferResult
+inferEnum expr loc pin ident =
+  lookupPinned loc pin (EnumNamespace ident) >>= \meta -> do
+    attachTypeToPosition
+      loc
+      meta
+        { identExpr = bimap (const ()) (const ()) expr
+        }
+    pure
+      InferResult
+        { expr
+        , typ = snd meta.ty
+        , tcs = mempty
+        }
+
+-- | Infer an interpolated string. Each embedded expression is inferred
+-- independently; the overall type is @text@. Implicit maps are merged eagerly.
+inferInterp ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  SomeIStr (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos) ->
+  SourcePos ->
+  Infer s InferResult
+inferInterp expr loc p xs end = do
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (mempty, ImplType mempty typeText)
+      , docs = Nothing
+      }
+
+  (parts, impls, tcSets) <- fmap unzip3 . traverse inferPart $ toEitherList xs
+  merged <- mergeImplMaps loc impls
+  pure
+    InferResult
+      { expr = InterpolatedString p (fromEitherList parts) end
+      , typ = ImplType merged typeText
+      , tcs = mconcat tcSets
+      }
+  where
+    inferPart ::
+      Either
+        Text
+        ( SourcePos
+        , Expr (Pinned VCObjectHash) SourcePos
+        , SourcePos
+        ) ->
+      Infer
+        s
+        ( Either Text (SourcePos, Expr (Pinned VCObjectHash) SourcePos, SourcePos)
+        , Map ExtIdent InfernoType
+        , Set TypeClass
+        )
+    inferPart = \case
+      Left str -> pure (Left str, mempty, mempty)
+      Right (p1, e, p2) ->
+        infer e <&> \r -> (Right (p1, r.expr, p2), r.typ.impl, r.tcs)
+
+-- | Infer a record literal @{ f1 = e1; f2 = e2; ... }@. Each field
+-- expression is inferred; implicit maps are merged eagerly.
+inferRecord ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  [(Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+  SourcePos ->
+  Infer s InferResult
+inferRecord expr loc open fes close = do
+  checkDuplicateFields loc fes
+  results <- traverse (infer . snd3) fes
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
+  let names :: [Ident]
+      names = fmap fst3 fes
+
+      fieldTypes :: Map Ident InfernoType
+      fieldTypes = Map.fromList $ zip names (fmap (.typ.body) results)
+
+      rebuiltFes :: [(Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)]
+      rebuiltFes = zipWith rebuildFe fes results
+
+      rebuildFe ::
+        (Ident, a, Maybe SourcePos) ->
+        InferResult ->
+        (Ident, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)
+      rebuildFe fe r = (fst3 fe, r.expr, thd3 fe)
+
+      recTy :: ImplType
+      recTy = ImplType merged $ TRecord fieldTypes RowAbsent
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (mempty, recTy)
+      , docs = Nothing
+      }
+
+  pure
+    InferResult
+      { expr = Record open rebuiltFes close
+      , typ = recTy
+      , tcs = foldMap (.tcs) results
+      }
+
+-- | Infer a record field access @r.f@. Synthesizes a record type with
+-- the accessed field and a fresh row variable, then unifies it with the
+-- inferred type of @r@.
+inferRecField ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  Ident ->
+  Ident ->
+  Infer s InferResult
+inferRecField expr loc pos (Ident recN) fieldName = do
+  r <- infer . Var pos Local LocalScope . Expl . ExtIdent $ Right recN
+  fieldTv <- freshTVar
+  rowTv <- freshTV
+
+  let recTy :: InfernoType
+      recTy = TRecord (Map.singleton fieldName fieldTv) $ RowVar rowTv
+
+  unify [UnificationFail r.tcs r.typ.body recTy loc] r.typ.body recTy
+  pure
+    InferResult
+      { expr
+      , typ = ImplType r.typ.impl fieldTv
+      , tcs = r.tcs
+      }
+
+-- | Infer an array literal. Creates a fresh element type variable and
+-- unifies every element against it (handles empty arrays uniformly).
+inferArray ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  [(Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+  SourcePos ->
+  Infer s InferResult
+inferArray expr loc open elems close = do
+  elemTv <- freshTVar
+  results <- for elems $ inferElem elemTv
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
+  let arrTy :: ImplType
+      arrTy = ImplType merged $ TArray elemTv
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (mempty, arrTy)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr = Array open (zip (fmap (.expr) results) (fmap snd elems)) close
+      , typ = arrTy
+      , tcs = foldMap (.tcs) results
+      }
+  where
+    inferElem ::
+      InfernoType ->
+      (Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos) ->
+      Infer s InferResult
+    inferElem tv (e, _) =
+      infer e >>= \r ->
+        r
+          <$ unify [UnificationFail r.tcs tv r.typ.body $ blockPosition e] tv r.typ.body
+
+-- | Infer an array comprehension @[body | x <- gen, ... if cond]@.
+-- Each selector binds a variable into scope for subsequent selectors,
+-- the body, and the optional condition.
+inferArrayComp :: Location SourcePos -> ArrayCompBinding -> Infer s InferResult
+inferArrayComp loc ac = do
+  checkVarOverlap selList mempty
+
+  cr <- processSels selList
+  merged <- mergeImplMaps loc $ cr.bodyResult.typ.impl : cr.condImpl : cr.selImpls
+  rebuiltSels <-
+    toList cr.rebuiltSels & \case
+      h : t -> pure $ fmap fromSelector (h :| t)
+      -- Not possible in practice
+      [] -> throwError mempty
+
+  pure
+    InferResult
+      { expr = ArrayComp ac.open cr.bodyResult.expr ac.pipe rebuiltSels cr.condExpr ac.close
+      , typ = ImplType merged . TArray $ cr.bodyResult.typ.body
+      , tcs = cr.bodyResult.tcs <> cr.condTcs <> cr.selTcs
+      }
+  where
+    selList :: [Selector]
+    selList = toList ac.sels
+
+    -- Check for duplicate variable names in selectors. Uses a `Map` to track
+    -- first-occurrence locations for O(n log n) instead of O(n^2).
+    checkVarOverlap ::
+      [Selector] ->
+      Map Ident (Location SourcePos) ->
+      Infer s ()
+    checkVarOverlap = \cases
+      [] _ -> pure ()
+      (sel : rest) seen ->
+        case Map.lookup sel.ident seen of
+          Just prev ->
+            throwError
+              [ VarMultipleOccurrence sel.ident prev $
+                  elementPosition sel.identPos sel.ident
+              ]
+          Nothing ->
+            checkVarOverlap rest
+              . flip (Map.insert sel.ident) seen
+              $ elementPosition sel.identPos sel.ident
+
+    -- Process selectors left-to-right, nesting `inEnv` calls so each
+    -- subsequent selector (and the body/condition) sees all prior bindings.
+    -- Returns a `CompResult` with rebuilt selectors in forward order
+    -- (built during unwinding via `(<|)`).
+    processSels :: [Selector] -> Infer s CompResult
+    processSels = \case
+      [] -> do
+        rBody <- infer ac.body
+        (ce, ci, ct) <- inferCond
+        pure
+          CompResult
+            { rebuiltSels = mempty
+            , selImpls = mempty
+            , selTcs = mempty
+            , bodyResult = rBody
+            , condExpr = ce
+            , condImpl = ci
+            , condTcs = ct
+            }
+      (sel : rest) -> do
+        (rGen, _, binding) <- inferSel sel
+        inEnv binding $
+          processSels rest <&> \cr ->
+            cr
+              { rebuiltSels = sel{gen = rGen.expr} <| cr.rebuiltSels
+              , selImpls = rGen.typ.impl : cr.selImpls
+              , selTcs = rGen.tcs <> cr.selTcs
+              }
+
+    -- Infer a single selector: infer the generator, unify with `TArray tv`,
+    -- attach metadata, and build the environment binding.
+    inferSel ::
+      Selector ->
+      Infer s (InferResult, InfernoType, (ExtIdent, TypeMetadata TCScheme))
+    inferSel sel = do
+      rGen <- infer sel.gen
+      tv <- freshTVar
+      unify
+        [UnificationFail rGen.tcs rGen.typ.body (TArray tv) $ blockPosition sel.gen]
+        rGen.typ.body
+        (TArray tv)
+
+      let Ident x = sel.ident
+          xExt :: ExtIdent
+          xExt = ExtIdent $ Right x
+
+          varExpr :: Expr () ()
+          varExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+
+      attachTypeToPosition (elementPosition sel.identPos sel.ident) $
+        TypeMetadata
+          { identExpr = varExpr
+          , ty = (rGen.tcs, ImplType rGen.typ.impl tv)
+          , docs = Nothing
+          }
+      pure
+        ( rGen
+        , tv
+        ,
+          ( xExt
+          , TypeMetadata
+              { identExpr = varExpr
+              , ty = ForallTC mempty rGen.tcs $ ImplType rGen.typ.impl tv
+              , docs = Nothing
+              }
+          )
+        )
+
+    -- Infer the optional condition expression, unifying with `bool`.
+    inferCond ::
+      Infer
+        s
+        ( Maybe (SourcePos, Expr (Pinned VCObjectHash) SourcePos)
+        , Map ExtIdent InfernoType
+        , Set TypeClass
+        )
+    inferCond = case ac.cond of
+      Nothing -> pure (Nothing, mempty, mempty)
+      Just (p, eCond) -> do
+        rCond <- infer eCond
+        unify
+          [UnificationFail rCond.tcs rCond.typ.body typeBool $ blockPosition eCond]
+          rCond.typ.body
+          typeBool
+        pure (Just (p, rCond.expr), rCond.typ.impl, rCond.tcs)
+
+    fromSelector ::
+      Selector ->
+      (SourcePos, Ident, SourcePos, Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)
+    fromSelector s = (s.identPos, s.ident, s.arrowPos, s.gen, s.commaPos)
+
+-- | Infer a lambda expression @fun x y z -> body@. Creates fresh type
+-- variables for each parameter, extends the environment for named params,
+-- and builds the resulting arrow type from right to left.
+inferLam ::
+  SourcePos ->
+  NonEmpty (SourcePos, Maybe ExtIdent) ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferLam funPos args arrowPos bodyExpr =
+  processArgs (toList args) <&> \r ->
+    InferResult
+      { expr = Lam funPos args arrowPos r.expr
+      , typ = r.typ
+      , tcs = r.tcs
+      }
+  where
+    -- Process parameters left-to-right, nesting `inEnv` for named args.
+    -- Builds arrow types right-to-left during unwinding.
+    processArgs :: [(SourcePos, Maybe ExtIdent)] -> Infer s InferResult
+    processArgs = \case
+      [] -> infer bodyExpr
+      (pos, mx) : rest -> do
+        tv <- freshTVar
+        r <- maybe id (inEnv . mkBinding tv) mx $ processArgs rest
+
+        attachArgMeta pos mx tv
+        pure
+          InferResult
+            { expr = r.expr
+            , typ = ImplType r.typ.impl $ tv `TArr` r.typ.body
+            , tcs = r.tcs
+            }
+
+    mkBinding :: InfernoType -> ExtIdent -> (ExtIdent, TypeMetadata TCScheme)
+    mkBinding tv x =
+      ( x
+      , TypeMetadata
+          { identExpr = Var () () LocalScope $ Expl x
+          , ty = ForallTC mempty mempty $ ImplType mempty tv
+          , docs = Nothing
+          }
+      )
+
+    -- Attach type metadata for the parameter position. Named (non-internal)
+    -- parameters and wildcards get source location entries; internal vars
+    -- (generated by the compiler) are skipped via `for_` on `Either`.
+    attachArgMeta :: SourcePos -> Maybe ExtIdent -> InfernoType -> Infer s ()
+    attachArgMeta pos mx tv = case mx of
+      Just (ExtIdent ei) ->
+        for_ ei $ \i ->
+          attachTypeToPosition (elementPosition pos (Just (Ident i))) $
+            TypeMetadata
+              { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right i
+              , ty = (mempty, ImplType mempty tv)
+              , docs = Nothing
+              }
+      Nothing ->
+        attachTypeToPosition (elementPosition @(Maybe Ident) pos Nothing) $
+          TypeMetadata
+            { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right "_"
+            , ty = (mempty, ImplType mempty tv)
+            , docs = Nothing
+            }
+
+-- | Infer a function application @e1 e2@. Infers both sides, merges implicit
+-- maps, then unifies the function type eagerly. Zonks the function body type
+-- first to distinguish arrow-mismatch errors from non-function errors.
+inferApp ::
+  Location SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferApp loc e1 e2 = do
+  r1 <- infer e1
+  r2 <- infer e2
+  tv <- freshTVar
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = r1.tcs <> r2.tcs
+
+  zonk r1.typ.body >>= \case
+    TArr argTy resTy -> do
+      unify [UnificationFail tcs argTy r2.typ.body $ blockPosition e2] argTy r2.typ.body
+      unify [UnificationFail tcs resTy tv loc] resTy tv
+    fnTy ->
+      unify
+        [ ExpectedFunction tcs (r2.typ.body `TArr` tv) fnTy $
+            blockPosition e1
+        ]
+        fnTy
+        $ r2.typ.body `TArr` tv
+
+  pure
+    InferResult
+      { expr = App r1.expr r2.expr
+      , typ = ImplType merged tv
+      , tcs
+      }
+
+-- | Infer an explicit let binding @let x = e1 in e2@. The bound variable
+-- is non-generalized (monomorphic within @e2@).
+inferLet :: Location SourcePos -> LetBinding -> Infer s InferResult
+inferLet loc lb = do
+  r1 <- infer lb.rhs
+
+  let binding :: (ExtIdent, TypeMetadata TCScheme)
+      binding =
+        ( lb.ident
+        , TypeMetadata
+            { identExpr = Var () () LocalScope $ Expl lb.ident
+            , ty = ForallTC mempty r1.tcs $ ImplType r1.typ.impl r1.typ.body
+            , docs = Nothing
+            }
+        )
+
+  r2 <- inEnv binding $ infer lb.inExpr
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
+
+  attachTypeToPosition (elementPosition lb.varPos (Expl lb.ident)) $
+    TypeMetadata
+      { identExpr = Var () () LocalScope $ Expl lb.ident
+      , ty = (r1.tcs, ImplType r1.typ.impl r1.typ.body)
+      , docs = Nothing
+      }
+
+  pure
+    InferResult
+      { expr = Let lb.letPos lb.varPos (Expl lb.ident) lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs = r1.tcs <> r2.tcs
+      }
+
+-- | Infer an implicit let binding @let ?x = e1 in e2@. If @?x@ appears in
+-- @e2@'s implicit map, its type is unified with @e1@'s body type.
+inferLetImpl :: Location SourcePos -> LetBinding -> Infer s InferResult
+inferLetImpl loc lb = do
+  r1 <- infer lb.rhs
+  r2 <- infer lb.inExpr
+
+  -- If `x` is in `r2`'s implicits, unify with `r1`'s body; otherwise
+  -- create a fresh var (the unification still constrains `r1`'s type).
+  implTv <- maybe (fmap TVar freshTV) pure $ Map.lookup lb.ident r2.typ.impl
+
+  let tcs :: Set TypeClass
+      tcs = r1.tcs <> r2.tcs
+
+  unify [ImplicitVarTypeOverlap tcs lb.ident implTv r1.typ.body loc] implTv r1.typ.body
+  merged <-
+    mergeImplMaps
+      loc
+      [ r1.typ.impl
+      , Map.withoutKeys r2.typ.impl $
+          Set.singleton lb.ident
+      ]
+  pure
+    InferResult
+      { expr = Let lb.letPos lb.varPos (Impl lb.ident) lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs
+      }
+
+-- | Infer a type-annotated let binding @let x : T = e1 in e2@. Instantiates
+-- the annotation, unifies it with @e1@'s inferred type, and defers the
+-- annotation's typeclass constraints for later resolution.
+inferLetAnnot :: Location SourcePos -> LetAnnotBinding -> Infer s InferResult
+inferLetAnnot loc lb = do
+  r1 <- infer lb.rhs
+  (annotTcs, ImplType annotImpl annotBody) <- instantiate lb.scheme
+
+  unify
+    [AnnotationUnificationFail r1.tcs r1.typ.body annotBody $ blockPosition lb.rhs]
+    r1.typ.body
+    annotBody
+
+  attachTypeToPosition (elementPosition lb.varPos (Expl lb.ident)) $
+    TypeMetadata
+      { identExpr = Var () () LocalScope $ Expl lb.ident
+      , ty = (annotTcs, ImplType annotImpl annotBody)
+      , docs = Nothing
+      }
+
+  let binding :: (ExtIdent, TypeMetadata TCScheme)
+      binding =
+        ( lb.ident
+        , TypeMetadata
+            { identExpr = Var () () LocalScope $ Expl lb.ident
+            , ty = ForallTC mempty annotTcs $ ImplType annotImpl annotBody
+            , docs = Nothing
+            }
+        )
+
+  r2 <- inEnv binding $ infer lb.inExpr
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl, annotImpl]
+
+  -- Defer annotation typeclasses for post-inference resolution
+  for_ annotTcs $ deferTC loc
+
+  pure
+    InferResult
+      { expr =
+          LetAnnot lb.letPos lb.varPos lb.ident lb.annotPos lb.scheme lb.eqPos r1.expr lb.inPos r2.expr
+      , typ = ImplType merged r2.typ.body
+      , tcs = r1.tcs <> r2.tcs <> annotTcs
+      }
+
+-- | Infer an infix operator application @e1 `op` e2@. Looks up the operator
+-- (must be pinned), decomposes its type into @u1 -> u2 -> u3@, and unifies
+-- each component with the operand types.
+inferOp :: Location SourcePos -> OpBinding -> Infer s InferResult
+inferOp loc ob = do
+  r1 <- infer ob.lhs
+  r2 <- infer ob.rhs
+  meta <- lookupPinnedOp opLoc ob.pin
+
+  let opTcs :: Set TypeClass
+      opTcs = fst meta.ty
+
+  (u1, u2, u3) <- opDecompose opLoc opTcs $ snd meta.ty
+  tv <- freshTVar
+  merged <- mergeImplMaps loc [r1.typ.impl, r2.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = r1.tcs <> r2.tcs
+
+  unify [UnificationFail tcs u1 r1.typ.body $ blockPosition ob.lhs] u1 r1.typ.body
+  unify [UnificationFail tcs u2 r2.typ.body $ blockPosition ob.rhs] u2 r2.typ.body
+  unify [UnificationFail tcs u3 tv loc] u3 tv
+
+  attachTypeToPosition opLoc $
+    meta
+      { ty =
+          ( opTcs
+          , ImplType mempty $ r1.typ.body `TArr` (r2.typ.body `TArr` tv)
+          )
+      }
+
+  for_ opTcs $ deferTC opLoc
+
+  pure
+    InferResult
+      { expr = Op r1.expr ob.opPos ob.pin ob.opMeta ob.modNm ob.op r2.expr
+      , typ = ImplType merged tv
+      , tcs = tcs <> opTcs
+      }
+  where
+    opLoc :: Location SourcePos
+    opLoc = mkOpLoc ob.opPos ob.op ob.modNm
+
+-- | Infer a prefix operator application @op e@. Looks up the operator
+-- (must be pinned), decomposes its type into @u1 -> u2@, and unifies
+-- each component with the operand type.
+inferPreOp :: Location SourcePos -> PreOpBinding -> Infer s InferResult
+inferPreOp loc pb = do
+  r <- infer pb.operand
+  meta <- lookupPinnedOp opLoc pb.pin
+
+  let opTcs :: Set TypeClass
+      opTcs = fst meta.ty
+
+  (u1, u2) <- preOpDecompose opLoc opTcs $ snd meta.ty
+  tv <- freshTVar
+
+  unify [UnificationFail r.tcs u1 r.typ.body $ blockPosition pb.operand] u1 r.typ.body
+  unify [UnificationFail r.tcs u2 tv loc] u2 tv
+
+  attachTypeToPosition opLoc $
+    meta
+      { ty = (opTcs, ImplType mempty $ r.typ.body `TArr` tv)
+      }
+
+  for_ opTcs $ deferTC opLoc
+
+  pure
+    InferResult
+      { expr = PreOp pb.opPos pb.pin pb.opLvl pb.modNm pb.op r.expr
+      , typ = ImplType r.typ.impl tv
+      , tcs = r.tcs <> opTcs
+      }
+  where
+    opLoc :: Location SourcePos
+    opLoc = mkOpLoc pb.opPos pb.op pb.modNm
+
+-- | Infer an @if cond then tr else fl@ expression. Unifies the
+-- condition with @bool@ and unifies both branches.
+inferIf :: Location SourcePos -> IfBinding -> Infer s InferResult
+inferIf loc ib = do
+  rc <- infer ib.cond
+  rt <- infer ib.tr
+  rf <- infer ib.fl
+  merged <- mergeImplMaps loc [rc.typ.impl, rt.typ.impl, rf.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = rc.tcs <> rt.tcs <> rf.tcs
+
+  unify [IfConditionMustBeBool tcs rc.typ.body $ blockPosition ib.cond] rc.typ.body typeBool
+  unify
+    [ IfBranchesMustBeEqType tcs rt.typ.body rf.typ.body (blockPosition ib.tr) $
+        blockPosition ib.fl
+    ]
+    rt.typ.body
+    rf.typ.body
+
+  pure
+    InferResult
+      { expr = If ib.ifPos rc.expr ib.thenPos rt.expr ib.elsePos rf.expr
+      , typ = ImplType merged rt.typ.body
+      , tcs
+      }
+
+-- | Infer a tuple expression @(e1, e2, ...)@. Infers each element,
+-- merges implicit maps, and wraps the result types in @TTuple@.
+inferTuple ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  SourcePos ->
+  TList (Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos) ->
+  SourcePos ->
+  Infer s InferResult
+inferTuple expr loc open elems close = do
+  results <- traverse (infer . fst) elemList
+  merged <- mergeImplMaps loc $ fmap (.typ.impl) results
+
+  let tupTy :: ImplType
+      tupTy = ImplType merged . TTuple . tListFromList $ fmap (.typ.body) results
+
+  attachTypeToPosition loc $
+    TypeMetadata
+      { identExpr = bimap (const ()) (const ()) $ removeComments expr
+      , ty = (mempty, tupTy)
+      , docs = Nothing
+      }
+  pure
+    InferResult
+      { expr =
+          flip (Tuple open) close . tListFromList $
+            zip (fmap (.expr) results) commas
+      , typ = tupTy
+      , tcs = foldMap (.tcs) results
+      }
+  where
+    elemList :: [(Expr (Pinned VCObjectHash) SourcePos, Maybe SourcePos)]
+    elemList = tListToList elems
+
+    commas :: [Maybe SourcePos]
+    commas = fmap snd elemList
+
+-- | Infer an @assert cond in e@ expression. Unifies the condition
+-- with @bool@ and returns the body type unchanged.
+inferAssert ::
+  Location SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferAssert loc assertPos cond inPos e = do
+  rc <- infer cond
+  rb <- infer e
+  merged <- mergeImplMaps loc [rc.typ.impl, rb.typ.impl]
+
+  let tcs :: Set TypeClass
+      tcs = rc.tcs <> rb.tcs
+
+  unify [AssertConditionMustBeBool tcs rc.typ.body $ blockPosition cond] rc.typ.body typeBool
+
+  pure
+    InferResult
+      { expr = Assert assertPos rc.expr inPos rb.expr
+      , typ = ImplType merged rb.typ.body
+      , tcs
+      }
+
+-- | Infer a @match e { | p1 -> e1 | p2 -> e2 ... }@ expression.
+-- Infers the scrutinee, generates pattern constraints, unifies all
+-- pattern types with the scrutinee, and unifies all branch body types.
+-- Returns a 'CaseResult'; the caller assembles the final 'Case' 'Expr'.
+inferCase ::
+  forall s.
+  Location SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  NonEmpty CaseBranch ->
+  Infer s CaseResult
+inferCase loc scrut branches = do
+  -- Check for duplicate variable bindings within each pattern
+  for_ branches $ void . checkVarOverlap mempty . (.pat)
+
+  r <- infer scrut
+  patResults <- for branches $ mkPatConstraint . (.pat)
+
+  -- Register patterns for exhaustiveness checking
+  addCasePatterns loc $ toList pats
+
+  let patTys :: NonEmpty InfernoType
+      patTys = fmap fst patResults
+
+  -- Infer each branch body with the pattern variables in scope
+  bodyResults <-
+    for (NonEmpty.zip (fmap snd patResults) branches) $ \(vars, branch) ->
+      foldr (inEnv . bindVar) (infer branch.body) vars
+
+  merged <-
+    mergeImplMaps loc $
+      r.typ.impl : toList (fmap (.typ.impl) bodyResults)
+
+  let tcs :: Set TypeClass
+      tcs = r.tcs <> foldMap (.tcs) bodyResults
+
+      mk :: InfernoType -> Pat (Pinned VCObjectHash) SourcePos -> Infer s ()
+      mk t p = unify [PatternUnificationFail t r.typ.body p $ blockPosition p] t r.typ.body
+
+  -- All pattern types must be equal to each other
+  unifyPairs (toList pats) (toList patTys) $
+    \p1 t1 p2 t2 ->
+      [PatternsMustBeEqType tcs t1 t2 p1 p2 (blockPosition p1) (blockPosition p2)]
+
+  -- Each pattern type must equal the scrutinee type
+  zipWithM_ mk (toList patTys) $ toList pats
+
+  -- All branch body types must be equal
+  unifyPairs (toList $ fmap (.body) branches) (toList $ fmap (.typ.body) bodyResults) $ \e1 t1 e2 t2 ->
+    [CaseBranchesMustBeEqType tcs t1 t2 (blockPosition e1) (blockPosition e2)]
+
+  let rebuiltBranches :: NonEmpty CaseBranch
+      rebuiltBranches =
+        NonEmpty.zip branches bodyResults
+          <&> \(b, res) -> CaseBranch b.barPos b.pat b.arrPos res.expr
+
+  pure
+    CaseResult
+      { scrutExpr = r.expr
+      , branches = rebuiltBranches
+      , typ = ImplType merged (NonEmpty.head bodyResults).typ.body
+      , tcs
+      }
+  where
+    bindVar :: (Ident, TypeMetadata TCScheme) -> (ExtIdent, TypeMetadata TCScheme)
+    bindVar (Ident x, meta) = (ExtIdent $ Right x, meta)
+
+    pats :: NonEmpty (Pat (Pinned VCObjectHash) SourcePos)
+    pats = fmap (.pat) branches
+
+    -- For each distinct pair `(a_i, t_i)` and `(a_j, t_j)` where `i < j`,
+    -- call `unify (mkErr a_i t_i a_j t_j) t_i t_j`.
+    unifyPairs ::
+      forall a.
+      [a] ->
+      [InfernoType] ->
+      (a -> InfernoType -> a -> InfernoType -> [TypeError SourcePos]) ->
+      Infer s ()
+    unifyPairs as ts mkErr = go $ zip as ts
+      where
+        go :: [(a, InfernoType)] -> Infer s ()
+        go = \case
+          [] -> pure ()
+          (a1, t1) : rest -> do
+            for_ rest $ \(a2, t2) -> unify (mkErr a1 t1 a2 t2) t1 t2
+            go rest
+
+    addCasePatterns ::
+      Location SourcePos ->
+      [Pat (Pinned VCObjectHash) SourcePos] ->
+      Infer s ()
+    addCasePatterns k ps =
+      asks (.refs.patternsToCheck) >>= \ref ->
+        liftST . modifySTRef' ref $ ((k, ps) :)
+
+    -- Check that no variable appears more than once in a pattern.
+    -- Threads a map of seen variables and their locations through the
+    -- recursive walk; throws on duplicate.
+    checkVarOverlap ::
+      Map Ident (Location SourcePos) ->
+      Pat (Pinned VCObjectHash) SourcePos ->
+      Infer s (Map Ident (Location SourcePos))
+    checkVarOverlap vars pat = case pat of
+      PVar _ (Just x) ->
+        maybe
+          (pure (Map.insert x (blockPosition pat) vars))
+          (throwError . pure . VarMultipleOccurrence x (blockPosition pat))
+          $ Map.lookup x vars
+      POne _ p -> checkVarOverlap vars p
+      PArray _ ps _ -> foldM checkVarOverlap vars $ fmap fst ps
+      PTuple _ ps _ -> foldM checkVarOverlap vars . fmap fst $ tListToList ps
+      PRecord _ ps _ -> foldM checkVarOverlap vars $ fmap snd3 ps
+      _ -> pure vars
+
+    -- Infer the type of a pattern and return any variables it binds.
+    mkPatConstraint ::
+      Pat (Pinned VCObjectHash) SourcePos ->
+      Infer s (InfernoType, [(Ident, TypeMetadata TCScheme)])
+    mkPatConstraint pat = case pat of
+      PVar _ (Just (Ident x)) ->
+        freshTVar >>= \tv -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+              , ty = (mempty, ImplType mempty tv)
+              , docs = Nothing
+              }
+          pure
+            ( tv
+            ,
+              [
+                ( Ident x
+                , TypeMetadata
+                    { identExpr = Var () () LocalScope . Expl . ExtIdent $ Right x
+                    , ty = ForallTC mempty mempty $ ImplType mempty tv
+                    , docs = Nothing
+                    }
+                )
+              ]
+            )
+      PVar _ Nothing ->
+        freshTVar >>= \tv -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty tv)
+              , docs = Nothing
+              }
+          pure (tv, mempty)
+      PEnum _ pin sc i ->
+        lookupPinned patLoc pin (EnumNamespace i) >>= \meta -> do
+          attachTypeToPosition patLoc $ meta{identExpr = Enum () () sc i}
+          pure ((snd meta.ty).body, mempty)
+      PLit _ l -> do
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = Lit () l
+            , ty = (mempty, ImplType mempty t)
+            , docs = Nothing
+            }
+        pure (t, mempty)
+        where
+          t :: InfernoType
+          t = case l of
+            LInt _ -> typeInt
+            LDouble _ -> typeDouble
+            LHex _ -> typeWord64
+            LText _ -> typeText
+      POne _ p -> do
+        (t, vars) <- mkPatConstraint p
+        meta <- lookupEnv patLoc $ Left oneHash
+        attachTypeToPosition patLoc $
+          meta
+            { ty = (mempty, ImplType mempty . TArr t $ TOptional t)
+            }
+        pure (TOptional t, vars)
+      PEmpty _ ->
+        lookupEnv patLoc (Left emptyHash) >>= \meta -> do
+          attachTypeToPosition patLoc meta
+          pure ((snd meta.ty).body, mempty)
+      PArray _ [] _ -> do
+        (freshTV >>=) . (. TArray . TVar) $ \t -> do
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty t)
+              , docs = Nothing
+              }
+          pure (t, mempty)
+      PArray _ ((p, _) : ps) _ -> do
+        (t, vars1) <- mkPatConstraint p
+        vars2 <- inferArrayPatElems t ps
+
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+            , ty = (mempty, ImplType mempty $ TArray t)
+            , docs = Nothing
+            }
+        pure (TArray t, vars1 <> vars2)
+      PTuple _ ps _ ->
+        traverse (mkPatConstraint . fst) (tListToList ps) >>= \results -> do
+          let tupTy :: InfernoType
+              tupTy = TTuple . tListFromList $ fmap fst results
+
+              vars :: [(Ident, TypeMetadata TCScheme)]
+              vars = concatMap snd results
+          attachTypeToPosition patLoc $
+            TypeMetadata
+              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+              , ty = (mempty, ImplType mempty tupTy)
+              , docs = Nothing
+              }
+          pure (tupTy, vars)
+      PRecord _ fs _ -> do
+        checkDuplicateFields patLoc fs
+        results <- traverse (mkPatConstraint . snd3) fs
+
+        let fields :: Map Ident InfernoType
+            fields =
+              Map.fromList $
+                zip (fmap fst3 fs) $
+                  fmap fst results
+
+            vars :: [(Ident, TypeMetadata TCScheme)]
+            vars = concatMap snd results
+
+            recTy :: InfernoType
+            recTy = TRecord fields RowAbsent
+
+        attachTypeToPosition patLoc $
+          TypeMetadata
+            { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
+            , ty = (mempty, ImplType mempty recTy)
+            , docs = Nothing
+            }
+        pure (recTy, vars)
+      PCommentAbove _ p -> mkPatConstraint p
+      PCommentAfter p _ -> mkPatConstraint p
+      PCommentBelow p _ -> mkPatConstraint p
+      where
+        patLoc :: Location SourcePos
+        patLoc = blockPosition pat
+
+    -- Infer remaining elements of an array pattern, unifying each with the
+    -- first element's type.
+    inferArrayPatElems ::
+      InfernoType ->
+      [(Pat (Pinned VCObjectHash) SourcePos, Maybe SourcePos)] ->
+      Infer s [(Ident, TypeMetadata TCScheme)]
+    inferArrayPatElems = \cases
+      _ [] -> pure mempty
+      t ((p, _) : rest) -> do
+        (tp, vars1) <- mkPatConstraint p
+        unify [UnificationFail mempty t tp $ blockPosition p] t tp
+        vars2 <- inferArrayPatElems t rest
+        pure $ vars1 <> vars2
+
+-- | Infer @Some e@. Infers the inner expression, wraps its type in
+-- @TOptional@, and attaches the metadata from the builtin `oneHash`.
+inferOne ::
+  Location SourcePos ->
+  SourcePos ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Infer s InferResult
+inferOne loc pos e = do
+  r <- infer e
+  meta <- lookupEnv loc $ Left oneHash
+
+  let resTy :: ImplType
+      resTy = ImplType r.typ.impl $ TOptional r.typ.body
+
+  attachTypeToPosition
+    loc
+    meta
+      { ty = (mempty, resTy)
+      }
+  pure
+    InferResult
+      { expr = One pos r.expr
+      , typ = resTy
+      , tcs = r.tcs
+      }
+
+-- | Infer @None@. Looks up the builtin `emptyHash` to get the polymorphic
+-- @optional a@ type, instantiates it, and attaches the metadata.
+inferEmpty ::
+  Expr (Pinned VCObjectHash) SourcePos ->
+  Location SourcePos ->
+  Infer s InferResult
+inferEmpty expr loc =
+  lookupEnv loc (Left emptyHash) >>= \meta -> do
+    attachTypeToPosition loc meta
+    pure
+      InferResult
+        { expr
+        , typ = snd meta.ty
+        , tcs = mempty
+        }
+
+-- | Infer @let module NewName = OldName in e@. Temporarily aliases an existing
+-- module under a new name while inferring the body expression.
+inferRenameModule :: RenameModuleBinding -> Infer s InferResult
+inferRenameModule rb = do
+  ref <- asks (.refs.modules)
+  mods <- liftST $ readSTRef ref
+  when (rb.newNm `Map.member` mods) $
+    throwError [ModuleNameTaken rb.newNm $ elementPosition rb.namePos rb.newNm]
+  Map.lookup rb.oldNm mods & \case
+    Nothing -> throwError [ModuleDoesNotExist rb.oldNm (rb.oldPos, rb.inPos)]
+    Just oldMod -> do
+      liftST . writeSTRef ref $ Map.insert rb.newNm oldMod mods
+      r <- infer rb.body
+      -- Restore the original module map (remove the alias)
+      liftST . modifySTRef' ref $ Map.delete rb.newNm
+      pure
+        InferResult
+          { expr = RenameModule rb.namePos rb.newNm rb.oldPos rb.oldNm rb.inPos r.expr
+          , typ = r.typ
+          , tcs = r.tcs
+          }
+
+-- | Infer @open ModuleName (imports) in e@. Verifies the module exists
+-- and infers the body (imports are resolved during parsing/pinning).
+inferOpenModule :: OpenModuleBinding -> Infer s InferResult
+inferOpenModule ob = do
+  mods <- liftST . readSTRef =<< asks (.refs.modules)
+  Map.lookup ob.modNm mods & \case
+    Nothing ->
+      throwError [ModuleDoesNotExist ob.modNm $ elementPosition ob.openPos ob.modNm]
+    Just _ -> do
+      infer ob.body <&> \r ->
+        InferResult
+          { expr =
+              OpenModule ob.openPos ob.pin ob.modNm ob.imports ob.inPos r.expr
+          , typ = r.typ
+          , tcs = r.tcs
+          }
+
+-- | Infer a comment or bracketed wrapper. These are structurally transparent;
+-- the inner expression is inferred and the wrapper is preserved.
+inferCommentAbove ::
+  Comment SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> Infer s InferResult
+inferCommentAbove c e =
+  infer e <&> \r -> r{expr = CommentAbove c r.expr}
+
+inferCommentAfter ::
+  Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
+inferCommentAfter e c =
+  infer e <&> \r -> r{expr = CommentAfter r.expr c}
+
+inferCommentBelow ::
+  Expr (Pinned VCObjectHash) SourcePos -> Comment SourcePos -> Infer s InferResult
+inferCommentBelow e c =
+  infer e <&> \r -> r{expr = CommentBelow r.expr c}
+
+inferBracketed ::
+  SourcePos -> Expr (Pinned VCObjectHash) SourcePos -> SourcePos -> Infer s InferResult
+inferBracketed p1 e p2 =
+  infer e <&> \r -> r{expr = Bracketed p1 r.expr p2}
+
+-- | Infer a @TypeRep@. Produces @TRep t@ directly with no constraints.
+inferTypeRep ::
+  Expr (Pinned VCObjectHash) SourcePos -> InfernoType -> Infer s InferResult
+inferTypeRep expr t =
+  pure
+    InferResult
+      { expr
+      , typ = ImplType mempty $ TRep t
+      , tcs = mempty
+      }
+
+-- | Compute the source location span for an operator, accounting for
+-- an optional module prefix (e.g. @Module.+@).
+mkOpLoc :: SourcePos -> Ident -> Scoped ModuleName -> Location SourcePos
+mkOpLoc pos op modNm =
+  (pos, incSourceCol ePos . fromScoped 0 $ fmap modLen modNm)
+  where
+    ePos :: SourcePos
+    ePos = snd $ elementPosition pos op
+
+    modLen :: ModuleName -> Int
+    modLen (ModuleName nm) = Text.length nm + 1
+
+-- | Look up a pinned operator in the environment. Operators must always
+-- be pinned; uses @error@ for the impossible unpinned case.
+lookupPinnedOp ::
+  Location SourcePos ->
+  Pinned VCObjectHash ->
+  Infer s (TypeMetadata (Set TypeClass, ImplType))
+lookupPinnedOp loc pin =
+  lookupEnv loc
+    . Left
+    . fromMaybe (error "internal error: operators must always be pinned")
+    $ pinnedToMaybe pin
+
+-- | Decompose a binary operator type @a -> b -> c@ into its three components.
+-- If the type doesn't match, creates fresh vars and unifies, producing a
+-- proper @ExpectedFunction@ error on failure.
+opDecompose ::
+  Location SourcePos ->
+  Set TypeClass ->
+  ImplType ->
+  Infer s (InfernoType, InfernoType, InfernoType)
+opDecompose opLoc tcs = \case
+  ImplType _ (t1 `TArr` (t2 `TArr` t3)) -> pure (t1, t2, t3)
+  ImplType _ t -> do
+    a <- freshTVar
+    b <- freshTVar
+    c <- freshTVar
+    let expected :: InfernoType
+        expected = a `TArr` (b `TArr` c)
+    unify [ExpectedFunction tcs expected t opLoc] t expected
+    pure (a, b, c)
+
+-- | Decompose a prefix operator type @a -> b@ into its two components.
+-- If the type doesn't match, creates fresh vars and unifies, producing a
+-- proper @ExpectedFunction@ error on failure.
+preOpDecompose ::
+  Location SourcePos ->
+  Set TypeClass ->
+  ImplType ->
+  Infer s (InfernoType, InfernoType)
+preOpDecompose opLoc tcs = \case
+  ImplType _ (t1 `TArr` t2) -> pure (t1, t2)
+  ImplType _ t -> do
+    a <- freshTVar
+    b <- freshTVar
+    let expected :: InfernoType
+        expected = a `TArr` b
+    unify [ExpectedFunction tcs expected t opLoc] t expected
+    pure (a, b)
+
+-------------------------------------------------------------------------------
+-- Typeclass Resolution
+-------------------------------------------------------------------------------
+
+-- | Try to match (possibly polymorphic) constraint params against ground
+-- instance params. Returns the variable-to-type bindings if successful.
+tryMatchInstance :: [InfernoType] -> [InfernoType] -> Maybe (Map TV InfernoType)
+tryMatchInstance cps ips
+  | length cps /= length ips = Nothing
+  | otherwise = foldM matchType mempty $ zip cps ips
+
+-- | Structurally match a constraint type against an instance type,
+-- accumulating variable bindings. Fails on structural mismatch or
+-- inconsistent variable bindings.
+matchType ::
+  Map TV InfernoType ->
+  (InfernoType, InfernoType) ->
+  Maybe (Map TV InfernoType)
+matchType acc = \case
+  (TVar tv, t) ->
+    case Map.lookup tv acc of
+      Just existing
+        | existing /= t -> Nothing
+      _ -> Just $ Map.insert tv t acc
+  (TBase a, TBase b)
+    | a == b -> Just acc
+  (TArr a1 b1, TArr a2 b2) ->
+    (`matchType` (b1, b2)) =<< matchType acc (a1, a2)
+  (TArray a, TArray b) -> matchType acc (a, b)
+  (TSeries a, TSeries b) -> matchType acc (a, b)
+  (TOptional a, TOptional b) -> matchType acc (a, b)
+  (TRep a, TRep b) -> matchType acc (a, b)
+  (TTuple ts1, TTuple ts2)
+    | length ts1 == length ts2 ->
+        foldM matchType acc . zip (toList ts1) $ toList ts2
+  (TRecord fs1 RowAbsent, TRecord fs2 RowAbsent)
+    | Map.keys fs1 == Map.keys fs2 ->
+        foldM matchType acc . zip (Map.elems fs1) $ Map.elems fs2
+  _ -> Nothing
+
+-- | Resolve deferred typeclass constraints using a worklist algorithm.
+-- Called after the full 'infer' traversal. Each constraint is zonked,
+-- matched against known instances, and resolved via 'unify' when
+-- unambiguous. Constraints with multiple matches are partially resolved
+-- (applying agreed-upon bindings) and re-queued. The loop repeats until
+-- no more progress can be made; remaining unresolved constraints are
+-- written back to 'deferred' for later phases.
+resolveTypeClasses :: forall s. Infer s ()
+resolveTypeClasses = do
+  allClasses <- asks (.refs.tyClasses)
+  defRef <- asks (.refs.deferred)
+  raw <- liftST $ readSTRef defRef
+  zonked <- for raw $ \(loc, tc) -> (loc,) <$> zonkTC tc
+  liftST . writeSTRef defRef . (.remaining) =<< worklist allClasses zonked
+  where
+    worklist :: Set TypeClass -> [(Location SourcePos, TypeClass)] -> Infer s Worklist
+    worklist = \cases
+      _ [] -> pure $ Worklist mempty False
+      allClasses cs ->
+        foldM (resolveOne allClasses) (Worklist mempty False) cs >>= \case
+          (Worklist r@(_ : _) True) -> worklist allClasses r
+          w -> pure w
+
+    resolveOne ::
+      Set TypeClass ->
+      Worklist ->
+      (Location SourcePos, TypeClass) ->
+      Infer s Worklist
+    resolveOne allClasses wl (loc, TypeClass nm tys) =
+      (traverse zonk tys >>=) . (. first (TypeClass nm) . dupe) $ \case
+        (tc, zonkedTys)
+          | Set.null $ ftv tc ->
+              bool
+                (throwError [TypeClassNoPartialMatch tc loc])
+                (pure (Worklist wl.remaining True))
+                $ Set.member tc allClasses
+          | otherwise -> case matching of
+              [] -> throwError [TypeClassNotFoundError allClasses tc loc]
+              _ ->
+                case mapMaybe (tryMatchInstance zonkedTys . (.params)) matching of
+                  [] -> throwError [TypeClassNoPartialMatch tc loc]
+                  [sub] -> do
+                    for_ (Map.toList sub) $ \(tv, t) ->
+                      unify mempty (TVar tv) t
+                    pure $ Worklist wl.remaining True
+                  subs -> do
+                    let definite :: Map TV InfernoType
+                        definite = agreedBindings subs
+
+                        madeProgress :: Bool
+                        madeProgress = not $ Map.null definite
+
+                    when madeProgress . for_ (Map.toList definite) $
+                      \(tv, t) -> unify mempty (TVar tv) t
+                    pure . Worklist ((loc, tc) : wl.remaining) $
+                      wl.progress || madeProgress
+      where
+        matching :: [TypeClass]
+        matching = filter ((nm ==) . (.className)) $ Set.toList allClasses
+
+    -- Compute agreed-upon variable bindings across multiple substitutions;
+    -- only keeps variables where ALL substitutions assign the same type.
+    agreedBindings :: [Map TV InfernoType] -> Map TV InfernoType
+    agreedBindings = \case
+      [] -> mempty
+      s : ss ->
+        Map.mapMaybe id
+          . foldl' (Map.intersectionWith agree) (fmap Just s)
+          $ fmap (fmap Just) ss
+      where
+        agree :: (Eq a) => Maybe a -> Maybe a -> Maybe a
+        agree a b
+          | a == b = a
+          | otherwise = Nothing
+
+-- | Accumulator for the typeclass worklist: the unresolved constraints
+-- carried forward, and whether any progress was made in this pass.
+data Worklist = Worklist
+  { remaining :: ![(Location SourcePos, TypeClass)]
+  , progress :: !Bool
+  }
+
+-- | Find all satisfying type-variable assignments for a set of typeclass
+-- constraints via backtracking search.
+--
+-- Given known typeclass instances (`allClasses`), an optional solution count
+-- limit (`mLimit`), the constraints to satisfy (`tyCls`), and the set of
+-- type variables of interest (`tvs`), returns a list of substitutions that
+-- make all constraints ground and satisfied.
+--
+-- `tvs` is used to deduplicate solutions: two substitutions that agree on
+-- every variable in `tvs` are considered equivalent, and only the first is
+-- kept. This matches the behavior of the previous SAT-based implementation,
+-- where exclusion clauses were projected onto `tvs`. In practice `tvs`
+-- almost always covers all constraint variables, so the dedup is rarely
+-- exercised; it is retained for parity with callers (e.g. LSP, which passes
+-- `ftv typ` rather than all constraint variables).
+findTypeClassWitnesses ::
+  Set TypeClass ->
+  Maybe Int ->
+  Set TypeClass ->
+  Set TV ->
+  [Map TV InfernoType]
+findTypeClassWitnesses allClasses mLimit tyCls tvs
+  | Set.null tyCls = [mempty]
+  | otherwise =
+      maybe id take mLimit
+        . dedupOnTvs
+        . search mempty ordered
+        $ Set.toList tyCls
+  where
+    -- Keep only solutions whose projection onto `tvs` has not been seen before
+    dedupOnTvs :: [Map TV InfernoType] -> [Map TV InfernoType]
+    dedupOnTvs = go mempty
+      where
+        go :: Set (Map TV InfernoType) -> [Map TV InfernoType] -> [Map TV InfernoType]
+        go = \cases
+          _ [] -> mempty
+          seen (m : rest) ->
+            let key :: Map TV InfernoType
+                key = Map.restrictKeys m tvs
+             in bool (go seen rest) (m : go (Set.insert key seen) rest) $
+                  Set.notMember key seen
+
+    -- For each TV in the constraints, the set of possible ground types
+    initDomains :: Map TV (Set InfernoType)
+    initDomains = computeDomains $ Set.toList tyCls
+
+    -- All TVs in constraint params, ordered smallest-domain-first (fail-first)
+    ordered :: [TV]
+    ordered =
+      sortOn (maybe 0 Set.size . (`Map.lookup` initDomains))
+        . Set.toList
+        . Set.unions
+        $ fmap ftv (Set.toList tyCls)
+
+    -- Recursive backtracking: assign one TV at a time, check ground
+    -- constraints after each assignment. Domains are computed once from
+    -- the initial constraints; `allGroundSatisfied` provides forward
+    -- checking after each assignment.
+    --
+    -- IMPORTANT: domains are explored in descending order (`Set.toDescList`)
+    -- so that `TBase TDouble` is tried before `TBase TInt`. This ensures
+    -- unconstrained numeric literals default to `double`, matching the
+    -- language semantics. Callers like `inferTypeReps` take the first
+    -- solution (limit `Just 1`), so exploration order determines the default.
+    search :: Map TV InfernoType -> [TV] -> [TypeClass] -> [Map TV InfernoType]
+    search = \cases
+      acc [] cs -> bool mempty [acc] $ all (`Set.member` allClasses) cs
+      acc (tv : rest) cs ->
+        maybe mempty (concatMap tryType . Set.toDescList) $
+          Map.lookup tv initDomains
+        where
+          tryType :: InfernoType -> [Map TV InfernoType]
+          tryType t =
+            let classes :: [TypeClass]
+                classes = fmap (substTC tv t) cs
+             in bool
+                  mempty
+                  (search (Map.insert tv t acc) rest classes)
+                  $ allGroundSatisfied classes
+
+    -- Substitute a single type variable in a typeclass constraint.
+    substTC :: TV -> InfernoType -> TypeClass -> TypeClass
+    substTC v t (TypeClass nm tys) =
+      TypeClass nm $ fmap (substMap $ Map.singleton v t) tys
+
+    -- True when every fully-ground constraint is in `allClasses`
+    allGroundSatisfied :: [TypeClass] -> Bool
+    allGroundSatisfied =
+      all $ (||) <$> not . Set.null . ftv <*> (`Set.member` allClasses)
+
+    -- Compute possible ground types for each TV by matching each
+    -- constraint against known instances. Domains for TVs that appear
+    -- in multiple constraints are intersected.
+    computeDomains :: [TypeClass] -> Map TV (Set InfernoType)
+    computeDomains = foldl' merge mempty
+      where
+        merge :: Map TV (Set InfernoType) -> TypeClass -> Map TV (Set InfernoType)
+        merge acc (TypeClass nm tys) =
+          let subs :: [Map TV InfernoType]
+              subs =
+                mapMaybe (tryMatchInstance tys . (.params))
+                  . filter ((nm ==) . (.className))
+                  $ Set.toList allClasses
+           in Map.unionWith Set.intersection acc
+                . Map.unionsWith Set.union
+                $ fmap (fmap Set.singleton) subs
+
+-- Given a map of implicit types containing `rep of <ty>` variables, and an expression `e`
+-- we want to either substitute any implicit variable `?var$n : rep of <ty>` with a `RuntimeRep <ty>`,
+-- provided that `<ty>` contains no free variables
+-- otherwise we want to create a closure `fun var$n -> e[var$n/?var$n]`
+closeOverTypeReps ::
+  Map ExtIdent InfernoType ->
+  Expr (Pinned VCObjectHash) SourcePos ->
+  ( Maybe TypeClass
+  , Map ExtIdent InfernoType
+  , Expr (Pinned VCObjectHash) SourcePos
+  )
+closeOverTypeReps implTys expr
+  | Map.null tReps = (Nothing, implTys, expr)
+  | null withTypeHole = (Nothing, rest, expr')
+  | otherwise =
+      let lamList :: NonEmpty (SourcePos, Maybe ExtIdent)
+          lamList =
+            NonEmpty.fromList
+              . fmap ((pos,) . Just . fst . NonEmpty.head)
+              $ grouped
+
+          tc :: TypeClass
+          tc =
+            TypeClass "rep"
+              . fmap (extractRep . snd . NonEmpty.head)
+              $ grouped
+       in (Just tc, rest, Lam pos lamList pos expr')
+  where
+    tReps :: Map ExtIdent InfernoType
+    rest :: Map ExtIdent InfernoType
+    (tReps, rest) = flip Map.partition implTys $ \case
+      TRep _ -> True
+      _ -> False
+
+    fullyInstantiated :: Map ExtIdent InfernoType
+    (fullyInstantiated, withTypeHole) = Map.partition (Set.null . ftv) tReps
+
+    insertInst ::
+      Map Int (Either Int InfernoType) ->
+      ExtIdent ->
+      InfernoType ->
+      Map Int (Either Int InfernoType)
+    insertInst = \cases
+      acc (ExtIdent (Left i)) (TRep ty) -> Map.insert i (Right ty) acc
+      acc _ _ -> acc
+
+    fullyInstantiatedMap :: Map Int (Either Int InfernoType)
+    fullyInstantiatedMap = Map.foldlWithKey' insertInst mempty fullyInstantiated
+
+    grouped :: [NonEmpty (ExtIdent, InfernoType)]
+    grouped = NonEmpty.groupBy ((==) `on` snd) $ Map.toList withTypeHole
+
+    insertGrp ::
+      Map Int (Either Int InfernoType) ->
+      NonEmpty (ExtIdent, InfernoType) ->
+      Map Int (Either Int InfernoType)
+    insertGrp acc grp = case NonEmpty.head grp of
+      (ExtIdent (Left rep), _) -> foldl' (insertId rep) acc grp
+      _ -> acc
+
+    insertId ::
+      Int ->
+      Map Int (Either Int InfernoType) ->
+      (ExtIdent, InfernoType) ->
+      Map Int (Either Int InfernoType)
+    insertId = \cases
+      rep m (ExtIdent (Left j), _) -> Map.insert j (Left rep) m
+      _ m _ -> m
+
+    substIdMap :: Map Int (Either Int InfernoType)
+    substIdMap = foldl' insertGrp fullyInstantiatedMap grouped
+
+    pos :: SourcePos
+    (pos, _) = blockPosition expr
+
+    expr' :: Expr (Pinned VCObjectHash) SourcePos
+    expr' = substInternalIdents substIdMap expr
+
+    extractRep :: InfernoType -> InfernoType
+    extractRep = \case
+      TRep ty -> ty
+      ty -> ty
+
+-------------------------------------------------------------------------------
+-- Pattern Exhaustiveness
+-------------------------------------------------------------------------------
+
+-- | Convert a parsed pattern into the abstract 'Pattern' representation
+-- used by the exhaustiveness checker.
 mkPattern :: Pat (Pinned VCObjectHash) SourcePos -> Pattern
 mkPattern = \case
   PVar _ _ -> W
-  PEnum _ Local _ns _ident -> error "internal error. cannot convert unpinned enum into a pattern"
-  PEnum _ hash _ns ident@(Ident i) -> cEnum (vcHash (ident, fromJust $ pinnedToMaybe hash)) i
+  PEnum _ pin _ ident@(Ident i) ->
+    -- Unfortunately needs to be partial based on signature. Enums are always
+    -- pinned in practice
+    maybe (error "internal error: unpinned enum in pattern") mkE $
+      pinnedToMaybe pin
+    where
+      mkE :: VCObjectHash -> Pattern
+      mkE h = cEnum (vcHash (ident, h)) i
   PLit _ l -> case l of
     LInt v -> cInf v
     LDouble v -> cInf v
@@ -221,1602 +2399,293 @@ mkPattern = \case
   POne _ p -> cOne $ mkPattern p
   PEmpty _ -> cEmpty
   PArray _ ps _ -> cInf $ mkEnumArrayPat ps
-  PTuple _ ps _ -> cTuple $ map (mkPattern . fst) $ tListToList ps
-  PRecord _ ps _ -> cRecord (Set.fromList fs) $ map mkPattern ps'
+  PTuple _ ps _ -> cTuple . fmap (mkPattern . fst) $ tListToList ps
+  PRecord _ ps _ -> cRecord (Set.fromList fs) $ fmap mkPattern pats
     where
-      (fs, ps', _) = unzip3 $ sortOn fst3 ps
+      (fs, pats, _) = unzip3 $ sortOn fst3 ps
   PCommentAbove _ p -> mkPattern p
   PCommentAfter p _ -> mkPattern p
   PCommentBelow p _ -> mkPattern p
 
-checkExhaustivenessAndUsefullness :: Map.Map VCObjectHash (Set.Set (VCObjectHash, Text.Text)) -> Location SourcePos -> [Pat (Pinned VCObjectHash) SourcePos] -> [TypeError SourcePos]
-checkExhaustivenessAndUsefullness enum_sigs loc patts =
-  let patternsOfPatts = map ((: []) . mkPattern) patts
-   in case exhaustive enum_sigs patternsOfPatts of
-        Just ps -> [NonExhaustivePatternMatch p loc | p <- ps]
-        Nothing ->
-          let uErrs = checkUsefullness enum_sigs patternsOfPatts
-           in map
-                ( \(i, j) ->
-                    let loc' = blockPosition $ patts !! i
-                     in let pat = patts !! j
-                         in if i == j then UselessPattern Nothing loc' else UselessPattern (Just pat) loc'
-                )
-                uErrs
-
--- | Run the inference monad
-runInfer :: Env -> Set.Set TypeClass -> Map.Map ModuleName (Module m) -> Infer r -> Either [TypeError SourcePos] (r, InferState)
-runInfer env allClasses allModules m =
-  runExcept $
-    runStateT
-      (runReaderT m env)
-      initInfer
-        { modules = Map.map (\m' -> m'{moduleObjects = ()}) allModules
-        , typeClasses = allClasses
-        }
-
--- Given a map of implicit types containing `rep of <ty>` variables, and an expression `e`
--- we want to either substitute any implicit variable `?var$n : rep of <ty>` with a `RuntimeRep <ty>`,
--- provided that `<ty>` contains no free variables
--- otherwise we want to create a closure `fun var$n -> e[var$n/?var$n]`
-closeOverTypeReps :: Map.Map ExtIdent InfernoType -> Expr (Pinned VCObjectHash) SourcePos -> (Maybe TypeClass, Map.Map ExtIdent InfernoType, Expr (Pinned VCObjectHash) SourcePos)
-closeOverTypeReps implTys expr =
-  let (tReps, rest) = flip Map.partition implTys $ \case
-        TRep _ -> True
-        _ -> False
-   in if Map.null tReps
-        then (Nothing, implTys, expr)
-        else
-          let
-            -- we partition the types to those that have been fully inferred and ones where we are lacking the type-rep information
-            (fullyInstantiated, withTypeHole) = Map.partition (Set.null . ftv) tReps
-            -- next, we create a Map Int (Either Int InfernoType) where all the fully instantiated `TRep ty`s get mapped to a `Right ty`
-            fullyInstantiatedMap =
-              Map.foldrWithKey
-                ( \k v m -> case (k, v) of
-                    (ExtIdent (Left i), TRep ty) -> Map.insert i (Right ty) m
-                    _ -> m
-                )
-                mempty
-                fullyInstantiated
-
-            -- we group all the types with holes
-            withTypeHoleGrouped = NEList.groupBy (\(_, ty1) (_, ty2) -> ty1 == ty2) $ Map.toList withTypeHole
-            -- each [(var$i_1, _),...,(var$i_n, _)] gets turned into the map {i_1 -> Left i_1, ... i_n -> Left i_1}
-            substMap =
-              foldr
-                ( \vs m -> case NEList.head vs of
-                    (ExtIdent (Left i), _) ->
-                      foldr
-                        ( \(v, _) m' -> case v of
-                            ExtIdent (Left j) -> Map.insert j (Left i) m'
-                            _ -> m'
-                        )
-                        m
-                        vs
-                    _ -> m
-                )
-                fullyInstantiatedMap
-                withTypeHoleGrouped
-
-            (pos, _) = blockPosition expr
-            expr' = substInternalIdents substMap expr
-           in
-            case Map.toList withTypeHole of
-              [] -> (Nothing, rest, expr')
-              -- if we have any type holes, we need to wrap the expression in a lambda and add a `requires rep on ...` typeclass
-              -- capturing all the runtime reps that the expression needs
-              _ : _ ->
-                let lamList = ((\merged -> let (v, _) = NEList.head merged in (pos, Just v)) <$> NEList.fromList withTypeHoleGrouped)
-                 in ( Just $
-                        TypeClass "rep" $
-                          map
-                            ( \((_, ty) NEList.:| _) -> case ty of
-                                TRep ty' -> ty'
-                                _ -> ty
-                            )
-                            withTypeHoleGrouped
-                    , rest
-                    , Lam pos lamList pos expr'
-                    )
-
--- | Solve for the top level type of an expression in a given environment
-inferExpr ::
-  Map.Map ModuleName (PinnedModule m) ->
-  Expr (Pinned VCObjectHash) SourcePos ->
-  Either
-    [TypeError SourcePos]
-    ( Expr (Pinned VCObjectHash) SourcePos
-    , TCScheme
-    , Map.Map (Location SourcePos) (TypeMetadata TCScheme)
-    )
-inferExpr allModules expr =
-  let (env, inScopeClasses) = openBuiltinModuleAndAddPinnedTypes allModules
-   in case runInfer env inScopeClasses allModules (infer expr) of
-        -- if we threw errors whilst inferring, rethrow
-        Left err -> Left err
-        Right (r, InferState{..}) ->
-          -- trace ("\ninferExpr: " <> (Text.unpack . renderPretty) r.expr)
-          --   $ trace
-          --     ( "ty: "
-          --         <> (Text.unpack . renderPretty) r.typ
-          --         <> "\ncs: "
-          --         <> (intercalate "\n" $ map (Text.unpack . renderPretty) $ Set.toList r.constrs)
-          --         <> "\n"
-          --     )
-          --   $
-          -- case runSolve typeClasses $ filter (\case { Right (_, TypeClass "rep" _) -> False; _ -> True }) $ Set.toList r.constrs of
-          case runSolve count typeClasses $ toList r.constrs of
-            Left errs -> Left errs
-            Right subst ->
-              -- trace ("substs: " <> show subst) $
-              -- trace ("patternsToCheck: " <> show patternsToCheck) $
-              case concatMap (uncurry $ checkExhaustivenessAndUsefullness enumSigs) patternsToCheck of
-                errs@(_ : _) -> Left errs
-                _ -> do
-                  -- get type classes and type from solved constraints
-                  let cls = filterInstantiatedTypeClasses $ Set.map (apply subst . snd) . Set.fromList . rights $ toList r.constrs
-                  let substitutedTy = apply subst r.typ
-                  -- get current type variables
-                  let tvs = ftv substitutedTy `Set.union` Set.unions (Set.elems $ Set.map ftv cls)
-                  let res substNew (mRepTyCls, implTys', expr'') =
-                        let finalTy =
-                              closeOver
-                                (filterInstantiatedTypeClasses (Set.map (apply substNew) cls) `Set.union` maybe mempty Set.singleton mRepTyCls)
-                                $ apply substNew
-                                $ ImplType implTys' substitutedTy.body
-                         in Right
-                              ( expr''
-                              , finalTy
-                              , Map.map
-                                  (\meta@TypeMetadata{ty = (tcs, t)} -> meta{ty = closeOver (filterInstantiatedTypeClasses $ Set.map (apply $ substNew <> subst) tcs) $ apply (substNew <> subst) t})
-                                  typeMap
-                              )
-
-                  if -- trace ("type classes: " <> show cls) $
-                  Set.null cls
-                    then res mempty $ closeOverTypeReps substitutedTy.impl r.expr
-                    else case findTypeClassWitnesses typeClasses (Just 2) cls tvs of
-                      [] -> Left [CouldNotFindTypeclassWitness cls $ blockPosition expr]
-                      -- we attempt to find two type assignments. If there is only one satisfying assignment for all the type-classes, we automatically substitute the instantiations
-                      [subst'] -> res subst' $ closeOverTypeReps (Map.map (apply subst') substitutedTy.impl) r.expr
-                      -- even if there isn't a unique solution, we can still safely apply the substitutions to any types which do not transitively depend on the input or output type variables
-                      -- e.g. for `let x = 3.2 in x + 2` it does not matter whether the type of `2` is an int or a double, because the final type of the whole expression won't change
-                      (Subst s) : _ ->
-                        let ftvsDependentOnOuterType =
-                              Set.foldl
-                                ( \ftvsTransClosure c ->
-                                    let ftvCls = ftv c
-                                     in if Set.null $ ftvCls `Set.intersection` ftvsTransClosure
-                                          then ftvsTransClosure
-                                          else ftvCls `Set.union` ftvsTransClosure
-                                )
-                                -- start with the body of the type, i.e. in `forall a_1 ... a_n {requires ..., implicit ...} => t` get the type variables in `t`
-                                -- as well as any implicit arguments which aren't internal, since those are used for tracking type-reps
-                                (ftv substitutedTy.body `Set.union` Map.foldrWithKey (\(ExtIdent ident) t ftvs -> case ident of Left _ -> ftvs; Right _ -> ftv t `Set.union` ftvs) mempty substitutedTy.impl)
-                                cls
-                            subst' = Subst $ Set.foldr Map.delete s ftvsDependentOnOuterType
-                         in -- trace ("type ftvsDependentOnOuterType: " <> show ftvsDependentOnOuterType) $
-                            res subst' $ closeOverTypeReps (Map.map (apply subst') substitutedTy.impl) r.expr
+-- | Build a map from each enum constructor hash to the set of all
+-- sibling constructors (hash, name) for the same enum type. Used by the
+-- exhaustiveness checker to know the full set of constructors.
+buildEnumSigs ::
+  Map VCObjectHash (TypeMetadata TCScheme) ->
+  Map VCObjectHash (Set (VCObjectHash, Text))
+buildEnumSigs =
+  Map.foldrWithKey addEnum mempty . fmap (.ty)
   where
-    enumSigs :: Map.Map VCObjectHash (Set.Set (VCObjectHash, Text.Text))
-    enumSigs =
-      Map.foldrWithKey
-        ( \h (ForallTC _ _ (ImplType _ ty)) m -> case ty of
-            TBase (TEnum _n cs) ->
-              let allConstrHashes = Set.map (\c@(Ident i) -> (vcHash (c, h), i)) cs
-               in Map.fromList [(cH, allConstrHashes) | (cH, _) <- Set.toList allConstrHashes] `Map.union` m
-            _ -> m
-        )
-        mempty
-        $ Map.map ty
-        $ Map.unions
-        $ pinnedModuleHashToTy builtinModule : map pinnedModuleHashToTy (Map.elems allModules)
-    openBuiltinModuleAndAddPinnedTypes :: Map.Map ModuleName (PinnedModule m) -> (Env, Set.Set TypeClass)
-    openBuiltinModuleAndAddPinnedTypes modules =
-      let Module{moduleTypeClasses = tyCls, moduleObjects = (_, tys, _)} = builtinModule
-       in ( Env.empty
-              { Env.pinnedTypes = Map.unions $ tys : [pinnedModuleHashToTy m | m <- Map.elems modules]
-              }
-          , tyCls `Set.union` Set.unions [tc | Module{moduleTypeClasses = tc} <- Map.elems modules]
-          )
+    addEnum ::
+      VCObjectHash ->
+      TCScheme ->
+      Map VCObjectHash (Set (VCObjectHash, Text)) ->
+      Map VCObjectHash (Set (VCObjectHash, Text))
+    addEnum h (ForallTC _ _ impl) acc = case impl.body of
+      TBase (TEnum _ cs) ->
+        Map.union acc . Map.fromList . fmap (allCs <$) $ Set.toList allCs
+        where
+          allCs :: Set (VCObjectHash, Text)
+          allCs = Set.map (mkC h) cs
+      _ -> acc
 
-maxTVarInConstraints :: [Either (InfernoType, InfernoType, [a]) ((SourcePos, SourcePos), TypeClass)] -> Int
-maxTVarInConstraints cs = case Set.lookupMax $ Set.unions $ map freeTypeVars cs of
-  Just (TV i) -> i + 1
-  Nothing -> 0
+    mkC :: VCObjectHash -> Ident -> (VCObjectHash, Text)
+    mkC h c@(Ident i) = (vcHash (c, h), i)
+
+-- | Check exhaustiveness and usefulness of all patterns collected during
+-- inference. Reads from the @patternsToCheck@ ref. Throws on failure.
+checkPatternExhaustiveness ::
+  Map VCObjectHash (Set (VCObjectHash, Text)) ->
+  Infer s ()
+checkPatternExhaustiveness sigs = do
+  asks (.refs.patternsToCheck) >>= liftST . readSTRef >>= \pats ->
+    let errs :: [TypeError SourcePos]
+        errs = concatMap (uncurry check) pats
+     in unless (null errs) $ throwError errs
   where
-    freeTypeVars (Right (_, c)) = ftv c
-    freeTypeVars (Left (t1, t2, _)) = ftv t1 `Set.union` ftv t2
-
--- | Given a type signature and some concrete assignment of types (assumes inputTys and outputTy have no free variables)
---   this function computes the runtime reps
-inferTypeReps :: Set.Set TypeClass -> TCScheme -> [InfernoType] -> InfernoType -> Either [TypeError SourcePos] [InfernoType]
-inferTypeReps allTypeClasses (ForallTC tvs tyCls (ImplType _impl ty)) inputTys outputTy =
-  let cs =
-        [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
-          ++ mkConstraints ty inputTys
-      varCount = maxTVarInConstraints cs
-   in case runSolve varCount allTypeClasses cs of
-        Left errs -> Left errs
-        Right subst ->
-          let tyClsSubst = Set.map (apply subst) tyCls
-           in case find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tyClsSubst of
-                Nothing -> pure []
-                Just rep@(TypeClass _ runtimeRepTys) ->
-                  if Set.null $ ftv rep
-                    then pure runtimeRepTys
-                    else case findTypeClassWitnesses
-                      allTypeClasses
-                      (Just 1)
-                      (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) tyClsSubst)
-                      (Set.fromList tvs) of
-                      [] -> Left [CouldNotFindTypeclassWitness tyClsSubst dummyPos]
-                      subst' : _ -> pure $ apply subst' runtimeRepTys
-  where
-    mkConstraints (TArr t1 t2) (x : xs) = Left (t1, x, []) : mkConstraints t2 xs
-    mkConstraints t [] = [Left (t, outputTy, [])]
-    mkConstraints _ _ = error "mkConstraints: invalid input params length"
-    dummyPos = let pos = initialPos "" in (pos, pos)
-
-inferPossibleTypes :: Set.Set TypeClass -> TCScheme -> [Maybe InfernoType] -> Maybe InfernoType -> Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
-inferPossibleTypes allTypeClasses (ForallTC _ tyCls (ImplType _impl ty)) inputTys outputTy =
-  let cs =
-        [Right (dummyPos, c) | c@(TypeClass nm _) <- Set.toList tyCls, nm /= "rep"]
-          ++ mkMaybeConstraints ty inputTys
-      varCount = maxTVarInConstraints cs
-   in case runSolve varCount allTypeClasses cs of
-        Left errs -> Left errs
-        Right subst -> do
-          let tyClsSubst = Set.map (apply subst) $ Set.filter (\case TypeClass "rep" _ -> False; _ -> True) tyCls
-          let (inTysFromSig, outTyFromSig) = gatherArgs $ apply subst ty
-          let findAllPossibleTypes (supplied, t) = case supplied of
-                Just t' -> pure [t']
-                Nothing ->
-                  let tvs = ftv t
-                   in if Set.null tvs
-                        then pure [t]
-                        else case findTypeClassWitnesses allTypeClasses (Just 100) tyClsSubst tvs of
-                          [] -> Left [CouldNotFindTypeclassWitness tyClsSubst dummyPos]
-                          substs -> pure [apply sub t | sub <- substs]
-
-          possibleInTysFromSig <- forM (zip inputTys inTysFromSig) findAllPossibleTypes
-          (possibleInTysFromSig,) <$> findAllPossibleTypes (outputTy, outTyFromSig)
-  where
-    gatherArgs (TArr t1 t2) = first (t1 :) $ gatherArgs t2
-    gatherArgs x = ([], x)
-    mkMaybeConstraints (TArr t1 t2) (Just x : xs) = Left (t1, x, []) : mkMaybeConstraints t2 xs
-    mkMaybeConstraints (TArr _ t2) (Nothing : xs) = mkMaybeConstraints t2 xs
-    mkMaybeConstraints t [] = case outputTy of
-      Just t' -> [Left (t, t', [])]
-      Nothing -> []
-    mkMaybeConstraints _ _ = error "mkConstraints: invalid input params length"
-    dummyPos = let pos = initialPos "" in (pos, pos)
-
--- | Extend type environment
-inEnv :: (ExtIdent, TypeMetadata TCScheme) -> Infer a -> Infer a
-inEnv (x, meta) m = do
-  let scope e = Env.remove e x `Env.extend` (x, meta)
-  local scope m
-
--- | Lookup type in the environment
-lookupEnv :: Location SourcePos -> Either VCObjectHash ExtIdent -> Infer (TypeMetadata (Set.Set TypeClass, ImplType))
-lookupEnv loc x = do
-  env <- ask
-  case either (`Env.lookupPinned` env) (`Env.lookup` env) x of
-    Nothing ->
-      throwError
-        [ either
-            (\hsh -> UnboundNameInNamespace LocalScope (Left hsh) loc)
-            (\i -> UnboundExtIdent LocalScope i loc)
-            x
-        ]
-    Just meta -> do
-      iTy <- instantiate $ ty meta
-      return meta{ty = iTy}
-
-mergeImplicitMaps :: Location SourcePos -> [Map.Map ExtIdent InfernoType] -> (Map.Map ExtIdent InfernoType, [Constraint])
-mergeImplicitMaps loc =
-  foldr
-    ( \m (mAll, cs) ->
-        let cs' = Map.elems $ Map.intersectionWithKey (\ident t1 t2 -> tyConstr t1 t2 [ImplicitVarTypeOverlap mempty ident t1 t2 loc]) mAll m
-         in (mAll `Map.union` m, cs' ++ cs)
-    )
-    (Map.empty, [])
-
-fresh :: Infer InfernoType
-fresh = do
-  s@InferState{..} <- get
-  put s{count = count + 1}
-  return $ var count
-
-freshRaw :: Infer Int
-freshRaw = do
-  s@InferState{..} <- get
-  put s{count = count + 1}
-  return count
-
-attachTypeToPosition :: Location SourcePos -> TypeMetadata (Set.Set TypeClass, ImplType) -> Infer ()
-attachTypeToPosition k meta =
-  modify $ \s -> s{typeMap = Map.insert k meta s.typeMap}
-
-addCasePatterns :: Location SourcePos -> [Pat (Pinned VCObjectHash) SourcePos] -> Infer ()
-addCasePatterns k pttrns =
-  modify $
-    \s ->
-      s
-        { patternsToCheck = (k, pttrns) : s.patternsToCheck
-        }
-
-instantiate :: TCScheme -> Infer (Set.Set TypeClass, ImplType)
-instantiate (ForallTC as tcs t) = do
-  as' <- mapM (const fresh) as
-  let s = Subst $ Map.fromList $ zip as as'
-  return (Set.map (apply s) tcs, apply s t)
-
-opGetTyComponents :: ImplType -> (InfernoType, InfernoType, InfernoType)
-opGetTyComponents (ImplType _ (t1 `TArr` (t2 `TArr` t3))) = (t1, t2, t3)
-opGetTyComponents _ = error "Invalid op type signature"
-
-preOpGetTyComponents :: ImplType -> (InfernoType, InfernoType)
-preOpGetTyComponents (ImplType _ (t1 `TArr` t2)) = (t1, t2)
-preOpGetTyComponents _ = error "Invalid pre-op type signature"
-
-tyConstr :: InfernoType -> InfernoType -> [TypeError SourcePos] -> Constraint
-tyConstr t1 t2 es = Left (t1, t2, es)
-
-inferLit :: Expr (Pinned VCObjectHash) SourcePos -> Location SourcePos -> Lit -> InfernoType -> Infer InferResult
-inferLit expr loc l t = do
-  attachTypeToPosition loc $
-    TypeMetadata
-      { identExpr = Lit () l
-      , ty = (Set.empty, ImplType Map.empty t)
-      , docs = Nothing
-      }
-  pure InferResult{expr = expr, typ = ImplType Map.empty t, constrs = Sequence.empty}
-
-infer :: Expr (Pinned VCObjectHash) SourcePos -> Infer InferResult
-infer expr =
-  let exprLoc = blockPosition expr
-   in case expr of
-        Lit pos l@(LInt _) -> do
-          tv <- fresh
-          let tyCls = TypeClass "numeric" [tv]
-          attachTypeToPosition exprLoc $
-            TypeMetadata
-              { identExpr = Lit () l
-              , ty = (Set.singleton tyCls, ImplType Map.empty tv)
-              , docs = Nothing
-              }
-
-          i <- ExtIdent . Left <$> freshRaw
-          pure
-            InferResult
-              { expr = App expr (Var pos Local LocalScope $ Impl i)
-              , typ = ImplType (Map.fromList [(i, TRep tv)]) tv
-              , constrs = Sequence.singleton $ Right (exprLoc, tyCls)
-              }
-        Lit _ l ->
-          inferLit
-            expr
-            exprLoc
-            l
-            (handleLit l)
-          where
-            handleLit (LDouble _) = typeDouble
-            handleLit (LHex _) = typeWord64
-            handleLit (LText _) = typeText
-            handleLit (LInt _) = undefined
-        Var pos mHash _modNm (Expl x) -> do
-          meta <- lookupEnv exprLoc (maybe (Right x) Left $ pinnedToMaybe mHash)
-          let (tcs, t@(ImplType impl t'')) = ty meta
-          attachTypeToPosition exprLoc meta
-          (expr', t') <- case find (\(TypeClass nm _) -> nm == "rep") $ Set.toList tcs of
-            Just (TypeClass _ runtimeRepTys) -> do
-              implRepTyps <- forM runtimeRepTys $ \repTy -> do
-                i <- freshRaw
-                pure (ExtIdent $ Left i, TRep repTy)
-              let (vars, _) = unzip implRepTyps
-
-              pure (foldl' App expr $ map (Var pos Local LocalScope . Impl) vars, ImplType (impl `Map.union` Map.fromList implRepTyps) t'')
-            Nothing -> pure (expr, t)
-          pure
-            InferResult
-              { expr = expr'
-              , typ = t'
-              , constrs = foldMap (Sequence.singleton . Right . (exprLoc,)) $ Set.filter (\case TypeClass "rep" _ -> False; _ -> True) tcs
-              }
-        Var _ _ _ (Impl x) -> do
-          tv <- fresh
-          attachTypeToPosition
-            exprLoc
-            TypeMetadata
-              { identExpr = bimap (const ()) (const ()) expr
-              , ty = (Set.empty, ImplType (Map.fromList [(x, tv)]) tv)
-              , docs = Nothing
-              }
-          pure InferResult{expr = expr, typ = ImplType (Map.fromList [(x, tv)]) tv, constrs = Sequence.empty}
-        OpVar _ mHash _ _ -> do
-          meta <- lookupEnv exprLoc (maybe (error "internal error, op vars must always be pinned!!") Left $ pinnedToMaybe mHash)
-          let (tcs, t) = ty meta
-          attachTypeToPosition exprLoc meta
-          pure InferResult{expr = expr, typ = t, constrs = foldMap (Sequence.singleton . Right . (exprLoc,)) tcs}
-        TypeRep _pos t -> pure InferResult{expr = expr, typ = ImplType mempty $ TRep t, constrs = Sequence.empty}
-        Enum _ mHash _ _ -> do
-          meta <- lookupEnv exprLoc (maybe (error "internal error, enums must always be pinned!!") Left $ pinnedToMaybe mHash)
-          let (_, t) = ty meta
-          attachTypeToPosition exprLoc meta{identExpr = bimap (const ()) (const ()) expr}
-          pure InferResult{expr = expr, typ = t, constrs = Sequence.empty}
-        InterpolatedString p1 xs p2 -> do
-          attachTypeToPosition
-            exprLoc
-            TypeMetadata
-              { identExpr = bimap (const ()) (const ()) $ removeComments expr
-              , ty = (Set.empty, ImplType Map.empty typeText)
-              , docs = Nothing
-              }
-          (xs', is, css) <-
-            unzip3
-              <$> forM
-                (toEitherList xs)
-                ( \case
-                    Left str -> pure (Left str, Map.empty, Sequence.empty)
-                    Right (p3, e, p4) ->
-                      (\r -> (Right (p3, r.expr, p4), r.typ.impl, r.constrs))
-                        <$> infer e
-                )
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) is
-          pure
-            InferResult
-              { expr = InterpolatedString p1 (fromEitherList xs') p2
-              , typ = ImplType isMerged typeText
-              , constrs = mconcat css <> Sequence.fromList ics
-              }
-        Record p1 fes p2 -> do
-          checkDuplicateFields exprLoc fes
-          let (fs, es) = unzip $ map (\(f, e, p) -> (f, (e, p))) fes
-          (es', impls, tys, cs) <- go es
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
-          let inferredTy = ImplType isMerged $ TRecord (Map.fromList $ zip fs tys) RowAbsent
-          let fes' = zipWith (\f (e, p) -> (f, e, p)) fs es'
-
-          attachTypeToPosition
-            exprLoc
-            TypeMetadata
-              { identExpr = bimap (const ()) (const ()) $ removeComments expr
-              , ty = (Set.empty, inferredTy)
-              , docs = Nothing
-              }
-          pure
-            InferResult
-              { expr = Record p1 fes' p2
-              , typ = inferredTy
-              , constrs = Sequence.fromList ics <> cs
-              }
-          where
-            go [] = pure ([], [], [], Sequence.empty)
-            go ((e', p3) : es') = do
-              r <- infer e'
-              (es'', impls, tRest, csRest) <- go es'
-              pure ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
-        RecordField p_r (Ident rc) (Ident f) -> do
-          r <- infer $ Var p_r Local LocalScope $ Expl $ ExtIdent $ Right rc
-          tv <- fresh
-          trv <-
-            fresh >>= \case
-              TVar x -> pure x
-              _ -> error "fresh returned something other than a TVar"
-          let tyCls = Set.fromList $ map snd $ rights $ toList r.constrs
-          let tyRec = TRecord (Map.singleton (Ident f) tv) (RowVar trv)
-          pure
-            InferResult
-              { expr = expr
-              , typ = ImplType r.typ.impl tv
-              , constrs =
-                  r.constrs
-                    <> Sequence.fromList
-                      [ tyConstr r.typ.body tyRec [UnificationFail tyCls r.typ.body tyRec $ blockPosition expr]
-                      ]
-              }
-        Array _ [] _ -> do
-          tv <- fresh
-          let meta =
-                TypeMetadata
-                  { identExpr = bimap (const ()) (const ()) $ removeComments expr
-                  , ty = (Set.empty, ImplType Map.empty $ TArray tv)
-                  , docs = Nothing
-                  }
-          let (_, t) = ty meta
-          attachTypeToPosition exprLoc meta
-          pure InferResult{expr = expr, typ = t, constrs = Sequence.empty}
-        Array p1 ((e, p2) : es) p3 -> do
-          r <- infer e
-          (es', impls, cs') <- go r.typ.body es
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) $ r.typ.impl : impls
-          let inferredTy = ImplType isMerged $ TArray r.typ.body
-          attachTypeToPosition
-            exprLoc
-            TypeMetadata
-              { identExpr = bimap (const ()) (const ()) $ removeComments expr
-              , ty = (Set.empty, inferredTy)
-              , docs = Nothing
-              }
-
-          pure
-            InferResult
-              { expr = Array p1 ((r.expr, p2) : es') p3
-              , typ = inferredTy
-              , constrs = mconcat [Sequence.fromList ics, r.constrs, cs']
-              }
-          where
-            go _t [] = pure ([], [], Sequence.empty)
-            go t ((e', p4) : es') = do
-              r <- infer e'
-              (es'', impls, csRest) <- go t es'
-              pure
-                ( (r.expr, p4) : es''
-                , r.typ.impl : impls
-                , mconcat
-                    [ r.constrs
-                    , csRest
-                    , Sequence.fromList
-                        [ tyConstr
-                            t
-                            r.typ.body
-                            [ UnificationFail
-                                (Set.fromList . map snd . rights $ toList $ r.constrs <> csRest)
-                                t
-                                r.typ.body
-                                $ blockPosition e'
-                            ]
-                        ]
-                    ]
-                )
-        ArrayComp p1 e p2 sels cond p3 -> do
-          _ <- checkVariableOverlap $ NEList.toList sels
-          (sels', vars, is, css) <- unzip4 <$> go (NEList.toList sels) id
-
-          r1 <- foldr inEnv (infer e) vars
-
-          (cond', i_cond, c_cond) <- case cond of
-            Just (p4, e_cond) -> do
-              r2 <- foldr inEnv (infer e_cond) vars
-              pure
-                ( Just (p4, r2.expr)
-                , r2.typ.impl
-                , r2.constrs
-                    <> Sequence.singleton (tyConstr r2.typ.body typeBool [UnificationFail (Set.fromList . map snd . rights $ toList r2.constrs) r2.typ.body typeBool $ blockPosition e_cond])
-                )
-            Nothing -> pure (Nothing, Map.empty, Sequence.empty)
-
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) $ [r1.typ.impl, i_cond] ++ is
-          pure
-            InferResult
-              { expr = ArrayComp p1 r1.expr p2 (NEList.fromList sels') cond' p3
-              , typ = ImplType isMerged (TArray r1.typ.body)
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , c_cond
-                    , mconcat css
-                    ]
-              }
-          where
-            go [] _ = pure []
-            go ((pos, Ident x, p4, e_s, p5) : xs) f = do
-              r <- f $ infer e_s
-              tv <- fresh
-              attachTypeToPosition
-                (elementPosition pos $ Ident x)
-                TypeMetadata
-                  { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right x
-                  , ty = (Set.fromList . map snd . rights $ toList r.constrs, ImplType r.typ.impl tv)
-                  , docs = Nothing
-                  }
-              let newEnv =
-                    ( ExtIdent $ Right x
-                    , TypeMetadata
-                        { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right x
-                        , ty = ForallTC [] (Set.fromList . map snd . rights $ toList r.constrs) $ ImplType r.typ.impl tv
-                        , docs = Nothing
-                        }
-                    )
-              rest <- go xs (inEnv newEnv . f)
-              pure $
-                ( (pos, Ident x, p4, r.expr, p5)
-                , newEnv
-                , r.typ.impl
-                , r.constrs <> Sequence.singleton (tyConstr r.typ.body (TArray tv) [UnificationFail (Set.fromList . map snd . rights $ toList r.constrs) r.typ.body (TArray tv) $ blockPosition e_s])
-                )
-                  : rest
-
-            checkVariableOverlap :: [(SourcePos, Ident, SourcePos, b, Maybe SourcePos)] -> Infer ()
-            checkVariableOverlap = \case
-              [] -> return ()
-              (loc, x, _, _e, _) : xs -> case find (\(_, x', _, _, _) -> x == x') xs of
-                Just (loc', x', _, _, _) -> throwError [VarMultipleOccurrence x (elementPosition loc x) (elementPosition loc' x')]
-                Nothing -> checkVariableOverlap xs
-        Lam p1 args p2 e -> do
-          r <- go $ NEList.toList args
-          pure InferResult{expr = Lam p1 args p2 r.expr, typ = r.typ, constrs = r.constrs}
-          where
-            go = \case
-              [] -> infer e
-              (pos, Just x) : xs -> do
-                tv <- fresh
-                let newEnv =
-                      ( x
-                      , TypeMetadata
-                          { identExpr = Var () () LocalScope $ Expl x
-                          , ty = ForallTC [] Set.empty $ ImplType Map.empty tv
-                          , docs = Nothing
-                          }
-                      )
-                r <- inEnv newEnv $ go xs
-                case x of
-                  ExtIdent (Left _) -> pure ()
-                  ExtIdent (Right i) ->
-                    attachTypeToPosition
-                      (elementPosition pos $ Just $ Ident i)
-                      TypeMetadata
-                        { identExpr = Var () () LocalScope $ Expl x
-                        , ty = (Set.empty, ImplType Map.empty tv)
-                        , docs = Nothing
-                        }
-                pure InferResult{expr = r.expr, typ = ImplType r.typ.impl $ tv `TArr` r.typ.body, constrs = r.constrs}
-              (pos, Nothing) : xs -> do
-                tv <- fresh
-                attachTypeToPosition
-                  (elementPosition pos (Nothing :: Maybe Ident))
-                  TypeMetadata
-                    { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right "_"
-                    , ty = (Set.empty, ImplType Map.empty tv)
-                    , docs = Nothing
-                    }
-                r <- go xs
-                pure InferResult{expr = r.expr, typ = ImplType r.typ.impl $ tv `TArr` r.typ.body, constrs = r.constrs}
-        App e1 e2 -> do
-          r1 <- infer e1
-          r2 <- infer e2
-
-          case r1.typ.body of
-            t1a `TArr` t1b -> do
-              tv <- fresh
-              let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-                  tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
-              pure
-                InferResult
-                  { expr = App r1.expr r2.expr
-                  , typ = ImplType isMerged tv
-                  , constrs =
-                      mconcat
-                        [ Sequence.fromList ics
-                        , r1.constrs
-                        , r2.constrs
-                        , Sequence.fromList
-                            [ tyConstr t1a r2.typ.body [UnificationFail tyCls t1a r2.typ.body $ blockPosition e2]
-                            , tyConstr t1b tv [UnificationFail tyCls t1b tv $ blockPosition expr]
-                            ]
-                        ]
-                  }
-            _ -> do
-              tv <- fresh
-              let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-                  tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
-              -- if we end up on this branch, we will be throwing a unification error and
-              -- want to highlight e1, thus we attach `blockPosition e1` to the error
-              pure
-                InferResult
-                  { expr = App r1.expr r2.expr
-                  , typ = ImplType isMerged tv
-                  , constrs =
-                      mconcat
-                        [ Sequence.fromList ics
-                        , r1.constrs
-                        , r2.constrs
-                        , Sequence.fromList
-                            [ tyConstr r1.typ.body (r2.typ.body `TArr` tv) [ExpectedFunction tyCls (r2.typ.body `TArr` tv) r1.typ.body $ blockPosition e1]
-                            ]
-                        ]
-                  }
-        LetAnnot p1 loc x pT t p2 e1 p3 e2 -> do
-          r1 <- infer e1
-          (tcs, ImplType iT tT) <- instantiate t
-          let tyCls = Set.fromList $ map snd $ rights $ toList r1.constrs
-          attachTypeToPosition
-            (elementPosition loc $ Expl x)
-            TypeMetadata
-              { identExpr = Var () () LocalScope $ Expl x
-              , -- ty = (tyCls, ImplType r1.typ.impl r1.typ.body),
-                ty = (tcs, ImplType iT tT)
-              , docs = Nothing
-              }
-          let newEnv =
-                ( x
-                , TypeMetadata
-                    { identExpr = Var () () LocalScope $ Expl x
-                    , -- TODO should this instead be: ty = t,
-                      ty = ForallTC [] tcs (ImplType iT tT)
-                    , docs = Nothing
-                    }
-                )
-          r2 <- inEnv newEnv $ infer e2
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl, iT]
-          pure
-            InferResult
-              { expr = LetAnnot p1 loc x pT t p2 r1.expr p3 r2.expr
-              , typ = ImplType isMerged r2.typ.body
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , r2.constrs
-                    , -- Type of e1 == type annotation
-                      Sequence.fromList [tyConstr r1.typ.body tT [AnnotationUnificationFail tyCls r1.typ.body tT $ blockPosition e1]]
-                    , -- Type class constraints from type annotation TODO filter out reps?
-                      foldMap (Sequence.singleton . Right . (exprLoc,)) tcs
-                    ]
-              }
-        -- non generalized let
-        Let p1 loc (Expl x) p2 e1 p3 e2 -> do
-          r1 <- infer e1
-          let tyCls = Set.fromList $ map snd $ rights $ toList r1.constrs
-          attachTypeToPosition
-            (elementPosition loc $ Expl x)
-            TypeMetadata
-              { identExpr = Var () () LocalScope $ Expl x
-              , ty = (tyCls, ImplType r1.typ.impl r1.typ.body)
-              , docs = Nothing
-              }
-
-          let newEnv =
-                ( x
-                , TypeMetadata
-                    { identExpr = Var () () LocalScope $ Expl x
-                    , ty = ForallTC [] tyCls $ ImplType r1.typ.impl r1.typ.body
-                    , docs = Nothing
-                    }
-                )
-          r2 <- inEnv newEnv $ infer e2
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-          pure
-            InferResult
-              { expr = Let p1 loc (Expl x) p2 r1.expr p3 r2.expr
-              , typ = ImplType isMerged r2.typ.body
-              , constrs = mconcat [Sequence.fromList ics, r1.constrs, r2.constrs]
-              }
-        Let p1 loc (Impl x) p2 e1 p3 e2 -> do
-          r1 <- infer e1
-          r2 <- infer e2
-
-          v1 <- maybe fresh pure (Map.lookup x r2.typ.impl)
-
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, Map.withoutKeys r2.typ.impl (Set.singleton x)]
-              tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
-
-          pure
-            InferResult
-              { expr = Let p1 loc (Impl x) p2 r1.expr p3 r2.expr
-              , typ = ImplType isMerged r2.typ.body
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , r2.constrs
-                    , Sequence.singleton (tyConstr v1 r1.typ.body [ImplicitVarTypeOverlap tyCls x v1 r1.typ.body $ blockPosition expr])
-                    ]
-              }
-        Op e1 loc mHash opMeta modNm op e2 -> do
-          let (sPos, ePos) = elementPosition loc op
-          let opLoc = (sPos, incSourceCol ePos $ fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> modNm)
-
-          r1 <- infer e1
-          r2 <- infer e2
-
-          meta <- lookupEnv opLoc (maybe (error "internal error, infix ops must always be pinned!!") Left $ pinnedToMaybe mHash)
-          let (tcs, (u1, u2, u3)) = opGetTyComponents <$> ty meta
-
-          tv <- fresh
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-              tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs
-
-          attachTypeToPosition opLoc meta{ty = (tcs, ImplType Map.empty $ r1.typ.body `TArr` (r2.typ.body `TArr` tv))}
-
-          pure
-            InferResult
-              { expr = Op r1.expr loc mHash opMeta modNm op r2.expr
-              , typ = ImplType isMerged tv
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , r2.constrs
-                    , Sequence.fromList
-                        [ tyConstr u1 r1.typ.body [UnificationFail tyCls u1 r1.typ.body $ blockPosition e1]
-                        , tyConstr u2 r2.typ.body [UnificationFail tyCls u2 r2.typ.body $ blockPosition e2]
-                        , tyConstr u3 tv [UnificationFail tyCls u3 tv $ blockPosition expr]
-                        ]
-                    , foldMap (Sequence.singleton . Right . (opLoc,)) tcs
-                    ]
-              }
-        PreOp loc mHash opMeta modNm op e -> do
-          let (sPos, ePos) = elementPosition loc op
-          let opLoc = (sPos, incSourceCol ePos $ fromScoped 0 $ (+ 1) . Text.length . unModuleName <$> modNm)
-
-          r <- infer e
-
-          meta <- lookupEnv opLoc (maybe (error "internal error, prefix ops must always be pinned!!") Left $ pinnedToMaybe mHash)
-          let (tcs, (u1, u2)) = preOpGetTyComponents <$> ty meta
-              tyCls = Set.fromList $ map snd $ rights $ toList r.constrs
-
-          tv <- fresh
-          attachTypeToPosition opLoc meta{ty = (tcs, ImplType Map.empty $ r.typ.body `TArr` tv)}
-
-          pure
-            InferResult
-              { expr = PreOp loc mHash opMeta modNm op r.expr
-              , typ = ImplType r.typ.impl tv
-              , constrs =
-                  mconcat
-                    [ r.constrs
-                    , Sequence.fromList
-                        [ tyConstr u1 r.typ.body [UnificationFail tyCls u1 r.typ.body $ blockPosition e]
-                        , tyConstr u2 tv [UnificationFail tyCls u2 tv $ blockPosition expr]
-                        ]
-                    , foldMap (Sequence.singleton . Right . (opLoc,)) tcs
-                    ]
-              }
-        If p1 cond p2 tr p3 fl -> do
-          r1 <- infer cond
-          r2 <- infer tr
-          r3 <- infer fl
-
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl, r3.typ.impl]
-              tyCls = Set.fromList $ map snd $ rights $ toList $ r1.constrs <> r2.constrs <> r3.constrs
-
-          pure
-            InferResult
-              { expr = If p1 r1.expr p2 r2.expr p3 r3.expr
-              , typ = ImplType isMerged r2.typ.body
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , r2.constrs
-                    , r3.constrs
-                    , Sequence.fromList
-                        [ tyConstr r1.typ.body typeBool [IfConditionMustBeBool tyCls r1.typ.body $ blockPosition cond]
-                        , tyConstr r2.typ.body r3.typ.body [IfBranchesMustBeEqType tyCls r2.typ.body r3.typ.body (blockPosition tr) (blockPosition fl)]
-                        ]
-                    ]
-              }
-        Tuple p1 es p2 -> do
-          (es', impls, tys, cs) <- go $ tListToList es
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) impls
-          let inferredTy = ImplType isMerged $ TTuple $ tListFromList tys
-          attachTypeToPosition
-            exprLoc
-            TypeMetadata
-              { identExpr = bimap (const ()) (const ()) $ removeComments expr
-              , ty = (Set.empty, inferredTy)
-              , docs = Nothing
-              }
-
-          pure
-            InferResult
-              { expr = Tuple p1 (tListFromList es') p2
-              , typ = inferredTy
-              , constrs = Sequence.fromList ics <> cs
-              }
-          where
-            go [] = pure ([], [], [], Sequence.empty)
-            go ((e', p3) : es') = do
-              r <- infer e'
-              (es'', impls, tRest, csRest) <- go es'
-              pure ((r.expr, p3) : es'', r.typ.impl : impls, r.typ.body : tRest, r.constrs <> csRest)
-        Assert p1 cond p2 e -> do
-          r1 <- infer cond
-          r2 <- infer e
-
-          let (isMerged, ics) = mergeImplicitMaps (blockPosition expr) [r1.typ.impl, r2.typ.impl]
-          pure
-            InferResult
-              { expr = Assert p1 r1.expr p2 r2.expr
-              , typ = ImplType isMerged r2.typ.body
-              , constrs =
-                  mconcat
-                    [ Sequence.fromList ics
-                    , r1.constrs
-                    , r2.constrs
-                    , Sequence.singleton $
-                        tyConstr
-                          r1.typ.body
-                          typeBool
-                          [ AssertConditionMustBeBool
-                              (Set.fromList . fmap snd . rights $ toList $ r1.constrs <> r2.constrs)
-                              r1.typ.body
-                              $ blockPosition cond
-                          ]
-                    ]
-              }
-        Empty _ -> do
-          meta <- lookupEnv exprLoc $ Left emptyHash
-          let (_, t) = ty meta
-          attachTypeToPosition exprLoc meta
-          pure InferResult{expr = expr, typ = t, constrs = Sequence.empty}
-        One p e -> do
-          r <- infer e
-          meta <- lookupEnv exprLoc $ Left oneHash
-          attachTypeToPosition exprLoc meta{ty = (Set.empty, ImplType r.typ.impl $ TOptional r.typ.body)}
-          pure InferResult{expr = One p r.expr, typ = ImplType r.typ.impl $ TOptional r.typ.body, constrs = r.constrs}
-        Case p1 e p2 patExprs' p3 -> do
-          let branches = [CaseBranch bp pt ap bd | (bp, pt, ap, bd) <- NEList.toList patExprs']
-              pats = fmap (.pat) branches
-          r <- infer e
-          (patTys, patVars, patConstraints) <-
-            unzip3
-              <$> mapM (\p -> checkVariableOverlap Map.empty p >> mkPatConstraint p) pats
-
-          addCasePatterns exprLoc pats
-
-          res <- forM (zip patVars $ fmap (.body) branches) $
-            \(vars, e''') -> foldr (inEnv . (\(Ident x, meta) -> (ExtIdent $ Right x, meta))) (infer e''') vars
-
-          let es'' = fmap (.expr) res
-              is_res = fmap (\ri -> ri.typ.impl) res
-              ts_res = fmap (\ri -> ri.typ.body) res
-              cs_res = fmap (.constrs) res
-              (isMerged, ics) = mergeImplicitMaps (blockPosition expr) (r.typ.impl : is_res)
-              tyCls = Set.fromList $ map snd $ rights $ toList $ r.constrs <> mconcat cs_res
-              patTysEqConstraints =
-                Sequence.fromList
-                  [ tyConstr tPat4 tPat5 [PatternsMustBeEqType tyCls tPat4 tPat5 p4 p5 (blockPosition p4) (blockPosition p5)]
-                  | (tPat4, p4) <- zip patTys pats
-                  , (tPat5, p5) <- zip patTys pats
-                  , p4 /= p5
-                  ]
-              patTysMustEqCaseExprTy cExprTy =
-                Sequence.fromList
-                  [ tyConstr tPat cExprTy [PatternUnificationFail tPat cExprTy p $ blockPosition p]
-                  | (tPat, p) <- zip patTys pats
-                  ]
-              patExpTysEqConstraints set =
-                Sequence.fromList
-                  [ tyConstr t1 t2 [CaseBranchesMustBeEqType tyCls t1 t2 (blockPosition e1) (blockPosition e2)]
-                  | (ImplType _ t1, e1) <- set
-                  , (ImplType _ t2, e2) <- set
-                  , e1 /= e2
-                  ]
-
-          case ts_res of
-            (tRes : _) ->
-              pure
-                InferResult
-                  { expr = Case p1 r.expr p2 (NEList.fromList $ zipWith (\e'' b -> (b.barPos, b.pat, b.arrPos, e'')) es'' branches) p3
-                  , typ = ImplType isMerged tRes
-                  , constrs =
-                      mconcat
-                        [ Sequence.fromList ics
-                        , r.constrs
-                        , mconcat patConstraints
-                        , patTysEqConstraints
-                        , patTysMustEqCaseExprTy r.typ.body
-                        , patExpTysEqConstraints (zip (fmap (.typ) res) (fmap (.body) branches))
-                        , mconcat cs_res
-                        ]
-                  }
-            -- `patExprs'` is `NonEmpty`, so `ts_res` is always non-empty
-            [] -> error "impossible: case expression must have at least one branch"
-          where
-            mkPatConstraint :: Pat (Pinned VCObjectHash) SourcePos -> Infer (InfernoType, [(Ident, TypeMetadata TCScheme)], Seq Constraint)
-            mkPatConstraint pat =
-              let patLoc = blockPosition pat
-               in case pat of
-                    PVar _ (Just (Ident x)) -> do
-                      tv <- fresh
-                      attachTypeToPosition
-                        patLoc
-                        TypeMetadata
-                          { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right x
-                          , ty = (Set.empty, ImplType Map.empty tv)
-                          , docs = Nothing
-                          }
-                      let meta =
-                            TypeMetadata
-                              { identExpr = Var () () LocalScope $ Expl $ ExtIdent $ Right x
-                              , ty = ForallTC [] Set.empty $ ImplType Map.empty tv
-                              , docs = Nothing
-                              }
-                      pure (tv, [(Ident x, meta)], Sequence.empty)
-                    PEnum _ Local _ _ -> error "internal error, malformed pattern enum must be pinned"
-                    PEnum _ hash sc i -> do
-                      meta <- lookupEnv patLoc $ Left $ fromJust $ pinnedToMaybe hash
-                      let (_, ImplType _ t) = ty meta
-                      attachTypeToPosition patLoc meta{identExpr = Enum () () sc i}
-                      pure (t, [], Sequence.empty)
-                    PLit _ l ->
-                      inferPatLit
-                        patLoc
-                        l
-                        ( case l of
-                            LInt _ -> typeInt
-                            LDouble _ -> typeDouble
-                            LHex _ -> typeWord64
-                            LText _ -> typeText
-                        )
-                    POne _ p -> do
-                      (t, vars, cs) <- mkPatConstraint p
-                      meta <- lookupEnv patLoc $ Left oneHash
-                      attachTypeToPosition patLoc meta{ty = (Set.empty, ImplType Map.empty $ t .-> TOptional t)}
-                      pure (TOptional t, vars, cs)
-                    PEmpty _ -> do
-                      meta <- lookupEnv patLoc $ Left emptyHash
-                      let (_, ImplType _ t) = ty meta
-                      attachTypeToPosition patLoc meta
-                      pure (t, [], Sequence.empty)
-                    PArray _ [] _ -> do
-                      tv <- fresh
-                      let t = TArray tv
-                      attachTypeToPosition
-                        patLoc
-                        TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
-                          , ty = (Set.empty, ImplType Map.empty t)
-                          , docs = Nothing
-                          }
-                      pure (t, [], Sequence.empty)
-                    PArray _ ((p, _) : ps) _ -> do
-                      (t, vars1, csP) <- mkPatConstraint p
-                      (vars2, csPs) <- aux t ps
-                      let inferredTy = TArray t
-                      attachTypeToPosition
-                        patLoc
-                        TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
-                          , ty = (Set.empty, ImplType Map.empty inferredTy)
-                          , docs = Nothing
-                          }
-                      pure (inferredTy, vars1 ++ vars2, csP <> csPs)
-                      where
-                        aux _t [] = pure ([], Sequence.empty)
-                        aux t ((p', _) : ps') = do
-                          (t', vars', cs') <- mkPatConstraint p'
-                          (vars, cs) <- aux t ps'
-                          let tIst' = tyConstr t t' [UnificationFail Set.empty t t' $ blockPosition p']
-                          pure
-                            ( vars' ++ vars
-                            , mconcat [cs', cs, Sequence.singleton tIst']
-                            )
-                    PTuple _ ps _ -> do
-                      (ts, vars, cs) <- aux $ tListToList ps
-                      let inferredTy = TTuple $ tListFromList ts
-                      attachTypeToPosition
-                        patLoc
-                        TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
-                          , ty = (Set.empty, ImplType Map.empty inferredTy)
-                          , docs = Nothing
-                          }
-                      pure (inferredTy, vars, cs)
-                      where
-                        aux [] = pure ([], [], Sequence.empty)
-                        aux ((p', _l) : ps') = do
-                          (t, vars1, cs1) <- mkPatConstraint p'
-                          (ts, vars2, cs2) <- aux ps'
-                          pure (t : ts, vars1 ++ vars2, cs1 <> cs2)
-                    PRecord _ fs _ -> do
-                      checkDuplicateFields patLoc fs
-                      (ts, vars, cs) <- aux fs
-                      let inferredTy = TRecord ts RowAbsent
-                      attachTypeToPosition
-                        patLoc
-                        TypeMetadata
-                          { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
-                          , ty = (Set.empty, ImplType Map.empty inferredTy)
-                          , docs = Nothing
-                          }
-                      pure (inferredTy, vars, cs)
-                      where
-                        aux [] = pure (mempty, [], Sequence.empty)
-                        aux ((f, p', _l) : ps') = do
-                          (t, vars1, cs1) <- mkPatConstraint p'
-                          (ts, vars2, cs2) <- aux ps'
-                          pure (Map.insert f t ts, vars1 ++ vars2, cs1 <> cs2)
-                    PVar _ Nothing -> do
-                      tv <- fresh
-                      let meta =
-                            TypeMetadata
-                              { identExpr = patternToExpr $ bimap (const ()) (const ()) pat
-                              , ty = (Set.empty, ImplType Map.empty tv)
-                              , docs = Nothing
-                              }
-                      attachTypeToPosition patLoc meta
-                      pure (tv, [], Sequence.empty)
-                    PCommentAbove _ p -> mkPatConstraint p
-                    PCommentAfter p _ -> mkPatConstraint p
-                    PCommentBelow p _ -> mkPatConstraint p
-
-            checkVariableOverlap :: Map.Map Ident (Location SourcePos) -> Pat (Pinned VCObjectHash) SourcePos -> Infer (Map.Map Ident (Location SourcePos))
-            checkVariableOverlap vars pat =
-              let patLoc = blockPosition pat
-               in case pat of
-                    PVar _ (Just x) -> case Map.lookup x vars of
-                      Just loc' -> throwError [VarMultipleOccurrence x patLoc loc']
-                      Nothing -> return $ Map.insert x patLoc vars
-                    POne _ p -> checkVariableOverlap vars p
-                    PArray _ ps _ -> foldM checkVariableOverlap vars $ map fst ps
-                    PTuple _ ps _ -> foldM checkVariableOverlap vars $ map fst $ tListToList ps
-                    PRecord _ ps _ -> foldM checkVariableOverlap vars $ map snd3 ps
-                    _ -> return vars
-        CommentAbove p e -> do
-          r <- infer e
-          pure InferResult{expr = CommentAbove p r.expr, typ = r.typ, constrs = r.constrs}
-        CommentAfter e p -> do
-          r <- infer e
-          pure InferResult{expr = CommentAfter r.expr p, typ = r.typ, constrs = r.constrs}
-        CommentBelow e p -> do
-          r <- infer e
-          pure InferResult{expr = CommentBelow r.expr p, typ = r.typ, constrs = r.constrs}
-        Bracketed p1 e p2 -> do
-          r <- infer e
-          pure InferResult{expr = Bracketed p1 r.expr p2, typ = r.typ, constrs = r.constrs}
-        RenameModule l1 newNm l2 oldNm l3 e -> do
-          s@InferState{modules = mods} <- get
-          when (newNm `Map.member` mods) $ throwError [ModuleNameTaken newNm $ elementPosition l1 newNm]
-          case Map.lookup oldNm mods of
-            Nothing -> throwError [ModuleDoesNotExist oldNm (l2, l3)]
-            Just oldNmMod -> do
-              put s{modules = Map.insert newNm oldNmMod mods}
-              r <- infer e
-              modify $ \s' -> s'{modules = Map.delete newNm s.modules}
-              pure InferResult{expr = RenameModule l1 newNm l2 oldNm l3 r.expr, typ = r.typ, constrs = r.constrs}
-        OpenModule l1 mHash modNm@(ModuleName n) imports p e -> do
-          InferState{modules = mods} <- get
-          case Map.lookup modNm mods of
-            Nothing -> throwError [ModuleDoesNotExist modNm $ elementPosition l1 $ Ident n]
-            Just _openMod -> do
-              r <- infer e
-              pure InferResult{expr = OpenModule l1 mHash modNm imports p r.expr, typ = r.typ, constrs = r.constrs}
-  where
-    -- Check if a record expr/pat has a duplicate field name
-    checkDuplicateFields l = aux mempty
+    check ::
+      Location SourcePos ->
+      [Pat (Pinned VCObjectHash) SourcePos] ->
+      [TypeError SourcePos]
+    check loc ps =
+      maybe
+        (fmap (mkUseless loc v) (checkUsefullness sigs matrix))
+        (fmap (`NonExhaustivePatternMatch` loc))
+        $ exhaustive sigs matrix
       where
-        aux _seen [] = pure ()
-        aux seen ((f, _, _) : fs')
-          | Set.member f seen = throwError [DuplicateRecordField f l]
-          | otherwise = aux (Set.insert f seen) fs'
+        v :: Vector (Pat (Pinned VCObjectHash) SourcePos)
+        v = Vector.fromList ps
 
-inferPatLit :: Location SourcePos -> Lit -> InfernoType -> Infer (InfernoType, [b], Seq c)
-inferPatLit loc n t =
-  attachTypeToPosition
-    loc
-    TypeMetadata
-      { identExpr = Lit () n
-      , ty = (Set.empty, ImplType Map.empty t)
-      , docs = Nothing
+        matrix :: [[Pattern]]
+        matrix = fmap (pure . mkPattern) ps
+
+    mkUseless ::
+      Location SourcePos ->
+      Vector (Pat (Pinned VCObjectHash) SourcePos) ->
+      (Int, Int) ->
+      TypeError SourcePos
+    mkUseless loc v (i, j)
+      | i == j = UselessPattern Nothing patLoc
+      | otherwise = UselessPattern (v !? j) patLoc
+      where
+        patLoc :: Location SourcePos
+        patLoc = maybe loc blockPosition $ v !? i
+
+-- | Keep only typeclass constraints that still have free type variables
+-- (i.e. are not fully instantiated).
+filterInstantiatedTCs :: Set TypeClass -> Set TypeClass
+filterInstantiatedTCs = Set.filter $ not . Set.null . ftv
+
+-------------------------------------------------------------------------------
+-- Top-Level Wrapper
+-------------------------------------------------------------------------------
+
+-- | Build the initial typing environment from the builtin module and all
+-- pinned modules. Returns the environment (with pinned type mappings)
+-- and the set of all in-scope typeclass instances.
+openBuiltinEnv ::
+  Map ModuleName (PinnedModule m) ->
+  (Env, Set TypeClass)
+openBuiltinEnv mods =
+  ( mempty
+      { Env.pinnedTypes =
+          Map.unions $
+            snd3 builtinModule.moduleObjects
+              : fmap pinnedModuleHashToTy (Map.elems mods)
       }
-    >> pure (t, [], Sequence.empty)
+  , builtinModule.moduleTypeClasses <> foldMap (.moduleTypeClasses) mods
+  )
 
 -------------------------------------------------------------------------------
--- Constraint Solver
+-- Stubs for Later Phases
 -------------------------------------------------------------------------------
 
--- | The empty substitution
-emptySubst :: Subst
-emptySubst = mempty
+-- | Given a type signature and some concrete assignment of types (assumes
+-- @inputTys@ and @outputTy@ have no free variables) this function computes
+-- the runtime reps
+inferTypeReps ::
+  Set TypeClass ->
+  TCScheme ->
+  [InfernoType] ->
+  InfernoType ->
+  Either [TypeError SourcePos] [InfernoType]
+inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
+  runST $ runInfer maxTV allTyCls $ \deferred ->
+    -- Instantiate: create fresh TVs for each bound variable
+    for tvs (const freshTV) >>= \freshTVs -> do
+      let sub :: Map TV InfernoType
+          sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
 
--- | Compose substitutions
-compose :: Subst -> Subst -> Subst
-(Subst s1) `compose` (Subst s2) = Subst $ Map.map (apply (Subst s1)) s2 `Map.union` s1
+          substTC :: TypeClass -> TypeClass
+          substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
 
--- | Run the constraint solver
-runSolve :: Int -> Set.Set TypeClass -> [Constraint] -> Either [TypeError SourcePos] Subst
-runSolve varCount allClasses cs = runIdentity $ runExceptT $ flip runReaderT allClasses $ solver varCount st
+          ty :: InfernoType
+          ty = substMap sub impl.body
+
+          tyCls' :: Set TypeClass
+          tyCls' = Set.map substTC tyCls
+
+      -- Unify the peeled function signature against concrete inputs/output
+      unifyArgs ty inputTys
+
+      -- Register non-"rep" typeclasses as deferred and resolve them
+      liftST . writeSTRef deferred $ mkNonRep tyCls'
+
+      resolveTypeClasses
+
+      resolveReps deferred
+        -- Zonk the "rep" typeclass entries and resolve runtime reps
+        =<< traverse
+          zonkTC
+          (filter (("rep" ==) . (.className)) (Set.toList tyCls'))
   where
-    st = (emptySubst, cs)
+    mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
+    mkNonRep =
+      fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
 
-unifyMany :: [TypeError SourcePos] -> [InfernoType] -> [InfernoType] -> SolveState Int Subst
-unifyMany _ [] [] = return emptySubst
-unifyMany err (t1 : ts1) (t2 : ts2) = do
-  su1 <- unifies err t1 t2
-  su2 <- unifyMany err (apply su1 ts1) (apply su1 ts2)
-  return (su2 `compose` su1)
-unifyMany err _ _ = trace "throwing in unifyMany " $ throwError err
+    -- Given zonked "rep" typeclass entries, resolve them to concrete types
+    resolveReps ::
+      STRef s [(Location SourcePos, TypeClass)] ->
+      [TypeClass] ->
+      Infer s [InfernoType]
+    resolveReps = \cases
+      _ [] -> pure mempty
+      defRef [TypeClass _ runtimeRepTys]
+        | Set.null (ftv runtimeRepTys) -> pure runtimeRepTys
+        | otherwise -> resolveWithWitness defRef runtimeRepTys [TypeClass "rep" runtimeRepTys]
+      defRef reps
+        | Set.null . ftv $ allParams reps -> pure $ allParams reps
+        | otherwise -> resolveWithWitness defRef (allParams reps) reps
+      where
+        allParams :: [TypeClass] -> [InfernoType]
+        allParams = concatMap (.params)
 
--- | Unify the fields of two record types.
---
--- The idea in theory is, if we are trying to unify
--- @
---  {f1: tf1, ..., g1: tg1, ..., 'a}
---              ~ {g1: tg1', ..., f1': tf1', ..., 'b}
--- @
--- where g1, ... gN are the common fields, then we first expand the row vars 'a and 'b
--- so that we have the same set of field names on both sides:
--- @
---   {f1: tf1, ..., g1: tg1, ..., f1': 't1', ..., 'c}
--- ~ {f1: 't1, ..., g1: tg1', ..., f1': tf1', ..., 'd}
--- @
--- where 't1, 't2, ... and 't1', 't2', ... and 'c and 'd are fresh type vars.
--- Then, we match up the field names and unify the field types.
--- Finally, we add the substs:
--- @
---  'a ~> {f1': 't1', ..., 'c}
---  'b ~> {f1: 't1, ..., 'd}
--- @
---
--- The implementation in practice proceeds by recursing on the fields of both records.
--- We first convert the Map of field types to a *sorted* association list, and recurse
--- on both association lists in the style of mergesort's merge. When the two smallest
--- field names are the same, we unify the field types. Otherwise, we take the smallest
--- and create a fresh type var and add it as a new field to the other side.
--- This function recurses with arguments that include a list of new fields for each
--- record (in *descending* order of field names), and the list of pairs of field types
--- that must be unified.
---
--- Reference:
--- https://gallium.inria.fr/~remy/ftp/habil.pdf (Chapter 2)
--- https://gallium.inria.fr/~remy/ftp/record-algebras.pdf
--- (Though the algorithm implemented here is based on my understanding of how the
--- theoretical algorithms in the above papers would be implemented in practice.)
-unifyRecords ::
-  [TypeError SourcePos] ->
-  ([(Ident, InfernoType)], RestOfRecord) ->
-  ([(Ident, InfernoType)], RestOfRecord) ->
-  [(Ident, InfernoType)] ->
-  [(Ident, InfernoType)] ->
-  [(InfernoType, InfernoType)] ->
-  SolveState Int Subst
--- unifyRecords _err (ts1, trv1) (ts2, trv2) nf1 nf2 ps
---   | trace (Text.unpack ("\nunifyRecords called with " <> renderPretty (TRecord (Map.fromList ts1) trv1) <> " " <> renderPretty (TRecord (Map.fromList ts2) trv2))) False = undefined
-unifyRecords err ([], trv1) ([], trv2) newFields1 newFields2 pairs = do
-  -- Base case: when all fields are expanded and matched up:
-  -- trace ("End unifyRecords: " <> show newFields1 <> " " <> show newFields2) $ pure ()
-  -- If new fields were added, create a fresh row var and a substitution for it
-  (trv1', su1) <- makeRowVarSubst trv1 newFields1
-  (trv2', su2) <- makeRowVarSubst trv2 newFields2
-  let su = Subst $ Map.fromList $ su1 ++ su2
-  -- Unify all pairs of field types and the final row vars
-  let pairsToUnify = unifyRowVars trv1' trv2' ++ pairs
-  su' <- uncurry (unifyMany err) $ unzip pairsToUnify
-  -- Apply su' to su so that the fields and row vars in su are unified
-  pure $ su' `compose` su
+    -- Attempt to find a typeclass witness for unresolved type variables
+    resolveWithWitness ::
+      forall s.
+      STRef s [(Location SourcePos, TypeClass)] ->
+      [InfernoType] ->
+      [TypeClass] ->
+      Infer s [InfernoType]
+    resolveWithWitness defRef tys reps =
+      (remaining >>=) . (. findWits) $ \case
+        [] -> throwError [CouldNotFindTypeclassWitness (Set.fromList reps) dummyLoc]
+        wit : _ -> pure $ fmap (substMap wit) tys
+      where
+        findWits :: Set TypeClass -> [Map TV InfernoType]
+        findWits = flip (findTypeClassWitnesses allTyCls (Just 1)) $ ftv tys
+
+        remaining :: Infer s (Set TypeClass)
+        remaining = fmap (Set.fromList . fmap snd) . liftST $ readSTRef defRef
+
+    maxTV :: Int
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        mconcat
+          [ ftv impl.body
+          , foldMap ftv $ Set.toList tyCls
+          , foldMap ftv inputTys
+          , ftv outputTy
+          ]
+
+    dummyLoc :: Location SourcePos
+    dummyLoc = dupe . SourcePos mempty (mkPos 1) $ mkPos 1
+
+    -- Peel `TArr` layers from the signature and unify with concrete types
+    unifyArgs :: InfernoType -> [InfernoType] -> Infer s ()
+    unifyArgs = \cases
+      (TArr a rest) (x : xs) -> unify mempty a x *> unifyArgs rest xs
+      t [] -> unify mempty t outputTy
+      _ _ -> throwError [UnificationFail mempty impl.body outputTy dummyLoc]
+
+inferPossibleTypes ::
+  Set TypeClass ->
+  TCScheme ->
+  [Maybe InfernoType] ->
+  Maybe InfernoType ->
+  Either [TypeError SourcePos] ([[InfernoType]], [InfernoType])
+inferPossibleTypes allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
+  runST $ runInfer maxTV allTyCls $ \deferred ->
+    -- Instantiate: create fresh TVs for each bound variable
+    for tvs (const freshTV) >>= \freshTVs -> do
+      let sub :: Map TV InfernoType
+          sub = Map.fromList $ zip tvs (fmap TVar freshTVs)
+
+          substTC :: TypeClass -> TypeClass
+          substTC (TypeClass nm ps) = TypeClass nm $ fmap (substMap sub) ps
+
+          ty :: InfernoType
+          ty = substMap sub impl.body
+
+          tyCls' :: Set TypeClass
+          tyCls' = Set.map substTC tyCls
+
+      -- Unify only the provided (`Just`) inputs/output against the signature
+      unifyPartial ty inputTys
+
+      -- Register non-"rep" typeclasses as deferred and resolve them
+      liftST . writeSTRef deferred $ mkNonRep tyCls'
+
+      resolveTypeClasses
+
+      -- Zonk the signature type, then peel args
+      zonkedTy <- zonk ty
+
+      let inTysFromSig :: [InfernoType]
+          outTyFromSig :: InfernoType
+          (inTysFromSig, outTyFromSig) = peelArgs zonkedTy
+
+      -- Get the remaining non-rep constraints for witness search
+      tyClsZonked <-
+        fmap (Set.fromList . fmap snd) . liftST $ readSTRef deferred
+      -- For each input position, find possible types
+      possibleIns <- traverse (findPossible tyClsZonked) $ zip inputTys inTysFromSig
+      possibleOut <- findPossible tyClsZonked (outputTy, outTyFromSig)
+      pure (possibleIns, possibleOut)
   where
-    unifyRowVars RowAbsent RowAbsent = []
-    unifyRowVars (RowVar tv) RowAbsent = [(TVar tv, TRecord mempty RowAbsent)]
-    unifyRowVars RowAbsent (RowVar tv) = [(TVar tv, TRecord mempty RowAbsent)]
-    unifyRowVars (RowVar tv) (RowVar tv') = [(TVar tv, TVar tv')]
-    -- Create a subst from a new row var to the new fields
-    makeRowVarSubst trv [] =
-      pure (trv, [])
-    makeRowVarSubst RowAbsent _ =
-      error "impossible: newFields created when RowVar is RowAbsent"
-    makeRowVarSubst (RowVar tv) newFields = do
-      tv' <- freshTypeVar
-      pure (RowVar tv', [(tv, TRecord (Map.fromDescList newFields) (RowVar tv'))])
-unifyRecords err ([], trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2 pairs = do
-  tv <- expandRowVar err trv1
-  let pairs' = (tv, t2) : pairs
-  let newFields1' = (f2, tv) : newFields1
-  unifyRecords err ([], trv1) (ts2, trv2) newFields1' newFields2 pairs'
-unifyRecords err ((f1, t1) : ts1, trv1) ([], trv2) newFields1 newFields2 pairs = do
-  tv <- expandRowVar err trv2
-  let pairs' = (tv, t1) : pairs
-  let newFields2' = (f1, tv) : newFields2
-  unifyRecords err (ts1, trv1) ([], trv2) newFields1 newFields2' pairs'
-unifyRecords err ((f1, t1) : ts1, trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2 pairs
-  | f1 == f2 = do
-      let pairs' = (t1, t2) : pairs
-      unifyRecords err (ts1, trv1) (ts2, trv2) newFields1 newFields2 pairs'
-  | f1 > f2 = do
-      tv <- expandRowVar err trv1
-      let pairs' = (tv, t2) : pairs
-      let newFields1' = (f2, tv) : newFields1
-      unifyRecords err ((f1, t1) : ts1, trv1) (ts2, trv2) newFields1' newFields2 pairs'
-  | otherwise = do
-      tv <- expandRowVar err trv2
-      let pairs' = (tv, t1) : pairs
-      let newFields2' = (f1, tv) : newFields2
-      unifyRecords err (ts1, trv1) ((f2, t2) : ts2, trv2) newFields1 newFields2' pairs'
+    mkNonRep :: Set TypeClass -> [(Location SourcePos, TypeClass)]
+    mkNonRep =
+      fmap (dummyLoc,) . filter (("rep" /=) . (.className)) . Set.toList
 
--- | If the rest of the record is a row variable, this generates a fresh type var to
--- denote a new field. Otherwise, it throws a type error.
-expandRowVar :: [TypeError SourcePos] -> RestOfRecord -> SolveState Int InfernoType
-expandRowVar err RowAbsent = throwError err
-expandRowVar _err (RowVar _) = TVar <$> freshTypeVar
+    peelArgs :: InfernoType -> ([InfernoType], InfernoType)
+    peelArgs = \case
+      TArr a rest -> first (a :) $ peelArgs rest
+      t -> (mempty, t)
 
-freshTypeVar :: SolveState Int TV
-freshTypeVar = do
-  count <- get
-  put $ count + 1
-  return $ TV count
+    -- Unify only the `Just` positions; skip `Nothing`
+    unifyPartial :: InfernoType -> [Maybe InfernoType] -> Infer s ()
+    unifyPartial = \cases
+      (TArr a rest) (Just x : xs) -> unify mempty a x *> unifyPartial rest xs
+      (TArr _ rest) (Nothing : xs) -> unifyPartial rest xs
+      t [] -> maybe (pure ()) (unify mempty t) outputTy
+      _ _ -> throwError [UnificationFail mempty impl.body impl.body dummyLoc]
 
-unifies :: [TypeError SourcePos] -> InfernoType -> InfernoType -> SolveState Int Subst
--- unifies _ t1 t2 | trace (Text.unpack ("unifying " <> renderPretty t1 <> " and " <> renderPretty t2)) False = undefined
-unifies _ t1 t2 | t1 == t2 = return emptySubst
-unifies err (TVar v) t = bind err v t
-unifies err t (TVar v) = bind err v t
-unifies err (TArr t1 t2) (TArr t3 t4) = unifyMany err [t1, t2] [t3, t4]
-unifies err (TArray t1) (TArray t2) = unifies err t1 t2
-unifies err (TSeries t1) (TSeries t2) = unifies err t1 t2
-unifies err (TOptional t1) (TOptional t2) = unifies err t1 t2
-unifies err (TTuple ts1) (TTuple ts2)
-  | length (tListToList ts1) == length (tListToList ts2) = unifyMany err (tListToList ts1) (tListToList ts2)
-  | otherwise = throwError [UnificationFail (getTypeClassFromErrs err) (TTuple ts1) (TTuple ts2) loc | loc <- getLocFromErrs err]
-unifies err (TRecord ts1 trv1) (TRecord ts2 trv2) =
-  unifyRecords err (Map.toAscList ts1, trv1) (Map.toAscList ts2, trv2) [] [] []
-unifies err _ _ =
-  -- trace "throwing in unifies " $
-  throwError err
+    -- For a given position, find all possible concrete types
+    findPossible ::
+      Set TypeClass ->
+      (Maybe InfernoType, InfernoType) ->
+      Infer s [InfernoType]
+    findPossible tyClsZonked = \case
+      (Just t, _) -> pure [t]
+      (Nothing, t)
+        | Set.null $ ftv t -> pure [t]
+        | otherwise ->
+            let wits :: [Map TV InfernoType]
+                wits = findTypeClassWitnesses allTyCls (Just 100) tyClsZonked $ ftv t
+             in bool
+                  (throwError [CouldNotFindTypeclassWitness tyClsZonked dummyLoc])
+                  (pure (fmap (`substMap` t) wits))
+                  $ notNull wits
 
--- Unification solver
-solver :: Int -> Unifier -> Solve Subst
-solver varCount (su, cs) =
-  case cs of
-    [] -> return su
-    _ -> do
-      let (tyConstrs, typeCls) = partitionEithers cs
-      su1 <- flip evalSolveState varCount $ solverTyCs su tyConstrs
-      -- trace ("After solverTyCs, final su1\n" <> show su1) $ pure ()
-      let partResolvedTyCls = map (second (apply su1)) typeCls
-      -- trace ("partResolvedTyCls: " <> (intercalate "\n" $ map (unpack . renderPretty . pretty . snd) partResolvedTyCls)) $
-      evalSolveState (solverTypeClasses $ su1 `compose` su) (Set.fromList partResolvedTyCls, mempty)
+    maxTV :: Int
+    maxTV =
+      maybe 0 ((+ 1) . unTV) . Set.lookupMax $
+        mconcat
+          [ ftv impl.body
+          , foldMap ftv $ Set.toList tyCls
+          , foldMap (foldMap ftv) inputTys
+          , foldMap ftv outputTy
+          ]
 
-solverTyCs :: Subst -> [(InfernoType, InfernoType, [TypeError SourcePos])] -> SolveState Int Subst
--- solverTyCs su _cs | trace ("solverTyCs with su: " <> show su) False = undefined
-solverTyCs su cs =
-  case cs of
-    [] -> return su
-    ((t1, t2, errs) : cs0) -> do
-      su1 <- unifies errs t1 t2
-      -- trace ("In solverTyCs, applying su1\n" <> show su1 <> "\nOnto es\n" <> show cs0) $ pure ()
-      solverTyCs (su1 `compose` su) (map (\(t1', t2', es) -> (apply su1 t1', apply su1 t2', map (apply su1) es)) cs0)
-
-evalSolveState :: SolveState st a -> st -> Solve a
-evalSolveState (ReaderT f) st = ReaderT $ \r -> evalStateT (f r) st
-
-liftToSolveState :: Solve a -> SolveState st a
-liftToSolveState (ReaderT f) = ReaderT $ \r -> StateT $ \s -> (,s) <$> f r
-
-pick :: (Show a, Ord a) => SolveState (Set.Set a, Set.Set a) (Maybe a)
-pick = state $ \st@(current, marked) ->
-  case Set.lookupMin current of
-    Nothing -> (Nothing, st)
-    Just a -> (Just a, (Set.delete a current, Set.insert a marked))
-
--- | `applySubsts` applies the substitution `su` on both marked and unmarked typeclasses and an new information, propagated to
---   marked typeclasses, causes said typeclass to be moved back to the "current" set.
---   We then filter out any fully resolved classes in the marked set only!! to avoid extra unnecessary steps.
---   (Filtering the unprocessed, i.e. current classes may lead to subtle bugs if the class is fully instantiated but
---   is not in fact an instance found in `allClasses`)
-applySubsts :: (Ord loc) => Subst -> SolveState (Set.Set (loc, TypeClass), Set.Set (loc, TypeClass)) ()
-applySubsts su = state $ \(current, marked) ->
-  (\(c, m) -> ((), (c, filterFullyInstantiated m))) $
-    foldr
-      ( \(loc, a) (current', marked') ->
-          let a' = apply su a
-           in if a == a'
-                then (current', Set.insert (loc, a') marked')
-                else (Set.insert (loc, a') current', marked')
-      )
-      (Set.map (Data.Bifunctor.second (apply su)) current, mempty)
-      marked
-  where
-    filterFullyInstantiated =
-      Set.filter $
-        not
-          . Set.null
-          . ftv
-          . snd
-
-solverTypeClasses :: Subst -> SolveState (Set.Set (Location SourcePos, TypeClass), Set.Set (Location SourcePos, TypeClass)) Subst
-solverTypeClasses su =
-  pick >>= \case
-    Nothing -> return su
-    Just (loc, tc@(TypeClass nm tys)) -> do
-      allClasses <- ask
-      let matchingInstances = Set.toList $ Set.filter (\(TypeClass nm' _) -> nm == nm') allClasses
-      if null matchingInstances
-        then throwError [TypeClassNotFoundError allClasses tc loc]
-        else do
-          res <- liftToSolveState (catMaybes <$> forM matchingInstances (tryMatchPartial tys))
-          case res of
-            [] -> throwError [TypeClassNoPartialMatch tc loc]
-            (Subst s : xs) -> do
-              -- even if we have multiple matching substitutions, we can still make progress if they all agree
-              -- on some parameter
-              let su' = Subst (foldr intersection s [x | Subst x <- xs]) `compose` su
-              -- trace ("applying su': "<> show su' <> "\nprevious was su: " <> show su) $
-              applySubsts su'
-              solverTypeClasses su'
-  where
-    intersection = Map.merge Map.dropMissing Map.dropMissing (Map.zipWithMaybeMatched $ \_ a b -> if a == b then Just a else Nothing)
-
-newtype Counter = Counter Int
-
--- | Use `getLit` if you want to remember what it points to, i.e. if mapping a (TVar, InfernoType) to a SAT solver variable
-getLit :: (MonadState s m, HasType (Bimap.Bimap Int a) s, HasType Counter s, Ord a) => a -> m Int
-getLit a = do
-  st <- get
-  let bm = getTyped st
-  let Counter i = getTyped st
-  case Bimap.lookupR a bm of
-    Just l -> pure l
-    Nothing -> do
-      put $ setTyped (Counter $ i + 1) $ setTyped (Bimap.insert i a bm) st
-      pure i
-
--- | Return a fresh SAT solver variable
-newLit :: (MonadState s m, HasType Counter s) => m Int
-newLit = do
-  st <- get
-  let Counter i = getTyped st
-  put $ setTyped (Counter $ i + 1) st
-  pure i
-
-addClause :: (MonadState s m, HasType [[Int]] s) => [Int] -> m ()
-addClause c = do
-  st <- get
-  let clauses = getTyped st
-  put $ setTyped (c : clauses) st
-
--- | This function encodes our typeclasses into CNF clauses for the SAT-solver.
--- The translation works in the following way:
--- Given a set of type-classes, e.g. `{requires addition on 'a int producing 'b ,requires addition on 'b 'b producing double}`
--- we first compute all the matching instances from `allClasses`, in this case, we get:
--- `requires addition on 'a int producing 'b` matches:
--- - `requires addition on int int producing int`
--- - `requires addition on double int producing double`
--- `requires addition on 'b 'b producing double` matches:
--- - `requires addition on double double producing double`
--- Now we translate each possible class instantiation into the following clauses:
--- `requires addition on int int producing int` becomes:
--- `'a_int <-> add_class_1_inst_1_arg_1`
--- `'b_int <-> add_class_1_inst_1_arg_3`
--- `add_class_1_inst_1_arg_1 /\ add_class_1_inst_1_arg_3 <-> add_class_1_inst_1`
--- `requires addition on double int producing double` becomes:
--- `'a_double <-> add_class_1_inst_2_arg_1`
--- `'b_doube <-> add_class_1_inst_2_arg_3`
--- `add_class_1_inst_2_arg_1 /\ add_class_1_inst_2_arg_3 <-> add_class_1_inst_2`
--- We have to make sure that exactly one instance matches,
--- i.e. `requires addition on int int producing int` or `requires addition on double int producing double`, but not both:
--- `add_class_1_inst_1 XOR add_class_1_inst_2`
--- Next we encode the second set of matching instances, namely `requires addition on double double producing double`:
--- `'b_doube <-> add_class_2_inst_1_arg_1`
--- `'b_doube <-> add_class_2_inst_1_arg_2`
--- `add_class_2_inst_1_arg_1 /\ add_class_2_inst_1_arg_2 <-> add_class_2_inst_1`
--- Since the second typeclass only matches one instance, we simply add it in as true:
--- `add_class_2_inst_1`
--- Finally, we collect all the variables with all their possible types and encode the condition that exactly one type for each is matched:
--- `'a_int XOR 'a_double`
--- `'b_int XOR 'b_double`
--- If the SAT solver returns SAT, we simply check which one of `'a_?` and `'b_?` is set to true in the resulting model.
--- If the solver returns the model `'a_double /\ 'b_double` and we want to check for any more solutions, we simply add `-('a_double /\ 'b_double)`
--- (`-'a_double \/ -'b_double` in CNF) as a clause and re-run the solver. Once all assignments have been exhausted, we will get UNSAT.
-{-# NOINLINE findTypeClassWitnesses #-}
-findTypeClassWitnesses :: Set.Set TypeClass -> Maybe Int -> Set.Set TypeClass -> Set.Set TV -> [Subst]
-findTypeClassWitnesses allClasses iters tyCls tvs =
-  unsafePerformIO $
-    Picosat.evalScopedPicosat $
-      Picosat.addBaseClauses clauses >> getSolutions iters
-  where
-    filteredSubs = filteredTypeClassSubstitutions allClasses $ Set.toList tyCls
-    (_, litMap, clauses) = flip execState (Counter 1, Bimap.empty, []) $ do
-      encodeTypeClasses allClasses filteredSubs $ Set.toList tyCls
-      lm :: Bimap.Bimap Int (TV, InfernoType) <- gets getTyped
-      let ls_grouped = foldr (\(l, (tv, _)) m' -> Map.alter (Just . maybe [l] (l :)) tv m') mempty $ Bimap.toList lm
-      forM_ (Map.elems ls_grouped) $ \ls -> xor ls
-
-    getSolutions = \case
-      Just 0 -> pure []
-      i -> do
-        Picosat.scopedSolutionWithAssumptions [] >>= \case
-          Picosat.Solution ls -> do
-            let found = mapMaybe (\l -> (l,) <$> Bimap.lookup l litMap) ls
-            Picosat.addBaseClauses [[-l | (l, (tv, _)) <- found, tv `Set.member` tvs]]
-            ((Subst $ Map.fromList $ map snd found) :) <$> getSolutions ((\x -> x - 1) <$> i)
-          _ -> pure []
-
-tryMatchPartial :: [InfernoType] -> TypeClass -> Solve (Maybe Subst)
-tryMatchPartial tys (TypeClass _ tys2) =
-  (Just <$> evalSolveState (unifyMany [] tys tys2) varCount) `catchError` (\_ -> return Nothing)
-  where
-    varCount = case Set.lookupMax $ Set.unions $ map ftv $ tys ++ tys2 of
-      Just (TV i) -> i + 1
-      Nothing -> 0
-
--- | This is a minor optimisation for the `encodeTypeClasses` function. The `filteredTypeClassSubstitutions` function takes the set of all type class instances,
--- along with the list of all the current classes we want to unify and computes all the matching substitutions.
--- It then recursively merges all the possible substitutions for each class and intersects the merged maps of each class instance.
--- For example, given `{requires addition on 'a 'b producing 'c, requires multiplication on 'c 'd producing 'e}`, we will first compute the merged substitutions
--- `{'a -> {int, double, time, timeDiff, word16, word32, word64}, 'b -> {int, double, time, timeDiff, word16, word32, word64}, 'c -> {int, double, time, timeDiff, word16, word32, word64}}`
--- for the `addition` typeclass, and
--- `{'c -> {int, double}, 'd -> {int, double}, 'e -> {int, double}}` for the `multiplication` one.
--- Then we merge the two maps and obtain
--- `{'a -> {int, double, time, timeDiff, word16, word32, word64}, 'b -> {int, double, time, timeDiff, word16, word32, word64}, 'c -> {int, double}, 'd -> {int, double}, 'e -> {int, double}}`
--- This map represents the set of all possible "consistent" type assingments for the free variables `'a`,`'b`,..,`'e`, such that there may exist matching instances of both typeclasses.
--- Notice that `'c` can only an `int` or a `double`, because there are no typeclass intances of `multiplication` for any other types. Precomputing these constraints reduces the number of
--- SAT solver clauses somewhat, especially for large arithmetic operations, e.g. `fun a b c d e f g h i j -> a + b * (c - d) + e / f / g * (h + i - j)`
-filteredTypeClassSubstitutions :: Set.Set TypeClass -> [TypeClass] -> Map.Map TV (Set.Set InfernoType)
-filteredTypeClassSubstitutions allClasses = \case
-  [] -> mempty
-  TypeClass nm tys : tcs -> do
-    let possibleMatchingInstances = Set.toList $ Set.filter (\(TypeClass nm' _) -> nm == nm') allClasses
-    case runIdentity $ runExceptT $ flip runReaderT allClasses $ catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys) of
-      Left _ -> filteredTypeClassSubstitutions allClasses tcs
-      Right subs' ->
-        let subs = [su | Subst su <- subs']
-            mergedSubs = foldr (Map.merge (Map.mapMissing $ \_k a -> Set.singleton a) Map.preserveMissing $ Map.zipWithMatched $ \_k a as -> Set.insert a as) mempty subs
-            finalMap = filteredTypeClassSubstitutions allClasses tcs
-         in Map.merge Map.preserveMissing Map.preserveMissing (Map.zipWithMatched $ \_k as bs -> Set.intersection as bs) mergedSubs finalMap
-
-encodeTypeClasses ::
-  (MonadState s f, HasType (Bimap.Bimap Int (TV, InfernoType)) s, HasType [[Int]] s, HasType Counter s) =>
-  Set.Set TypeClass ->
-  Map.Map TV (Set.Set InfernoType) ->
-  [TypeClass] ->
-  f ()
-encodeTypeClasses allClasses filteredSubs = \case
-  [] -> pure ()
-  TypeClass nm tys : tcs -> do
-    let possibleMatchingInstances = Set.toList $ Set.filter (\(TypeClass nm' _) -> nm == nm') allClasses
-    case runIdentity $ runExceptT $ flip runReaderT allClasses $ catMaybes <$> forM possibleMatchingInstances (tryMatchPartial tys) of
-      Left _err -> encodeTypeClasses allClasses filteredSubs tcs
-      Right subs -> do
-        insts <- forM (filterSubs subs) $ \(Subst su) -> do
-          ls <-
-            concat
-              <$> forM
-                tys
-                ( \case
-                    TVar tv -> do
-                      let t' = su Map.! tv
-                      tvLit <- getLit (tv, t')
-                      freshLit <- newLit
-                      [tvLit] `iff` freshLit
-                      pure [freshLit]
-                    _ -> pure []
-                )
-          freshLit <- newLit
-          ls `iff` freshLit
-          pure freshLit
-        xor insts
-        encodeTypeClasses allClasses filteredSubs tcs
-  where
-    filterSubs =
-      filter $ \(Subst su) ->
-        Map.foldrWithKey
-          ( \k v cond ->
-              cond && case Map.lookup k filteredSubs of
-                Nothing -> False
-                Just vs -> Set.member v vs
-          )
-          True
-          su
-
-    -- a_1 /\ ... /\ a_n -> b is equivalent to -a_1 \/ ... \/ -a_n \/ b
-    impl as b = addClause $ b : map (\a -> -a) as
-    -- a_1 /\ ... /\ a_n <-> b is equivalent to (a_1 /\ ... /\ a_n -> b) /\ (b -> a_1) /\ ... /\ (b -> a_n)
-    iff as b = do
-      as `impl` b
-      forM_ as $ \a -> [b] `impl` a
-
-xor :: (MonadState s m, HasType [[Int]] s) => [Int] -> m ()
-xor ls =
-  do
-    addClause ls
-    go ls
-  where
-    go [] = pure ()
-    go (x : xs) = do
-      forM_ xs $ \y -> addClause [-x, -y]
-      go xs
-
-bind :: [TypeError SourcePos] -> TV -> InfernoType -> SolveState Int Subst
-bind err a t
-  | t == TVar a = return emptySubst
-  | occursCheck a t = throwError [InfiniteType a t loc | loc <- getLocFromErrs err]
-  | otherwise = return (Subst $ Map.singleton a t)
-
-occursCheck :: (Substitutable a) => TV -> a -> Bool
-occursCheck a t = a `Set.member` ftv t
+    dummyLoc :: Location SourcePos
+    dummyLoc = dupe . SourcePos mempty (mkPos 1) $ mkPos 1

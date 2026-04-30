@@ -4,7 +4,6 @@
 
 module Inferno.Infer.Error where
 
-import Data.Functor.Foldable (cata, embed)
 import Data.Functor.Foldable.TH (makeBaseFunctor)
 import qualified Data.Set as Set
 import Inferno.Infer.Env (Namespace)
@@ -18,7 +17,6 @@ import Inferno.Types.Syntax
   )
 import Inferno.Types.Type
   ( InfernoType,
-    Substitutable (..),
     TV,
     TypeClass,
   )
@@ -57,14 +55,6 @@ data TypeError a
   deriving (Show, Eq, Ord, Foldable)
 
 makeBaseFunctor ''TypeError
-
-instance Substitutable (TypeError a) where
-  apply s = cata go
-    where
-      go :: TypeErrorF a (TypeError a) -> TypeError a
-      go teF = embed $ fmap (apply s) teF
-
-  ftv _ = Set.empty
 
 getLocFromErr :: TypeError a -> [Location a]
 getLocFromErr = go . foldr (:) []

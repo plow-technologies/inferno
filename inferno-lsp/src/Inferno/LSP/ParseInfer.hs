@@ -17,8 +17,9 @@ import qualified Data.Set as Set
 import Data.Text (Text, pack)
 import qualified Data.Text as Text
 import Inferno.Core (InfernoError (..), Interpreter (..), mkInferno)
-import Inferno.Infer (TypeError (..), closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
+import Inferno.Infer (closeOverType, findTypeClassWitnesses, inferPossibleTypes, inferTypeReps)
 import Inferno.Infer.Env (Namespace (..))
+import Inferno.Infer.Error (TypeError (..))
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Parse (parseType)
 import Inferno.Parse.Commented (insertCommentsIntoExpr)
@@ -29,12 +30,13 @@ import Inferno.Types.Type
     ImplType (ImplType),
     InfernoType (..),
     TCScheme (..),
+    TV,
     TypeClass (..),
     TypeClassShape (..),
     TypeMetadata (..),
-    apply,
     ftv,
     punctuate',
+    substMap,
   )
 import Inferno.Types.VersionControl (Pinned (..), VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
@@ -680,7 +682,12 @@ mkPrettyTy allClasses currentClasses (ForallTC _tvs cls typ) =
           case findTypeClassWitnesses allClasses (Just 11) (Set.filter (\case TypeClass "rep" _ -> False; _ -> True) $ Set.union cls currentClasses) ftvTy of
             [] -> error "we must always have at least one witness!"
             subs ->
-              let prettyList = map pretty $ nubOrd $ sort $ map (flip apply $ filterOutImplicitTypeReps typ) subs
+              let fTyp :: ImplType
+                  fTyp = filterOutImplicitTypeReps typ
+                  applyWit :: Map.Map TV InfernoType -> ImplType
+                  applyWit m = case fTyp of
+                    ImplType imp bod -> ImplType (fmap (substMap m) imp) (substMap m bod)
+                  prettyList = fmap pretty . nubOrd . sort $ fmap applyWit subs
                   prettyListMax10 = take 10 prettyList
                in if length prettyListMax10 == length prettyList
                     then sep $ unionTySig prettyList
