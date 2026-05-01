@@ -6,6 +6,8 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
+
 module Inferno.Parse
   ( Comment (..),
     OpsTable,
@@ -23,14 +25,15 @@ module Inferno.Parse
   )
 where
 
-import Control.Applicative ((<|>))
+import Control.Applicative (asum, (<|>))
 import Control.Arrow ((&&&))
 import Control.Monad (void)
 import Control.Monad.Combinators.Expr (Operator, makeExprParser)
-import Control.Monad.Reader (ReaderT)
+import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.State.Strict (StateT, modify')
 import Data.Char (isAlphaNum, isSpace)
 import Data.Data (Data)
+import Data.Functor (($>))
 import qualified Data.IntMap.Strict as IntMap
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
@@ -44,16 +47,17 @@ import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
     CustomType,
-    Expr,
-    ExtIdent,
+    Expr (Lit, Var),
+    ExtIdent (ExtIdent),
     Fixity (InfixOp, PrefixOp),
     Ident (Ident),
+    ImplExpl (Expl, Impl),
     Import,
-    Lit,
+    Lit (LDouble, LHex, LInt, LText),
     ModuleName (ModuleName),
     Pat,
     RestOfRecord,
-    Scoped (LocalScope),
+    Scoped (LocalScope, Scope),
     SigVar,
     TList,
     rws,
@@ -64,7 +68,7 @@ import Inferno.Types.Type
     TypeClass,
   )
 import Text.Megaparsec
-  ( MonadParsec (hidden, notFollowedBy, takeWhileP, try),
+  ( MonadParsec (hidden, label, notFollowedBy, takeWhile1P, takeWhileP, try),
     ParseError,
     Parsec,
     ShowErrorComponent (showErrorComponent),
@@ -78,7 +82,7 @@ import Text.Megaparsec
     unPos,
     (<?>),
   )
-import Text.Megaparsec.Char (spaceChar, string)
+import Text.Megaparsec.Char (char, char', letterChar, spaceChar, string)
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data InfernoParsingError
@@ -162,9 +166,9 @@ data ParseEnv = ParseEnv
   , qualOps :: ![(Scoped ModuleName, Text)]
   , infixOps :: ![Text]
   , prefixOps :: ![Text]
-  -- NOTE: This is *intentionally lazy*, used for recursive knot-tying. If
-  -- @StrictData@ is ever enabled for this module, please use @~@ explicitly
-  , exprP :: Parser (Expr () SourcePos)
+  , -- NOTE: This is *intentionally lazy*, used for recursive knot-tying. If
+    -- @StrictData@ is ever enabled for this module, please use @~@ explicitly
+    exprP :: Parser (Expr () SourcePos)
   }
 
 -- | Type parser environment.
@@ -274,55 +278,122 @@ alphaNumCharOrSeparator :: SomeParser r Char
 alphaNumCharOrSeparator =
   satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
+withSourcePos :: (SourcePos -> SomeParser r a) -> SomeParser r a
+withSourcePos = (getSourcePos >>=)
+
 variable :: Parser Text
-variable = undefined
+variable =
+  -- Checks the set of known keywords, making lookup O(1) instead of the previous
+  -- O(n) linear scan every time
+  asks (.reserved) >>= try . (p >>=) . check
+  where
+    p :: Parser Text
+    p =
+      labelled "a variable" $
+        Text.cons
+          <$> letterChar
+          <*> hidden (takeWhileP Nothing isAlphaNumOrSeparator)
+
+    check :: Set Text -> Text -> Parser Text
+    check res x
+      | Set.member x res =
+          fail $
+            unwords
+              [ "Keyword"
+              , show x
+              , "cannot be a variable/function name"
+              ]
+      | otherwise = pure x
 
 mIdent :: Parser (SourcePos, Maybe Ident)
-mIdent = undefined
+mIdent = lexeme . withSourcePos $ \pos ->
+  labelled "a wildcard parameter '_'" $
+    asum
+      [ (pos,) . Just . Ident <$> variable
+      , char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (pos, Nothing)
+      ]
 
 mExtIdent :: Parser (SourcePos, Maybe ExtIdent)
-mExtIdent = undefined
+mExtIdent = lexeme . withSourcePos $ \pos ->
+  labelled "a wildcard parameter '_'" $
+    asum
+      [ (pos,) . Just . ExtIdent . Right <$> variable
+      , char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (pos, Nothing)
+      ]
 
 implicitVariable :: Parser Text
-implicitVariable = undefined
+implicitVariable = hidden $ char '?' *> t
+  where
+    t :: Parser Text
+    t = Text.cons <$> letterChar <*> takeWhileP Nothing isAlphaNumOrSeparator
 
 enumConstructor :: SomeParser r Ident
-enumConstructor = undefined
+enumConstructor =
+  Ident <$> lexeme (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
+    <?> "an enum constructor\nfor example: #true, #false"
 
--- | 'signedInteger' parses an integer with an optional sign (with no space)
+-- | Parses an integer with an optional sign (with no space).
 signedInteger :: (Num a) => Parser a
-signedInteger = undefined
+signedInteger =
+  flip Lexer.signed Lexer.decimal $
+    takeWhileP Nothing isHSpace $> ()
 
--- | 'signedInteger' parses a float/double with an optional sign (with no space)
+-- | Parses a float/double with an optional sign (with no space).
 signedFloat :: Parser Double
-signedFloat = undefined
+signedFloat =
+  flip Lexer.signed Lexer.float $
+    takeWhileP Nothing isHSpace $> ()
 
 enumE :: (SourcePos -> () -> Scoped ModuleName -> Ident -> f) -> Parser f
-enumE f = undefined
+enumE f = lexeme . withSourcePos $ \pos ->
+  asum
+    [ try $ f pos () . Scope . ModuleName <$> variable <*> (char '.' *> enumConstructor)
+    , f pos () LocalScope <$> enumConstructor
+    ]
 
 implVarE :: Parser (Expr () SourcePos)
-implVarE = undefined
+implVarE = lexeme . withSourcePos $ \pos ->
+  Var pos () LocalScope . Impl . ExtIdent . Right <$> implicitVariable
 
--- | 'intE' and 'doubleE' parse unsigned numbers
+-- | Parses unsigned integer and double literals.
 intE, doubleE :: Parser (Expr () SourcePos)
-intE = undefined
-doubleE = undefined
+intE =
+  label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
+    \pos -> Lit pos . LInt <$> Lexer.decimal
+doubleE =
+  label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
+    \pos -> Lit pos . LDouble <$> Lexer.float
 
 hexadecimal :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
-hexadecimal f = undefined
+hexadecimal f =
+  label "a hexadecimal number\nfor example: 0xE907, 0XE907" . lexeme . withSourcePos $
+    \pos -> f pos . LHex <$> (char '0' *> char' 'x' *> Lexer.hexadecimal)
 
 signedIntE, signedDoubleE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
-signedIntE f = undefined
-signedDoubleE f = undefined
+signedIntE f =
+  label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
+    \pos -> f pos . LInt <$> signedInteger
+signedDoubleE f =
+  label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
+    \pos -> f pos . LDouble <$> signedFloat
 
 noneE :: (SourcePos -> a) -> Parser a
-noneE = undefined
+noneE e =
+  label "an optional\nfor example: Some x, None" . lexeme . withSourcePos $
+    \pos -> e pos <$ hidden (string "None")
 
 someE :: (SourcePos -> t -> a) -> Parser t -> Parser a
-someE = undefined
+someE f p =
+  label "an optional\nfor example: Some x, None" . withSourcePos $
+    \pos -> lexeme (hidden $ string "Some") *> fmap (f pos) p
 
 stringE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
-stringE f = undefined
+stringE f =
+  label "a string\nfor example: \"hello world\"" . lexeme . withSourcePos $
+    \pos -> f pos . LText . Text.pack <$> (char '"' *> manyTill charNoNewline (char '"'))
+  where
+    charNoNewline :: Parser Char
+    charNoNewline = notFollowedBy (char '\n') *> Lexer.charLiteral
 
 interpolatedStringE :: Parser (Expr () SourcePos)
 interpolatedStringE = undefined
@@ -503,8 +574,12 @@ insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
       Nothing -> Just [(f, LocalScope, op)]
       (Just xs) -> Just $ (f, LocalScope, op) : xs
 
-modulesParser :: Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
+modulesParser ::
+  Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
 modulesParser = undefined
 
 topLevel :: SomeParser r a -> SomeParser r a
 topLevel p = undefined
+
+labelled :: String -> Parser a -> Parser a
+labelled t = (<?> t)
