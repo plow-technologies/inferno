@@ -1,5 +1,9 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NoFieldSelectors #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Inferno.Parse
@@ -19,14 +23,18 @@ module Inferno.Parse
   )
 where
 
-import Control.Monad.Combinators.Expr (Operator)
+import Control.Arrow ((&&&))
+import Control.Monad.Combinators.Expr (Operator, makeExprParser)
 import Control.Monad.Reader (ReaderT)
-import Control.Monad.Writer (WriterT)
+import Control.Monad.State.Strict (StateT, modify')
 import Data.Data (Data)
 import qualified Data.IntMap.Strict as IntMap
 import Data.List.NonEmpty (NonEmpty)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Monoid (Endo)
+import Data.Maybe (mapMaybe)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.Parse.Error (prettyError)
@@ -35,14 +43,14 @@ import Inferno.Types.Syntax
     CustomType,
     Expr,
     ExtIdent,
-    Fixity,
+    Fixity (InfixOp, PrefixOp),
     Ident (Ident),
     Import,
     Lit,
     ModuleName (ModuleName),
     Pat,
     RestOfRecord,
-    Scoped,
+    Scoped (LocalScope),
     SigVar,
     TList,
     rws,
@@ -76,11 +84,11 @@ instance ShowErrorComponent InfernoParsingError where
   showErrorComponent ImplicitVarTypeAnnot =
     "Implicit variables cannot have type annotations"
 
-type Parser = ReaderT (OpsTable, Map.Map ModuleName OpsTable, [CustomType]) (WriterT Comments (Parsec InfernoParsingError Text))
+type BaseParsec = Parsec InfernoParsingError Text
 
-type SomeParser r = ReaderT r (WriterT Comments (Parsec InfernoParsingError Text))
+type SomeParser r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
 
-type Comments = Endo [Comment SourcePos]
+type Parser = SomeParser ParseEnv
 
 data TopLevelDefn def
   = -- FIXME Don't use record fields in sum types, damn it!
@@ -102,18 +110,94 @@ data QQDefinition
   | InlineDef (Expr () SourcePos)
   deriving (Data)
 
-type TyParser =
-  ReaderT
-    ( Map.Map Text Int
-    , OpsTable
-    , Map.Map ModuleName OpsTable
-    , [CustomType]
-    )
-    (WriterT Comments (Parsec InfernoParsingError Text))
+type TyParser = SomeParser TyParseEnv
+
+-- | Operator table entry.
+data OpEntry = OpEntry
+  { fixity :: !Fixity
+  , scope  :: !(Scoped ModuleName)
+  , name   :: !Text
+  }
+
+-- | A bracketed, separator-delimited sequence with positional metadata.
+data Delimited a = Delimited
+  { open  :: !SourcePos
+  , items :: [Separated a]
+  , close :: !SourcePos
+  }
+
+-- | An element followed by an optional separator position.
+data Separated a = Separated
+  { val :: a
+  , sep :: !(Maybe SourcePos)
+  }
+
+-- | A record field binding.
+data Field a = Field
+  { name :: !Ident
+  , val  :: a
+  }
+
+-- | Parser environment; precomputed data derived from the operator table.
+data ParseEnv = ParseEnv
+  { ops         :: !OpsTable
+  , modOps      :: !(Map ModuleName OpsTable)
+  , customTypes :: ![CustomType]
+  , reserved    :: !(Set Text)
+  , localOps    :: ![Text]
+  , qualOps     :: ![(Scoped ModuleName, Text)]
+  , infixOps    :: ![Text]
+  , prefixOps   :: ![Text]
+  , exprP       :: Parser (Expr () SourcePos)
+  }
+
+-- | Type parser environment.
+data TyParseEnv = TyParseEnv
+  { tyVars :: !(Map Text Int)
+  , ops    :: !OpsTable
+  , modOps :: !(Map ModuleName OpsTable)
+  , cTypes :: ![CustomType]
+  }
+
+fromOpTuple :: (Fixity, Scoped ModuleName, Text) -> OpEntry
+fromOpTuple (f, s, n) = OpEntry{fixity = f, scope = s, name = n}
+
+toOpTuple :: OpEntry -> (Fixity, Scoped ModuleName, Text)
+toOpTuple e = (e.fixity, e.scope, e.name)
+
+mkParseEnv :: OpsTable -> Map ModuleName OpsTable -> [CustomType] -> ParseEnv
+mkParseEnv ops modOps cts = env
+  where
+    env :: ParseEnv
+    env =
+      ParseEnv
+        { ops
+        , modOps
+        , customTypes = cts
+        , reserved = Set.fromList $ rws <> fmap (.name) allOps
+        , localOps = fmap (.name) . filter ((== LocalScope) . (.scope)) $ allOps
+        , qualOps = fmap ((.scope) &&& (.name)) . filter ((/= LocalScope) . (.scope)) $ allOps
+        , infixOps = mapMaybe infixName allOps
+        , prefixOps = mapMaybe prefixName allOps
+        , exprP = makeExprParser app $ mkOperators ops
+        }
+
+    allOps :: [OpEntry]
+    allOps = fmap fromOpTuple . concat . IntMap.elems $ ops
+
+    infixName :: OpEntry -> Maybe Text
+    infixName e = case e.fixity of
+      InfixOp _ -> Just e.name
+      _         -> Nothing
+
+    prefixName :: OpEntry -> Maybe Text
+    prefixName e = case e.fixity of
+      PrefixOp -> Just e.name
+      _        -> Nothing
 
 -- | Converts a curried function to a function on a triple.
-uncurry3 :: (a -> b -> c -> d) -> ((a, b, c) -> d)
-uncurry3 f ~(a, b, c) = f a b c
+uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+uncurry3 f (a, b, c) = f a b c
 
 choiceOf :: (t -> Parser a) -> [t] -> Parser a
 choiceOf = undefined
@@ -122,7 +206,7 @@ tryMany :: (t -> Parser a) -> [t] -> Parser a
 tryMany = undefined
 
 output :: Comment SourcePos -> SomeParser r ()
-output = undefined
+output c = modify' (c :)
 
 skipLineComment :: SomeParser r ()
 skipLineComment = undefined
