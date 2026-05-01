@@ -2,9 +2,9 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.Parse
   ( Comment (..),
@@ -23,10 +23,13 @@ module Inferno.Parse
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Arrow ((&&&))
+import Control.Monad (void)
 import Control.Monad.Combinators.Expr (Operator, makeExprParser)
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.State.Strict (StateT, modify')
+import Data.Char (isAlphaNum, isSpace)
 import Data.Data (Data)
 import qualified Data.IntMap.Strict as IntMap
 import Data.List.NonEmpty (NonEmpty)
@@ -39,7 +42,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
-  ( Comment,
+  ( Comment (BlockComment, LineComment),
     CustomType,
     Expr,
     ExtIdent,
@@ -61,11 +64,22 @@ import Inferno.Types.Type
     TypeClass,
   )
 import Text.Megaparsec
-  ( ParseError,
+  ( MonadParsec (hidden, notFollowedBy, takeWhileP, try),
+    ParseError,
     Parsec,
     ShowErrorComponent (showErrorComponent),
     SourcePos,
+    anySingle,
+    between,
+    getSourcePos,
+    manyTill,
+    satisfy,
+    sourceColumn,
+    unPos,
+    (<?>),
   )
+import Text.Megaparsec.Char (spaceChar, string)
+import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data InfernoParsingError
   = ModuleNotFound ModuleName
@@ -93,10 +107,10 @@ type Parser = SomeParser ParseEnv
 data TopLevelDefn def
   = -- FIXME Don't use record fields in sum types, damn it!
     Signature
-    { documentation :: Maybe Text
-    , name :: SigVar
-    , def :: def
-    }
+      { documentation :: Maybe Text
+      , name :: SigVar
+      , def :: def
+      }
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass
   | Export ModuleName
@@ -115,13 +129,13 @@ type TyParser = SomeParser TyParseEnv
 -- | Operator table entry.
 data OpEntry = OpEntry
   { fixity :: !Fixity
-  , scope  :: !(Scoped ModuleName)
-  , name   :: !Text
+  , scope :: !(Scoped ModuleName)
+  , name :: !Text
   }
 
 -- | A bracketed, separator-delimited sequence with positional metadata.
 data Delimited a = Delimited
-  { open  :: !SourcePos
+  { open :: !SourcePos
   , items :: [Separated a]
   , close :: !SourcePos
   }
@@ -135,28 +149,30 @@ data Separated a = Separated
 -- | A record field binding.
 data Field a = Field
   { name :: !Ident
-  , val  :: a
+  , val :: a
   }
 
 -- | Parser environment; precomputed data derived from the operator table.
 data ParseEnv = ParseEnv
-  { ops         :: !OpsTable
-  , modOps      :: !(Map ModuleName OpsTable)
+  { ops :: !OpsTable
+  , modOps :: !(Map ModuleName OpsTable)
   , customTypes :: ![CustomType]
-  , reserved    :: !(Set Text)
-  , localOps    :: ![Text]
-  , qualOps     :: ![(Scoped ModuleName, Text)]
-  , infixOps    :: ![Text]
-  , prefixOps   :: ![Text]
-  , exprP       :: Parser (Expr () SourcePos)
+  , reserved :: !(Set Text)
+  , localOps :: ![Text]
+  , qualOps :: ![(Scoped ModuleName, Text)]
+  , infixOps :: ![Text]
+  , prefixOps :: ![Text]
+  -- NOTE: This is *intentionally lazy*, used for recursive knot-tying. If
+  -- @StrictData@ is ever enabled for this module, please use @~@ explicitly
+  , exprP :: Parser (Expr () SourcePos)
   }
 
 -- | Type parser environment.
 data TyParseEnv = TyParseEnv
   { tyVars :: !(Map Text Int)
-  , ops    :: !OpsTable
+  , ops :: !OpsTable
   , modOps :: !(Map ModuleName OpsTable)
-  , cTypes :: ![CustomType]
+  , ctypes :: ![CustomType]
   }
 
 fromOpTuple :: (Fixity, Scoped ModuleName, Text) -> OpEntry
@@ -188,54 +204,75 @@ mkParseEnv ops modOps cts = env
     infixName :: OpEntry -> Maybe Text
     infixName e = case e.fixity of
       InfixOp _ -> Just e.name
-      _         -> Nothing
+      _ -> Nothing
 
     prefixName :: OpEntry -> Maybe Text
     prefixName e = case e.fixity of
       PrefixOp -> Just e.name
-      _        -> Nothing
+      _ -> Nothing
 
 -- | Converts a curried function to a function on a triple.
 uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f (a, b, c) = f a b c
 
 choiceOf :: (t -> Parser a) -> [t] -> Parser a
-choiceOf = undefined
+choiceOf = \cases
+  _ [] -> fail "none of the operators matched"
+  p [x] -> p x
+  p (x : xs) -> p x <|> choiceOf p xs
 
 tryMany :: (t -> Parser a) -> [t] -> Parser a
-tryMany = undefined
+tryMany = \cases
+  _ [] -> fail "none of the operators matched"
+  p [x] -> p x
+  p (x : xs) -> try (p x) <|> tryMany p xs
 
 output :: Comment SourcePos -> SomeParser r ()
 output c = modify' (c :)
 
 skipLineComment :: SomeParser r ()
-skipLineComment = undefined
+skipLineComment = do
+  startPos <- getSourcePos
+  comment <- string "//" *> takeWhileP (Just "character") (/= '\n')
+  endPos <- getSourcePos
+  output $ LineComment startPos (Text.strip comment) endPos
 
 skipBlockComment :: SomeParser r ()
-skipBlockComment = undefined
+skipBlockComment = do
+  startPos <- getSourcePos
+  comment <- string "/*" *> manyTill anySingle (string "*/")
+  endPos <- getSourcePos
+  output $ BlockComment startPos (stripIndent startPos comment) endPos
+  where
+    stripIndent :: SourcePos -> [Char] -> Text
+    stripIndent pos = Text.replace ws "\n" . Text.pack
+      where
+        ws :: Text
+        ws = Text.pack $ '\n' : replicate (unPos pos.sourceColumn - 1) ' '
 
 sc :: SomeParser r ()
-sc = undefined
+sc = Lexer.space (void spaceChar) skipLineComment skipBlockComment
 
 lexeme :: SomeParser r a -> SomeParser r a
-lexeme = undefined
+lexeme = Lexer.lexeme sc
 
 symbol :: Text -> SomeParser r Text
-symbol = undefined
+symbol = Lexer.symbol sc
 
 -- | 'parens' parses something between parenthesis.
 parens :: SomeParser r a -> SomeParser r a
-parens p = undefined
+parens = hidden . between (symbol "(") (symbol ")")
 
 -- | 'rword' for parsing reserved words.
 rword :: Text -> SomeParser r ()
-rword = undefined
+rword w = string w *> notFollowedBy alphaNumCharOrSeparator *> sc
 
 isAlphaNumOrSeparator :: Char -> Bool
-isAlphaNumOrSeparator = undefined
+isAlphaNumOrSeparator = (||) <$> isAlphaNum <*> (== '_')
 
 alphaNumCharOrSeparator :: SomeParser r Char
-alphaNumCharOrSeparator = undefined
+alphaNumCharOrSeparator =
+  satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
 variable :: Parser Text
 variable = undefined
@@ -330,7 +367,7 @@ tupleArgs :: SomeParser r a -> SomeParser r [(a, Maybe SourcePos)]
 tupleArgs = undefined
 
 isHSpace :: Char -> Bool
-isHSpace = undefined
+isHSpace c = isSpace c && c /= '\n' && c /= '\r'
 
 tuple :: SomeParser r a -> SomeParser r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
 tuple = undefined
@@ -457,7 +494,14 @@ sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
 sigsParser = undefined
 
 insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
-insertIntoOpsTable = undefined
+insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
+  where
+    go ::
+      Maybe [(Fixity, Scoped ModuleName, Text)] ->
+      Maybe [(Fixity, Scoped ModuleName, Text)]
+    go = \cases
+      Nothing -> Just [(f, LocalScope, op)]
+      (Just xs) -> Just $ (f, LocalScope, op) : xs
 
 modulesParser :: Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
 modulesParser = undefined
