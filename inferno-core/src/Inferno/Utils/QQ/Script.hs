@@ -3,6 +3,8 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeApplications #-}
 
+{-# OPTIONS_GHC -Wno-unused-imports #-} -- FIXME Parser rewrite
+
 module Inferno.Utils.QQ.Script where
 
 import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
@@ -46,28 +48,29 @@ import Text.Megaparsec
 inferno :: forall m c. (MonadIO m, MonadThrow m, MonadCatch m, Pretty c, Eq c) => QuasiQuoter
 inferno =
   QuasiQuoter
-    { quoteExp = \str -> do
-        l <- location'
-        let (_, res) =
-              runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel expr) $
-                State
-                  (pack str)
-                  0
-                  (PosState (pack str) 0 l defaultTabWidth "")
-                  []
-        case res of
-          Left (ParseErrorBundle errs pos) ->
-            let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
-             in fail $ intercalate "\n\n" errs'
-          Right (ast, comments) ->
-            case pinExpr (builtinModulesPinMap @_ @c builtins) ast of
-              Left err -> fail $ "Pinning expression failed:\n" <> show err
-              Right pinnedAST ->
-                case inferExpr builtins pinnedAST of
-                  Left err -> fail $ "Inference failed:\n" <> show err
-                  Right (pinnedAST', t, _tyMap) -> do
-                    let final = insertCommentsIntoExpr (appEndo comments []) pinnedAST'
-                    dataToExpQ ((fmap liftText . cast) `extQ` vcObjectHashToValue) (final, t)
+    { quoteExp = undefined -- FIXME Parser rewrite
+      -- \str -> do
+      --   l <- location'
+      --   let (_, res) =
+      --         runParser' (runWriterT $ flip runReaderT (baseOpsTable @_ @c builtins, builtinModulesOpsTable @_ @c builtins, []) $ topLevel expr) $
+      --           State
+      --             (pack str)
+      --             0
+      --             (PosState (pack str) 0 l defaultTabWidth "")
+      --             []
+      --   case res of
+      --     Left (ParseErrorBundle errs pos) ->
+      --       let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
+      --        in fail $ intercalate "\n\n" errs'
+      --     Right (ast, comments) ->
+      --       case pinExpr (builtinModulesPinMap @_ @c builtins) ast of
+      --         Left err -> fail $ "Pinning expression failed:\n" <> show err
+      --         Right pinnedAST ->
+      --           case inferExpr builtins pinnedAST of
+      --             Left err -> fail $ "Inference failed:\n" <> show err
+      --             Right (pinnedAST', t, _tyMap) -> do
+      --               let final = insertCommentsIntoExpr (appEndo comments []) pinnedAST'
+      --               dataToExpQ ((fmap liftText . cast) `extQ` vcObjectHashToValue) (final, t)
     , quotePat = error "inferno: Invalid use of this quasi-quoter in pattern context."
     , quoteType = error "inferno: Invalid use of this quasi-quoter in type context."
     , quoteDec = error "inferno: Invalid use of this quasi-quoter in top-level declaration context."
