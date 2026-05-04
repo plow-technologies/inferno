@@ -104,9 +104,9 @@ instance ShowErrorComponent InfernoParsingError where
 
 type BaseParsec = Parsec InfernoParsingError Text
 
-type SomeParser r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
+type ParserOver r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
 
-type Parser = SomeParser ParseEnv
+type Parser = ParserOver ParseEnv
 
 data TopLevelDefn def
   = -- FIXME Don't use record fields in sum types, damn it!
@@ -128,7 +128,7 @@ data QQDefinition
   | InlineDef (Expr () SourcePos)
   deriving (Data)
 
-type TyParser = SomeParser TyParseEnv
+type TyParser = ParserOver TyParseEnv
 
 -- | Operator table entry.
 data OpEntry = OpEntry
@@ -233,17 +233,17 @@ tryMany = \cases
   p [x] -> p x
   p (x : xs) -> try (p x) <|> tryMany p xs
 
-output :: Comment SourcePos -> SomeParser r ()
+output :: Comment SourcePos -> ParserOver r ()
 output c = modify' (c :)
 
-skipLineComment :: SomeParser r ()
+skipLineComment :: ParserOver r ()
 skipLineComment = do
   startPos <- getSourcePos
   comment <- string "//" *> takeWhileP (Just "character") (/= '\n')
   endPos <- getSourcePos
   output $ LineComment startPos (Text.strip comment) endPos
 
-skipBlockComment :: SomeParser r ()
+skipBlockComment :: ParserOver r ()
 skipBlockComment = do
   startPos <- getSourcePos
   comment <- string "/*" *> manyTill anySingle (string "*/")
@@ -256,31 +256,31 @@ skipBlockComment = do
         ws :: Text
         ws = Text.pack $ '\n' : replicate (unPos pos.sourceColumn - 1) ' '
 
-sc :: SomeParser r ()
+sc :: ParserOver r ()
 sc = Lexer.space (void spaceChar) skipLineComment skipBlockComment
 
-lexeme :: SomeParser r a -> SomeParser r a
+lexeme :: ParserOver r a -> ParserOver r a
 lexeme = Lexer.lexeme sc
 
-symbol :: Text -> SomeParser r Text
+symbol :: Text -> ParserOver r Text
 symbol = Lexer.symbol sc
 
 -- | 'parens' parses something between parenthesis.
-parens :: SomeParser r a -> SomeParser r a
+parens :: ParserOver r a -> ParserOver r a
 parens = hidden . between (symbol "(") (symbol ")")
 
 -- | 'rword' for parsing reserved words.
-rword :: Text -> SomeParser r ()
+rword :: Text -> ParserOver r ()
 rword w = string w *> notFollowedBy alphaNumCharOrSeparator *> sc
 
 isAlphaNumOrSeparator :: Char -> Bool
 isAlphaNumOrSeparator = (||) <$> isAlphaNum <*> (== '_')
 
-alphaNumCharOrSeparator :: SomeParser r Char
+alphaNumCharOrSeparator :: ParserOver r Char
 alphaNumCharOrSeparator =
   satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
-withSourcePos :: (SourcePos -> SomeParser r a) -> SomeParser r a
+withSourcePos :: (SourcePos -> ParserOver r a) -> ParserOver r a
 withSourcePos = (getSourcePos >>=)
 
 variable :: Parser Text
@@ -329,7 +329,7 @@ implicitVariable = hidden $ char '?' *> t
     t :: Parser Text
     t = Text.cons <$> letterChar <*> takeWhileP Nothing isAlphaNumOrSeparator
 
-enumConstructor :: SomeParser r Ident
+enumConstructor :: ParserOver r Ident
 enumConstructor =
   Ident <$> lexeme (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
     <?> "an enum constructor\nfor example: #true, #false"
@@ -436,13 +436,13 @@ casePatts = undefined
 caseE :: Parser (Expr () SourcePos)
 caseE = undefined
 
-tupleArgs :: SomeParser r a -> SomeParser r [(a, Maybe SourcePos)]
+tupleArgs :: ParserOver r a -> ParserOver r [(a, Maybe SourcePos)]
 tupleArgs = undefined
 
 isHSpace :: Char -> Bool
 isHSpace c = isSpace c && c /= '\n' && c /= '\r'
 
-tuple :: SomeParser r a -> SomeParser r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
+tuple :: ParserOver r a -> ParserOver r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
 tuple = undefined
 
 assertE :: Parser (Expr () SourcePos)
@@ -580,7 +580,7 @@ modulesParser ::
   Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
 modulesParser = undefined
 
-topLevel :: SomeParser r a -> SomeParser r a
+topLevel :: ParserOver r a -> ParserOver r a
 topLevel p = undefined
 
 labelled :: String -> Parser a -> Parser a
