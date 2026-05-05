@@ -3,6 +3,7 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -427,11 +428,65 @@ interpolatedStringE = undefined
 arrayComprE :: Parser (Expr () SourcePos)
 arrayComprE = undefined
 
-array :: Parser a -> Parser (SourcePos, [(a, Maybe SourcePos)], SourcePos)
-array = undefined
+array :: forall a. Parser a -> Parser (Delimited a)
+array p =
+  label "array\nfor example: [1,2,3,4,5]" . lexeme $ do
+    open <- getSourcePos
+    void $ symbol "["
+    items <- argsE
+    close <- getSourcePos
+    void $ char ']'
+    pure Delimited{open, items, close}
+  where
+    argsE :: Parser [Separated a]
+    argsE = asum [ p >>= rest, pure mempty ]
 
-record :: Parser a -> Parser (SourcePos, [(Ident, a, Maybe SourcePos)], SourcePos)
-record = undefined
+    rest :: a -> Parser [Separated a]
+    rest e =
+      asum
+        [ withSourcePos $ \pos ->
+            symbol "," *> fmap (Separated{val = e, sep = Just pos} :) argsE
+        , pure [Separated{val = e, sep = Nothing}]
+        ]
+
+record :: forall a. Parser a -> Parser (Delimited (Field a))
+record p =
+  label "record\nfor example: {name = \"Zaphod\"; age = 391}" . lexeme $ do
+    open <- getSourcePos
+    void $ symbol "{"
+    items <- argsE
+    close <- getSourcePos
+    void $ char '}'
+    pure Delimited{open, items, close}
+  where
+    argsE :: Parser [Separated (Field a)]
+    argsE = fieldP <|> pure mempty
+
+    fieldP :: Parser [Separated (Field a)]
+    fieldP = do
+      name <- lexeme $ Ident <$> variable
+      void $ symbol "="
+      val <- p
+      rest Field{name, val}
+
+    rest :: Field a -> Parser [Separated (Field a)]
+    rest fld =
+      asum
+        [ withSourcePos $ \pos ->
+            symbol ";" *> fmap (Separated{val = fld, sep = Just pos} :) argsE
+        , pure [Separated{val = fld, sep = Nothing}]
+        ]
+
+mkArray :: Delimited (Expr () SourcePos) -> Expr () SourcePos
+mkArray del = flip (Array del.open) del.close $ fmap ((.val) &&& (.sep)) del.items
+
+mkRecord :: Delimited (Field (Expr () SourcePos)) -> Expr () SourcePos
+mkRecord del = Record del.open (fmap toTriple del.items) del.close
+  where
+    toTriple ::
+      Separated (Field (Expr () SourcePos)) ->
+      (Ident, Expr () SourcePos, Maybe SourcePos)
+    toTriple s = (s.val.name, s.val.val, s.sep)
 
 mkInterpolatedString :: [Either Text e] -> [Either Text e]
 mkInterpolatedString = undefined
@@ -555,8 +610,8 @@ term =
     , try implVarE
     , stringE Lit
     , interpolatedStringE
-    , try $ uncurry3 Array <$> array expr
-    , try $ uncurry3 Record <$> record expr
+    , try $ mkArray <$> array expr
+    , try $ mkRecord <$> record expr
     , arrayComprE
     ]
   where
