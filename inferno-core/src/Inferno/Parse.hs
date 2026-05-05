@@ -602,7 +602,7 @@ mkOperators tbl =
             Op e1 pos () (prec, fix) ns (Ident o) e2
       prec PrefixOp ns o ->
         Prefix . label "a prefix operator\nfor example: -, !" $
-          opP ns o >>= \pos -> pure $ PreOp pos () prec ns (Ident o)
+          opP ns o >>= \pos -> pure . PreOp pos () prec ns $ Ident o
 
     opP :: Scoped ModuleName -> Text -> Parser SourcePos
     opP ns o = lexeme $ getSourcePos <* string (opStr ns o)
