@@ -3,9 +3,9 @@
 {-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE NoFieldSelectors #-}
-
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Inferno.Parse
@@ -27,13 +27,18 @@ where
 
 import Control.Applicative (asum, (<|>))
 import Control.Arrow ((&&&))
-import Control.Monad (void)
-import Control.Monad.Combinators.Expr (Operator, makeExprParser)
+import Control.Monad (join, void)
+import Control.Monad.Combinators.Expr
+  ( Operator (InfixL, InfixN, InfixR, Prefix),
+    makeExprParser,
+  )
 import Control.Monad.Reader (ReaderT, asks)
 import Control.Monad.State.Strict (StateT, modify')
+import Data.Bifunctor (first)
 import Data.Char (isAlphaNum, isSpace)
 import Data.Data (Data)
-import Data.Functor (($>))
+import Data.Foldable (foldl') -- foldl': DO NOT REMOVE; needed for older GHC compat
+import Data.Functor (($>), (<&>))
 import qualified Data.IntMap.Strict as IntMap
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.Strict (Map)
@@ -47,20 +52,38 @@ import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
     CustomType,
-    Expr (Lit, Var),
+    Expr
+      ( App,
+        Array,
+        Bracketed,
+        Empty,
+        Enum,
+        Lit,
+        One,
+        Op,
+        OpVar,
+        PreOp,
+        Record,
+        Tuple,
+        Var
+      ),
     ExtIdent (ExtIdent),
     Fixity (InfixOp, PrefixOp),
     Ident (Ident),
     ImplExpl (Expl, Impl),
     Import,
+    InfixFixity (LeftFix, NoFix, RightFix),
     Lit (LDouble, LHex, LInt, LText),
     ModuleName (ModuleName),
     Pat,
     RestOfRecord,
     Scoped (LocalScope, Scope),
     SigVar,
-    TList,
+    TList (TNil),
+    fromScoped,
     rws,
+    tListFromList,
+    unModuleName,
   )
 import Inferno.Types.Type
   ( InfernoType,
@@ -78,6 +101,7 @@ import Text.Megaparsec
     getSourcePos,
     manyTill,
     satisfy,
+    some,
     sourceColumn,
     unPos,
     (<?>),
@@ -104,9 +128,9 @@ instance ShowErrorComponent InfernoParsingError where
 
 type BaseParsec = Parsec InfernoParsingError Text
 
-type SomeParser r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
+type ParserOver r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
 
-type Parser = SomeParser ParseEnv
+type Parser = ParserOver ParseEnv
 
 data TopLevelDefn def
   = -- FIXME Don't use record fields in sum types, damn it!
@@ -128,7 +152,7 @@ data QQDefinition
   | InlineDef (Expr () SourcePos)
   deriving (Data)
 
-type TyParser = SomeParser TyParseEnv
+type TyParser = ParserOver TyParseEnv
 
 -- | Operator table entry.
 data OpEntry = OpEntry
@@ -216,6 +240,8 @@ mkParseEnv ops modOps cts = env
       _ -> Nothing
 
 -- | Converts a curried function to a function on a triple.
+--
+-- NOTE: Strict, unlike the version from @Data.Tuple.Extra@
 uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
 uncurry3 f (a, b, c) = f a b c
 
@@ -231,17 +257,17 @@ tryMany = \cases
   p [x] -> p x
   p (x : xs) -> try (p x) <|> tryMany p xs
 
-output :: Comment SourcePos -> SomeParser r ()
+output :: Comment SourcePos -> ParserOver r ()
 output c = modify' (c :)
 
-skipLineComment :: SomeParser r ()
+skipLineComment :: ParserOver r ()
 skipLineComment = do
   startPos <- getSourcePos
   comment <- string "//" *> takeWhileP (Just "character") (/= '\n')
   endPos <- getSourcePos
   output $ LineComment startPos (Text.strip comment) endPos
 
-skipBlockComment :: SomeParser r ()
+skipBlockComment :: ParserOver r ()
 skipBlockComment = do
   startPos <- getSourcePos
   comment <- string "/*" *> manyTill anySingle (string "*/")
@@ -254,31 +280,31 @@ skipBlockComment = do
         ws :: Text
         ws = Text.pack $ '\n' : replicate (unPos pos.sourceColumn - 1) ' '
 
-sc :: SomeParser r ()
+sc :: ParserOver r ()
 sc = Lexer.space (void spaceChar) skipLineComment skipBlockComment
 
-lexeme :: SomeParser r a -> SomeParser r a
+lexeme :: ParserOver r a -> ParserOver r a
 lexeme = Lexer.lexeme sc
 
-symbol :: Text -> SomeParser r Text
+symbol :: Text -> ParserOver r Text
 symbol = Lexer.symbol sc
 
 -- | 'parens' parses something between parenthesis.
-parens :: SomeParser r a -> SomeParser r a
+parens :: ParserOver r a -> ParserOver r a
 parens = hidden . between (symbol "(") (symbol ")")
 
 -- | 'rword' for parsing reserved words.
-rword :: Text -> SomeParser r ()
+rword :: Text -> ParserOver r ()
 rword w = string w *> notFollowedBy alphaNumCharOrSeparator *> sc
 
 isAlphaNumOrSeparator :: Char -> Bool
 isAlphaNumOrSeparator = (||) <$> isAlphaNum <*> (== '_')
 
-alphaNumCharOrSeparator :: SomeParser r Char
+alphaNumCharOrSeparator :: ParserOver r Char
 alphaNumCharOrSeparator =
   satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
-withSourcePos :: (SourcePos -> SomeParser r a) -> SomeParser r a
+withSourcePos :: (SourcePos -> ParserOver r a) -> ParserOver r a
 withSourcePos = (getSourcePos >>=)
 
 variable :: Parser Text
@@ -289,7 +315,7 @@ variable =
   where
     p :: Parser Text
     p =
-      labelled "a variable" $
+      label "a variable" $
         Text.cons
           <$> letterChar
           <*> hidden (takeWhileP Nothing isAlphaNumOrSeparator)
@@ -307,7 +333,7 @@ variable =
 
 mIdent :: Parser (SourcePos, Maybe Ident)
 mIdent = lexeme . withSourcePos $ \pos ->
-  labelled "a wildcard parameter '_'" $
+  label "a wildcard parameter '_'" $
     asum
       [ (pos,) . Just . Ident <$> variable
       , char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (pos, Nothing)
@@ -315,7 +341,7 @@ mIdent = lexeme . withSourcePos $ \pos ->
 
 mExtIdent :: Parser (SourcePos, Maybe ExtIdent)
 mExtIdent = lexeme . withSourcePos $ \pos ->
-  labelled "a wildcard parameter '_'" $
+  label "a wildcard parameter '_'" $
     asum
       [ (pos,) . Just . ExtIdent . Right <$> variable
       , char '_' *> takeWhileP Nothing isAlphaNumOrSeparator $> (pos, Nothing)
@@ -327,7 +353,7 @@ implicitVariable = hidden $ char '?' *> t
     t :: Parser Text
     t = Text.cons <$> letterChar <*> takeWhileP Nothing isAlphaNumOrSeparator
 
-enumConstructor :: SomeParser r Ident
+enumConstructor :: ParserOver r Ident
 enumConstructor =
   Ident <$> lexeme (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
     <?> "an enum constructor\nfor example: #true, #false"
@@ -402,7 +428,7 @@ arrayComprE :: Parser (Expr () SourcePos)
 arrayComprE = undefined
 
 array :: Parser a -> Parser (SourcePos, [(a, Maybe SourcePos)], SourcePos)
-array p = undefined
+array = undefined
 
 record :: Parser a -> Parser (SourcePos, [(Ident, a, Maybe SourcePos)], SourcePos)
 record = undefined
@@ -434,13 +460,13 @@ casePatts = undefined
 caseE :: Parser (Expr () SourcePos)
 caseE = undefined
 
-tupleArgs :: SomeParser r a -> SomeParser r [(a, Maybe SourcePos)]
+tupleArgs :: ParserOver r a -> ParserOver r [(a, Maybe SourcePos)]
 tupleArgs = undefined
 
 isHSpace :: Char -> Bool
 isHSpace c = isSpace c && c /= '\n' && c /= '\r'
 
-tuple :: SomeParser r a -> SomeParser r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
+tuple :: ParserOver r a -> ParserOver r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
 tuple = undefined
 
 assertE :: Parser (Expr () SourcePos)
@@ -452,32 +478,134 @@ ifE = undefined
 -- | Parses an op in prefix syntax WITHOUT opening paren @(@ but with closing paren @)@
 -- E.g. @+)@
 prefixOpsWithoutModule :: SourcePos -> Parser (Expr () SourcePos)
-prefixOpsWithoutModule = undefined
+prefixOpsWithoutModule pos = hidden $ asks (.localOps) >>= choiceOf prefixOp
+  where
+    prefixOp :: Text -> Parser (Expr () SourcePos)
+    prefixOp s = symbol (s <> ")") $> OpVar pos () LocalScope (Ident s)
 
--- | Parses a op in prefix syntax of the form @Mod.(+)@
+-- | Parses an op in prefix syntax of the form @Mod.(+)@
 prefixOpsWithModule :: SourcePos -> Parser (Expr () SourcePos)
-prefixOpsWithModule = undefined
+prefixOpsWithModule pos = hidden $ asks (.qualOps) >>= tryMany prefixOp
+  where
+    prefixOp :: (Scoped ModuleName, Text) -> Parser (Expr () SourcePos)
+    prefixOp (ns, s) = symbol t $> OpVar pos () ns (Ident s)
+      where
+        t :: Text
+        t =
+          mconcat
+            [ fromScoped mempty $ (<> ".") . unModuleName <$> ns
+            , "("
+            , s
+            , ")"
+            ]
 
--- | Parses a tuple @a, b, c, ...)@ WITHOUT opening paren @(@ but with closing paren @)@
--- Returns (list of (expr, commaPos), endParenPos)
+-- | Parses @a, b, c, ...)@ WITHOUT the opening paren but WITH the closing paren.
 tupleElems :: Parser ([(Expr () SourcePos, Maybe SourcePos)], SourcePos)
-tupleElems = undefined
+tupleElems =
+  asum
+    [ expr >>= \e ->
+        asum
+          [ char ')' *> withSourcePos (pure . ([(e, Nothing)],))
+          , lexeme (char ',' *> getSourcePos) >>= \commaPos ->
+              fmap (first ((e, Just commaPos) :)) tupleElems
+          ]
+    , char ')' *> withSourcePos (pure . ([],))
+    ]
 
--- | Parses any bracketed expression: tuples, bracketed exprs (1 + 2), and prefix ops (+)
+-- | Parses any bracketed expression: tuples, bracketed exprs, and prefix ops.
 bracketedE :: Parser (Expr () SourcePos)
-bracketedE = undefined
+bracketedE = withSourcePos $ \pos ->
+  symbol "(" *> (prefixOpsWithoutModule pos <|> bracketedOrTuple pos)
+  where
+    bracketedOrTuple :: SourcePos -> Parser (Expr () SourcePos)
+    bracketedOrTuple pos =
+      tupleElems >>= \(es, endPos) ->
+        lexeme . pure $ case es of
+          [] -> Tuple pos TNil endPos
+          [(e, _)] -> Bracketed pos e endPos
+          _ -> Tuple pos (tListFromList es) endPos
 
 term :: Parser (Expr () SourcePos)
-term = undefined
+term =
+  asum
+    [ bracketedE
+    , try $ hexadecimal Lit
+    , try doubleE
+    , intE
+    , enumE Enum
+    , withSourcePos $ \pos ->
+        lexeme $
+          asum
+            [ try $ qualVar pos <$> variable <*> (char '.' *> variable)
+            , prefixOpsWithModule pos
+            , try $
+                Var pos () LocalScope . Expl . ExtIdent . Right
+                  <$> variable
+                  <* notFollowedBy (char '.')
+            ]
+    , noneE Empty
+    , someE One expr
+    , ifE
+    , try renameModE
+    , letE
+    , openModE
+    , assertE
+    , funE
+    , caseE
+    , try implVarE
+    , stringE Lit
+    , interpolatedStringE
+    , try $ uncurry3 Array <$> array expr
+    , try $ uncurry3 Record <$> record expr
+    , arrayComprE
+    ]
+  where
+    qualVar :: SourcePos -> Text -> Text -> Expr () SourcePos
+    qualVar pos ns x = Var pos () (Scope $ ModuleName ns) . Expl . ExtIdent $ Right x
 
 app :: Parser (Expr () SourcePos)
-app = undefined
+app =
+  term >>= \x ->
+    asum
+      [ foldl' App x <$> some term
+      , pure x
+      ]
 
 expr :: Parser (Expr () SourcePos)
-expr = undefined
+expr = join $ asks (.exprP)
 
 mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
-mkOperators = undefined
+mkOperators tbl =
+  IntMap.toDescList tbl <&> \(prec, grp) -> fmap (uncurry3 (mkOp prec)) grp
+  where
+    opStr :: Scoped ModuleName -> Text -> Text
+    opStr = \cases
+      LocalScope s -> s
+      (Scope (ModuleName ns)) s -> ns <> "." <> s
+
+    fixCtor :: InfixFixity -> Parser (a -> a -> a) -> Operator Parser a
+    fixCtor = \cases
+      NoFix -> InfixN
+      LeftFix -> InfixL
+      RightFix -> InfixR
+
+    mkOp ::
+      Int ->
+      Fixity ->
+      Scoped ModuleName ->
+      Text ->
+      Operator Parser (Expr () SourcePos)
+    mkOp = \cases
+      prec (InfixOp fix) ns o ->
+        fixCtor fix . label "an infix operator\nfor example: +, *, ==, >, <" $
+          opP ns o >>= \pos -> pure $ \e1 e2 ->
+            Op e1 pos () (prec, fix) ns (Ident o) e2
+      prec PrefixOp ns o ->
+        Prefix . label "a prefix operator\nfor example: -, !" $
+          opP ns o >>= \pos -> pure . PreOp pos () prec ns $ Ident o
+
+    opP :: Scoped ModuleName -> Text -> Parser SourcePos
+    opP ns o = lexeme $ getSourcePos <* string (opStr ns o)
 
 parseExpr ::
   OpsTable ->
@@ -520,7 +648,7 @@ parseType ::
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     InfernoType
-parseType s = undefined
+parseType = undefined
 
 parseTCScheme :: Text -> Either String TCScheme
 parseTCScheme = undefined
@@ -578,8 +706,5 @@ modulesParser ::
   Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
 modulesParser = undefined
 
-topLevel :: SomeParser r a -> SomeParser r a
-topLevel p = undefined
-
-labelled :: String -> Parser a -> Parser a
-labelled t = (<?> t)
+topLevel :: ParserOver r a -> ParserOver r a
+topLevel = undefined
