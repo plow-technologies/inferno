@@ -1,6 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE ExplicitForAll #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -26,22 +25,24 @@ module Inferno.Parse
   )
 where
 
-import Control.Applicative (asum, (<|>))
+import Control.Applicative (asum, optional, (<|>))
 import Control.Arrow ((&&&))
-import Control.Monad (join, void)
+import Control.Monad (foldM, join, void)
 import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixN, InfixR, Prefix),
     makeExprParser,
   )
-import Control.Monad.Reader (ReaderT, asks)
+import Control.Monad.Reader (ReaderT, ask, asks, withReaderT)
 import Control.Monad.State.Strict (StateT, modify')
 import Data.Bifunctor (first)
 import Data.Char (isAlphaNum, isSpace)
 import Data.Data (Data)
 import Data.Foldable (foldl') -- foldl': DO NOT REMOVE; needed for older GHC compat
+import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import qualified Data.IntMap.Strict as IntMap
 import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
@@ -49,6 +50,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Tuple.Extra (thd3)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
@@ -56,15 +58,23 @@ import Inferno.Types.Syntax
     Expr
       ( App,
         Array,
+        Assert,
         Bracketed,
+        Case,
         Empty,
         Enum,
+        If,
+        Lam,
+        Let,
+        LetAnnot,
         Lit,
         One,
         Op,
         OpVar,
+        OpenModule,
         PreOp,
         Record,
+        RenameModule,
         Tuple,
         Var
       ),
@@ -72,11 +82,11 @@ import Inferno.Types.Syntax
     Fixity (InfixOp, PrefixOp),
     Ident (Ident),
     ImplExpl (Expl, Impl),
-    Import,
+    Import (IEnum, IOpVar, IVar),
     InfixFixity (LeftFix, NoFix, RightFix),
     Lit (LDouble, LHex, LInt, LText),
     ModuleName (ModuleName),
-    Pat,
+    Pat (PArray, PEmpty, PEnum, PLit, POne, PRecord, PTuple, PVar),
     RestOfRecord,
     Scoped (LocalScope, Scope),
     SigVar,
@@ -91,6 +101,7 @@ import Inferno.Types.Type
     TCScheme,
     TypeClass,
   )
+import Inferno.Utils.Prettyprinter (renderPretty)
 import Text.Megaparsec
   ( MonadParsec (hidden, label, notFollowedBy, takeWhile1P, takeWhileP, try),
     ParseError,
@@ -99,9 +110,11 @@ import Text.Megaparsec
     SourcePos,
     anySingle,
     between,
+    customFailure,
     getSourcePos,
     manyTill,
     satisfy,
+    sepBy1,
     some,
     sourceColumn,
     unPos,
@@ -439,7 +452,7 @@ array p =
     pure Delimited{open, items, close}
   where
     argsE :: Parser [Separated a]
-    argsE = asum [ p >>= rest, pure mempty ]
+    argsE = asum [p >>= rest, pure mempty]
 
     rest :: a -> Parser [Separated a]
     rest e =
@@ -492,43 +505,268 @@ mkInterpolatedString :: [Either Text e] -> [Either Text e]
 mkInterpolatedString = undefined
 
 funE :: Parser (Expr () SourcePos)
-funE = undefined
+funE = label "a function\nfor example: fun x y -> x + y" $ do
+  startPos <- getSourcePos
+  hidden $ rword "fun"
+  args <- some mExtIdent
+  arrPos <- getSourcePos
+  void . label "'->'" $ symbol "->"
+  Lam startPos (NonEmpty.fromList args) arrPos <$> expr
 
 renameModE :: Parser (Expr () SourcePos)
-renameModE = undefined
+renameModE = label "a 'let module' expression\nfor example: let module A = Base in A.#true" $ do
+  hidden $ rword "let"
+  hidden $ rword "module"
+  newNmPos <- getSourcePos
+  newNm <- label "module name" . lexeme $ ModuleName <$> variable
+  void . label "'='" $ symbol "="
+  oldNmPos <- getSourcePos
+  oldNm <- label "name of an existing module" . lexeme $ ModuleName <$> variable
+  inPos <- getSourcePos
+  ask >>= \env ->
+    Map.lookup oldNm env.modOps & \case
+      Nothing -> customFailure $ ModuleNotFound oldNm
+      Just oldTbl ->
+        RenameModule newNmPos newNm oldNmPos oldNm inPos
+          <$> withReaderT (const (mkParseEnv ops' modOps' env.customTypes)) inExpr
+        where
+          ops' :: OpsTable
+          ops' =
+            IntMap.unionWith (<>) env.ops $
+              IntMap.map (fmap (reScope newNm)) oldTbl
 
-openModArgs :: ModuleName -> Parser ([(Import SourcePos, Maybe SourcePos)], SourcePos, Expr () SourcePos)
-openModArgs = undefined
+          modOps' :: Map ModuleName OpsTable
+          modOps' = Map.insert newNm oldTbl env.modOps
+
+reScope :: ModuleName -> (Fixity, Scoped ModuleName, Text) -> (Fixity, Scoped ModuleName, Text)
+reScope nm (fix, _, op) = (fix, Scope nm, op)
+
+inExpr :: Parser (Expr () SourcePos)
+inExpr = label "_the 'in' keyword" (rword "in") *> expr
+
+openModArgs ::
+  ModuleName ->
+  Parser ([(Import SourcePos, Maybe SourcePos)], SourcePos, Expr () SourcePos)
+openModArgs modNm = do
+  void $ symbol "("
+  is <- go
+  void . optional $ symbol ","
+  void $ symbol ")"
+  env <- ask
+  ops' <- foldM mergeOp env.ops (fmap fst is)
+  inPos <- getSourcePos
+  e <- withReaderT (const $ mkParseEnv ops' env.modOps env.customTypes) inExpr
+  pure (is, inPos, e)
+  where
+    mergeOp :: OpsTable -> Import SourcePos -> Parser OpsTable
+    mergeOp tbl = \case
+      IOpVar _ op -> IntMap.unionWith (<>) tbl <$> findOp op
+      _ -> pure tbl
+
+    findOp :: Ident -> Parser OpsTable
+    findOp i@(Ident op) =
+      asks (.modOps) >>= \mOps ->
+        Map.lookup modNm mOps & \case
+          Nothing -> customFailure $ ModuleNotFound modNm
+          Just tbl ->
+            let filtered :: OpsTable
+                filtered = IntMap.mapMaybe filterOp tbl
+             in case IntMap.null filtered of
+                  True -> customFailure $ InfixOpNotFound modNm i
+                  False -> pure filtered
+            where
+              filterOp :: [(Fixity, Scoped ModuleName, Text)] -> Maybe [(Fixity, Scoped ModuleName, Text)]
+              filterOp xs = case fmap reLocal . filter ((== op) . thd3) $ xs of
+                [] -> Nothing
+                xs' -> Just xs'
+
+              reLocal :: (Fixity, Scoped ModuleName, Text) -> (Fixity, Scoped ModuleName, Text)
+              reLocal (fix, _, o) = (fix, LocalScope, o)
+
+    go :: Parser [(Import SourcePos, Maybe SourcePos)]
+    go =
+      asum
+        [ try ((:) <$> ((,) <$> parseImport <*> commaSep) <*> go)
+        , parseImport <&> \i -> [(i, Nothing)]
+        ]
+
+    commaSep :: Parser (Maybe SourcePos)
+    commaSep = lexeme $ Just <$> getSourcePos <* symbol ","
+
+    parseImport :: Parser (Import SourcePos)
+    parseImport =
+      asum
+        [ try $
+            IOpVar
+              <$> getSourcePos
+              <*> lexeme (char '(' *> (Ident <$> takeWhile1P Nothing isAlphaNum) <* char ')')
+        , try $
+            IEnum
+              <$> lexeme (getSourcePos <* string "enum")
+              <*> getSourcePos
+              <*> lexeme (Ident <$> variable)
+        , IVar <$> getSourcePos <*> lexeme (Ident <$> variable)
+        ]
 
 openModE :: Parser (Expr () SourcePos)
-openModE = undefined
+openModE = label "an 'open' module expression\nfor example: open A in ..." $ do
+  hidden $ rword "open"
+  nmPos <- getSourcePos
+  nm <- label "module name" . lexeme $ ModuleName <$> variable
+  uncurry3 (OpenModule nmPos () nm)
+    <$> (try (openModArgs nm) <|> openAll nm)
+  where
+    openAll ::
+      ModuleName ->
+      Parser ([(Import SourcePos, Maybe SourcePos)], SourcePos, Expr () SourcePos)
+    openAll modNm =
+      ask >>= \env ->
+        Map.lookup modNm env.modOps & \case
+          Nothing -> customFailure $ ModuleNotFound modNm
+          Just tbl' -> do
+            inPos <- getSourcePos
+            let ops :: OpsTable
+                ops = IntMap.unionWith (<>) env.ops tbl'
+            ([],inPos,)
+              <$> withReaderT (const (mkParseEnv ops env.modOps env.customTypes)) inExpr
 
 letE :: Parser (Expr () SourcePos)
-letE = undefined
+letE = label ("a 'let' expression" <> example "x") $ do
+  startPos <- getSourcePos
+  hidden $ rword "let"
+  varPos <- getSourcePos
+  x <-
+    label "a variable" . lexeme $
+      Expl . ExtIdent . Right <$> variable
+        <|> Impl . ExtIdent . Right <$> implicitVariable
+  let xStr :: String
+      xStr = Text.unpack . renderPretty $ x
+  tPos <- getSourcePos
+  maybeTy <-
+    optional $
+      symbol ":"
+        *> withReaderT toTyEnv schemeParser
+  eqPos <- getSourcePos
+  void . label "'='" $ symbol "="
+  e1 <- label (bindMsg xStr) expr
+  inPos <- getSourcePos
+  e2 <- inExpr
+  case (x, maybeTy) of
+    (Expl x', Just t) -> pure $ LetAnnot startPos varPos x' tPos t eqPos e1 inPos e2
+    (Impl _, Just _) -> customFailure ImplicitVarTypeAnnot
+    (_, Nothing) -> pure $ Let startPos varPos x eqPos e1 inPos e2
+  where
+    example :: String -> String
+    example x =
+      "\nfor example: let " <> x <> " = 2 * 5 in ...\nor: let " <> x <> " : double = 1 + 2 in ..."
+
+    bindMsg :: String -> String
+    bindMsg x = "an expression to bind to '" <> x <> "'" <> example x
+
+    toTyEnv :: ParseEnv -> TyParseEnv
+    toTyEnv env =
+      TyParseEnv{tyVars = mempty, ops = env.ops, modOps = env.modOps, ctypes = env.customTypes}
+
+mkPArray :: Delimited (Pat () SourcePos) -> Pat () SourcePos
+mkPArray del = PArray del.open (fmap ((.val) &&& (.sep)) del.items) del.close
+
+mkPRecord :: Delimited (Field (Pat () SourcePos)) -> Pat () SourcePos
+mkPRecord del = PRecord del.open (fmap toTriple del.items) del.close
+  where
+    toTriple :: Separated (Field (Pat () SourcePos)) -> (Ident, Pat () SourcePos, Maybe SourcePos)
+    toTriple s = (s.val.name, s.val.val, s.sep)
 
 pat :: Parser (Pat () SourcePos)
-pat = undefined
+pat =
+  asum
+    [ mkPArray <$> array pat
+    , mkPRecord <$> record pat
+    , try $ uncurry3 PTuple <$> tuple pat
+    , parens pat
+    , try $ hexadecimal PLit
+    , try $ signedDoubleE PLit
+    , signedIntE PLit
+    , enumE PEnum
+    , uncurry PVar <$> mIdent
+    , noneE PEmpty
+    , someE POne pat
+    , stringE PLit
+    ]
 
 casePatts :: Parser [(SourcePos, Pat () SourcePos, SourcePos, Expr () SourcePos)]
-casePatts = undefined
+casePatts = do
+  void . optional $ (symbol "|" <?> "'|'")
+  onePat `sepBy1` (symbol "|" <?> "'|'")
+  where
+    onePat :: Parser (SourcePos, Pat () SourcePos, SourcePos, Expr () SourcePos)
+    onePat = label "_a pattern match clause\nfor example: #true -> ..." $ do
+      sPos <- getSourcePos
+      p <- pat
+      arrPos <- getSourcePos
+      void . label "'->'" $ symbol "->"
+      e <- expr
+      pure (sPos, p, arrPos, e)
 
 caseE :: Parser (Expr () SourcePos)
-caseE = undefined
+caseE =
+  label "a pattern-match expression\nfor example: match x with { 1 -> #true | _ -> #false }"
+    . lexeme
+    $ do
+      startPos <- getSourcePos
+      rword "match"
+      e <- expr <?> "an expression to pattern match on\nfor example: match (x, y) with { ... }"
+      rword "with"
+      brPos <- getSourcePos
+      void $ symbol "{"
+      cs <- casePatts
+      endPos <- getSourcePos
+      void $ char '}'
+      pure $ Case startPos e brPos (NonEmpty.fromList cs) endPos
 
-tupleArgs :: ParserOver r a -> ParserOver r [(a, Maybe SourcePos)]
-tupleArgs = undefined
+tupleArgs :: forall r a. ParserOver r a -> ParserOver r [(a, Maybe SourcePos)]
+tupleArgs p = f <|> g
+  where
+    f, g :: ParserOver r [(a, Maybe SourcePos)]
+    f = try $ do
+      e <- p
+      commaPos <- lexeme $ char ',' *> getSourcePos
+      es <- tupleArgs p
+      pure $ (e, Just commaPos) : es
+    g = do
+      e1 <- p
+      commaPos <- lexeme $ char ',' *> getSourcePos
+      e2 <- p
+      pure [(e1, Just commaPos), (e2, Nothing)]
 
 isHSpace :: Char -> Bool
 isHSpace c = isSpace c && c /= '\n' && c /= '\r'
 
 tuple :: ParserOver r a -> ParserOver r (SourcePos, TList (a, Maybe SourcePos), SourcePos)
-tuple = undefined
+tuple p = label "a tuple\nfor example: (2, #true, 4.4)" . lexeme $ do
+  startPos <- getSourcePos
+  void $ symbol "("
+  r <- tListFromList <$> tupleArgs p <|> takeWhileP Nothing isHSpace $> TNil
+  endPos <- getSourcePos
+  void $ char ')'
+  pure (startPos, r, endPos)
 
 assertE :: Parser (Expr () SourcePos)
-assertE = undefined
+assertE = label "an assertion\nfor example: assert x > 10 in ..." $ do
+  startPos <- getSourcePos
+  hidden $ rword "assert"
+  e1 <- expr <?> "a boolean expression\nfor example: x > 10 && x <= 25"
+  inPos <- getSourcePos
+  Assert startPos e1 inPos <$> ((rword "in" <?> "_the 'in' keyword") *> expr)
 
 ifE :: Parser (Expr () SourcePos)
-ifE = undefined
+ifE = do
+  ifPos <- getSourcePos
+  hidden $ rword "if"
+  cond <- hidden expr <?> "_a conditional expression\nfor example: x > 2"
+  thenPos <- getSourcePos
+  tr <- (rword "then" *> expr) <?> "_the 'then' branch\nfor example: if x > 2 then 1 else 0"
+  elsePos <- getSourcePos
+  If ifPos cond thenPos tr elsePos <$> ((rword "else" *> expr) <?> "_the 'else' branch\nfor example: if x > 2 then 1 else 0")
 
 -- | Parses an op in prefix syntax WITHOUT opening paren @(@ but with closing paren @)@
 -- E.g. @+)@
