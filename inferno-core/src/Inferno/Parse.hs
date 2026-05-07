@@ -50,6 +50,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Tuple.Extra (second3)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
@@ -1115,7 +1116,25 @@ insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
 
 modulesParser ::
   Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
-modulesParser = undefined
+modulesParser = do
+  void $ symbol "module"
+  nm <- ModuleName <$> lexeme variable
+  (ops, sigs) <- sigsParser
+
+  let qualOps :: OpsTable
+      qualOps = flip IntMap.map ops . fmap . second3 . const $ Scope nm
+
+  ((nm, ops, sigs) :) <$> asum
+    [ flip withReaderT modulesParser . const =<< asks (mergedEnv qualOps nm ops)
+    , pure mempty
+    ]
+  where
+    mergedEnv :: OpsTable -> ModuleName -> OpsTable -> ParseEnv -> ParseEnv
+    mergedEnv qualOps nm modTbl env =
+      mkParseEnv
+        (IntMap.unionWith (<>) env.ops qualOps)
+        (Map.insert nm modTbl env.modOps)
+        env.customTypes
 
 topLevel :: ParserOver r a -> ParserOver r a
 topLevel = undefined
