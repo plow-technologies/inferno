@@ -88,7 +88,7 @@ import Inferno.Types.Syntax
     Pat (PArray, PEmpty, PEnum, PLit, POne, PRecord, PTuple, PVar),
     RestOfRecord,
     Scoped (LocalScope, Scope),
-    SigVar,
+    SigVar (SigOpVar, SigVar),
     TList (TNil),
     fromScoped,
     rws,
@@ -680,13 +680,13 @@ letE = label ("a 'let' expression" <> example "x") $ do
         , Impl . ExtIdent . Right <$> implicitVariable
         ]
   tPos <- getSourcePos
-  maybeTy <- optional $ symbol ":" *> withReaderT toTyEnv schemeParser
+  mTy <- optional $ symbol ":" *> withReaderT toTyEnv schemeParser
   eqPos <- getSourcePos
   void . label "'='" $ symbol "="
   e1 <- expr <?> (bindMsg . Text.unpack . renderPretty) x
   inPos <- getSourcePos
   e2 <- inExpr
-  (x, maybeTy) & \case
+  (x, mTy) & \case
     (Expl y, Just t) ->
       pure $ LetAnnot startPos varPos y tPos t eqPos e1 inPos e2
     (Impl _, Just _) -> customFailure ImplicitVarTypeAnnot
@@ -1041,7 +1041,15 @@ enumConstructors :: Parser [Ident]
 enumConstructors = undefined
 
 sigVariable :: Parser SigVar
-sigVariable = undefined
+sigVariable =
+  lexeme . asum $
+    [ tryMany infixOp =<< asks (.infixOps)
+    , tryMany (fmap SigVar . string) =<< asks (.prefixOps)
+    , SigVar <$> variable
+    ]
+  where
+    infixOp :: Text -> Parser SigVar
+    infixOp op = char '(' *> fmap SigOpVar (string op) <* char ')'
 
 exprOrBuiltin :: Parser QQDefinition
 exprOrBuiltin = undefined
@@ -1050,13 +1058,50 @@ sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
 sigParser = undefined
 
 fixityP :: Parser Fixity
-fixityP = undefined
+fixityP =
+  lexeme . asum $
+    [ try $ rword "infixr" $> InfixOp RightFix
+    , try $ rword "infixl" $> InfixOp LeftFix
+    , try $ rword "infix" $> InfixOp NoFix
+    , rword "prefix" $> PrefixOp
+    ]
 
 fixityLvl :: Parser Int
-fixityLvl = undefined
+fixityLvl = try $ lexeme Lexer.decimal >>= check
+  where
+    check :: Int -> Parser Int
+    check x =
+      bool
+        (fail "Fixity level annotation must be between 0 and 19 (inclusive)")
+        (pure x)
+        $ x >= 0 && x < 20
 
 sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-sigsParser = undefined
+sigsParser = go mempty
+  where
+    go ::
+      [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
+      Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
+    go acc =
+      asum
+        [ flip withReaderT (go acc) . const =<< opDeclP
+        , go . (: acc) =<< sigParser
+        , asks $ (,reverse acc) . (.ops)
+        ]
+
+    opDeclP :: Parser ParseEnv
+    opDeclP = do
+      env <- ask
+      f <- fixityP
+      l <- fixityLvl
+      o <- operatorP <* symbol ";"
+      pure $ mkParseEnv (insertIntoOpsTable env.ops f l o) env.modOps env.customTypes
+
+    operatorP :: Parser Text
+    operatorP = lexeme $ takeWhile1P (Just "operator") isOpChar
+
+    isOpChar :: Char -> Bool
+    isOpChar = (&&) <$> (/= ';') <*> not . isSpace
 
 insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
 insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
