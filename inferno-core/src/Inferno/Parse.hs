@@ -12,6 +12,7 @@ module Inferno.Parse
   ( Comment (..),
     OpsTable,
     TopLevelDefn (..),
+    ParsedModule (..),
     QQDefinition (..),
     InfernoParsingError (..),
     topLevel,
@@ -156,6 +157,13 @@ data TopLevelDefn def
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass
   | Export ModuleName
+  deriving (Eq, Show, Data)
+
+data ParsedModule a = ParsedModule
+  { name :: !ModuleName
+  , opsTable :: !OpsTable
+  , defs :: [TopLevelDefn a]
+  }
   deriving (Eq, Show, Data)
 
 type OpsTable = IntMap.IntMap [(Fixity, Scoped ModuleName, Text)]
@@ -1114,8 +1122,7 @@ insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
       Nothing -> Just [(f, LocalScope, op)]
       (Just xs) -> Just $ (f, LocalScope, op) : xs
 
-modulesParser ::
-  Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
+modulesParser :: Parser [ParsedModule (Maybe TCScheme, QQDefinition)]
 modulesParser = do
   void $ symbol "module"
   nm <- ModuleName <$> lexeme variable
@@ -1124,10 +1131,11 @@ modulesParser = do
   let qualOps :: OpsTable
       qualOps = flip IntMap.map ops . fmap . second3 . const $ Scope nm
 
-  ((nm, ops, sigs) :) <$> asum
-    [ flip withReaderT modulesParser . const =<< asks (mergedEnv qualOps nm ops)
-    , pure mempty
-    ]
+  (ParsedModule nm ops sigs :)
+    <$> asum
+      [ flip withReaderT modulesParser . const =<< asks (mergedEnv qualOps nm ops)
+      , pure mempty
+      ]
   where
     mergedEnv :: OpsTable -> ModuleName -> OpsTable -> ParseEnv -> ParseEnv
     mergedEnv qualOps nm modTbl env =

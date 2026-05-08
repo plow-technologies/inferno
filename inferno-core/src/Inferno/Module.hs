@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
 
 module Inferno.Module
   ( Module (..),
@@ -29,7 +30,7 @@ import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
 import qualified Inferno.Infer.Pinned as Pinned
 import Inferno.Module.Cast (ToValue (..))
-import Inferno.Parse (OpsTable, TopLevelDefn (..))
+import Inferno.Parse (OpsTable, ParsedModule, TopLevelDefn (..))
 import Inferno.Types.Module
   ( BuiltinEnumHash (..),
     BuiltinFunHash (..),
@@ -69,24 +70,22 @@ combineTermEnvs modules = foldM (\env m -> (env <>) <$> pinnedModuleTerms m) mem
 
 buildPinnedQQModules ::
   (MonadThrow m, Pretty c) =>
-  [(ModuleName, OpsTable, [TopLevelDefn (Either (TCScheme, Value c (ImplEnvM m c)) (Maybe TCScheme, Expr () SourcePos))])] ->
+  [ParsedModule (Either (TCScheme, Value c (ImplEnvM m c)) (Maybe TCScheme, Expr () SourcePos))] ->
   Map.Map ModuleName (PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ()))
 buildPinnedQQModules modules =
   snd $
     foldl'
-      ( \(alreadyPinnedModulesMap, alreadyBuiltModules) (moduleNm, opsTable, sigs) ->
-          -- first build the new module
+      ( \(alreadyPinnedModulesMap, alreadyBuiltModules) pm ->
           let newMod =
-                buildModule alreadyPinnedModulesMap alreadyBuiltModules sigs $
+                buildModule alreadyPinnedModulesMap alreadyBuiltModules pm.defs $
                   Module
-                    { moduleName = moduleNm
-                    , moduleOpsTable = opsTable
+                    { moduleName = pm.name
+                    , moduleOpsTable = pm.opsTable
                     , moduleTypeClasses = mempty
-                    , moduleObjects = (Map.singleton (ModuleNamespace moduleNm) $ vcHash $ BuiltinModuleHash moduleNm, mempty, pure mempty)
+                    , moduleObjects = (Map.singleton (ModuleNamespace pm.name) $ vcHash $ BuiltinModuleHash pm.name, mempty, pure mempty)
                     }
-           in -- then insert it into the temporary module pin map as well as the final module map
-              ( Pinned.insertHardcodedModule moduleNm (Map.map Builtin $ pinnedModuleNameToHash newMod) alreadyPinnedModulesMap
-              , Map.insert moduleNm newMod alreadyBuiltModules
+           in ( Pinned.insertHardcodedModule pm.name (Map.map Builtin $ pinnedModuleNameToHash newMod) alreadyPinnedModulesMap
+              , Map.insert pm.name newMod alreadyBuiltModules
               )
       )
       mempty
