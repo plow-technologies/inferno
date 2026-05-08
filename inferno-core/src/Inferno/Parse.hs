@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -129,7 +130,7 @@ data InfernoParsingError
   | InfixOpNotFound ModuleName Ident
   | UnboundTyVar Text
   | ImplicitVarTypeAnnot
-  deriving (Eq, Show, Ord)
+  deriving stock (Eq, Show, Ord)
 
 instance ShowErrorComponent InfernoParsingError where
   showErrorComponent (ModuleNotFound (ModuleName modNm)) =
@@ -157,14 +158,14 @@ data TopLevelDefn def
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass
   | Export ModuleName
-  deriving (Eq, Show, Data)
+  deriving stock (Eq, Show, Data)
 
 data ParsedModule a = ParsedModule
   { name :: !ModuleName
   , opsTable :: !OpsTable
   , defs :: [TopLevelDefn a]
   }
-  deriving (Eq, Show, Data)
+  deriving stock (Eq, Show, Data)
 
 type OpsTable = IntMap.IntMap [(Fixity, Scoped ModuleName, Text)]
 
@@ -172,7 +173,7 @@ data QQDefinition
   = QQRawDef String
   | QQToValueDef String
   | InlineDef (Expr () SourcePos)
-  deriving (Data)
+  deriving stock (Data)
 
 type TyParser = ParserOver TyParseEnv
 
