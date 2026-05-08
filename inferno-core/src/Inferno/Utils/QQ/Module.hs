@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
-
-{-# OPTIONS_GHC -Wno-unused-imports #-} -- FIXME Parser rewrite
+-- FIXME Parser rewrite
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Inferno.Utils.QQ.Module where
 
@@ -60,21 +60,21 @@ moduleQuoter :: [CustomType] -> QuasiQuoter
 moduleQuoter customTypes =
   QuasiQuoter
     { quoteExp = undefined -- FIXME parser rewrite
-      -- \str -> do
-      --   l <- location'
-      --   let (_, res) =
-      --         runParser' (runWriterT $ flip runReaderT (mempty, mempty, customTypes) $ topLevel modulesParser) $
-      --           State
-      --             (pack str)
-      --             0
-      --             (PosState (pack str) 0 l defaultTabWidth "")
-      --             []
-      --   case res of
-      --     Left (ParseErrorBundle errs pos) ->
-      --       let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
-      --        in fail $ intercalate "\n\n" errs'
-      --     Right (modules, _comments) ->
-      --       [|buildPinnedQQModules $(dataToExpQ ((fmap liftText . cast) `extQ` metaToValue) modules)|]
+    -- \str -> do
+    --   l <- location'
+    --   let (_, res) =
+    --         runParser' (runWriterT $ flip runReaderT (mempty, mempty, customTypes) $ topLevel modulesParser) $
+    --           State
+    --             (pack str)
+    --             0
+    --             (PosState (pack str) 0 l defaultTabWidth "")
+    --             []
+    --   case res of
+    --     Left (ParseErrorBundle errs pos) ->
+    --       let errs' = map mkParseErrorStr $ NEList.toList $ fst $ attachSourcePos errorOffset errs pos
+    --        in fail $ intercalate "\n\n" errs'
+    --     Right (modules, _comments) ->
+    --       [|buildPinnedQQModules $(dataToExpQ ((fmap liftText . cast) `extQ` metaToValue) modules)|]
     , quotePat = error "moduleQuoter: Invalid use of this quasi-quoter in pattern context."
     , quoteType = error "moduleQuoter: Invalid use of this quasi-quoter in type context."
     , quoteDec = error "moduleQuoter: Invalid use of this quasi-quoter in top-level declaration context."

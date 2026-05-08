@@ -1,4 +1,5 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -12,6 +13,7 @@ module Inferno.Parse
   ( Comment (..),
     OpsTable,
     TopLevelDefn (..),
+    ParsedModule (..),
     QQDefinition (..),
     InfernoParsingError (..),
     topLevel,
@@ -50,6 +52,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Data.Tuple.Extra (second3)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
@@ -88,7 +91,7 @@ import Inferno.Types.Syntax
     Pat (PArray, PEmpty, PEnum, PLit, POne, PRecord, PTuple, PVar),
     RestOfRecord,
     Scoped (LocalScope, Scope),
-    SigVar,
+    SigVar (SigOpVar, SigVar),
     TList (TNil),
     fromScoped,
     rws,
@@ -127,7 +130,7 @@ data InfernoParsingError
   | InfixOpNotFound ModuleName Ident
   | UnboundTyVar Text
   | ImplicitVarTypeAnnot
-  deriving (Eq, Show, Ord)
+  deriving stock (Eq, Show, Ord)
 
 instance ShowErrorComponent InfernoParsingError where
   showErrorComponent (ModuleNotFound (ModuleName modNm)) =
@@ -146,16 +149,18 @@ type ParserOver r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
 type Parser = ParserOver ParseEnv
 
 data TopLevelDefn def
-  = -- FIXME Don't use record fields in sum types, damn it!
-    Signature
-      { documentation :: Maybe Text
-      , name :: SigVar
-      , def :: def
-      }
+  = Signature (Maybe Text) SigVar def
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass
   | Export ModuleName
-  deriving (Eq, Show, Data)
+  deriving stock (Eq, Show, Data)
+
+data ParsedModule a = ParsedModule
+  { name :: !ModuleName
+  , opsTable :: !OpsTable
+  , defs :: [TopLevelDefn a]
+  }
+  deriving stock (Eq, Show, Data)
 
 type OpsTable = IntMap.IntMap [(Fixity, Scoped ModuleName, Text)]
 
@@ -163,7 +168,7 @@ data QQDefinition
   = QQRawDef String
   | QQToValueDef String
   | InlineDef (Expr () SourcePos)
-  deriving (Data)
+  deriving stock (Data)
 
 type TyParser = ParserOver TyParseEnv
 
@@ -680,13 +685,13 @@ letE = label ("a 'let' expression" <> example "x") $ do
         , Impl . ExtIdent . Right <$> implicitVariable
         ]
   tPos <- getSourcePos
-  maybeTy <- optional $ symbol ":" *> withReaderT toTyEnv schemeParser
+  mTy <- optional $ symbol ":" *> withReaderT toTyEnv schemeParser
   eqPos <- getSourcePos
   void . label "'='" $ symbol "="
   e1 <- expr <?> (bindMsg . Text.unpack . renderPretty) x
   inPos <- getSourcePos
   e2 <- inExpr
-  (x, maybeTy) & \case
+  (x, mTy) & \case
     (Expl y, Just t) ->
       pure $ LetAnnot startPos varPos y tPos t eqPos e1 inPos e2
     (Impl _, Just _) -> customFailure ImplicitVarTypeAnnot
@@ -1041,7 +1046,15 @@ enumConstructors :: Parser [Ident]
 enumConstructors = undefined
 
 sigVariable :: Parser SigVar
-sigVariable = undefined
+sigVariable =
+  lexeme . asum $
+    [ tryMany infixOp =<< asks (.infixOps)
+    , tryMany (fmap SigVar . string) =<< asks (.prefixOps)
+    , SigVar <$> variable
+    ]
+  where
+    infixOp :: Text -> Parser SigVar
+    infixOp op = char '(' *> fmap SigOpVar (string op) <* char ')'
 
 exprOrBuiltin :: Parser QQDefinition
 exprOrBuiltin = undefined
@@ -1050,13 +1063,54 @@ sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
 sigParser = undefined
 
 fixityP :: Parser Fixity
-fixityP = undefined
+fixityP =
+  lexeme . asum $
+    [ try $ rword "infixr" $> InfixOp RightFix
+    , try $ rword "infixl" $> InfixOp LeftFix
+    , try $ rword "infix" $> InfixOp NoFix
+    , rword "prefix" $> PrefixOp
+    ]
 
 fixityLvl :: Parser Int
-fixityLvl = undefined
+fixityLvl = try $ lexeme Lexer.decimal >>= check
+  where
+    check :: Int -> Parser Int
+    check x =
+      bool
+        (fail "Fixity level annotation must be between 0 and 19 (inclusive)")
+        (pure x)
+        $ x >= 0 && x < 20
 
 sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-sigsParser = undefined
+sigsParser = go id
+  where
+    -- Avoids O(n) snoc (previously was `reverse acc`); now O(n) materialization,
+    -- O(1) snoc
+    go ::
+      ( [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
+        [TopLevelDefn (Maybe TCScheme, QQDefinition)]
+      ) ->
+      Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
+    go f =
+      asum
+        [ flip withReaderT (go f) . const =<< opDeclP
+        , go . (f .) . (:) =<< sigParser
+        , asks $ (,f mempty) . (.ops)
+        ]
+
+    opDeclP :: Parser ParseEnv
+    opDeclP = do
+      env <- ask
+      f <- fixityP
+      l <- fixityLvl
+      o <- operatorP <* symbol ";"
+      pure $ mkParseEnv (insertIntoOpsTable env.ops f l o) env.modOps env.customTypes
+
+    operatorP :: Parser Text
+    operatorP = lexeme $ takeWhile1P (Just "operator") isOpChar
+
+    isOpChar :: Char -> Bool
+    isOpChar = (&&) <$> (/= ';') <*> not . isSpace
 
 insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
 insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
@@ -1068,9 +1122,27 @@ insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
       Nothing -> Just [(f, LocalScope, op)]
       (Just xs) -> Just $ (f, LocalScope, op) : xs
 
-modulesParser ::
-  Parser [(ModuleName, OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])]
-modulesParser = undefined
+modulesParser :: Parser [ParsedModule (Maybe TCScheme, QQDefinition)]
+modulesParser = do
+  void $ symbol "module"
+  nm <- ModuleName <$> lexeme variable
+  (ops, sigs) <- sigsParser
+
+  let qualOps :: OpsTable
+      qualOps = flip IntMap.map ops . fmap . second3 . const $ Scope nm
+
+  (ParsedModule nm ops sigs :)
+    <$> asum
+      [ flip withReaderT modulesParser . const =<< asks (mergedEnv qualOps nm ops)
+      , pure mempty
+      ]
+  where
+    mergedEnv :: OpsTable -> ModuleName -> OpsTable -> ParseEnv -> ParseEnv
+    mergedEnv qualOps nm modTbl env =
+      mkParseEnv
+        (IntMap.unionWith (<>) env.ops qualOps)
+        (Map.insert nm modTbl env.modOps)
+        env.customTypes
 
 topLevel :: ParserOver r a -> ParserOver r a
 topLevel = undefined
