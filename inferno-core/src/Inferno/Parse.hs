@@ -1087,8 +1087,7 @@ sigsParser = go id
     -- Avoids O(n) snoc (previously was `reverse acc`); now O(n) materialization,
     -- O(1) snoc
     go ::
-      (
-        [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
+      ( [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
         [TopLevelDefn (Maybe TCScheme, QQDefinition)]
       ) ->
       Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
@@ -1096,7 +1095,7 @@ sigsParser = go id
       asum
         [ flip withReaderT (go f) . const =<< opDeclP
         , go . (f .) . (:) =<< sigParser
-        , asks $ (, f mempty) . (.ops)
+        , asks $ (,f mempty) . (.ops)
         ]
 
     opDeclP :: Parser ParseEnv

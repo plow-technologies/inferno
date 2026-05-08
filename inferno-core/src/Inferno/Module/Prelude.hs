@@ -222,7 +222,6 @@ builtinModules = undefined -- FIXME Need to disable until parser is finished
 --   define addition on word64 word32 word64;
 --   define addition on word64 word64 word64;
 
-
 --   @doc Addition on `int`, `double`, `word16/32/64`, `time` and `timeDiff`;
 --   (+) : forall 'a 'b 'c. {requires addition on 'a 'b 'c} => 'a -> 'b -> 'c := ###sumFun###;
 
@@ -841,4 +840,4 @@ builtinModules = undefined -- FIXME Need to disable until parser is finished
 --   Example: `zipWith (+) [1, 2, 3] [4, 5, 6] == [5, 7, 9]`;
 --   zipWith : forall 'a 'b 'c. ('a -> 'b -> 'c) -> array of 'a -> array of 'b -> array of 'c := ###!zipWithFun###;
 
--- |]
+-- | ]

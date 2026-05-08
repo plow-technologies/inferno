@@ -30,8 +30,8 @@ import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
 import qualified Inferno.Infer.Pinned as Pinned
 import Inferno.Module.Cast (ToValue (..))
-import qualified Inferno.Parse
 import Inferno.Parse (OpsTable, ParsedModule, TopLevelDefn (..))
+import qualified Inferno.Parse
 import Inferno.Types.Module
   ( BuiltinEnumHash (..),
     BuiltinFunHash (..),
