@@ -30,6 +30,7 @@ import Inferno.Infer.Env (Namespace (..), TypeMetadata (..))
 import Inferno.Infer.Pinned (pinExpr)
 import qualified Inferno.Infer.Pinned as Pinned
 import Inferno.Module.Cast (ToValue (..))
+import qualified Inferno.Parse
 import Inferno.Parse (OpsTable, ParsedModule, TopLevelDefn (..))
 import Inferno.Types.Module
   ( BuiltinEnumHash (..),
@@ -99,7 +100,7 @@ buildPinnedQQModules modules =
       PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ()) ->
       PinnedModule (TermEnv VCObjectHash c (ImplEnvM m c) ())
     buildModule _ _ [] m = m
-    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature{..} : xs) m@Module{moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
+    buildModule alreadyPinnedModulesMap alreadyBuiltModules (Signature documentation name def : xs) m@Module{moduleName, moduleObjects = (nsMap, tyMap, mTrmEnv)} =
       let sigVarToNamespace = \case
             SigVar n -> FunNamespace $ Ident n
             SigOpVar n -> OpNamespace $ Ident n

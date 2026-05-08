@@ -149,12 +149,7 @@ type ParserOver r = ReaderT r (StateT [Comment SourcePos] BaseParsec)
 type Parser = ParserOver ParseEnv
 
 data TopLevelDefn def
-  = -- FIXME Don't use record fields in sum types, damn it!
-    Signature
-      { documentation :: Maybe Text
-      , name :: SigVar
-      , def :: def
-      }
+  = Signature (Maybe Text) SigVar def
   | EnumDef (Maybe Text) Text [Ident]
   | TypeClassInstance TypeClass
   | Export ModuleName
@@ -1087,16 +1082,21 @@ fixityLvl = try $ lexeme Lexer.decimal >>= check
         $ x >= 0 && x < 20
 
 sigsParser :: Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-sigsParser = go mempty
+sigsParser = go id
   where
+    -- Avoids O(n) snoc (previously was `reverse acc`); now O(n) materialization,
+    -- O(1) snoc
     go ::
-      [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
+      (
+        [TopLevelDefn (Maybe TCScheme, QQDefinition)] ->
+        [TopLevelDefn (Maybe TCScheme, QQDefinition)]
+      ) ->
       Parser (OpsTable, [TopLevelDefn (Maybe TCScheme, QQDefinition)])
-    go acc =
+    go f =
       asum
-        [ flip withReaderT (go acc) . const =<< opDeclP
-        , go . (: acc) =<< sigParser
-        , asks $ (,reverse acc) . (.ops)
+        [ flip withReaderT (go f) . const =<< opDeclP
+        , go . (f .) . (:) =<< sigParser
+        , asks $ (, f mempty) . (.ops)
         ]
 
     opDeclP :: Parser ParseEnv
