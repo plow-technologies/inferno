@@ -34,8 +34,8 @@ import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixN, InfixR, Prefix),
     makeExprParser,
   )
-import Control.Monad.Reader (ReaderT, ask, asks, withReaderT)
-import Control.Monad.State.Strict (StateT, modify')
+import Control.Monad.Reader (ReaderT, ask, asks, runReaderT, withReaderT)
+import Control.Monad.State.Strict (StateT, modify', runStateT)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.Char (isAlphaNum, isSpace)
@@ -52,7 +52,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Tuple.Extra (second3)
+import Data.Tuple.Extra (second3, snd3)
+import Inferno.Infer.Env (closeOver)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
@@ -99,30 +100,61 @@ import Inferno.Types.Syntax
     unModuleName,
   )
 import Inferno.Types.Type
-  ( InfernoType,
+  ( BaseType
+      ( TCustom,
+        TDouble,
+        TEnum,
+        TInt,
+        TResolution,
+        TText,
+        TTime,
+        TTimeDiff,
+        TWord16,
+        TWord32,
+        TWord64
+      ),
+    ImplType (ImplType),
+    InfernoType
+      ( TArr,
+        TArray,
+        TBase,
+        TOptional,
+        TRecord,
+        TSeries,
+        TTuple,
+        TVar
+      ),
+    RestOfRecord (RowAbsent, RowVar),
     TCScheme,
-    TypeClass,
+    TV (TV),
+    TypeClass (TypeClass),
   )
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Text.Megaparsec
   ( MonadParsec (hidden, label, notFollowedBy, takeWhile1P, takeWhileP, try),
     ParseError,
+    ParseErrorBundle (ParseErrorBundle),
     Parsec,
     ShowErrorComponent (showErrorComponent),
     SourcePos,
     anySingle,
+    attachSourcePos,
     between,
+    choice,
     customFailure,
+    eof,
+    errorOffset,
     getSourcePos,
     many,
     manyTill,
+    runParser,
     satisfy,
     some,
     sourceColumn,
     unPos,
     (<?>),
   )
-import Text.Megaparsec.Char (char, char', letterChar, spaceChar, string)
+import Text.Megaparsec.Char (alphaNumChar, char, char', letterChar, spaceChar, string)
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data InfernoParsingError
@@ -990,54 +1022,266 @@ parseExpr = undefined
 
 -- Parsing types
 
-rwsType :: [Text] -- list of reserved type sig words
-rwsType = undefined
+rwsType :: [Text]
+rwsType = ["define", "on", "forall"]
 
 typeIdent :: TyParser Text
-typeIdent = undefined
+typeIdent = try $ p >>= check
+  where
+    p :: TyParser Text
+    p = label "a type" $ Text.cons <$> letterChar <*> hidden (takeWhileP Nothing isAlphaNum)
+
+    check :: Text -> TyParser Text
+    check x =
+      bool (fail $ "Keyword " <> show x <> " cannot be a variable/function name") (pure x) $
+        notElem x rwsType
 
 baseType :: TyParser InfernoType
-baseType = undefined
+baseType =
+  asks (.ctypes) >>= \cts ->
+    TBase
+      <$> asum
+        [ symbol "int" $> TInt
+        , symbol "double" $> TDouble
+        , symbol "word16" $> TWord16
+        , symbol "word32" $> TWord32
+        , symbol "word64" $> TWord64
+        , symbol "text" $> TText
+        , try $ symbol "timeDiff" $> TTimeDiff
+        , symbol "time" $> TTime
+        , symbol "resolution" $> TResolution
+        , choice $ fmap customType cts
+        ]
+  where
+    customType :: String -> TyParser BaseType
+    customType t = symbol (Text.pack t) $> TCustom t
 
 typeVariableRaw :: TyParser Text
-typeVariableRaw = undefined
+typeVariableRaw = char '\'' *> takeWhile1P Nothing isAlphaNum
 
 typeVariable :: TyParser Int
-typeVariable = undefined
+typeVariable =
+  typeVariableRaw >>= \nm ->
+    asks (.tyVars) >>= maybe (customFailure (UnboundTyVar nm)) pure . Map.lookup nm
 
 recordType :: TyParser (Map.Map Ident InfernoType, RestOfRecord)
-recordType = undefined
+recordType =
+  label "record type\nfor example: {name: text; age: int}" . lexeme $
+    symbol "{" *> fields mempty
+  where
+    fields ::
+      [(Ident, InfernoType)] ->
+      TyParser (Map.Map Ident InfernoType, RestOfRecord)
+    fields acc =
+      asum
+        [ try $ fieldSemicolon acc >>= fields
+        , fieldClose acc
+        , rowVarClose acc
+        , char '}' $> (Map.fromList acc, RowAbsent)
+        ]
+
+    fieldSemicolon :: [(Ident, InfernoType)] -> TyParser [(Ident, InfernoType)]
+    fieldSemicolon acc = do
+      f <- lexeme . fmap Ident $ fieldName
+      void $ symbol ":"
+      e <- typeParser
+      void $ symbol ";"
+      pure $ (f, e) : acc
+
+    fieldClose ::
+      [(Ident, InfernoType)] -> TyParser (Map.Map Ident InfernoType, RestOfRecord)
+    fieldClose acc = do
+      f <- lexeme . fmap Ident $ fieldName
+      void $ symbol ":"
+      e <- typeParser
+      void $ char '}'
+      pure (Map.fromList $ (f, e) : acc, RowAbsent)
+
+    rowVarClose ::
+      [(Ident, InfernoType)] -> TyParser (Map.Map Ident InfernoType, RestOfRecord)
+    rowVarClose acc =
+      fmap ((Map.fromList acc,) . RowVar . TV) $
+        typeVariable <* char '}'
+
+    keywords :: Set Text
+    keywords = Set.fromList $ rws <> rwsType
+
+    fieldName :: TyParser Text
+    fieldName = p >>= check
+      where
+        p :: TyParser Text
+        p =
+          label "a record field name" $
+            Text.cons
+              <$> letterChar
+              <*> hidden (takeWhileP Nothing isAlphaNumOrSeparator)
+
+        check :: Text -> TyParser Text
+        check x =
+          bool (fail msg) (pure x) . not $
+            Set.member x keywords
+          where
+            msg :: String
+            msg =
+              unwords
+                [ "Keyword"
+                , show x
+                , "cannot be a record field name"
+                ]
 
 typeParserBase :: TyParser InfernoType
-typeParserBase = undefined
+typeParserBase =
+  asum
+    [ try . fmap mkTuple $ tuple typeParser
+    , parens typeParser
+    , try $ lexeme baseType
+    , uncurry TRecord <$> recordType
+    , lexeme . fmap TBase $ enum
+    , lexeme $ TVar . TV <$> typeVariable
+    ]
+  where
+    mkTuple :: (a, TList (InfernoType, Maybe SourcePos), c) -> InfernoType
+    mkTuple = TTuple . fmap fst . snd3
+
+    enumList :: TyParser [Ident]
+    enumList =
+      try ((:) <$> enumConstructor <* symbol "," <*> enumList)
+        <|> (: mempty) <$> enumConstructor
+
+    enum :: TyParser BaseType
+    enum = TEnum <$> typeIdent <*> (Set.fromList <$> (symbol "{" *> enumList <* symbol "}"))
 
 typeParser :: TyParser InfernoType
-typeParser = undefined
+typeParser =
+  makeExprParser
+    typeParserBase
+    [
+      [ Prefix (TArray <$ rword "array" <* rword "of")
+      , Prefix (TSeries <$ rword "series" <* rword "of")
+      , Prefix (TOptional <$ rword "option" <* rword "of")
+      ]
+    ,
+      [ InfixR (TArr <$ symbol "->")
+      ]
+    ]
 
 parseType ::
   Text ->
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     InfernoType
-parseType = undefined
+parseType src =
+  runParser run "<stdin>" src & \case
+    Left (ParseErrorBundle errs pos) -> Left . fst $ attachSourcePos errorOffset errs pos
+    Right (e, _) -> Right e
+  where
+    env :: TyParseEnv
+    env =
+      TyParseEnv
+        { tyVars = mempty
+        , ops = mempty
+        , modOps = mempty
+        , ctypes = mempty
+        }
+
+    run :: BaseParsec (InfernoType, [Comment SourcePos])
+    run = flip runStateT mempty . flip runReaderT env $ topLevel typeParser
 
 parseTCScheme :: Text -> Either String TCScheme
-parseTCScheme = undefined
+parseTCScheme src =
+  runParser run "<stdin>" src & \case
+    Left (ParseErrorBundle errs pos) ->
+      Left . show . fst $ attachSourcePos errorOffset errs pos
+    Right (e, _) -> Right e
+  where
+    env :: TyParseEnv
+    env =
+      TyParseEnv
+        { tyVars = mempty
+        , ops = mempty
+        , modOps = mempty
+        , ctypes = mempty
+        }
+
+    run :: BaseParsec (TCScheme, [Comment SourcePos])
+    run = flip runStateT mempty . flip runReaderT env $ topLevel schemeParser
 
 listParser :: TyParser a -> TyParser [a]
-listParser = undefined
+listParser p =
+  try ((:) <$> p <* symbol "," <*> listParser p)
+    <|> (: mempty) <$> p
 
-tyContext :: TyParser [Either TypeClass (Text, InfernoType)]
-tyContext = undefined
+-- | A single entry in a type context: either a class constraint or an implicit binding.
+data TyContextEntry
+  = ClassConstraint TypeClass
+  | ImplicitBinding Text InfernoType
+
+tyContext :: TyParser [TyContextEntry]
+tyContext =
+  lexeme $
+    symbol "{"
+      *> listParser tyContextSingle
+      <* symbol "}"
+      <* symbol "=>"
 
 typeClass :: TyParser TypeClass
-typeClass = undefined
+typeClass =
+  TypeClass
+    <$> (lexeme typeIdent <* symbol "on")
+    <*> many typeParser
 
-tyContextSingle :: TyParser (Either TypeClass (Text, InfernoType))
-tyContextSingle = undefined
+tyContextSingle :: TyParser TyContextEntry
+tyContextSingle =
+  asum
+    [ fmap ClassConstraint $ symbol "requires" *> typeClass
+    , implicitBinding
+    ]
+  where
+    implicitBinding :: TyParser TyContextEntry
+    implicitBinding =
+      ImplicitBinding
+        <$> (symbol "implicit" *> lexeme tyVariable)
+        <*> (symbol ":" *> typeParser)
+
+    tyVariable :: TyParser Text
+    tyVariable = withReaderT toParseEnv variable
+
+    toParseEnv :: TyParseEnv -> ParseEnv
+    toParseEnv env = mkParseEnv env.ops env.modOps env.ctypes
 
 schemeParser :: TyParser TCScheme
-schemeParser = undefined
+schemeParser =
+  vars >>= \vs ->
+    withReaderT (bindVars vs) $
+      constructScheme
+        <$> (try tyContext <|> pure mempty)
+        <*> typeParser
+  where
+    vars :: TyParser [Text]
+    vars =
+      asum
+        [ try $ rword "forall" *> many (lexeme typeVariableRaw) <* rword "."
+        , pure mempty
+        ]
+
+    bindVars :: [Text] -> TyParseEnv -> TyParseEnv
+    bindVars vs env = env{tyVars = Map.fromList $ zip vs [0 ..]}
+
+    constructScheme :: [TyContextEntry] -> InfernoType -> TCScheme
+    constructScheme cs t =
+      closeOver (Set.fromList tcs) $ ImplType (Map.fromList impls) t
+      where
+        tcs :: [TypeClass]
+        impls :: [(ExtIdent, InfernoType)]
+        (tcs, impls) = foldl' partitionEntry (mempty, mempty) cs
+
+    partitionEntry ::
+      ([TypeClass], [(ExtIdent, InfernoType)]) ->
+      TyContextEntry ->
+      ([TypeClass], [(ExtIdent, InfernoType)])
+    partitionEntry = \cases
+      (tcs, impls) (ClassConstraint tc) -> (tc : tcs, impls)
+      (tcs, impls) (ImplicitBinding nm ty) -> (tcs, (ExtIdent (Right nm), ty) : impls)
 
 doc :: Parser Text
 doc = undefined
