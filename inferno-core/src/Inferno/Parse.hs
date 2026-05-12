@@ -142,7 +142,6 @@ import Text.Megaparsec
     between,
     choice,
     customFailure,
-    eof,
     errorOffset,
     getSourcePos,
     many,
@@ -154,7 +153,13 @@ import Text.Megaparsec
     unPos,
     (<?>),
   )
-import Text.Megaparsec.Char (alphaNumChar, char, char', letterChar, spaceChar, string)
+import Text.Megaparsec.Char
+  ( char,
+    char',
+    letterChar,
+    spaceChar,
+    string,
+  )
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data InfernoParsingError
@@ -1012,7 +1017,7 @@ mkOperators tbl =
 
 parseExpr ::
   OpsTable ->
-  Map.Map ModuleName OpsTable ->
+  Map ModuleName OpsTable ->
   [CustomType] ->
   Text ->
   Either
@@ -1064,50 +1069,50 @@ typeVariable =
   typeVariableRaw >>= \nm ->
     asks (.tyVars) >>= maybe (customFailure (UnboundTyVar nm)) pure . Map.lookup nm
 
-recordType :: TyParser (Map.Map Ident InfernoType, RestOfRecord)
+recordType :: TyParser (Map Ident InfernoType, RestOfRecord)
 recordType =
   label "record type\nfor example: {name: text; age: int}" . lexeme $
     symbol "{" *> fields mempty
   where
     fields ::
-      [(Ident, InfernoType)] ->
-      TyParser (Map.Map Ident InfernoType, RestOfRecord)
+      Map Ident InfernoType ->
+      TyParser (Map Ident InfernoType, RestOfRecord)
     fields acc =
       asum
-        [ try $ fieldSemicolon acc >>= fields
+        [ try $ fields =<< fieldSemicolon acc
         , fieldClose acc
         , rowVarClose acc
-        , char '}' $> (Map.fromList acc, RowAbsent)
+        , char '}' $> (acc, RowAbsent)
         ]
 
-    fieldSemicolon :: [(Ident, InfernoType)] -> TyParser [(Ident, InfernoType)]
+    fieldSemicolon :: Map Ident InfernoType -> TyParser (Map Ident InfernoType)
     fieldSemicolon acc = do
       f <- lexeme . fmap Ident $ fieldName
       void $ symbol ":"
       e <- typeParser
       void $ symbol ";"
-      pure $ (f, e) : acc
+      pure $ Map.insert f e acc
 
     fieldClose ::
-      [(Ident, InfernoType)] -> TyParser (Map.Map Ident InfernoType, RestOfRecord)
+      Map Ident InfernoType -> TyParser (Map Ident InfernoType, RestOfRecord)
     fieldClose acc = do
       f <- lexeme . fmap Ident $ fieldName
       void $ symbol ":"
       e <- typeParser
       void $ char '}'
-      pure (Map.fromList $ (f, e) : acc, RowAbsent)
+      pure (Map.insert f e acc, RowAbsent)
 
     rowVarClose ::
-      [(Ident, InfernoType)] -> TyParser (Map.Map Ident InfernoType, RestOfRecord)
+      Map Ident InfernoType -> TyParser (Map Ident InfernoType, RestOfRecord)
     rowVarClose acc =
-      fmap ((Map.fromList acc,) . RowVar . TV) $
+      fmap ((acc,) . RowVar . TV) $
         typeVariable <* char '}'
 
     keywords :: Set Text
     keywords = Set.fromList $ rws <> rwsType
 
     fieldName :: TyParser Text
-    fieldName = p >>= check
+    fieldName = check =<< p
       where
         p :: TyParser Text
         p =
@@ -1143,13 +1148,21 @@ typeParserBase =
     mkTuple :: (a, TList (InfernoType, Maybe SourcePos), c) -> InfernoType
     mkTuple = TTuple . fmap fst . snd3
 
-    enumList :: TyParser [Ident]
-    enumList =
-      try ((:) <$> enumConstructor <* symbol "," <*> enumList)
-        <|> (: mempty) <$> enumConstructor
+    enumSet :: TyParser (Set Ident)
+    enumSet = go mempty
+      where
+        go :: Set Ident -> TyParser (Set Ident)
+        go acc =
+          enumConstructor >>= \c ->
+            let acc' :: Set Ident
+                acc' = Set.insert c acc
+             in asum [symbol "," *> go acc', pure acc']
 
     enum :: TyParser BaseType
-    enum = TEnum <$> typeIdent <*> (Set.fromList <$> (symbol "{" *> enumList <* symbol "}"))
+    enum =
+      TEnum
+        <$> typeIdent
+        <*> (symbol "{" *> enumSet <* symbol "}")
 
 typeParser :: TyParser InfernoType
 typeParser =
@@ -1206,11 +1219,6 @@ parseTCScheme src =
     run :: BaseParsec (TCScheme, [Comment SourcePos])
     run = flip runStateT mempty . flip runReaderT env $ topLevel schemeParser
 
-listParser :: TyParser a -> TyParser [a]
-listParser p =
-  try ((:) <$> p <* symbol "," <*> listParser p)
-    <|> (: mempty) <$> p
-
 -- | A single entry in a type context: either a class constraint or an implicit binding.
 data TyContextEntry
   = ClassConstraint TypeClass
@@ -1219,10 +1227,16 @@ data TyContextEntry
 tyContext :: TyParser [TyContextEntry]
 tyContext =
   lexeme $
-    symbol "{"
-      *> listParser tyContextSingle
-      <* symbol "}"
-      <* symbol "=>"
+    symbol "{" *> go id <* symbol "}" <* symbol "=>"
+  where
+    go ::
+      ([TyContextEntry] -> [TyContextEntry]) ->
+      TyParser [TyContextEntry]
+    go acc =
+      tyContextSingle >>= \entry ->
+        let acc' :: [TyContextEntry] -> [TyContextEntry]
+            acc' = acc . (entry :)
+         in asum [symbol "," *> go acc', pure $ acc' mempty]
 
 typeClass :: TyParser TypeClass
 typeClass =
@@ -1268,20 +1282,19 @@ schemeParser =
     bindVars vs env = env{tyVars = Map.fromList $ zip vs [0 ..]}
 
     constructScheme :: [TyContextEntry] -> InfernoType -> TCScheme
-    constructScheme cs t =
-      closeOver (Set.fromList tcs) $ ImplType (Map.fromList impls) t
+    constructScheme cs t = closeOver tcs $ ImplType impls t
       where
-        tcs :: [TypeClass]
-        impls :: [(ExtIdent, InfernoType)]
+        tcs :: Set TypeClass
+        impls :: Map ExtIdent InfernoType
         (tcs, impls) = foldl' partitionEntry (mempty, mempty) cs
 
     partitionEntry ::
-      ([TypeClass], [(ExtIdent, InfernoType)]) ->
+      (Set TypeClass, Map ExtIdent InfernoType) ->
       TyContextEntry ->
-      ([TypeClass], [(ExtIdent, InfernoType)])
+      (Set TypeClass, Map ExtIdent InfernoType)
     partitionEntry = \cases
-      (tcs, impls) (ClassConstraint tc) -> (tc : tcs, impls)
-      (tcs, impls) (ImplicitBinding nm ty) -> (tcs, (ExtIdent (Right nm), ty) : impls)
+      (tcs, impls) (ClassConstraint tc) -> (Set.insert tc tcs, impls)
+      (tcs, impls) (ImplicitBinding nm ty) -> (tcs, Map.insert (ExtIdent (Right nm)) ty impls)
 
 doc :: Parser Text
 doc = undefined
