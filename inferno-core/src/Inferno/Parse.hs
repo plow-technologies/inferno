@@ -1174,7 +1174,7 @@ typeParser =
       , Prefix (TOptional <$ rword "option" <* rword "of")
       ]
     ,
-      [ InfixR (TArr <$ symbol "->")
+      [ InfixR (TArr <$ (symbol "->" <|> symbol "\x2192"))
       ]
     ]
 
@@ -1227,7 +1227,7 @@ data TyContextEntry
 tyContext :: TyParser [TyContextEntry]
 tyContext =
   lexeme $
-    symbol "{" *> go id <* symbol "}" <* symbol "=>"
+    symbol "{" *> go id <* symbol "}" <* (symbol "=>" <|> symbol "\x21D2")
   where
     go ::
       ([TyContextEntry] -> [TyContextEntry]) ->
