@@ -336,6 +336,39 @@ mkParseEnv ops modOps cts = env
       PrefixOp -> Just e.name
       _ -> Nothing
 
+    mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
+    mkOperators tbl =
+      IntMap.toDescList tbl <&> \(prec, grp) -> fmap (uncurry3 (mkOp prec)) grp
+      where
+        opStr :: Scoped ModuleName -> Text -> Text
+        opStr = \cases
+          LocalScope s -> s
+          (Scope (ModuleName ns)) s -> ns <> "." <> s
+
+        fixCtor :: InfixFixity -> Parser (a -> a -> a) -> Operator Parser a
+        fixCtor = \cases
+          NoFix -> InfixN
+          LeftFix -> InfixL
+          RightFix -> InfixR
+
+        mkOp ::
+          Int ->
+          Fixity ->
+          Scoped ModuleName ->
+          Text ->
+          Operator Parser (Expr () SourcePos)
+        mkOp = \cases
+          prec (InfixOp fix) ns o ->
+            fixCtor fix . label "an infix operator\nfor example: +, *, ==, >, <" $
+              opP ns o >>= \pos -> pure $ \e1 e2 ->
+                Op e1 pos () (prec, fix) ns (Ident o) e2
+          prec PrefixOp ns o ->
+            Prefix . label "a prefix operator\nfor example: -, !" $
+              opP ns o >>= \pos -> pure . PreOp pos () prec ns $ Ident o
+
+        opP :: Scoped ModuleName -> Text -> Parser SourcePos
+        opP ns o = lexeme $ getSourcePos <* string (opStr ns o)
+
 -- | Converts a curried function to a function on a triple.
 --
 -- NOTE: Strict, unlike the version from @Data.Tuple.Extra@
@@ -357,28 +390,28 @@ tryMany = \cases
 output :: Comment SourcePos -> ParserOver r ()
 output c = modify' (c :)
 
-skipLineComment :: ParserOver r ()
-skipLineComment = do
-  startPos <- getSourcePos
-  comment <- string "//" *> takeWhileP (Just "character") (/= '\n')
-  endPos <- getSourcePos
-  output $ LineComment startPos (Text.strip comment) endPos
-
-skipBlockComment :: ParserOver r ()
-skipBlockComment = do
-  startPos <- getSourcePos
-  comment <- string "/*" *> manyTill anySingle (string "*/")
-  endPos <- getSourcePos
-  output $ BlockComment startPos (stripIndent startPos comment) endPos
+sc :: ParserOver r ()
+sc = Lexer.space (void spaceChar) skipLineComment skipBlockComment
   where
+    skipLineComment :: ParserOver r ()
+    skipLineComment = do
+      startPos <- getSourcePos
+      comment <- string "//" *> takeWhileP (Just "character") (/= '\n')
+      endPos <- getSourcePos
+      output $ LineComment startPos (Text.strip comment) endPos
+
+    skipBlockComment :: ParserOver r ()
+    skipBlockComment = do
+      startPos <- getSourcePos
+      comment <- string "/*" *> manyTill anySingle (string "*/")
+      endPos <- getSourcePos
+      output $ BlockComment startPos (stripIndent startPos comment) endPos
+
     stripIndent :: SourcePos -> [Char] -> Text
     stripIndent pos = Text.replace ws "\n" . Text.pack
       where
         ws :: Text
         ws = Text.pack $ '\n' : replicate (unPos pos.sourceColumn - 1) ' '
-
-sc :: ParserOver r ()
-sc = Lexer.space (void spaceChar) skipLineComment skipBlockComment
 
 lexeme :: ParserOver r a -> ParserOver r a
 lexeme = Lexer.lexeme sc
@@ -393,13 +426,13 @@ parens = hidden . between (symbol "(") (symbol ")")
 -- | 'rword' for parsing reserved words.
 rword :: Text -> ParserOver r ()
 rword w = string w *> notFollowedBy alphaNumCharOrSeparator *> sc
+  where
+    alphaNumCharOrSeparator :: ParserOver r Char
+    alphaNumCharOrSeparator =
+      satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
 isAlphaNumOrSeparator :: Char -> Bool
 isAlphaNumOrSeparator = (||) <$> isAlphaNum <*> (== '_')
-
-alphaNumCharOrSeparator :: ParserOver r Char
-alphaNumCharOrSeparator =
-  satisfy isAlphaNumOrSeparator <?> "alphanumeric character or '_'"
 
 withSourcePos :: (SourcePos -> ParserOver r a) -> ParserOver r a
 withSourcePos = (getSourcePos >>=)
@@ -455,18 +488,6 @@ enumConstructor =
   Ident <$> lexeme (char '#' *> takeWhile1P Nothing isAlphaNumOrSeparator)
     <?> "an enum constructor\nfor example: #true, #false"
 
--- | Parses an integer with an optional sign (with no space).
-signedInteger :: (Num a) => Parser a
-signedInteger =
-  flip Lexer.signed Lexer.decimal $
-    takeWhileP Nothing isHSpace $> ()
-
--- | Parses a float/double with an optional sign (with no space).
-signedFloat :: Parser Double
-signedFloat =
-  flip Lexer.signed Lexer.float $
-    takeWhileP Nothing isHSpace $> ()
-
 enumE :: (SourcePos -> () -> Scoped ModuleName -> Ident -> f) -> Parser f
 enumE f = lexeme . withSourcePos $ \pos ->
   asum
@@ -496,9 +517,15 @@ signedIntE, signedDoubleE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f Sour
 signedIntE f =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> f pos . LInt <$> signedInteger
+  where
+    signedInteger :: (Num a) => Parser a
+    signedInteger = flip Lexer.signed Lexer.decimal $ takeWhileP Nothing isHSpace $> ()
 signedDoubleE f =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> f pos . LDouble <$> signedFloat
+  where
+    signedFloat :: Parser Double
+    signedFloat = flip Lexer.signed Lexer.float $ takeWhileP Nothing isHSpace $> ()
 
 noneE :: (SourcePos -> a) -> Parser a
 noneE e =
@@ -667,17 +694,6 @@ record p =
             symbol ";" *> fmap (Separated fld (Just pos) :) argsE
         , pure [Separated fld Nothing]
         ]
-
-mkArray :: Delimited (Expr () SourcePos) -> Expr () SourcePos
-mkArray del = flip (Array del.open) del.close $ fmap ((.val) &&& (.sep)) del.items
-
-mkRecord :: Delimited (Field (Expr () SourcePos)) -> Expr () SourcePos
-mkRecord del = Record del.open (fmap toTriple del.items) del.close
-  where
-    toTriple ::
-      Separated (Field (Expr () SourcePos)) ->
-      (Ident, Expr () SourcePos, Maybe SourcePos)
-    toTriple s = (s.val.name, s.val.val, s.sep)
 
 funE :: Parser (Expr () SourcePos)
 funE = label "a function\nfor example: fun x y -> x + y" $ do
@@ -1081,6 +1097,17 @@ term =
     qualVar :: SourcePos -> Text -> Text -> Expr () SourcePos
     qualVar pos ns x = Var pos () (Scope $ ModuleName ns) . Expl . ExtIdent $ Right x
 
+    mkArray :: Delimited (Expr () SourcePos) -> Expr () SourcePos
+    mkArray del = flip (Array del.open) del.close $ fmap ((.val) &&& (.sep)) del.items
+
+    mkRecord :: Delimited (Field (Expr () SourcePos)) -> Expr () SourcePos
+    mkRecord del = Record del.open (fmap toTriple del.items) del.close
+      where
+        toTriple ::
+          Separated (Field (Expr () SourcePos)) ->
+          (Ident, Expr () SourcePos, Maybe SourcePos)
+        toTriple s = (s.val.name, s.val.val, s.sep)
+
 app :: Parser (Expr () SourcePos)
 app =
   term >>= \x ->
@@ -1091,39 +1118,6 @@ app =
 
 expr :: Parser (Expr () SourcePos)
 expr = join $ asks (.exprP)
-
-mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
-mkOperators tbl =
-  IntMap.toDescList tbl <&> \(prec, grp) -> fmap (uncurry3 (mkOp prec)) grp
-  where
-    opStr :: Scoped ModuleName -> Text -> Text
-    opStr = \cases
-      LocalScope s -> s
-      (Scope (ModuleName ns)) s -> ns <> "." <> s
-
-    fixCtor :: InfixFixity -> Parser (a -> a -> a) -> Operator Parser a
-    fixCtor = \cases
-      NoFix -> InfixN
-      LeftFix -> InfixL
-      RightFix -> InfixR
-
-    mkOp ::
-      Int ->
-      Fixity ->
-      Scoped ModuleName ->
-      Text ->
-      Operator Parser (Expr () SourcePos)
-    mkOp = \cases
-      prec (InfixOp fix) ns o ->
-        fixCtor fix . label "an infix operator\nfor example: +, *, ==, >, <" $
-          opP ns o >>= \pos -> pure $ \e1 e2 ->
-            Op e1 pos () (prec, fix) ns (Ident o) e2
-      prec PrefixOp ns o ->
-        Prefix . label "a prefix operator\nfor example: -, !" $
-          opP ns o >>= \pos -> pure . PreOp pos () prec ns $ Ident o
-
-    opP :: Scoped ModuleName -> Text -> Parser SourcePos
-    opP ns o = lexeme $ getSourcePos <* string (opStr ns o)
 
 parseExpr ::
   OpsTable ->
@@ -1524,15 +1518,15 @@ sigsParser = go id
     isOpChar :: Char -> Bool
     isOpChar = (&&) <$> (/= ';') <*> not . isSpace
 
-insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
-insertIntoOpsTable tbl f lvl op = IntMap.alter go lvl tbl
-  where
-    go ::
-      Maybe [(Fixity, Scoped ModuleName, Text)] ->
-      Maybe [(Fixity, Scoped ModuleName, Text)]
-    go = \cases
-      Nothing -> Just [(f, LocalScope, op)]
-      (Just xs) -> Just $ (f, LocalScope, op) : xs
+    insertIntoOpsTable :: OpsTable -> Fixity -> Int -> Text -> OpsTable
+    insertIntoOpsTable tbl fix lvl op = IntMap.alter f lvl tbl
+      where
+        f ::
+          Maybe [(Fixity, Scoped ModuleName, Text)] ->
+          Maybe [(Fixity, Scoped ModuleName, Text)]
+        f =
+          flip maybe (Just . ((fix, LocalScope, op) :)) . Just $
+            pure (fix, LocalScope, op)
 
 modulesParser :: Parser [ParsedModule (Maybe TCScheme, QQDefinition)]
 modulesParser = do

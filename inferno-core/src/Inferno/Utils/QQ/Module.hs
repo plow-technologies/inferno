@@ -83,7 +83,7 @@ moduleQuoter customTypes =
               (_, res) =
                 runParser' run $
                   State str 0 (PosState str 0 l defaultTabWidth mempty) mempty
-          in either parseFail liftModules res
+           in either parseFail liftModules res
     , quotePat = error "moduleQuoter: Invalid use of this quasi-quoter in pattern context."
     , quoteType = error "moduleQuoter: Invalid use of this quasi-quoter in type context."
     , quoteDec = error "moduleQuoter: Invalid use of this quasi-quoter in top-level declaration context."
