@@ -34,8 +34,8 @@ import Control.Monad.Combinators.Expr
   ( Operator (InfixL, InfixN, InfixR, Prefix),
     makeExprParser,
   )
-import Control.Monad.Reader (ReaderT, ask, asks, withReaderT)
-import Control.Monad.State.Strict (StateT, modify')
+import Control.Monad.Reader (ReaderT, ask, asks, runReaderT, withReaderT)
+import Control.Monad.State.Strict (StateT, modify', runStateT)
 import Data.Bifunctor (first)
 import Data.Bool (bool)
 import Data.Char (isAlphaNum, isSpace)
@@ -52,7 +52,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Tuple.Extra (second3)
+import Data.Tuple.Extra (second3, snd3)
+import Inferno.Infer.Env (closeOver)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
   ( Comment (BlockComment, LineComment),
@@ -60,12 +61,14 @@ import Inferno.Types.Syntax
     Expr
       ( App,
         Array,
+        ArrayComp,
         Assert,
         Bracketed,
         Case,
         Empty,
         Enum,
         If,
+        InterpolatedString,
         Lam,
         Let,
         LetAnnot,
@@ -93,36 +96,73 @@ import Inferno.Types.Syntax
     Scoped (LocalScope, Scope),
     SigVar (SigOpVar, SigVar),
     TList (TNil),
+    fromEitherList,
     fromScoped,
     rws,
     tListFromList,
     unModuleName,
   )
 import Inferno.Types.Type
-  ( InfernoType,
+  ( BaseType
+      ( TCustom,
+        TDouble,
+        TEnum,
+        TInt,
+        TResolution,
+        TText,
+        TTime,
+        TTimeDiff,
+        TWord16,
+        TWord32,
+        TWord64
+      ),
+    ImplType (ImplType),
+    InfernoType
+      ( TArr,
+        TArray,
+        TBase,
+        TOptional,
+        TRecord,
+        TSeries,
+        TTuple,
+        TVar
+      ),
+    RestOfRecord (RowAbsent, RowVar),
     TCScheme,
-    TypeClass,
+    TV (TV),
+    TypeClass (TypeClass),
   )
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Text.Megaparsec
-  ( MonadParsec (hidden, label, notFollowedBy, takeWhile1P, takeWhileP, try),
+  ( MonadParsec (eof, hidden, label, notFollowedBy, takeWhile1P, takeWhileP, try),
     ParseError,
+    ParseErrorBundle (ParseErrorBundle),
     Parsec,
     ShowErrorComponent (showErrorComponent),
     SourcePos,
     anySingle,
+    attachSourcePos,
     between,
+    choice,
     customFailure,
+    errorOffset,
     getSourcePos,
     many,
     manyTill,
+    runParser,
     satisfy,
     some,
     sourceColumn,
     unPos,
     (<?>),
   )
-import Text.Megaparsec.Char (char, char', letterChar, spaceChar, string)
+import Text.Megaparsec.Char
+  ( char,
+    char',
+    letterChar,
+    spaceChar,
+    string,
+  )
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
 data InfernoParsingError
@@ -171,6 +211,15 @@ data QQDefinition
   deriving stock (Data)
 
 type TyParser = ParserOver TyParseEnv
+
+-- | A single selector in an array comprehension: @x <- expr@.
+data CompSel = CompSel
+  { varPos :: !SourcePos
+  , var :: !Ident
+  , arrPos :: !SourcePos
+  , body :: Expr () SourcePos
+  , sep :: !(Maybe SourcePos)
+  }
 
 -- | Operator table entry.
 data OpEntry = OpEntry
@@ -235,6 +284,15 @@ data TyParseEnv = TyParseEnv
   , modOps :: !(Map ModuleName OpsTable)
   , ctypes :: ![CustomType]
   }
+
+toTyEnv :: ParseEnv -> TyParseEnv
+toTyEnv env =
+  TyParseEnv
+    { tyVars = mempty
+    , ops = env.ops
+    , modOps = env.modOps
+    , ctypes = env.customTypes
+    }
 
 fromOpTuple :: (Fixity, Scoped ModuleName, Text) -> OpEntry
 fromOpTuple (f, s, n) = OpEntry{fixity = f, scope = s, name = n}
@@ -455,10 +513,105 @@ stringE f =
     charNoNewline = notFollowedBy (char '\n') *> Lexer.charLiteral
 
 interpolatedStringE :: Parser (Expr () SourcePos)
-interpolatedStringE = undefined
+interpolatedStringE =
+  label "an interpolated string\nfor example: `hello ${1 + 2}`" . lexeme . withSourcePos $
+    \startPos ->
+      let col :: Int
+          col = unPos startPos.sourceColumn
+       in ((char '`' *> go) >>=) . (. mkInterpolatedString) $ \es ->
+            flip fmap getSourcePos
+              $ InterpolatedString startPos
+                . fromEitherList
+              $ flip fmap es
+                . first
+              $ fixSpacing col
+  where
+    go :: Parser [Either Text (SourcePos, Expr () SourcePos, SourcePos)]
+    go =
+      asum
+        [ mempty <$ char '`'
+        , try $ (:) . Left . Text.singleton <$> hidden (escaped '\\') <*> go
+        , try $ (:) . Left . Text.singleton <$> hidden (escaped '`') <*> go
+        , try $ (:) . Left . Text.singleton <$> hidden (escaped '$') <*> go
+        , (:) . Right <$> hidden interpolation <*> go
+        , (:) . Left . Text.singleton <$> Lexer.charLiteral <*> go
+        ]
+
+    escaped :: Char -> Parser Char
+    escaped c = char '\\' *> char c
+
+    interpolation :: Parser (SourcePos, Expr () SourcePos, SourcePos)
+    interpolation = withSourcePos $ \startPos ->
+      char '$' *> char '{' *> sc *> expr <* char '}' >>= \e ->
+        getSourcePos <&> (startPos,e,)
+
+    fixSpacing :: Int -> Text -> Text
+    fixSpacing col = Text.replace ws "\n"
+      where
+        ws :: Text
+        ws = Text.pack $ '\n' : replicate (col - 1) ' '
+
+    mkInterpolatedString :: [Either Text e] -> [Either Text e]
+    mkInterpolatedString = \case
+      [] -> mempty
+      (Left x : Left y : xs) -> mkInterpolatedString $ Left (x <> y) : xs
+      (x : xs) -> x : mkInterpolatedString xs
 
 arrayComprE :: Parser (Expr () SourcePos)
-arrayComprE = undefined
+arrayComprE =
+  label "array builder\nfor example: [n * 2 + 1 | n <- range 0 10, if n % 2 == 0]"
+    . lexeme
+    $ do
+      startPos <- getSourcePos
+      void $ symbol "["
+      e <- expr
+      midPos <- getSourcePos
+      void $ symbol "|"
+      (sels, cond) <- selectors
+      endPos <- getSourcePos
+      void . optional $ symbol ","
+      void $ char ']'
+      pure $ ArrayComp startPos e midPos (fmap toTuple sels) cond endPos
+  where
+    -- Return the AST to tuple soup
+    toTuple ::
+      CompSel -> (SourcePos, Ident, SourcePos, Expr () SourcePos, Maybe SourcePos)
+    toTuple s = (s.varPos, s.var, s.arrPos, s.body, s.sep)
+
+    selectors :: Parser (NonEmpty CompSel, Maybe (SourcePos, Expr () SourcePos))
+    selectors =
+      selectE >>= \sel ->
+        asum
+          [ try . withSourcePos $ \pos ->
+              symbol ","
+                *> let sel' :: CompSel
+                       sel' = CompSel sel.varPos sel.var sel.arrPos sel.body (Just pos)
+                    in try (fmap (first (sel' `consNE`)) selectors) <|> condE (sel' :| [])
+          , pure (sel :| [], Nothing)
+          ]
+
+    consNE :: a -> NonEmpty a -> NonEmpty a
+    consNE x (y :| ys) = x :| (y : ys)
+
+    selectE :: Parser CompSel
+    selectE = withSourcePos $ \varPos -> do
+      var <- lexeme $ Ident <$> variable
+      arrPos <- getSourcePos
+      body <- symbol "<-" *> expr
+      pure
+        CompSel
+          { varPos
+          , var
+          , arrPos
+          , body
+          , sep = Nothing
+          }
+
+    condE ::
+      NonEmpty CompSel ->
+      Parser (NonEmpty CompSel, Maybe (SourcePos, Expr () SourcePos))
+    condE sels = withSourcePos $ \ifPos ->
+      (sels,) . Just . (ifPos,) <$> (rword "if" *> expr)
 
 array :: forall a. Parser a -> Parser (Delimited a)
 array p =
@@ -477,8 +630,8 @@ array p =
     rest e =
       asum
         [ withSourcePos $ \pos ->
-            symbol "," *> fmap (Separated{val = e, sep = Just pos} :) argsE
-        , pure [Separated{val = e, sep = Nothing}]
+            symbol "," *> fmap (Separated e (Just pos) :) argsE
+        , pure [Separated e Nothing]
         ]
 
 record :: forall a. Parser a -> Parser (Delimited (Field a))
@@ -519,9 +672,6 @@ mkRecord del = Record del.open (fmap toTriple del.items) del.close
       Separated (Field (Expr () SourcePos)) ->
       (Ident, Expr () SourcePos, Maybe SourcePos)
     toTriple s = (s.val.name, s.val.val, s.sep)
-
-mkInterpolatedString :: [Either Text e] -> [Either Text e]
-mkInterpolatedString = undefined
 
 funE :: Parser (Expr () SourcePos)
 funE = label "a function\nfor example: fun x y -> x + y" $ do
@@ -714,15 +864,6 @@ letE = label ("a 'let' expression" <> example "x") $ do
         , "'" <> x <> "'"
         , example x
         ]
-
-    toTyEnv :: ParseEnv -> TyParseEnv
-    toTyEnv env =
-      TyParseEnv
-        { tyVars = mempty
-        , ops = env.ops
-        , modOps = env.modOps
-        , ctypes = env.customTypes
-        }
 
 pat :: Parser (Pat () SourcePos)
 pat =
@@ -980,70 +1121,302 @@ mkOperators tbl =
 
 parseExpr ::
   OpsTable ->
-  Map.Map ModuleName OpsTable ->
+  Map ModuleName OpsTable ->
   [CustomType] ->
   Text ->
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     (Expr () SourcePos, [Comment SourcePos])
-parseExpr = undefined
+parseExpr ops mOps cts src =
+  runParser run "<stdin>" src & \case
+    Left (ParseErrorBundle errs pos) ->
+      Left . fst $ attachSourcePos errorOffset errs pos
+    Right (e, comments) -> Right (e, reverse comments)
+  where
+    run :: BaseParsec (Expr () SourcePos, [Comment SourcePos])
+    run =
+      flip runStateT mempty
+        . flip runReaderT (mkParseEnv ops mOps cts)
+        $ topLevel expr
 
 -- Parsing types
 
-rwsType :: [Text] -- list of reserved type sig words
-rwsType = undefined
+rwsType :: [Text]
+rwsType = ["define", "on", "forall"]
 
 typeIdent :: TyParser Text
-typeIdent = undefined
+typeIdent = try $ p >>= check
+  where
+    p :: TyParser Text
+    p = label "a type" $ Text.cons <$> letterChar <*> hidden (takeWhileP Nothing isAlphaNum)
+
+    check :: Text -> TyParser Text
+    check x =
+      bool (fail $ "Keyword " <> show x <> " cannot be a variable/function name") (pure x) $
+        notElem x rwsType
 
 baseType :: TyParser InfernoType
-baseType = undefined
+baseType =
+  asks (.ctypes) >>= \cts ->
+    TBase
+      <$> asum
+        [ symbol "int" $> TInt
+        , symbol "double" $> TDouble
+        , symbol "word16" $> TWord16
+        , symbol "word32" $> TWord32
+        , symbol "word64" $> TWord64
+        , symbol "text" $> TText
+        , try $ symbol "timeDiff" $> TTimeDiff
+        , symbol "time" $> TTime
+        , symbol "resolution" $> TResolution
+        , choice $ fmap customType cts
+        ]
+  where
+    customType :: String -> TyParser BaseType
+    customType t = symbol (Text.pack t) $> TCustom t
 
 typeVariableRaw :: TyParser Text
-typeVariableRaw = undefined
+typeVariableRaw = char '\'' *> takeWhile1P Nothing isAlphaNum
 
 typeVariable :: TyParser Int
-typeVariable = undefined
+typeVariable =
+  typeVariableRaw >>= \nm ->
+    asks (.tyVars) >>= maybe (customFailure (UnboundTyVar nm)) pure . Map.lookup nm
 
-recordType :: TyParser (Map.Map Ident InfernoType, RestOfRecord)
-recordType = undefined
+recordType :: TyParser (Map Ident InfernoType, RestOfRecord)
+recordType =
+  label "record type\nfor example: {name: text; age: int}" . lexeme $
+    symbol "{" *> fields mempty
+  where
+    fields ::
+      Map Ident InfernoType ->
+      TyParser (Map Ident InfernoType, RestOfRecord)
+    fields acc =
+      asum
+        [ try $ fields =<< fieldSemicolon acc
+        , fieldClose acc
+        , rowVarClose acc
+        , char '}' $> (acc, RowAbsent)
+        ]
+
+    fieldSemicolon :: Map Ident InfernoType -> TyParser (Map Ident InfernoType)
+    fieldSemicolon acc = do
+      f <- lexeme . fmap Ident $ fieldName
+      void $ symbol ":"
+      e <- typeParser
+      void $ symbol ";"
+      pure $ Map.insert f e acc
+
+    fieldClose ::
+      Map Ident InfernoType -> TyParser (Map Ident InfernoType, RestOfRecord)
+    fieldClose acc = do
+      f <- lexeme . fmap Ident $ fieldName
+      void $ symbol ":"
+      e <- typeParser
+      void $ char '}'
+      pure (Map.insert f e acc, RowAbsent)
+
+    rowVarClose ::
+      Map Ident InfernoType -> TyParser (Map Ident InfernoType, RestOfRecord)
+    rowVarClose acc =
+      fmap ((acc,) . RowVar . TV) $
+        typeVariable <* char '}'
+
+    keywords :: Set Text
+    keywords = Set.fromList $ rws <> rwsType
+
+    fieldName :: TyParser Text
+    fieldName = check =<< p
+      where
+        p :: TyParser Text
+        p =
+          label "a record field name" $
+            Text.cons
+              <$> letterChar
+              <*> hidden (takeWhileP Nothing isAlphaNumOrSeparator)
+
+        check :: Text -> TyParser Text
+        check x =
+          bool (fail msg) (pure x) . not $
+            Set.member x keywords
+          where
+            msg :: String
+            msg =
+              unwords
+                [ "Keyword"
+                , show x
+                , "cannot be a record field name"
+                ]
 
 typeParserBase :: TyParser InfernoType
-typeParserBase = undefined
+typeParserBase =
+  asum
+    [ try . fmap mkTuple $ tuple typeParser
+    , parens typeParser
+    , try $ lexeme baseType
+    , uncurry TRecord <$> recordType
+    , lexeme . fmap TBase $ enum
+    , lexeme $ TVar . TV <$> typeVariable
+    ]
+  where
+    mkTuple :: (a, TList (InfernoType, Maybe SourcePos), c) -> InfernoType
+    mkTuple = TTuple . fmap fst . snd3
+
+    enumSet :: TyParser (Set Ident)
+    enumSet = go mempty
+      where
+        go :: Set Ident -> TyParser (Set Ident)
+        go acc =
+          enumConstructor >>= \c ->
+            let acc' :: Set Ident
+                acc' = Set.insert c acc
+             in asum [symbol "," *> go acc', pure acc']
+
+    enum :: TyParser BaseType
+    enum =
+      TEnum
+        <$> typeIdent
+        <*> (symbol "{" *> enumSet <* symbol "}")
 
 typeParser :: TyParser InfernoType
-typeParser = undefined
+typeParser =
+  makeExprParser
+    typeParserBase
+    [
+      [ Prefix (TArray <$ rword "array" <* rword "of")
+      , Prefix (TSeries <$ rword "series" <* rword "of")
+      , Prefix (TOptional <$ rword "option" <* rword "of")
+      ]
+    ,
+      [ InfixR (TArr <$ (symbol "->" <|> symbol "\x2192"))
+      ]
+    ]
 
 parseType ::
   Text ->
   Either
     (NonEmpty (ParseError Text InfernoParsingError, SourcePos))
     InfernoType
-parseType = undefined
+parseType src =
+  runParser run "<stdin>" src & \case
+    Left (ParseErrorBundle errs pos) -> Left . fst $ attachSourcePos errorOffset errs pos
+    Right (e, _) -> Right e
+  where
+    env :: TyParseEnv
+    env =
+      TyParseEnv
+        { tyVars = mempty
+        , ops = mempty
+        , modOps = mempty
+        , ctypes = mempty
+        }
+
+    run :: BaseParsec (InfernoType, [Comment SourcePos])
+    run = flip runStateT mempty . flip runReaderT env $ topLevel typeParser
 
 parseTCScheme :: Text -> Either String TCScheme
-parseTCScheme = undefined
+parseTCScheme src =
+  runParser run "<stdin>" src & \case
+    Left (ParseErrorBundle errs pos) ->
+      Left . show . fst $ attachSourcePos errorOffset errs pos
+    Right (e, _) -> Right e
+  where
+    env :: TyParseEnv
+    env =
+      TyParseEnv
+        { tyVars = mempty
+        , ops = mempty
+        , modOps = mempty
+        , ctypes = mempty
+        }
 
-listParser :: TyParser a -> TyParser [a]
-listParser = undefined
+    run :: BaseParsec (TCScheme, [Comment SourcePos])
+    run = flip runStateT mempty . flip runReaderT env $ topLevel schemeParser
 
-tyContext :: TyParser [Either TypeClass (Text, InfernoType)]
-tyContext = undefined
+-- | A single entry in a type context: either a class constraint or an implicit binding.
+data TyContextEntry
+  = ClassConstraint TypeClass
+  | ImplicitBinding Text InfernoType
+
+tyContext :: TyParser [TyContextEntry]
+tyContext =
+  lexeme $
+    symbol "{" *> go id <* symbol "}" <* (symbol "=>" <|> symbol "\x21D2")
+  where
+    go ::
+      ([TyContextEntry] -> [TyContextEntry]) ->
+      TyParser [TyContextEntry]
+    go acc =
+      tyContextSingle >>= \entry ->
+        let acc' :: [TyContextEntry] -> [TyContextEntry]
+            acc' = acc . (entry :)
+         in asum [symbol "," *> go acc', pure $ acc' mempty]
 
 typeClass :: TyParser TypeClass
-typeClass = undefined
+typeClass =
+  TypeClass
+    <$> (lexeme typeIdent <* symbol "on")
+    <*> many typeParser
 
-tyContextSingle :: TyParser (Either TypeClass (Text, InfernoType))
-tyContextSingle = undefined
+tyContextSingle :: TyParser TyContextEntry
+tyContextSingle =
+  asum
+    [ fmap ClassConstraint $ symbol "requires" *> typeClass
+    , implicitBinding
+    ]
+  where
+    implicitBinding :: TyParser TyContextEntry
+    implicitBinding =
+      ImplicitBinding
+        <$> (symbol "implicit" *> lexeme tyVariable)
+        <*> (symbol ":" *> typeParser)
+
+    tyVariable :: TyParser Text
+    tyVariable = withReaderT toParseEnv variable
+
+    toParseEnv :: TyParseEnv -> ParseEnv
+    toParseEnv env = mkParseEnv env.ops env.modOps env.ctypes
 
 schemeParser :: TyParser TCScheme
-schemeParser = undefined
+schemeParser =
+  vars >>= \vs ->
+    withReaderT (bindVars vs) $
+      constructScheme
+        <$> (try tyContext <|> pure mempty)
+        <*> typeParser
+  where
+    vars :: TyParser [Text]
+    vars =
+      asum
+        [ try $ rword "forall" *> many (lexeme typeVariableRaw) <* rword "."
+        , pure mempty
+        ]
+
+    bindVars :: [Text] -> TyParseEnv -> TyParseEnv
+    bindVars vs env = env{tyVars = Map.fromList $ zip vs [0 ..]}
+
+    constructScheme :: [TyContextEntry] -> InfernoType -> TCScheme
+    constructScheme cs t = closeOver tcs $ ImplType impls t
+      where
+        tcs :: Set TypeClass
+        impls :: Map ExtIdent InfernoType
+        (tcs, impls) = foldl' partitionEntry (mempty, mempty) cs
+
+    partitionEntry ::
+      (Set TypeClass, Map ExtIdent InfernoType) ->
+      TyContextEntry ->
+      (Set TypeClass, Map ExtIdent InfernoType)
+    partitionEntry = \cases
+      (tcs, impls) (ClassConstraint tc) -> (Set.insert tc tcs, impls)
+      (tcs, impls) (ImplicitBinding nm ty) -> (tcs, Map.insert (ExtIdent (Right nm)) ty impls)
 
 doc :: Parser Text
-doc = undefined
+doc = symbol "@doc" *> takeWhileP Nothing (/= ';') <* symbol ";"
 
 enumConstructors :: Parser [Ident]
-enumConstructors = undefined
+enumConstructors =
+  try ((:) <$> (lexeme enumConstructor <* symbol "|") <*> enumConstructors)
+    <|> (: mempty) <$> lexeme enumConstructor
 
 sigVariable :: Parser SigVar
 sigVariable =
@@ -1057,10 +1430,43 @@ sigVariable =
     infixOp op = char '(' *> fmap SigOpVar (string op) <* char ')'
 
 exprOrBuiltin :: Parser QQDefinition
-exprOrBuiltin = undefined
+exprOrBuiltin =
+  asum
+    [ try $
+        QQToValueDef . Text.unpack
+          <$> lexeme (string "###" *> withReaderT (const emptyEnv) variable <* string "###")
+    , try $
+        QQRawDef . Text.unpack
+          <$> lexeme (string "###!" *> withReaderT (const emptyEnv) variable <* string "###")
+    , InlineDef <$> expr
+    ]
+  where
+    emptyEnv :: ParseEnv
+    emptyEnv = mkParseEnv mempty mempty mempty
 
 sigParser :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
-sigParser = undefined
+sigParser =
+  asum
+    [ try sig
+    , try $ EnumDef . Just <$> doc <*> enumName <*> enumConstructors
+    , EnumDef Nothing <$> enumName <*> enumConstructors
+    , TypeClassInstance <$> (symbol "define" *> withReaderT toTyEnv typeClass)
+    , Export . ModuleName <$> (symbol "export" *> lexeme variable)
+    ]
+    <* symbol ";"
+  where
+    sig :: Parser (TopLevelDefn (Maybe TCScheme, QQDefinition))
+    sig =
+      Signature
+        <$> optional (try doc)
+        <*> sigVariable
+        <*> ((,) <$> optScheme <*> (symbol ":=" *> exprOrBuiltin))
+
+    optScheme :: Parser (Maybe TCScheme)
+    optScheme = optional . try $ symbol ":" *> withReaderT toTyEnv schemeParser
+
+    enumName :: Parser Text
+    enumName = symbol "enum" *> lexeme variable <* symbol ":="
 
 fixityP :: Parser Fixity
 fixityP =
@@ -1145,4 +1551,4 @@ modulesParser = do
         env.customTypes
 
 topLevel :: ParserOver r a -> ParserOver r a
-topLevel = undefined
+topLevel p = sc *> p <* eof
