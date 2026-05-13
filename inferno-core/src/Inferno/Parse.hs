@@ -16,8 +16,10 @@ module Inferno.Parse
     ParsedModule (..),
     QQDefinition (..),
     InfernoParsingError (..),
+    ParseEnv,
     topLevel,
     expr,
+    mkParseEnv,
     parseExpr,
     parseType,
     parseTCScheme,
@@ -309,9 +311,13 @@ mkParseEnv ops modOps cts = env
         { ops
         , modOps
         , customTypes = cts
-        , reserved = Set.fromList $ rws <> fmap (.name) allOps
-        , localOps = fmap (.name) . filter ((== LocalScope) . (.scope)) $ allOps
-        , qualOps = fmap ((.scope) &&& (.name)) . filter ((/= LocalScope) . (.scope)) $ allOps
+        , reserved =
+            Set.fromList $ rws <> fmap (.name) allOps
+        , localOps =
+            fmap (.name) . filter ((== LocalScope) . (.scope)) $ allOps
+        , qualOps =
+            fmap ((.scope) &&& (.name)) . filter ((/= LocalScope) . (.scope)) $
+              allOps
         , infixOps = mapMaybe infixName allOps
         , prefixOps = mapMaybe prefixName allOps
         , exprP = makeExprParser app $ mkOperators ops
