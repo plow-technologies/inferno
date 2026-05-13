@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Inferno.Utils.QQ.Script where
 
@@ -60,7 +61,7 @@ inferno ::
   QuasiQuoter
 inferno =
   QuasiQuoter
-    { quoteExp = \str ->
+    { quoteExp = \(Text.pack -> str) ->
         location' >>= \l ->
           let env :: ParseEnv
               env =
@@ -78,11 +79,7 @@ inferno =
                   (Expr () SourcePos, [Comment SourcePos])
               (_, res) =
                 runParser' run $
-                  State
-                    (Text.pack str)
-                    0
-                    (PosState (Text.pack str) 0 l defaultTabWidth mempty)
-                    mempty
+                  State str 0 (PosState str 0 l defaultTabWidth mempty) mempty
            in either parseFail (pinAndInfer >=> liftToTH) res
     , quotePat = error "inferno: Invalid use of this quasi-quoter in pattern context."
     , quoteType = error "inferno: Invalid use of this quasi-quoter in type context."
