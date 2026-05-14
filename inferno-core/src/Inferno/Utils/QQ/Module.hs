@@ -8,7 +8,7 @@ import Control.Monad.State.Strict (runStateT)
 import Data.Data (Proxy (..), cast)
 import Data.Generics.Aliases (extQ)
 import Data.List (intercalate)
-import qualified Data.List.NonEmpty as NEList
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.Infer (closeOverType)
@@ -94,7 +94,7 @@ moduleQuoter customTypes =
       fail
         . intercalate "\n\n"
         . fmap mkParseErrorStr
-        . NEList.toList
+        . NonEmpty.toList
         . fst
         $ attachSourcePos errorOffset errs pos
 

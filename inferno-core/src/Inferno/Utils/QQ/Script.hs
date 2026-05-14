@@ -17,7 +17,7 @@ import qualified Data.ByteString as ByteString
 import Data.Data (cast)
 import Data.Generics.Aliases (extQ)
 import Data.List (intercalate)
-import qualified Data.List.NonEmpty as NEList
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Maybe as Maybe
 import Data.Text (Text)
 import qualified Data.Text as Text
@@ -94,7 +94,7 @@ inferno =
       fail
         . intercalate "\n\n"
         . fmap mkParseErrorStr
-        . NEList.toList
+        . NonEmpty.toList
         . fst
         $ attachSourcePos errorOffset errs pos
 
