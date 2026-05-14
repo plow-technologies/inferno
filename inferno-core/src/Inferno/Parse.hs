@@ -504,11 +504,14 @@ implVarE :: Parser (Expr () SourcePos)
 implVarE = lexeme . withSourcePos $ \pos ->
   Var pos () LocalScope . Impl . ExtIdent . Right <$> implicitVariable
 
--- | Parses unsigned integer and double literals.
-intE, doubleE :: Parser (Expr () SourcePos)
+-- | Parses unsigned integer literals.
+intE :: Parser (Expr () SourcePos)
 intE =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> Lit pos . LInt <$> Lexer.decimal
+
+-- | Parses unsigned double literals.
+doubleE :: Parser (Expr () SourcePos)
 doubleE =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> Lit pos . LDouble <$> Lexer.float
@@ -518,13 +521,17 @@ hexadecimal f =
   label "a hexadecimal number\nfor example: 0xE907, 0XE907" . lexeme . withSourcePos $
     \pos -> f pos . LHex <$> (char '0' *> char' 'x' *> Lexer.hexadecimal)
 
-signedIntE, signedDoubleE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
+-- | Parses signed integer literals.
+signedIntE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
 signedIntE f =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> f pos . LInt <$> signedInteger
   where
     signedInteger :: (Num a) => Parser a
     signedInteger = flip Lexer.signed Lexer.decimal $ takeWhileP Nothing isHSpace $> ()
+
+-- | Parses signed double literals.
+signedDoubleE :: (SourcePos -> Lit -> f SourcePos) -> Parser (f SourcePos)
 signedDoubleE f =
   label "a number\nfor example: 42, 3.1415, (-6)" . lexeme . withSourcePos $
     \pos -> f pos . LDouble <$> signedFloat
