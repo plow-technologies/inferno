@@ -8,6 +8,7 @@ import Control.Monad (foldM)
 import Control.Monad.Catch (MonadCatch, MonadThrow)
 import Control.Monad.Fix (MonadFix)
 import Data.Bifunctor (bimap, first)
+import Data.Foldable (foldl') -- NOTE: Do NOT remove, needed for GHC version compat
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -113,7 +114,7 @@ mkInferno prelude customTypes = do
                   Left $ InferenceError err
                 Right runtimeReps ->
                   let finalAst =
-                        foldl
+                        foldl'
                           App
                           (bimap pinnedToMaybe (const ()) pinnedAST')
                           [TypeRep () ty | ty <- runtimeReps]
