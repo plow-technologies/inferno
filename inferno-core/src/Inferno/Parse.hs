@@ -46,15 +46,17 @@ import Data.Foldable (foldl') -- foldl': DO NOT REMOVE; needed for older GHC com
 import Data.Function ((&))
 import Data.Functor (($>), (<&>))
 import qualified Data.IntMap.Strict as IntMap
+import Data.List (sortOn)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
+import Data.Ord (Down (Down))
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Data.Tuple.Extra (second3, snd3)
+import Data.Tuple.Extra (second3, snd3, thd3)
 import Inferno.Infer.Env (closeOver)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
@@ -336,9 +338,12 @@ mkParseEnv ops modOps cts = env
       PrefixOp -> Just e.name
       _ -> Nothing
 
+    -- Sort operators longest-first at each precedence level so that e.g.
+    -- `<=` is tried before `<` (avoiding a partial match via `string`)
     mkOperators :: OpsTable -> [[Operator Parser (Expr () SourcePos)]]
     mkOperators tbl =
-      IntMap.toDescList tbl <&> \(prec, grp) -> fmap (uncurry3 (mkOp prec)) grp
+      IntMap.toDescList tbl <&> \(prec, grp) ->
+        fmap (uncurry3 (mkOp prec)) . sortOn (Down . Text.length . thd3) $ grp
       where
         opStr :: Scoped ModuleName -> Text -> Text
         opStr = \cases
