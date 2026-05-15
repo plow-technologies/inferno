@@ -24,6 +24,8 @@ library
   exposed-modules:    Inferno.LSP.Server
   other-modules:
     Inferno.LSP.Completion
+    Inferno.LSP.DocState
+    Inferno.LSP.Hover
     Inferno.LSP.ParseInfer
 
   hs-source-dirs:     src
@@ -33,13 +35,16 @@ library
 
   build-depends:
       base
+    , async
     , bytestring
     , co-log-core
     , containers
     , extra
+    , focus
     , inferno-core
     , inferno-types
     , inferno-vc
+    , IntervalMap
     , lsp
     , lsp-types
     , megaparsec
@@ -47,9 +52,8 @@ library
     , plow-log
     , plow-log-async
     , prettyprinter
-    , safe
-    , special-keys
     , stm
+    , stm-containers
     , text
     , text-rope
     , time
@@ -65,6 +69,7 @@ library
     FlexibleInstances
     LambdaCase
     MultiParamTypeClasses
+    OverloadedRecordDot
     OverloadedStrings
     TupleSections
 
