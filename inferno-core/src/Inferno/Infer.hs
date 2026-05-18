@@ -2594,8 +2594,8 @@ inferTypeReps allTyCls (ForallTC tvs tyCls impl) inputTys outputTy =
     -- Peel `TArr` layers from the signature and unify with concrete types
     unifyArgs :: InfernoType -> [InfernoType] -> Infer s ()
     unifyArgs = \cases
-      (TArr a rest) (x : xs) -> unify mempty a x *> unifyArgs rest xs
-      t [] -> unify mempty t outputTy
+      (TArr a rest) (x : xs) -> unify [UnificationFail mempty a x dummyLoc] a x *> unifyArgs rest xs
+      t [] -> unify [UnificationFail mempty t outputTy dummyLoc] t outputTy
       _ _ -> throwError [UnificationFail mempty impl.body outputTy dummyLoc]
 
 inferPossibleTypes ::
