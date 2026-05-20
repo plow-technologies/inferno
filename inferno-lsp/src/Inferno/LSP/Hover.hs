@@ -138,6 +138,13 @@ renderHoverContent allClasses docClasses entry =
 -- | Pretty-print a type scheme as a union signature. If the scheme has free
 -- type variables, resolves typeclass witnesses (capped at @11@) to produce
 -- concrete instantiations. Displays up to @10@ variants; truncates with @...@.
+--
+-- NOTE: this runs inside the hover STM transaction. The witness search space is
+-- tiny (~15 classes, no real instances); `findTypeClassWitnesses` takes
+-- microseconds. STM retry risk is near-zero because the only competing writer
+-- is the analysis async (fires at most once per debounce window). Moving this
+-- outside STM (compute in IO, write cache in a separate versioned transaction)
+-- would add significant complexity for negligible gain.
 mkPrettyTy :: Set TypeClass -> Set TypeClass -> TCScheme -> Doc ann
 mkPrettyTy allClasses docClasses sch
   | Set.null ftvTy = ":" <+> align (pretty sch.impl)
