@@ -190,9 +190,6 @@ parseAndInferDiagnostics interp idents txt =
           mkDiagnostic DsWarning (Just "inferno.lsp") (s, e) $
             "Unused variable: " <> x
 
--- | Build a 'Diagnostic' from a source span, severity, source tag, and message.
--- The @- 2@ on lines accounts for the 2-line @fun ... ->@ prefix prepended
--- before parsing.
 parseErrorDiagnostic :: (ShowErrorComponent e) => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, pos) =
   mkDiagnostic DsError (Just "inferno.parser") (pos, pos) . Text.pack $ prettyError err
@@ -511,7 +508,11 @@ inferErrorDiagnostic = \case
     indent2Pretty :: (Pretty a) => a -> Doc ann
     indent2Pretty = indent 2 . pretty
 
-mkDiagnostic :: DiagnosticSeverity -> Maybe Text -> (SourcePos, SourcePos) -> Text -> Diagnostic
+-- | Build a 'Diagnostic' from a source span, severity, source tag, and message.
+-- The @- 2@ on lines accounts for the 2-line @fun ... ->@ prefix prepended
+-- before parsing.
+mkDiagnostic ::
+  DiagnosticSeverity -> Maybe Text -> (SourcePos, SourcePos) -> Text -> Diagnostic
 mkDiagnostic sev src (s, e) msg = Diagnostic range (Just sev) Nothing src msg Nothing Nothing
   where
     range :: Range
