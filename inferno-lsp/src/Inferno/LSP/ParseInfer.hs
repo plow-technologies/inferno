@@ -1,24 +1,58 @@
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
+-- | Parse\/infer pipeline and diagnostic generation.
+--
+-- This module is concerned with language-level operations only: parsing,
+-- type inference, comment insertion, and unused-variable detection. It does
+-- NOT handle:
+--
+--   * Input type validation (@validateInput@); this is domain policy and
+--     belongs in the Server layer.
+--   * 'Inferno.LSP.Hover.HoverIndex' construction; the Server builds it from
+--     'InferSuccess.typeMap'.
+--   * Backwards-compat @ParsedResult@ translation (the @(Expr, TCScheme,
+--     [Diagnostic], [(Range, MarkupContent)])@ tuple expected by @afterParse@
+--     callbacks); the Server is responsible for assembling it from
+--     'InferSuccess' and the hover rendering functions in "Inferno.LSP.Hover".
 module Inferno.LSP.ParseInfer
-  ( parseErrorDiagnostic,
+  ( InferSuccess
+      ( InferSuccess,
+        ast,
+        scheme,
+        typeMap,
+        classes,
+        warnings
+      ),
+    parseAndInferDiagnostics,
+    parseErrorDiagnostic,
     inferErrorDiagnostic,
     mkDiagnostic,
   ) where
 
+import Control.Monad (void)
+import Data.Foldable (foldl') -- NOTE: Do NOT remove, needed for GHC version compat
+import Data.List.Extra (nubOrd)
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
+import Data.Map.Strict (Map)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Inferno.Core (Interpreter)
+import qualified Inferno.Core as Core
 import Inferno.Infer.Env (closeOverType)
 import Inferno.Infer.Error (Location, TypeError)
 import qualified Inferno.Infer.Error as Error
+import Inferno.Parse.Commented (insertCommentsIntoExpr)
 import Inferno.Parse.Error (prettyError)
 import Inferno.Types.Syntax
-  ( ExtIdent (ExtIdent),
+  ( Expr (Lam),
+    ExtIdent (ExtIdent),
     Ident (Ident),
     InfernoType,
     ModuleName (ModuleName),
@@ -30,10 +64,15 @@ import Inferno.Types.Syntax
         TypeNamespace
       ),
     Scoped (LocalScope, Scope),
+    TCScheme,
     TypeClass,
     TypeClassShape (TypeClassShape),
+    TypeMetadata,
+    collectArrs,
+    unusedVars,
   )
-import Inferno.Types.VersionControl (VCObjectHash)
+import qualified Inferno.Types.Syntax
+import Inferno.Types.VersionControl (Pinned, VCObjectHash)
 import Inferno.Utils.Prettyprinter (renderDoc)
 import Language.LSP.Types
   ( Diagnostic (Diagnostic),
@@ -54,6 +93,102 @@ import Prettyprinter
 import Text.Megaparsec.Error (ParseError, ShowErrorComponent)
 import Text.Megaparsec.Pos (SourcePos)
 import qualified Text.Megaparsec.Pos as Pos
+
+-- | The result of a successful parse\/infer cycle.
+data InferSuccess = InferSuccess
+  { ast :: !(Expr (Pinned VCObjectHash) ())
+  , scheme :: !TCScheme
+  , typeMap :: !(Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
+  , classes :: !(Set TypeClass)
+  , warnings :: ![Diagnostic]
+  }
+
+-- | Run the parse\/infer pipeline on script text, producing either error
+-- diagnostics or a successful result. Handles the @fun args ->@ prefix
+-- construction, comment insertion, and unused-variable warnings.
+parseAndInferDiagnostics ::
+  (Pretty c, Eq c) =>
+  Interpreter IO c ->
+  [Maybe Ident] ->
+  Text ->
+  Either [Diagnostic] InferSuccess
+parseAndInferDiagnostics interp idents txt =
+  case interp.parseAndInfer input of
+    Left (Core.ParseError errs) ->
+      Left . fmap parseErrorDiagnostic $ NonEmpty.toList errs
+    Left (Core.PinError errs) ->
+      Left . foldMap inferErrorDiagnostic $ nubOrd errs
+    Left (Core.InferenceError errs) ->
+      Left . foldMap inferErrorDiagnostic $ nubOrd errs
+    Right (pinnedAst, scheme, typeMap, comments)
+      | length (collectArrs scheme.impl.body) > length idents + 1 ->
+          Left [scriptIsFunctionErr]
+      | otherwise ->
+          Right
+            InferSuccess
+              { ast =
+                  putBackLams lams . void $
+                    insertCommentsIntoExpr comments body
+              , classes = scheme.classes
+              , warnings = unusedVarWarnings body
+              , scheme
+              , typeMap
+              }
+      where
+        lams :: [NonEmpty (Maybe ExtIdent)]
+        body :: Expr (Pinned VCObjectHash) SourcePos
+        (lams, body) = extractLams mempty pinnedAst
+  where
+    input :: Text
+    input = case idents of
+      [] -> "\n" <> txt
+      ids ->
+        mconcat
+          [ "fun "
+          , Text.intercalate " " $ fmap (maybe "_" (.unIdent)) ids
+          , " -> \n"
+          , txt
+          ]
+
+    extractLams ::
+      [NonEmpty (Maybe ExtIdent)] ->
+      Expr (Pinned VCObjectHash) SourcePos ->
+      ([NonEmpty (Maybe ExtIdent)], Expr (Pinned VCObjectHash) SourcePos)
+    extractLams acc = \case
+      Lam _ xs _ e -> extractLams (fmap snd xs : acc) e
+      e -> (acc, e)
+
+    putBackLams ::
+      [NonEmpty (Maybe ExtIdent)] ->
+      Expr (Pinned VCObjectHash) () ->
+      Expr (Pinned VCObjectHash) ()
+    putBackLams acc e = foldl' wrapLam e acc
+      where
+        wrapLam ::
+          Expr (Pinned VCObjectHash) () ->
+          NonEmpty (Maybe ExtIdent) ->
+          Expr (Pinned VCObjectHash) ()
+        wrapLam l xs = Lam () (fmap ((),) xs) () l
+
+    scriptIsFunctionErr :: Diagnostic
+    scriptIsFunctionErr =
+      mkDiagnostic
+        DsError
+        (Just "inferno.infer")
+        (startPos, startPos)
+        "This script evaluates to a function. Did you mean to add input parameters instead?"
+
+    startPos :: SourcePos
+    startPos = Pos.initialPos mempty
+
+    unusedVarWarnings :: Expr (Pinned VCObjectHash) SourcePos -> [Diagnostic]
+    unusedVarWarnings =
+      fmap mkWarn . Set.toList . unusedVars
+      where
+        mkWarn :: (Text, SourcePos, SourcePos) -> Diagnostic
+        mkWarn (x, s, e) =
+          mkDiagnostic DsWarning (Just "inferno.lsp") (s, e) $
+            "Unused variable: " <> x
 
 -- | Build a 'Diagnostic' from a source span, severity, source tag, and message.
 -- The @- 2@ on lines accounts for the 2-line @fun ... ->@ prefix prepended
