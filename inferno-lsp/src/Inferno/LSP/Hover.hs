@@ -9,6 +9,8 @@ module Inferno.LSP.Hover
     buildHoverIndex,
     queryHover,
     renderHoverContent,
+    metadataDocsText,
+    mkPrettyTy,
   ) where
 
 import Data.IntervalMap.Generic.Strict (IntervalMap)

@@ -1,3 +1,5 @@
+{-# LANGUAGE NoFieldSelectors #-}
+
 module Inferno.LSP.Completion () where
 
 import Data.Bool (bool)
@@ -8,24 +10,27 @@ import qualified Data.Map.Strict as Map
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
+import Inferno.LSP.Hover (metadataDocsText, mkPrettyTy)
 import Inferno.Types.Syntax
   ( Ident (Ident),
     ModuleName (ModuleName),
     Namespace (EnumNamespace, FunNamespace, ModuleNamespace, OpNamespace, TypeNamespace),
+    TypeClass,
   )
 import qualified Inferno.Types.Syntax
 import Inferno.Types.Type (TCScheme, TypeMetadata)
-import Language.LSP.Types (Position (Position))
+import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
+import qualified Language.LSP.Types as LSP
 
 -- | Given a cursor @Position@, split the document text into a
 -- @(leadup, prefix)@ pair where @prefix@ is the token fragment being
 -- completed (everything back to the nearest break character) and @leadup@
 -- is the text preceding it.
-completionQueryAt :: Text -> Position -> (Text, Text)
+completionQueryAt :: Text -> LSP.Position -> (Text, Text)
 completionQueryAt txt pos = (leadup, prefix)
   where
     truncated :: Text
-    truncated = Text.take (positionToOffset txt pos) txt
+    truncated = flip Text.take txt $ positionToOffset txt pos
 
     isBreak :: Char -> Bool
     isBreak =
@@ -86,11 +91,80 @@ findInPrelude prelude prefix = Map.filterWithKey matches prelude
           ModuleNamespace modName -> Text.toLower modName.unModuleName
           TypeNamespace _ -> mempty
 
+-- | Context shared across all completion items in a single response.
+data CompletionCtx = CompletionCtx
+  { classes :: !(Set TypeClass)
+  , prefix  :: !Text
+  }
+
+-- | Build a @CompletionItem@ from a prelude entry. Qualifies the label with
+-- the module name unless the completion prefix already includes it. Renders
+-- the type signature as detail and metadata docs as markdown documentation.
+mkCompletionItem ::
+  CompletionCtx ->
+  (Maybe ModuleName, Namespace) ->
+  TypeMetadata TCScheme ->
+  LSP.CompletionItem
+mkCompletionItem ctx (modNm, ns) meta =
+  LSP.CompletionItem
+    { LSP._label = qualifiedLabel
+    , LSP._kind = nsKind
+    , LSP._tags = Nothing
+    , LSP._detail = Just . renderDoc $ mkPrettyTy ctx.classes mempty meta.ty
+    , LSP._documentation =
+        LSP.CompletionDocMarkup . LSP.MarkupContent LSP.MkMarkdown
+          <$> metadataDocsText meta
+    , LSP._deprecated = Nothing
+    , LSP._preselect = Nothing
+    , LSP._sortText = Nothing
+    , LSP._filterText =
+        -- First checks if we are in enum namespace, which is faster than _always_
+        -- doing a text scan for `#` (only enum idents can start with `#`)
+        Just $ bool qualifiedLabel (Text.drop 1 qualifiedLabel) isEnum
+    , LSP._insertText =
+        ns & \case
+          EnumNamespace ident ->
+            bool Nothing (Just ident.unIdent) $ "#" `Text.isPrefixOf` ctx.prefix
+          _ -> Nothing
+    , LSP._insertTextMode = Nothing
+    , LSP._insertTextFormat = Nothing
+    , LSP._textEdit = Nothing
+    , LSP._additionalTextEdits = Nothing
+    , LSP._commitCharacters = Nothing
+    , LSP._command = Nothing
+    , LSP._xdata = Nothing
+    }
+  where
+    qualifiedLabel :: Text
+    qualifiedLabel =
+      modNm & \case
+        Nothing -> renderPretty ns
+        Just modName ->
+          bool (qual <> renderPretty ns) (renderPretty ns) $
+            qual `Text.isPrefixOf` ctx.prefix
+          where
+            qual :: Text
+            qual = modName.unModuleName <> "."
+
+    isEnum :: Bool
+    isEnum = case ns of
+      EnumNamespace _ -> True
+      _ -> False
+
+    nsKind :: Maybe LSP.CompletionItemKind
+    nsKind =
+      ns & \case
+        FunNamespace _ -> Just LSP.CiFunction
+        OpNamespace _ -> Just LSP.CiFunction
+        EnumNamespace _ -> Just LSP.CiEnum
+        ModuleNamespace _ -> Just LSP.CiModule
+        TypeNamespace _ -> Nothing
+
 -- | Convert an LSP @Position@ (0-based line and column) to a 0-based
 -- character offset into @txt@. Clamps to @Text.length txt@ if the position
 -- lies beyond the end of the document.
-positionToOffset :: Text -> Position -> Int
-positionToOffset txt (Position line col) =
+positionToOffset :: Text -> LSP.Position -> Int
+positionToOffset txt (LSP.Position line col) =
   min (lineStart + fromIntegral col) $ Text.length txt
   where
     lineStart :: Int
