@@ -1,21 +1,37 @@
 {-# LANGUAGE NoFieldSelectors #-}
 
-module Inferno.LSP.Completion () where
+module Inferno.LSP.Completion
+  ( CompletionCtx (CompletionCtx, classes, prefix),
+    completionQueryAt,
+    findInPrelude,
+    mkCompletionItem,
+    identifierCompletionItems,
+    rwsCompletionItems,
+    filterModuleNameCompletionItems,
+  ) where
 
 import Data.Bool (bool)
 import Data.Function ((&))
 import Data.List (scanl')
+import Data.List.Extra (nubOrd)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Inferno.LSP.Hover (metadataDocsText, mkPrettyTy)
 import Inferno.Types.Syntax
-  ( Ident (Ident),
-    ModuleName (ModuleName),
-    Namespace (EnumNamespace, FunNamespace, ModuleNamespace, OpNamespace, TypeNamespace),
+  ( ModuleName,
+    Namespace
+      ( EnumNamespace,
+        FunNamespace,
+        ModuleNamespace,
+        OpNamespace,
+        TypeNamespace
+      ),
     TypeClass,
+    rws,
   )
 import qualified Inferno.Types.Syntax
 import Inferno.Types.Type (TCScheme, TypeMetadata)
@@ -94,7 +110,7 @@ findInPrelude prelude prefix = Map.filterWithKey matches prelude
 -- | Context shared across all completion items in a single response.
 data CompletionCtx = CompletionCtx
   { classes :: !(Set TypeClass)
-  , prefix  :: !Text
+  , prefix :: !Text
   }
 
 -- | Build a @CompletionItem@ from a prelude entry. Qualifies the label with
@@ -159,6 +175,101 @@ mkCompletionItem ctx (modNm, ns) meta =
         EnumNamespace _ -> Just LSP.CiEnum
         ModuleNamespace _ -> Just LSP.CiModule
         TypeNamespace _ -> Nothing
+
+-- | Create completion items for user-provided identifiers (e.g. @input0@).
+-- Returns empty if the prefix ends with @.@ since identifiers have no module
+-- qualification.
+identifierCompletionItems :: [Text] -> Text -> [LSP.CompletionItem]
+identifierCompletionItems idents prefix
+  | "." `Text.isSuffixOf` prefix = mempty
+  | otherwise = mkItem <$> filter (prefix `Text.isPrefixOf`) idents
+  where
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem ident =
+      LSP.CompletionItem
+        { LSP._label = ident
+        , LSP._kind = Just LSP.CiVariable
+        , LSP._tags = Nothing
+        , LSP._detail = Nothing
+        , LSP._documentation = Nothing
+        , LSP._deprecated = Nothing
+        , LSP._preselect = Nothing
+        , LSP._sortText = Nothing
+        , LSP._filterText = Just ident
+        , LSP._insertText = Nothing
+        , LSP._insertTextMode = Nothing
+        , LSP._insertTextFormat = Nothing
+        , LSP._textEdit = Nothing
+        , LSP._additionalTextEdits = Nothing
+        , LSP._commitCharacters = Nothing
+        , LSP._command = Nothing
+        , LSP._xdata = Nothing
+        }
+
+-- | Create completion items for reserved words. Excludes @Some@ and @None@
+-- which are provided via the enum namespace. Returns empty if the prefix
+-- ends with @.@ since keywords have no module qualification.
+rwsCompletionItems :: Text -> [LSP.CompletionItem]
+rwsCompletionItems prefix
+  | "." `Text.isSuffixOf` prefix = mempty
+  | otherwise = mkItem <$> filter (prefix `Text.isPrefixOf`) filteredRws
+  where
+    filteredRws :: [Text]
+    filteredRws = filter (`notElem` ["Some", "None"]) rws
+
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem rw =
+      LSP.CompletionItem
+        { LSP._label = rw
+        , LSP._kind = Just LSP.CiKeyword
+        , LSP._tags = Nothing
+        , LSP._detail = Nothing
+        , LSP._documentation = Nothing
+        , LSP._deprecated = Nothing
+        , LSP._preselect = Nothing
+        , LSP._sortText = Nothing
+        , LSP._filterText = Nothing
+        , LSP._insertText = Nothing
+        , LSP._insertTextMode = Nothing
+        , LSP._insertTextFormat = Nothing
+        , LSP._textEdit = Nothing
+        , LSP._additionalTextEdits = Nothing
+        , LSP._commitCharacters = Nothing
+        , LSP._command = Nothing
+        , LSP._xdata = Nothing
+        }
+
+-- | Create completion items for module names found in the prelude map,
+-- filtered by @prefix@. Extracts distinct module names from the map keys.
+filterModuleNameCompletionItems ::
+  Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> Text -> [LSP.CompletionItem]
+filterModuleNameCompletionItems prelude prefix =
+  mkItem <$> filter (prefix `Text.isPrefixOf`) modules
+  where
+    modules :: [Text]
+    modules = nubOrd . mapMaybe (fmap (.unModuleName) . fst) $ Map.keys prelude
+
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem m =
+      LSP.CompletionItem
+        { LSP._label = m
+        , LSP._kind = Just LSP.CiModule
+        , LSP._tags = Nothing
+        , LSP._detail = Nothing
+        , LSP._documentation = Nothing
+        , LSP._deprecated = Nothing
+        , LSP._preselect = Nothing
+        , LSP._sortText = Nothing
+        , LSP._filterText = Just m
+        , LSP._insertText = Just m
+        , LSP._insertTextMode = Nothing
+        , LSP._insertTextFormat = Nothing
+        , LSP._textEdit = Nothing
+        , LSP._additionalTextEdits = Nothing
+        , LSP._commitCharacters = Nothing
+        , LSP._command = Nothing
+        , LSP._xdata = Nothing
+        }
 
 -- | Convert an LSP @Position@ (0-based line and column) to a 0-based
 -- character offset into @txt@. Clamps to @Text.length txt@ if the position
