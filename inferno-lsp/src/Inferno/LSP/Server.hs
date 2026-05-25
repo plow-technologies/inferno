@@ -1,11 +1,11 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExplicitNamespaces #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.LSP.Server
   ( LspConfig
@@ -24,9 +24,11 @@ module Inferno.LSP.Server
   ) where
 
 import Colog.Core.Action (LogAction (LogAction))
+import Colog.Core.Severity (WithSeverity)
+import Control.Exception (SomeException)
+import Control.Lens
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Reader (ReaderT (ReaderT), ask, runReaderT)
-import qualified Control.Exception as Exception
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
@@ -43,6 +45,7 @@ import Data.Time.Clock (UTCTime, getCurrentTime)
 import Data.UUID (UUID)
 import qualified Data.UUID.V4 as UUID.V4
 import Inferno.Core (Interpreter, mkInferno)
+import qualified Inferno.Core
 import Inferno.LSP.Completion
   ( CompletionCtx (CompletionCtx),
     completionQueryAt,
@@ -89,7 +92,6 @@ import qualified Language.LSP.Server as LSP.Server
 import qualified Language.LSP.Types as LSP
 import qualified Language.LSP.Types.Lens as LSP
 import qualified Language.LSP.VFS as LSP.VFS
-import Control.Lens
 import Plow.Logging (IOTracer, traceWith)
 import Plow.Logging.Async (withAsyncHandleTracer)
 import Prettyprinter (Pretty)
@@ -107,6 +109,7 @@ import System.IO
 import System.Timeout (timeout)
 import Text.Megaparsec.Pos (SourcePos)
 import UnliftIO.Async (Async, async, cancel)
+import UnliftIO.Exception (catchAny)
 import UnliftIO.STM
   ( STM,
     TVar,
@@ -200,4 +203,65 @@ runLsp mods ctys f = do
 -- | Internal: run the server with a fully resolved config.
 runLspWithConfig ::
   forall c. (Pretty c, Eq c) => ModuleMap IO c -> [CustomType] -> LspConfig c -> IO Int
-runLspWithConfig mods ctys cfg = undefined
+runLspWithConfig mods ctys cfg =
+  flip catchAny onErr $ do
+    interpreter <- mkInferno mods ctys
+    docStore <- StmContainers.Map.newIO
+    let env :: Env c
+        env =
+          Env
+            { docStore
+            , interpreter
+            , allClasses = interpreter.typeClasses
+            , tracer = cfg.tracer
+            , getIdents = cfg.getIdents
+            , beforeParse = cfg.beforeParse
+            , afterParse = cfg.afterParse
+            , validateIn = cfg.validateIn
+            , debounceMs = cfg.debounceMs
+            }
+
+        serverDef :: LSP.Server.ServerDefinition ()
+        serverDef =
+          LSP.Server.ServerDefinition
+            { LSP.Server.defaultConfig = ()
+            , LSP.Server.onConfigurationChange = \old _ -> Right old
+            , LSP.Server.doInitialize = \lspEnv _ -> pure $ Right lspEnv
+            , LSP.Server.staticHandlers = lspHandlers
+            , LSP.Server.interpretHandler = \lspEnv ->
+                LSP.Server.Iso (flip runReaderT env . LSP.Server.runLspT lspEnv) liftIO
+            , LSP.Server.options = lspOptions
+            }
+
+        ioLog :: LogAction IO (WithSeverity LSP.Server.LspServerLog)
+        ioLog = LogAction $ traceWith cfg.tracer . Text.pack . show
+
+        lspLog :: LogAction (LSP.Server.LspM ()) (WithSeverity LSP.Server.LspServerLog)
+        lspLog = LogAction $ liftIO . traceWith cfg.tracer . Text.pack . show
+
+    i <- LSP.Server.runServerWith ioLog lspLog cfg.clientIn cfg.clientOut serverDef
+    traceWith cfg.tracer "shutting down..."
+    pure i
+  where
+    onErr :: SomeException -> IO Int
+    onErr = (1 <$) . traceWith cfg.tracer . Text.pack . show
+
+    lspHandlers :: LSP.Server.Handlers (InfernoLspM c)
+    lspHandlers = undefined
+
+lspOptions :: LSP.Server.Options
+lspOptions =
+  LSP.Server.defaultOptions
+    { LSP.Server.textDocumentSync = Just syncOptions
+    , LSP.Server.executeCommandCommands = Nothing
+    }
+
+syncOptions :: LSP.TextDocumentSyncOptions
+syncOptions =
+  LSP.TextDocumentSyncOptions
+    { LSP._openClose = Just True
+    , LSP._change = Just LSP.TdSyncIncremental
+    , LSP._willSave = Just False
+    , LSP._willSaveWaitUntil = Just False
+    , LSP._save = Just . LSP.InR $ LSP.SaveOptions (Just False)
+    }
