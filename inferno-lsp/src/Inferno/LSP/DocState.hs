@@ -12,7 +12,11 @@ module Inferno.LSP.DocState
         hoverCache
       ),
     AnalysisResult
-      ( AnalysisResult
+      ( AnalysisResult,
+        version,
+        hoverIdx,
+        typeMap,
+        classes
       ),
     DocStore,
     lookupDoc,
