@@ -379,7 +379,11 @@ runLspWithConfig mods ctys cfg =
             txt = LSP.VFS.virtualFileText vf
 
     handleDidClose :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentDidClose
-    handleDidClose = undefined
+    handleDidClose msg =
+      liftIO . closeDoc uri . (.docStore) =<< lift ask
+      where
+        uri :: LSP.NormalizedUri
+        uri = msg ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
 
     handleHover :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentHover
     handleHover = undefined
