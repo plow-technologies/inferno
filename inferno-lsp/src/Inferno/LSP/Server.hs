@@ -2,12 +2,11 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-
+{-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.LSP.Server
@@ -28,19 +27,30 @@ module Inferno.LSP.Server
 
 import Colog.Core.Action (LogAction (LogAction))
 import Colog.Core.Severity (WithSeverity)
-import Control.Exception (SomeException)
+import Control.Concurrent (threadDelay)
+import Control.Exception
+  ( SomeException,
+    displayException,
+    evaluate,
+    fromException,
+  )
 import Control.Lens
+import Control.Monad (guard)
+import Control.Monad.Extra (whenJustM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader (ReaderT (ReaderT), ask, runReaderT)
+import Data.Bifunctor (first)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as ByteString
 import Data.ByteString.Builder.Extra (defaultChunkSize)
 import qualified Data.ByteString.Lazy as ByteString.Lazy
+import Data.Foldable (for_, traverse_) -- NOTE: Do NOT remove, needed for GHC version compat
+import Data.Functor (($>))
 import Data.Int (Int32)
-import Data.Maybe (fromMaybe)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -60,7 +70,6 @@ import Inferno.LSP.Completion
     mkCompletionItem,
     rwsCompletionItems,
   )
-import qualified Inferno.LSP.DocState
 import Inferno.LSP.DocState
   ( AnalysisResult (AnalysisResult),
     DocState,
@@ -72,6 +81,7 @@ import Inferno.LSP.DocState
     setAnalysis,
     updateDoc,
   )
+import qualified Inferno.LSP.DocState
 import Inferno.LSP.Hover
   ( HoverEntry (HoverEntry),
     buildHoverIndex,
@@ -80,11 +90,11 @@ import Inferno.LSP.Hover
     renderHoverContent,
   )
 import qualified Inferno.LSP.Hover
-import qualified Inferno.LSP.ParseInfer
 import Inferno.LSP.ParseInfer
   ( InferSuccess (InferSuccess),
     parseAndInferDiagnostics,
   )
+import qualified Inferno.LSP.ParseInfer
 import Inferno.Module.Prelude (ModuleMap)
 import Inferno.Types.Syntax
   ( CustomType,
@@ -117,8 +127,9 @@ import System.IO
   )
 import System.Timeout (timeout)
 import Text.Megaparsec.Pos (SourcePos)
-import UnliftIO.Async (Async, async, cancel)
-import UnliftIO.Exception (catchAny)
+import qualified Text.Megaparsec.Pos as Pos
+import UnliftIO.Async (Async, AsyncCancelled, async, cancel)
+import UnliftIO.Exception (catchAny, handleJust)
 import UnliftIO.STM
   ( STM,
     TVar,
@@ -203,7 +214,7 @@ runLsp mods ctys f = do
   hSetBuffering stdout NoBuffering
   hSetEncoding stdout utf8
   withAsyncHandleTracer stderr 100 $ \tracer ->
-    runLspWithConfig @c mods ctys $ f $ mkDefaultConfig tracer
+    runLspWithConfig @c mods ctys . f $ mkDefaultConfig tracer
   where
     mkDefaultConfig :: IOTracer Text -> LspConfig c
     mkDefaultConfig tracer =
@@ -225,6 +236,7 @@ runLspWithConfig mods ctys cfg =
   flip catchAny onErr $ do
     interpreter <- mkInferno mods ctys
     docStore <- StmContainers.Map.newIO
+
     let env :: Env c
         env =
           Env
@@ -257,10 +269,10 @@ runLspWithConfig mods ctys cfg =
         lspLog :: LogAction (LSP.Server.LspM ()) (WithSeverity LSP.Server.LspServerLog)
         lspLog = LogAction $ liftIO . traceWith cfg.tracer . Text.pack . show
 
-    i <- LSP.Server.runServerWith ioLog lspLog cfg.clientIn cfg.clientOut serverDef
-    traceWith cfg.tracer "shutting down..."
-    pure i
+    LSP.Server.runServerWith ioLog lspLog cfg.clientIn cfg.clientOut serverDef
+      >>= \i -> i <$ traceWith cfg.tracer "shutting down..."
   where
+    -- Same handler for any synchronous (caught via `catchAny`) exception
     onErr :: SomeException -> IO Int
     onErr = (1 <$) . traceWith cfg.tracer . Text.pack . show
 
@@ -276,30 +288,95 @@ runLspWithConfig mods ctys cfg =
 
     handleDidOpen :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentDidOpen
     handleDidOpen msg = do
-      let uri :: LSP.NormalizedUri
-          uri = msg ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
-
-          txt :: Text
-          txt = msg ^. LSP.params . LSP.textDocument . LSP.text
-
       env <- lift ask
-      tvar <- atomically $ openDoc uri env.docStore
-      a <- liftIO . async $ do
+      (tvar, old) <- atomically $ openDoc uri env.docStore
+      liftIO $ traverse_ cancelAnalysis old
+      a <- liftIO . async . swallowCancelled $ do
         idents <- env.getIdents
         ts <- getCurrentTime
         uuid <- UUID.V4.nextRandom
         env.beforeParse (uuid, ts)
-        parsed <- fromMaybe (Left [timeoutDiagnostic])
-          <$> timeout 120_000_000 (pure (parseAndInferDiagnostics env.interpreter idents txt))
-        atomically . updateDoc (either (const (emptyAnalysisResult 0)) (mkAnalysisResult 0) parsed) $ tvar
-        let raw :: ParsedResult
-            raw = toParsedResult . toInferResult env.allClasses =<< parsed
-        diags <- either id (.warnings) . fromParsedResult <$> env.afterParse (uuid, ts) raw
-        sendDiags env uri (Just 0) diags
+        parsed <- runPipeline env idents txt
+
+        let validated :: Either [LSP.Diagnostic] InferSuccess
+            validated = validateInputs env.validateIn =<< parsed
+
+            raw :: ParsedResult
+            raw = toParsedResult . toInferResult env.allClasses =<< validated
+
+        atomically
+          . updateDoc
+            ( either
+                (const (emptyAnalysisResult ver))
+                (mkAnalysisResult ver)
+                validated
+            )
+          $ tvar
+
+        -- Guard: only publish if no newer edit has superseded this cycle.
+        -- After `updateDoc` sets `analysis = Nothing`, a racing `DidChange`
+        -- cannot cancel us (it sees `Nothing`). Without this check, both the
+        -- stale and fresh asyncs would call `sendDiags`, potentially
+        -- overwriting current diagnostics with outdated ones.
+        whenCurrentVersion tvar ver $
+          publishAfterParse env uri ver (uuid, ts) raw
       atomically $ setAnalysis a tvar
+      where
+        uri :: LSP.NormalizedUri
+        uri = msg ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
+
+        ver :: Int32
+        ver = msg ^. LSP.params . LSP.textDocument . LSP.version
+
+        txt :: Text
+        txt = msg ^. LSP.params . LSP.textDocument . LSP.text
 
     handleDidChange :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentDidChange
-    handleDidChange = undefined
+    handleDidChange msg =
+      whenJustM (LSP.Server.getVirtualFile uri) $ \vf ->
+        lift ask >>= \env ->
+          traverse_ (onChange env vf) =<< atomically (lookupDoc uri env.docStore)
+      where
+        uri :: LSP.NormalizedUri
+        uri = msg ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
+
+        onChange :: Env c -> LSP.VFS.VirtualFile -> TVar DocState -> InfernoLspM c ()
+        onChange env vf tvar = do
+          liftIO $ cancelAnalysis tvar
+          a <- liftIO . async . swallowCancelled $ do
+            threadDelay $ env.debounceMs * 1000
+            idents <- env.getIdents
+            ts <- getCurrentTime
+            uuid <- UUID.V4.nextRandom
+            env.beforeParse (uuid, ts)
+            parsed <- runPipeline env idents txt
+
+            let validated :: Either [LSP.Diagnostic] InferSuccess
+                validated = validateInputs env.validateIn =<< parsed
+
+            atomically
+              . updateDoc
+                ( either
+                    (const (emptyAnalysisResult ver))
+                    (mkAnalysisResult ver)
+                    validated
+                )
+              $ tvar
+
+            -- See version guard comment in `handleDidOpen`
+            let raw :: ParsedResult
+                raw = toParsedResult . toInferResult env.allClasses =<< validated
+
+            whenCurrentVersion tvar ver $
+              publishAfterParse env uri ver (uuid, ts) raw
+
+          atomically $ setAnalysis a tvar
+          where
+            ver :: Int32
+            ver = LSP.VFS.virtualFileVersion vf
+
+            txt :: Text
+            txt = LSP.VFS.virtualFileText vf
 
     handleDidClose :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentDidClose
     handleDidClose = undefined
@@ -336,9 +413,12 @@ toInferResult allClasses success =
     , hovers = fmap toHover . Map.toList $ success.typeMap
     }
   where
-    toHover :: ((SourcePos, SourcePos), TypeMetadata TCScheme) -> (LSP.Range, LSP.MarkupContent)
+    toHover ::
+      ((SourcePos, SourcePos), TypeMetadata TCScheme) -> (LSP.Range, LSP.MarkupContent)
     toHover ((s, e), meta) =
-      renderHoverContent allClasses success.classes
+      renderHoverContent
+        allClasses
+        success.classes
         Inferno.LSP.Hover.HoverEntry{meta, start = s, end = e}
 
 toParsedResult :: InferResult -> ParsedResult
@@ -351,24 +431,104 @@ fromParsedResult = \case
     Right InferResult{ast, scheme, warnings, hovers}
 
 mkAnalysisResult :: Int32 -> InferSuccess -> AnalysisResult
-mkAnalysisResult ver success =
+mkAnalysisResult version success =
   AnalysisResult
-    { version = ver
+    { version
     , hoverIdx = buildHoverIndex success.typeMap
     , typeMap = success.typeMap
     , classes = success.classes
     }
 
 emptyAnalysisResult :: Int32 -> AnalysisResult
-emptyAnalysisResult ver =
+emptyAnalysisResult version =
   AnalysisResult
-    { version = ver
+    { version
     , hoverIdx = mempty
     , typeMap = mempty
     , classes = mempty
     }
 
-sendDiags :: Env c -> LSP.NormalizedUri -> LSP.TextDocumentVersion -> [LSP.Diagnostic] -> IO ()
+-- | Wrap an IO action so that 'AsyncCancelled' is caught and silently
+-- discarded. Used in analysis async bodies to ensure partial state updates
+-- do not occur when a newer edit supersedes an in-flight pipeline.
+swallowCancelled :: IO () -> IO ()
+swallowCancelled = handleJust (fromException @AsyncCancelled) . const $ pure ()
+
+-- | Execute an action only if the document version in the 'TVar' still matches
+-- @ver@. This closes a race window: after 'updateDoc' sets @analysis = Nothing@,
+-- a new @DidChange@ can arrive and spawn a fresh async (since 'cancelAnalysis' sees
+-- Nothing and no-ops). Without this guard, both the old (stale) and new async
+-- would publish diagnostics, potentially overwriting current results with
+-- outdated ones. Reading the version via 'readTVarIO' is safe here because we
+-- only need a point-in-time snapshot; the worst case is a harmless skip.
+whenCurrentVersion :: TVar DocState -> Int32 -> IO () -> IO ()
+whenCurrentVersion tvar ver f =
+  readTVarIO tvar >>= \ds ->
+    for_ @Maybe (guard (ds.version == ver)) . const $ f
+
+-- | Run the parse\/infer pipeline with a 2-minute timeout. We force the
+-- result to NF of the outer 'Either' AND the 'InferSuccess' constructor (whose
+-- fields are all strict) inside the timeout window. Without the inner
+-- 'evaluate', the 'Right' case would remain a thunk; the real inference work
+-- would then execute later (during 'updateDoc') outside the timeout, defeating
+-- its purpose.
+runPipeline ::
+  (Pretty c, Eq c) =>
+  Env c ->
+  [Maybe Ident] ->
+  Text ->
+  IO (Either [LSP.Diagnostic] InferSuccess)
+runPipeline env idents txt =
+  fmap (fromMaybe (Left [timeoutDiagnostic]))
+    . timeout 120_000_000
+    $ case parseAndInferDiagnostics env.interpreter idents txt of
+      l@(Left _) -> evaluate l
+      r@(Right s) -> evaluate s *> evaluate r
+
+-- | Apply domain-level input type validation to a successful infer result.
+-- If 'validateIn' rejects the input type, returns a single error diagnostic
+-- at the start of the document.
+validateInputs ::
+  (InfernoType -> Either Text ()) ->
+  InferSuccess ->
+  Either [LSP.Diagnostic] InferSuccess
+validateInputs validate success =
+  first (pure . mkDiag) $ validate success.scheme.impl.body $> success
+  where
+    mkDiag :: Text -> LSP.Diagnostic
+    mkDiag =
+      Inferno.LSP.ParseInfer.mkDiagnostic
+        LSP.DsError
+        (Just "inferno.validate")
+        (startPos, startPos)
+
+    startPos :: SourcePos
+    startPos = Pos.initialPos mempty
+
+-- | Run the @afterParse@ callback and publish the resulting diagnostics,
+-- catching any exception thrown by the callback. If @afterParse@ throws, we log
+-- the error and skip publishing rather than letting the async die silently
+-- (which would leave the user with no diagnostics until the next edit).
+publishAfterParse ::
+  Env c -> LSP.NormalizedUri -> Int32 -> (UUID, UTCTime) -> ParsedResult -> IO ()
+publishAfterParse env uri ver key raw =
+  catchAny publish $
+    traceWith env.tracer
+      . ("afterParse callback threw: " <>)
+      . Text.pack
+      . displayException
+  where
+    publish :: IO ()
+    publish =
+      sendDiags env uri (Just ver) . either id (.warnings) . fromParsedResult
+        =<< env.afterParse key raw
+
+sendDiags ::
+  Env c ->
+  LSP.NormalizedUri ->
+  LSP.TextDocumentVersion ->
+  [LSP.Diagnostic] ->
+  IO ()
 sendDiags = undefined
 
 timeoutDiagnostic :: LSP.Diagnostic
