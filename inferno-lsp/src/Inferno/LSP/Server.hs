@@ -35,7 +35,7 @@ import Control.Exception
     fromException,
   )
 import Control.Lens
-import Control.Monad (guard)
+import Control.Monad (guard, join)
 import Control.Monad.Extra (whenJustM)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
@@ -48,15 +48,16 @@ import qualified Data.ByteString.Lazy as ByteString.Lazy
 import Data.Foldable (for_, traverse_) -- NOTE: Do NOT remove, needed for GHC version compat
 import Data.Functor (($>))
 import Data.Int (Int32)
+import qualified Data.IntMap.Strict as IntMap
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
 import qualified Data.Text as Text
-import qualified Data.Text.Utf16.Rope as Rope
 import Data.Time.Clock (UTCTime, getCurrentTime)
+import Data.Tuple (swap)
 import Data.UUID (UUID)
 import qualified Data.UUID.V4 as UUID.V4
 import Inferno.Core (Interpreter, mkInferno)
@@ -70,9 +71,10 @@ import Inferno.LSP.Completion
     mkCompletionItem,
     rwsCompletionItems,
   )
+import qualified Inferno.LSP.Completion
 import Inferno.LSP.DocState
   ( AnalysisResult (AnalysisResult),
-    DocState,
+    DocState (hoverCache),
     DocStore,
     cancelAnalysis,
     closeDoc,
@@ -105,10 +107,11 @@ import Inferno.Types.Syntax
     TypeClass,
     TypeMetadata,
   )
+import qualified Inferno.Types.Syntax
 import Inferno.Types.VersionControl (Pinned, VCObjectHash)
 import Language.LSP.Diagnostics (partitionBySource)
 import qualified Language.LSP.Server as LSP.Server
-import qualified Language.LSP.Types as LSP
+import qualified Language.LSP.Types as LSP hiding (line)
 import qualified Language.LSP.Types.Lens as LSP
 import qualified Language.LSP.VFS as LSP.VFS
 import Plow.Logging (IOTracer, traceWith)
@@ -386,10 +389,96 @@ runLspWithConfig mods ctys cfg =
         uri = msg ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
 
     handleHover :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentHover
-    handleHover = undefined
+    handleHover req respond = do
+      env <- lift ask
+      result <-
+        liftIO . atomically $
+          traverse (lookupHover env) =<< lookupDoc uri env.docStore
+      respond . Right $
+        uncurry LSP.Hover . bimap LSP.HoverContents Just . swap <$> join result
+      where
+        uri :: LSP.NormalizedUri
+        uri = req ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
+
+        line :: LSP.UInt
+        line = req ^. LSP.params . LSP.position . LSP.line
+
+        col :: LSP.UInt
+        col = req ^. LSP.params . LSP.position . LSP.character
+
+        -- Matches the encoding used by `Hover.linearize`: LSP positions are
+        -- 0-indexed, `SourcePos` is 1-indexed with `- 1` applied in `linearize`,
+        -- yielding the same `line * 10000 + col` value. This is also the key
+        -- used in `DocState.hoverCache` (`IntMap`).
+        pt :: Int
+        pt = fromIntegral line * 1_0000 + fromIntegral col
+
+        lookupHover :: Env c -> TVar DocState -> STM (Maybe (LSP.Range, LSP.MarkupContent))
+        lookupHover env tvar =
+          readTVar tvar >>= \ds ->
+            case IntMap.lookup pt ds.hoverCache of
+              hit@(Just _) -> pure hit
+              Nothing -> do
+                let computed :: Maybe (LSP.Range, LSP.MarkupContent)
+                    computed =
+                      renderHoverContent env.allClasses ds.classes
+                        <$> queryHover (line, col) ds.hoverIdx
+                for_ computed $ \r ->
+                  writeTVar tvar ds{hoverCache = IntMap.insert pt r ds.hoverCache}
+                pure computed
 
     handleCompletion :: LSP.Server.Handler (InfernoLspM c) LSP.TextDocumentCompletion
-    handleCompletion = undefined
+    handleCompletion req respond =
+      LSP.Server.getVirtualFile uri >>= \case
+        Nothing -> respond . Right . LSP.InL $ LSP.List mempty
+        Just vf -> do
+          env <- lift ask
+          idents <- liftIO env.getIdents
+
+          let
+              txt :: Text
+              txt = LSP.VFS.virtualFileText vf
+
+              prefix :: Text
+              (_, prefix) = completionQueryAt txt pos
+
+              ctx :: CompletionCtx
+              ctx = CompletionCtx{classes = env.allClasses, prefix}
+
+              preludeItems :: [LSP.CompletionItem]
+              preludeItems =
+                fmap (uncurry (mkCompletionItem ctx))
+                  . Map.toList
+                  $ findInPrelude env.interpreter.nameToTypeMap prefix
+
+              identItems :: [LSP.CompletionItem]
+              identItems =
+                flip identifierCompletionItems prefix
+                  . fmap (.unIdent)
+                  . catMaybes
+                  $ idents
+
+              moduleItems :: [LSP.CompletionItem]
+              moduleItems =
+                filterModuleNameCompletionItems env.interpreter.nameToTypeMap prefix
+
+              rwsItems :: [LSP.CompletionItem]
+              rwsItems = rwsCompletionItems prefix
+
+          respond . Right . LSP.InL . LSP.List $
+            mconcat
+              [ rwsItems
+              , moduleItems
+              , identItems
+              , preludeItems
+              ]
+
+      where
+        uri :: LSP.NormalizedUri
+        uri = req ^. LSP.params . LSP.textDocument . LSP.uri . to LSP.toNormalizedUri
+
+        pos :: LSP.Position
+        pos = req ^. LSP.params . LSP.position
 
 lspOptions :: LSP.Server.Options
 lspOptions =
