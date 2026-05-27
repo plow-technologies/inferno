@@ -12,7 +12,11 @@ module Inferno.LSP.DocState
         hoverCache
       ),
     AnalysisResult
-      ( AnalysisResult
+      ( AnalysisResult,
+        version,
+        hoverIdx,
+        typeMap,
+        classes
       ),
     DocStore,
     lookupDoc,
@@ -116,11 +120,14 @@ setAnalysis :: Async () -> TVar DocState -> STM ()
 setAnalysis a tvar = modifyTVar' tvar $ \ds -> ds{analysis = Just a}
 
 -- | Handle @DidOpen@: create a fresh empty 'DocState' and insert it into the
--- store. Returns the 'TVar' for subsequent updates.
-openDoc :: NormalizedUri -> DocStore -> STM (TVar DocState)
-openDoc uri store =
-  newDoc >>= \doc ->
-    doc <$ insertDoc uri doc store
+-- store. Returns the new 'TVar' for subsequent updates, plus the previous one
+-- (if any) so the caller can cancel its in-flight analysis in IO. This prevents
+-- orphaned asyncs when a misbehaving client sends DidOpen twice without DidClose.
+openDoc :: NormalizedUri -> DocStore -> STM (TVar DocState, Maybe (TVar DocState))
+openDoc uri store = do
+  old <- lookupDoc uri store
+  doc <- newDoc
+  (doc, old) <$ insertDoc uri doc store
 
 newDoc :: STM (TVar DocState)
 newDoc =

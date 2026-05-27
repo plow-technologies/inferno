@@ -1,3 +1,4 @@
+{-# LANGUAGE DisambiguateRecordFields #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 module Inferno.LSP.Completion
@@ -123,32 +124,32 @@ mkCompletionItem ::
   LSP.CompletionItem
 mkCompletionItem ctx (modNm, ns) meta =
   LSP.CompletionItem
-    { LSP._label = qualifiedLabel
-    , LSP._kind = nsKind
-    , LSP._tags = Nothing
-    , LSP._detail = Just . renderDoc $ mkPrettyTy ctx.classes mempty meta.ty
-    , LSP._documentation =
+    { _label = qualifiedLabel
+    , _kind = nsKind
+    , _tags = Nothing
+    , _detail = Just . renderDoc $ mkPrettyTy ctx.classes mempty meta.ty
+    , _documentation =
         LSP.CompletionDocMarkup . LSP.MarkupContent LSP.MkMarkdown
           <$> metadataDocsText meta
-    , LSP._deprecated = Nothing
-    , LSP._preselect = Nothing
-    , LSP._sortText = Nothing
-    , LSP._filterText =
+    , _deprecated = Nothing
+    , _preselect = Nothing
+    , _sortText = Nothing
+    , _filterText =
         -- First checks if we are in enum namespace, which is faster than _always_
         -- doing a text scan for `#` (only enum idents can start with `#`)
         Just $ bool qualifiedLabel (Text.drop 1 qualifiedLabel) isEnum
-    , LSP._insertText =
+    , _insertText =
         ns & \case
           EnumNamespace ident ->
             bool Nothing (Just ident.unIdent) $ "#" `Text.isPrefixOf` ctx.prefix
           _ -> Nothing
-    , LSP._insertTextMode = Nothing
-    , LSP._insertTextFormat = Nothing
-    , LSP._textEdit = Nothing
-    , LSP._additionalTextEdits = Nothing
-    , LSP._commitCharacters = Nothing
-    , LSP._command = Nothing
-    , LSP._xdata = Nothing
+    , _insertTextMode = Nothing
+    , _insertTextFormat = Nothing
+    , _textEdit = Nothing
+    , _additionalTextEdits = Nothing
+    , _commitCharacters = Nothing
+    , _command = Nothing
+    , _xdata = Nothing
     }
   where
     qualifiedLabel :: Text
@@ -187,23 +188,23 @@ identifierCompletionItems idents prefix
     mkItem :: Text -> LSP.CompletionItem
     mkItem ident =
       LSP.CompletionItem
-        { LSP._label = ident
-        , LSP._kind = Just LSP.CiVariable
-        , LSP._tags = Nothing
-        , LSP._detail = Nothing
-        , LSP._documentation = Nothing
-        , LSP._deprecated = Nothing
-        , LSP._preselect = Nothing
-        , LSP._sortText = Nothing
-        , LSP._filterText = Just ident
-        , LSP._insertText = Nothing
-        , LSP._insertTextMode = Nothing
-        , LSP._insertTextFormat = Nothing
-        , LSP._textEdit = Nothing
-        , LSP._additionalTextEdits = Nothing
-        , LSP._commitCharacters = Nothing
-        , LSP._command = Nothing
-        , LSP._xdata = Nothing
+        { _label = ident
+        , _kind = Just LSP.CiVariable
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Just ident
+        , _insertText = Nothing
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 -- | Create completion items for reserved words. Excludes @Some@ and @None@
@@ -220,23 +221,23 @@ rwsCompletionItems prefix
     mkItem :: Text -> LSP.CompletionItem
     mkItem rw =
       LSP.CompletionItem
-        { LSP._label = rw
-        , LSP._kind = Just LSP.CiKeyword
-        , LSP._tags = Nothing
-        , LSP._detail = Nothing
-        , LSP._documentation = Nothing
-        , LSP._deprecated = Nothing
-        , LSP._preselect = Nothing
-        , LSP._sortText = Nothing
-        , LSP._filterText = Nothing
-        , LSP._insertText = Nothing
-        , LSP._insertTextMode = Nothing
-        , LSP._insertTextFormat = Nothing
-        , LSP._textEdit = Nothing
-        , LSP._additionalTextEdits = Nothing
-        , LSP._commitCharacters = Nothing
-        , LSP._command = Nothing
-        , LSP._xdata = Nothing
+        { _label = rw
+        , _kind = Just LSP.CiKeyword
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Nothing
+        , _insertText = Nothing
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 -- | Create completion items for module names found in the prelude map,
@@ -252,23 +253,23 @@ filterModuleNameCompletionItems prelude prefix =
     mkItem :: Text -> LSP.CompletionItem
     mkItem m =
       LSP.CompletionItem
-        { LSP._label = m
-        , LSP._kind = Just LSP.CiModule
-        , LSP._tags = Nothing
-        , LSP._detail = Nothing
-        , LSP._documentation = Nothing
-        , LSP._deprecated = Nothing
-        , LSP._preselect = Nothing
-        , LSP._sortText = Nothing
-        , LSP._filterText = Just m
-        , LSP._insertText = Just m
-        , LSP._insertTextMode = Nothing
-        , LSP._insertTextFormat = Nothing
-        , LSP._textEdit = Nothing
-        , LSP._additionalTextEdits = Nothing
-        , LSP._commitCharacters = Nothing
-        , LSP._command = Nothing
-        , LSP._xdata = Nothing
+        { _label = m
+        , _kind = Just LSP.CiModule
+        , _tags = Nothing
+        , _detail = Nothing
+        , _documentation = Nothing
+        , _deprecated = Nothing
+        , _preselect = Nothing
+        , _sortText = Nothing
+        , _filterText = Just m
+        , _insertText = Just m
+        , _insertTextMode = Nothing
+        , _insertTextFormat = Nothing
+        , _textEdit = Nothing
+        , _additionalTextEdits = Nothing
+        , _commitCharacters = Nothing
+        , _command = Nothing
+        , _xdata = Nothing
         }
 
 -- | Convert an LSP @Position@ (0-based line and column) to a 0-based
