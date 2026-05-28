@@ -45,10 +45,10 @@ library
     , inferno-types
     , inferno-vc
     , IntervalMap
-    , lens
     , lsp
     , lsp-types
     , megaparsec
+    , microlens
     , plow-log
     , plow-log-async
     , prettyprinter
