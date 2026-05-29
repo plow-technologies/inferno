@@ -2,11 +2,11 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE ExplicitNamespaces #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NoFieldSelectors #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE NoFieldSelectors #-}
 {-# OPTIONS_GHC -Wno-unticked-promoted-constructors #-}
 
 module Inferno.LSP.Server

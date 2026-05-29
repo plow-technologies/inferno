@@ -1,6 +1,13 @@
 # Revision History for inferno-lsp
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.3.0.0 -- 2026-05-28
+* Rewrite of LSP server to address critical memory leaks and
+  performance issues, including lack of DidClose handler, unbounded 
+  memory growth, lack of debounce and analysis cancellation, better
+  asymptotics on common operations (e.g. hovers). Refactor of main
+  entry point to use record instead of 11 positional arguments
+
 ## 0.2.6.3 -- 2026-04-06
 * Increase parse and typecheck timeout from 10s to 120s
 

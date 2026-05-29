@@ -1,6 +1,14 @@
 # Revision History for inferno-core
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
+## 0.11.8.0 -- 2026-05-14
+* Rewrite signficant parts of parser for performance and correctness improvements; 
+significant reduction in memory usage and thunk accumulation
+
+## 0.11.7.0 -- 2026-04-30
+* Replace old unification with union-find and substantial rewrite of `Inferno.Infer` 
+for correctness and performance; significant (up to 140x) increase in parse/typecheck speeds
+
 ## 0.11.6.10 -- 2026-04-08
 * Add `criterion` benchmark suite for parse and type inference
 
