@@ -1,6 +1,6 @@
 cabal-version:      >=1.10
 name:               inferno-lsp
-version:            0.2.6.3
+version:            0.3.0.0
 synopsis:           LSP for Inferno
 description:
   A language server protocol implementation for the Inferno language
@@ -31,7 +31,8 @@ library
   hs-source-dirs:     src
   ghc-options:
     -Wall -Wunused-packages -Wincomplete-uni-patterns
-    -Wincomplete-record-updates
+    -Wincomplete-record-updates -Wmissing-deriving-strategies
+    -Wunused-packages
 
   build-depends:
       base
@@ -40,22 +41,19 @@ library
     , co-log-core
     , containers
     , extra
-    , focus
     , inferno-core
     , inferno-types
     , inferno-vc
     , IntervalMap
-    , lens
     , lsp
     , lsp-types
     , megaparsec
+    , microlens
     , plow-log
     , plow-log-async
     , prettyprinter
-    , stm
     , stm-containers
     , text
-    , text-rope
     , time
     , transformers
     , unliftio

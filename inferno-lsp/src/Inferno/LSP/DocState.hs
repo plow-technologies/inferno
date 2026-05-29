@@ -51,6 +51,10 @@ import UnliftIO.STM
     writeTVar,
   )
 
+-- | Concurrent map from document URIs to their per-document state. Uses
+-- @StmContainers.Map@ for lock-free concurrent access from LSP handlers.
+type DocStore = StmContainers.Map.Map NormalizedUri (TVar DocState)
+
 -- | Per-document state, stored in a 'TVar' inside the 'DocStore'. Replaced
 -- atomically on each successful parse\/infer cycle.
 data DocState = DocState
@@ -65,9 +69,14 @@ data DocState = DocState
   -- analysis update since source positions shift.
   }
 
--- | Concurrent map from document URIs to their per-document state. Uses
--- @StmContainers.Map@ for lock-free concurrent access from LSP handlers.
-type DocStore = StmContainers.Map.Map NormalizedUri (TVar DocState)
+-- | The output of a successful parse\/infer cycle, used to atomically replace
+-- the relevant fields of 'DocState' via 'updateDoc'.
+data AnalysisResult = AnalysisResult
+  { version :: {-# UNPACK #-} !Int32
+  , hoverIdx :: !HoverIndex
+  , typeMap :: !(Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
+  , classes :: !(Set TypeClass)
+  }
 
 lookupDoc :: NormalizedUri -> DocStore -> STM (Maybe (TVar DocState))
 lookupDoc = StmContainers.Map.lookup
@@ -89,15 +98,6 @@ closeDoc :: NormalizedUri -> DocStore -> IO ()
 closeDoc uri store =
   traverse_ ((*> atomically (deleteDoc uri store)) . cancelAnalysis)
     =<< atomically (lookupDoc uri store)
-
--- | The output of a successful parse\/infer cycle, used to atomically replace
--- the relevant fields of 'DocState' via 'updateDoc'.
-data AnalysisResult = AnalysisResult
-  { version :: {-# UNPACK #-} !Int32
-  , hoverIdx :: !HoverIndex
-  , typeMap :: !(Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
-  , classes :: !(Set TypeClass)
-  }
 
 -- | Atomically replace document state with fresh analysis results. Clears the
 -- hover cache since source positions may have shifted.
