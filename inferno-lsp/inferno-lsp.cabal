@@ -35,8 +35,8 @@ library
     -Wunused-packages
 
   build-depends:
-      base
-    , async
+      async
+    , base
     , bytestring
     , co-log-core
     , containers
