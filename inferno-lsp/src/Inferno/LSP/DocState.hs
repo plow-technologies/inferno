@@ -58,7 +58,7 @@ type DocStore = StmContainers.Map.Map NormalizedUri (TVar DocState)
 -- | Per-document state, stored in a 'TVar' inside the 'DocStore'. Replaced
 -- atomically on each successful parse\/infer cycle.
 data DocState = DocState
-  { version :: {-# UNPACK #-} !Int32
+  { version :: !Int32
   , hoverIdx :: !HoverIndex
   , typeMap :: !(Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
   , classes :: !(Set TypeClass)
@@ -72,7 +72,7 @@ data DocState = DocState
 -- | The output of a successful parse\/infer cycle, used to atomically replace
 -- the relevant fields of 'DocState' via 'updateDoc'.
 data AnalysisResult = AnalysisResult
-  { version :: {-# UNPACK #-} !Int32
+  { version :: !Int32
   , hoverIdx :: !HoverIndex
   , typeMap :: !(Map (SourcePos, SourcePos) (TypeMetadata TCScheme))
   , classes :: !(Set TypeClass)

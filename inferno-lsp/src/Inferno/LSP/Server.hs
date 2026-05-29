@@ -170,14 +170,14 @@ data InferResult = InferResult
 -- defaults (stdio, stderr tracer, no-op callbacks, 150ms debounce); callers
 -- supply a @LspConfig c -> LspConfig c@ to override what they need.
 data LspConfig c = LspConfig
-  { tracer :: !(IOTracer Text)
-  , clientIn :: !(IO ByteString)
-  , clientOut :: !(LazyByteString -> IO ())
-  , getIdents :: !(IO [Maybe Ident])
-  , validateIn :: !(InfernoType -> Either Text ())
-  , beforeParse :: !((UUID, UTCTime) -> IO ())
-  , afterParse :: !((UUID, UTCTime) -> ParsedResult -> IO ParsedResult)
-  , debounceMs :: {-# UNPACK #-} !Int
+  { tracer :: IOTracer Text
+  , clientIn :: IO ByteString
+  , clientOut :: LazyByteString -> IO ()
+  , getIdents :: IO [Maybe Ident]
+  , validateIn :: InfernoType -> Either Text ()
+  , beforeParse :: (UUID, UTCTime) -> IO ()
+  , afterParse :: (UUID, UTCTime) -> ParsedResult -> IO ParsedResult
+  , debounceMs :: !Int
   }
 
 -- | Server environment, built once at startup from 'LspConfig' and threaded
@@ -186,12 +186,12 @@ data Env c = Env
   { docStore :: !DocStore
   , interpreter :: !(Interpreter IO c)
   , allClasses :: !(Set TypeClass)
-  , tracer :: !(IOTracer Text)
-  , getIdents :: !(IO [Maybe Ident])
-  , beforeParse :: !((UUID, UTCTime) -> IO ())
-  , afterParse :: !((UUID, UTCTime) -> ParsedResult -> IO ParsedResult)
-  , validateIn :: !(InfernoType -> Either Text ())
-  , debounceMs :: {-# UNPACK #-} !Int
+  , tracer :: IOTracer Text
+  , getIdents :: IO [Maybe Ident]
+  , beforeParse :: (UUID, UTCTime) -> IO ()
+  , afterParse :: (UUID, UTCTime) -> ParsedResult -> IO ParsedResult
+  , validateIn :: InfernoType -> Either Text ()
+  , debounceMs :: !Int
   }
 
 -- | Run the Inferno LSP server. Accepts a @ModuleMap@, @[CustomType]@, and a
