@@ -231,7 +231,13 @@ parseAndInferDiagnostics interp idents txt =
 
 parseErrorDiagnostic :: (ShowErrorComponent e) => (ParseError Text e, SourcePos) -> Diagnostic
 parseErrorDiagnostic (err, pos) =
-  mkDiagnostic DsError (Just "inferno.parser") (pos, pos) . Text.pack $ prettyError err
+  mkDiagnostic DsError (Just "inferno.parser") (pos, endPos) . Text.pack $ prettyError err
+  where
+    endPos :: SourcePos
+    endPos =
+      pos
+        { Pos.sourceColumn = Pos.mkPos $ Pos.unPos pos.sourceColumn + 1
+        }
 
 inferErrorDiagnostic :: TypeError SourcePos -> [Diagnostic]
 inferErrorDiagnostic = \case
