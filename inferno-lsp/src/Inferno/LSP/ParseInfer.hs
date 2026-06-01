@@ -39,12 +39,12 @@ import Control.Exception (evaluate)
 import Control.Monad (void)
 import Data.Bifunctor (first)
 import Data.Foldable (foldl') -- NOTE: Do NOT remove, needed for GHC version compat
+import Data.Function ((&))
 import Data.Functor (($>))
 import Data.List.Extra (nubOrd)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -120,12 +120,14 @@ parseAndInferWithTimeout ::
   (InfernoType -> Either Text ()) ->
   IO (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme))
 parseAndInferWithTimeout interp idents txt validate =
-  fmap (fromMaybe (Left [timeoutDiag]) . fmap validated) . timeout 120_000_000 $
-    case parseAndInferDiagnostics interp idents txt of
+  fmap (maybe (Left [timeoutDiag]) validated) . timeout 120_000_000 $
+    parseAndInferDiagnostics interp idents txt & \case
       l@(Left _) -> evaluate l
       r@(Right s) -> evaluate s *> evaluate r
   where
-    validated :: Either [Diagnostic] InferSuccess -> Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme)
+    validated ::
+      Either [Diagnostic] InferSuccess ->
+      Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme)
     validated = \case
       Left ds -> Left ds
       Right s ->
