@@ -17,7 +17,7 @@ import Data.IntervalMap.Generic.Strict (IntervalMap)
 import qualified Data.IntervalMap.Generic.Strict as IntervalMap
 import Data.IntervalMap.Interval (Interval)
 import qualified Data.IntervalMap.Interval as Interval
-import Data.List.Extra (nubOrd)
+import Data.List.Extra (nubSort)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
 import Data.Set (Set)
@@ -174,7 +174,7 @@ mkPrettyTy allClasses docClasses sch
       ImplType (fmap (substMap m) filtered.impl) $ substMap m filtered.body
 
     prettyList :: [Doc ann]
-    prettyList = fmap pretty . nubOrd $ fmap applyWit subs
+    prettyList = fmap pretty . nubSort $ fmap applyWit subs
 
     unionTySig :: [Doc ann] -> [Doc ann]
     unionTySig = \case
