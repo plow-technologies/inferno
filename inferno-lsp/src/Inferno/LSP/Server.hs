@@ -52,6 +52,7 @@ import Data.Function ((&))
 import Data.Functor (($>))
 import Data.Int (Int32)
 import qualified Data.IntMap.Strict as IntMap
+import Data.List.Extra (dropEnd)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Set (Set)
@@ -107,6 +108,7 @@ import Inferno.Types.Syntax
     TCScheme,
     TypeClass,
     TypeMetadata,
+    collectArrs,
   )
 import qualified Inferno.Types.Syntax
 import Inferno.Types.VersionControl (Pinned, VCObjectHash)
@@ -578,14 +580,17 @@ runPipeline env idents txt =
       r@(Right s) -> evaluate s *> evaluate r
 
 -- | Apply domain-level input type validation to a successful infer result.
--- If 'validateIn' rejects the input type, returns a single error diagnostic
--- at the start of the document.
+-- Validates each input parameter type individually (all elements of the
+-- arrow chain except the last, which is the output type). Reports the first
+-- failure as a diagnostic at the start of the document.
 validateInputs ::
   (InfernoType -> Either Text ()) ->
   InferSuccess ->
   Either [LSP.Diagnostic] InferSuccess
 validateInputs validate success =
-  first (pure . mkDiag) $ validate success.scheme.impl.body $> success
+  first (pure . mkDiag) $
+    traverse_ validate ((dropEnd 1 . collectArrs) success.scheme.impl.body)
+      $> success
   where
     mkDiag :: Text -> LSP.Diagnostic
     mkDiag =

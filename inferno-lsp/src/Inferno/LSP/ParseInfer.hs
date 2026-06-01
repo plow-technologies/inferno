@@ -38,10 +38,10 @@ module Inferno.LSP.ParseInfer
 import Control.Exception (evaluate)
 import Control.Monad (void)
 import Data.Bifunctor (first)
-import Data.Foldable (foldl') -- NOTE: Do NOT remove, needed for GHC version compat
+import Data.Foldable (foldl', traverse_) -- NOTE: Do NOT remove foldl', needed for GHC version compat
 import Data.Function ((&))
 import Data.Functor (($>))
-import Data.List.Extra (nubOrd)
+import Data.List.Extra (dropEnd, nubOrd)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
@@ -132,7 +132,7 @@ parseAndInferWithTimeout interp idents txt validate =
       Left ds -> Left ds
       Right s ->
         first (pure . mkDiagnostic DsError (Just "inferno.validate") (startPos, startPos)) $
-          validate s.scheme.impl.body
+          traverse_ validate ((dropEnd 1 . collectArrs) s.scheme.impl.body)
             $> (s.ast, s.scheme)
 
     startPos :: SourcePos
