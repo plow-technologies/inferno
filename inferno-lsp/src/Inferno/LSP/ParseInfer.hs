@@ -98,8 +98,8 @@ import Prettyprinter
   )
 import Text.Megaparsec.Error (ParseError, ShowErrorComponent)
 import Text.Megaparsec.Pos (SourcePos)
-import UnliftIO.Timeout (timeout)
 import qualified Text.Megaparsec.Pos as Pos
+import UnliftIO.Timeout (timeout)
 
 -- | The result of a successful parse\/infer cycle.
 data InferSuccess = InferSuccess
@@ -129,9 +129,9 @@ parseAndInferWithTimeout interp idents txt validate =
     validated = \case
       Left ds -> Left ds
       Right s ->
-        first (pure . mkDiagnostic DsError (Just "inferno.validate") (startPos, startPos))
-          $ validate s.scheme.impl.body
-          $> (s.ast, s.scheme)
+        first (pure . mkDiagnostic DsError (Just "inferno.validate") (startPos, startPos)) $
+          validate s.scheme.impl.body
+            $> (s.ast, s.scheme)
 
     startPos :: SourcePos
     startPos = Pos.initialPos mempty
