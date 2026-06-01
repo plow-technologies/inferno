@@ -1,5 +1,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoFieldSelectors #-}
@@ -27,18 +28,23 @@ module Inferno.LSP.ParseInfer
         classes,
         warnings
       ),
+    parseAndInferWithTimeout,
     parseAndInferDiagnostics,
     parseErrorDiagnostic,
     inferErrorDiagnostic,
     mkDiagnostic,
   ) where
 
+import Control.Exception (evaluate)
 import Control.Monad (void)
+import Data.Bifunctor (first)
 import Data.Foldable (foldl') -- NOTE: Do NOT remove, needed for GHC version compat
+import Data.Functor (($>))
 import Data.List.Extra (nubOrd)
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.List.NonEmpty as NonEmpty
 import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -92,6 +98,7 @@ import Prettyprinter
   )
 import Text.Megaparsec.Error (ParseError, ShowErrorComponent)
 import Text.Megaparsec.Pos (SourcePos)
+import UnliftIO.Timeout (timeout)
 import qualified Text.Megaparsec.Pos as Pos
 
 -- | The result of a successful parse\/infer cycle.
@@ -102,6 +109,36 @@ data InferSuccess = InferSuccess
   , classes :: !(Set TypeClass)
   , warnings :: ![Diagnostic]
   }
+
+-- | Parse and infer a script with a 120s timeout and input type validation.
+-- Intended for use outside the LSP session (e.g. script upload endpoints).
+parseAndInferWithTimeout ::
+  (Pretty c, Eq c) =>
+  Interpreter IO c ->
+  [Maybe Ident] ->
+  Text ->
+  (InfernoType -> Either Text ()) ->
+  IO (Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme))
+parseAndInferWithTimeout interp idents txt validate =
+  fmap (fromMaybe (Left [timeoutDiag]) . fmap validated) . timeout 120_000_000 $
+    case parseAndInferDiagnostics interp idents txt of
+      l@(Left _) -> evaluate l
+      r@(Right s) -> evaluate s *> evaluate r
+  where
+    validated :: Either [Diagnostic] InferSuccess -> Either [Diagnostic] (Expr (Pinned VCObjectHash) (), TCScheme)
+    validated = \case
+      Left ds -> Left ds
+      Right s ->
+        first (pure . mkDiagnostic DsError (Just "inferno.validate") (startPos, startPos))
+          $ validate s.scheme.impl.body
+          $> (s.ast, s.scheme)
+
+    startPos :: SourcePos
+    startPos = Pos.initialPos mempty
+
+    timeoutDiag :: Diagnostic
+    timeoutDiag =
+      mkDiagnostic DsError (Just "inferno.lsp") (startPos, startPos) "Inferno timed out in 120s"
 
 -- | Run the parse\/infer pipeline on script text, producing either error
 -- diagnostics or a successful result. Handles the @fun args ->@ prefix

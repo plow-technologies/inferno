@@ -22,6 +22,7 @@ module Inferno.LSP.Server
         debounceMs
       ),
     ParsedResult,
+    parseAndInferWithTimeout,
     runLsp,
     runInfernoLspServer,
   ) where
@@ -94,6 +95,7 @@ import qualified Inferno.LSP.Hover
 import Inferno.LSP.ParseInfer
   ( InferSuccess,
     parseAndInferDiagnostics,
+    parseAndInferWithTimeout,
   )
 import qualified Inferno.LSP.ParseInfer
 import Inferno.Module.Prelude (ModuleMap)
@@ -128,7 +130,6 @@ import System.IO
     stdout,
     utf8,
   )
-import System.Timeout (timeout)
 import Text.Megaparsec.Pos (SourcePos)
 import qualified Text.Megaparsec.Pos as Pos
 import UnliftIO.Async (AsyncCancelled, async)
@@ -141,6 +142,7 @@ import UnliftIO.STM
     readTVarIO,
     writeTVar,
   )
+import UnliftIO.Timeout (timeout)
 
 -- | The monad stack for LSP handlers. @LspT@ provides access to LSP operations
 -- (publish diagnostics, get virtual file, etc.) and @ReaderT (Env c) IO@
