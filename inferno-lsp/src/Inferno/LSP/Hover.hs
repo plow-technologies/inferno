@@ -64,9 +64,10 @@ data HoverEntry = HoverEntry
 type HoverIndex = IntervalMap (Interval Int) HoverEntry
 
 -- | Encode a 'SourcePos' as a single @Int@ for use as an @IntervalMap@ key.
--- Maps 2D @(line, col)@ to a single @Int@ via @line * 10000 + col@. This
--- preserves containment: if span @a@ contains span @b@, then
--- @linearize a.start <= linearize b.start@ and
+-- Maps 2D @(line, col)@ to a single @Int@ via @line * 10000 + col@, using
+-- LSP 0-based coordinates (i.e. @sourceLine - 2@ to account for the synthetic
+-- @fun ... -> \\n@ prefix). This preserves containment: if span @a@ contains
+-- span @b@, then @linearize a.start <= linearize b.start@ and
 -- @linearize a.end >= linearize b.end@. The fixed column width of @10000@ is
 -- safe for any realistic Inferno script.
 --
@@ -74,7 +75,7 @@ type HoverIndex = IntervalMap (Interval Int) HoverEntry
 -- lookups use the same encoding as index queries.
 linearize :: SourcePos -> Int
 linearize pos =
-  (Pos.unPos pos.sourceLine - 1) * 10000 + (Pos.unPos pos.sourceColumn - 1)
+  max 0 (Pos.unPos pos.sourceLine - 2) * 10000 + (Pos.unPos pos.sourceColumn - 1)
 
 -- | Build an interval map from the type map produced by the inferencer. Each
 -- source span is linearized into a closed @Int@ interval.
@@ -111,8 +112,8 @@ queryHover (line, col) = smallestContaining . flip IntervalMap.containing pt
         ivSpan iv = Interval.upperBound iv - Interval.lowerBound iv
 
 -- | Render a hover entry into an LSP 'Range' and markdown 'MarkupContent'.
--- The @- 2@ offset on source lines accounts for the 2-line @fun ... ->@ prefix
--- prepended before parsing.
+-- The @- 2@ offset on source lines accounts for the synthetic @fun ... -> \\n@
+-- prefix prepended before parsing. Clamped to 0 for positions on the prefix.
 renderHoverContent ::
   Set TypeClass -> Set TypeClass -> HoverEntry -> (Range, MarkupContent)
 renderHoverContent allClasses docClasses entry =
@@ -124,10 +125,15 @@ renderHoverContent allClasses docClasses entry =
     range :: Range
     range =
       mkRange
-        (fromIntegral (Pos.unPos entry.start.sourceLine) - 2)
+        (clampLine entry.start.sourceLine)
         (fromIntegral (Pos.unPos entry.start.sourceColumn) - 1)
-        (fromIntegral (Pos.unPos entry.end.sourceLine) - 2)
+        (clampLine entry.end.sourceLine)
         $ fromIntegral (Pos.unPos entry.end.sourceColumn) - 1
+
+    clampLine :: Pos.Pos -> UInt
+    clampLine p
+      | Pos.unPos p <= 2 = 0
+      | otherwise = fromIntegral (Pos.unPos p) - 2
 
     content :: Text
     content =

@@ -84,6 +84,7 @@ import Language.LSP.Types
   ( Diagnostic (Diagnostic),
     DiagnosticSeverity (DsError, DsWarning),
     Range,
+    UInt,
     mkRange,
   )
 import Prettyprinter
@@ -131,16 +132,17 @@ parseAndInferWithTimeout interp idents txt validate =
     validated = \case
       Left ds -> Left ds
       Right s ->
-        first (pure . mkDiagnostic DsError (Just "inferno.validate") (startPos, startPos)) $
+        first (pure . mkValidateDiag) $
           traverse_ validate ((dropEnd 1 . collectArrs) s.scheme.impl.body)
             $> (s.ast, s.scheme)
 
-    startPos :: SourcePos
-    startPos = Pos.initialPos mempty
+    mkValidateDiag :: Text -> Diagnostic
+    mkValidateDiag msg =
+      Diagnostic (mkRange 0 0 0 0) (Just DsError) Nothing (Just "inferno.validate") msg Nothing Nothing
 
     timeoutDiag :: Diagnostic
     timeoutDiag =
-      mkDiagnostic DsError (Just "inferno.lsp") (startPos, startPos) "Inferno timed out in 120s"
+      Diagnostic (mkRange 0 0 0 0) (Just DsError) Nothing (Just "inferno.lsp") "Inferno timed out in 120s" Nothing Nothing
 
 -- | Run the parse\/infer pipeline on script text, producing either error
 -- diagnostics or a successful result. Handles the @fun args ->@ prefix
@@ -554,8 +556,9 @@ inferErrorDiagnostic = \case
     indent2Pretty = indent 2 . pretty
 
 -- | Build a 'Diagnostic' from a source span, severity, source tag, and message.
--- The @- 2@ on lines accounts for the 2-line @fun ... ->@ prefix prepended
--- before parsing.
+-- The @- 2@ on lines accounts for the synthetic @fun ... -> \\n@ prefix
+-- prepended before parsing (megaparsec line 2 = user line 1 = LSP line 0).
+-- Clamped to 0 to prevent unsigned underflow for positions on the prefix line.
 mkDiagnostic ::
   DiagnosticSeverity -> Maybe Text -> (SourcePos, SourcePos) -> Text -> Diagnostic
 mkDiagnostic sev src (s, e) msg = Diagnostic range (Just sev) Nothing src msg Nothing Nothing
@@ -563,7 +566,12 @@ mkDiagnostic sev src (s, e) msg = Diagnostic range (Just sev) Nothing src msg No
     range :: Range
     range =
       mkRange
-        (fromIntegral (Pos.unPos s.sourceLine) - 2)
+        (clampLine s.sourceLine)
         (fromIntegral (Pos.unPos s.sourceColumn) - 1)
-        (fromIntegral (Pos.unPos e.sourceLine) - 2)
+        (clampLine e.sourceLine)
         $ fromIntegral (Pos.unPos e.sourceColumn) - 1
+
+    clampLine :: Pos.Pos -> UInt
+    clampLine p
+      | Pos.unPos p <= 2 = 0
+      | otherwise = fromIntegral (Pos.unPos p) - 2
