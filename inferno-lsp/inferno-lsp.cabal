@@ -32,7 +32,6 @@ library
   ghc-options:
     -Wall -Wunused-packages -Wincomplete-uni-patterns
     -Wincomplete-record-updates -Wmissing-deriving-strategies
-    -Wunused-packages
 
   build-depends:
       async

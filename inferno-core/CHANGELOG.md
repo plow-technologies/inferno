@@ -2,7 +2,7 @@
 *Note*: we use https://pvp.haskell.org/ (MAJOR.MAJOR.MINOR.PATCH)
 
 ## 0.11.8.0 -- 2026-05-14
-* Rewrite signficant parts of parser for performance and correctness improvements; 
+* Rewrite significant parts of parser for performance and correctness improvements; 
 significant reduction in memory usage and thunk accumulation
 
 ## 0.11.7.0 -- 2026-04-30
