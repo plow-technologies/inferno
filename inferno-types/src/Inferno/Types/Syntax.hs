@@ -140,11 +140,12 @@ import Data.Serialize (Serialize (..))
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import Data.String (IsString)
-import Data.Text (Text, unpack)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import Data.Word (Word64)
 import GHC.Generics (Generic)
+import GHC.Records (HasField (getField))
 import Inferno.Utils.Prettyprinter (renderPretty)
 import Numeric (showHex)
 import Prettyprinter
@@ -387,6 +388,29 @@ data TypeClass = TypeClass
 
 data TCScheme = ForallTC [TV] (Set.Set TypeClass) ImplType
   deriving (Show, Eq, Ord, Data, Generic, ToJSON, FromJSON)
+
+-- Virtual record fields for positional types
+
+instance HasField "impl" ImplType (Map.Map ExtIdent InfernoType) where
+  getField (ImplType m _) = m
+
+instance HasField "body" ImplType InfernoType where
+  getField (ImplType _ t) = t
+
+instance HasField "tvs" Scheme [TV] where
+  getField (Forall vs _) = vs
+
+instance HasField "impl" Scheme ImplType where
+  getField (Forall _ i) = i
+
+instance HasField "tvs" TCScheme [TV] where
+  getField (ForallTC vs _ _) = vs
+
+instance HasField "classes" TCScheme (Set.Set TypeClass) where
+  getField (ForallTC _ cs _) = cs
+
+instance HasField "impl" TCScheme ImplType where
+  getField (ForallTC _ _ i) = i
 
 tySig :: [Doc ann] -> [Doc ann]
 tySig [] = []

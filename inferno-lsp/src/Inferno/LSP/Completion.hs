@@ -1,128 +1,148 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DisambiguateRecordFields #-}
+{-# LANGUAGE NoFieldSelectors #-}
 
-module Inferno.LSP.Completion where
+module Inferno.LSP.Completion
+  ( CompletionCtx (CompletionCtx, classes, prefix),
+    completionQueryAt,
+    findInPrelude,
+    mkCompletionItem,
+    identifierCompletionItems,
+    rwsCompletionItems,
+    filterModuleNameCompletionItems,
+  ) where
 
-import Data.Bifunctor (bimap)
-import Data.List (delete)
+import Data.Bool (bool)
+import Data.Function ((&))
+import Data.List (scanl')
 import Data.List.Extra (nubOrd)
-import qualified Data.List.NonEmpty as NonEmpty
-import qualified Data.Map as Map
+import Data.Map.Strict (Map)
+import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import Data.Text (Text)
 import qualified Data.Text as Text
-import Inferno.LSP.ParseInfer (getTypeMetadataText, mkPrettyTy)
-import Inferno.Types.Syntax (Ident (..), ModuleName (..), TypeClass, rws)
-import Inferno.Types.Type (Namespace (..), TCScheme, TypeMetadata (..))
-import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
-import Language.LSP.Types
-  ( CompletionDoc (..),
-    CompletionItem (..),
-    CompletionItemKind (..),
-    MarkupContent (MarkupContent),
-    MarkupKind (..),
-    Position (..),
+import Inferno.LSP.Hover (metadataDocsText, mkPrettyTy)
+import Inferno.Types.Syntax
+  ( ModuleName,
+    Namespace
+      ( EnumNamespace,
+        FunNamespace,
+        ModuleNamespace,
+        OpNamespace,
+        TypeNamespace
+      ),
+    TypeClass,
+    rws,
   )
-import Prettyprinter (Pretty)
+import qualified Inferno.Types.Syntax
+import Inferno.Types.Type (TCScheme, TypeMetadata)
+import Inferno.Utils.Prettyprinter (renderDoc, renderPretty)
+import qualified Language.LSP.Types as LSP
 
--- | Given the cursor position construct the corresponding 'completion query'
--- consisting of the leadup, i.e. text leading up to the word prefix that is to
--- be completed, as well as the prefix that is to be completed.
-completionQueryAt :: Text -> Position -> (Text, Text)
-completionQueryAt text pos = (completionLeadup, completionPrefix)
+-- | Given a cursor @Position@, split the document text into a
+-- @(leadup, prefix)@ pair where @prefix@ is the token fragment being
+-- completed (everything back to the nearest break character) and @leadup@
+-- is the text preceding it.
+completionQueryAt :: Text -> LSP.Position -> (Text, Text)
+completionQueryAt txt pos = (leadup, prefix)
   where
-    off = positionToOffset text pos
-    text' = Text.take off text
-    breakEnd :: (Char -> Bool) -> Text -> (Text, Text)
-    breakEnd p =
-      bimap Text.reverse Text.reverse . Text.break p . Text.reverse
-    (completionPrefix, completionLeadup) =
-      breakEnd (`elem` (" \t\n[(,=+*&|}?>" :: String)) text'
+    truncated :: Text
+    truncated = flip Text.take txt $ positionToOffset txt pos
 
-    positionToOffset :: Text -> Position -> Int
-    positionToOffset txt (Position line col) =
-      if fromIntegral line < length ls
-        then Text.length . unlines' $ take (fromIntegral line) ls ++ [Text.take (fromIntegral col) (ls !! fromIntegral line)]
-        else Text.length txt -- position lies outside txt
-      where
-        ls = NonEmpty.toList (lines' txt)
+    isBreak :: Char -> Bool
+    isBreak =
+      (`elem` [' ', '\t', '\n', '[', '(', ',', '=', '+', '*', '&', '|', '}', '?', '>'])
 
-    lines' :: Text -> NonEmpty.NonEmpty Text
-    lines' t =
-      case Text.split (== '\n') t of
-        [] -> "" NonEmpty.:| [] -- this case never occurs!
-        l : ls -> l NonEmpty.:| ls
-    unlines' :: [Text] -> Text
-    unlines' = Text.intercalate "\n"
+    prefix :: Text
+    prefix = Text.takeWhileEnd (not . isBreak) truncated
 
-findInPrelude :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> Text -> [((Maybe ModuleName, Namespace), TypeMetadata TCScheme)]
-findInPrelude preludeNameToTypeMap prefix =
-  let prefixIsEnum = "#" `Text.isPrefixOf` prefix
-      -- 'preludeNameToTypeMap' stores the enum's ident without '#'.
-      -- When comparing the prefix, we have to drop the '#'.
-      lcPrefix' = (if prefixIsEnum then Text.drop 1 else id) $ Text.toLower prefix
-      lcPrefix = (if "." `Text.isSuffixOf` lcPrefix' then Text.dropEnd 1 else id) lcPrefix'
-   in Map.toList $
-        Map.filterWithKey
-          ( \(mModule, ns) _ ->
-              case mModule of
-                _ | prefixIsEnum -> filterEnum ns lcPrefix
-                Just m ->
-                  lcPrefix
-                    `Text.isPrefixOf` Text.toLower (Text.toLower $ unModuleName m)
-                    || filterNs ns lcPrefix
-                    || filterNsWithModuleName m ns lcPrefix
-                -- In the case of enum, we should only show enums
-                Nothing -> filterNs ns lcPrefix
-          )
-          preludeNameToTypeMap
+    leadup :: Text
+    leadup = Text.dropEnd (Text.length prefix) truncated
+
+-- | Filter the prelude map to entries matching a completion @prefix@. If the
+-- prefix starts with @#@, only enum constructors are considered. Otherwise
+-- matches against unqualified names, module names, and qualified @Module.name@
+-- forms.
+--
+-- Returns a filtered sub-map; callers needing an association list should apply
+-- @Map.toList@ at the call site.
+findInPrelude ::
+  Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) ->
+  Text ->
+  Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme)
+findInPrelude prelude prefix = Map.filterWithKey matches prelude
   where
-    filterEnum ns lcPrefix = case ns of
-      EnumNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.toLower i
-      _ -> False
-
-    filterNs ns lcPrefix = case ns of
-      FunNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.toLower i
-      OpNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.toLower i
-      EnumNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.toLower i
-      ModuleNamespace (ModuleName n) -> lcPrefix `Text.isPrefixOf` Text.toLower n
-      TypeNamespace _ -> False
-
-    filterNsWithModuleName (ModuleName mn) ns lcPrefix = do
-      let mn' = Text.append (Text.toLower mn) "."
-      case ns of
-        FunNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower i)
-        OpNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower i)
-        EnumNamespace (Ident i) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower i)
-        ModuleNamespace (ModuleName n) -> lcPrefix `Text.isPrefixOf` Text.append mn' (Text.toLower n)
+    matches :: (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> Bool
+    matches (mMod, ns) _ =
+      ns & \case
         TypeNamespace _ -> False
+        EnumNamespace ident
+          | prefixIsEnum -> lcPrefix `Text.isPrefixOf` Text.toLower ident.unIdent
+        _ | prefixIsEnum -> False
+        _ -> any (lcPrefix `Text.isPrefixOf`) searchTexts
+      where
+        lcPrefix :: Text
+        lcPrefix =
+          Text.dropWhileEnd (== '.')
+            . bool id (Text.drop 1) prefixIsEnum
+            $ Text.toLower prefix
 
-mkCompletionItem :: Set TypeClass -> Text -> (Maybe ModuleName, Namespace) -> TypeMetadata TCScheme -> CompletionItem
-mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata{ty} =
-  CompletionItem
-    { _label = insertModNm $ renderPretty ns
-    , _kind = case ns of
-        FunNamespace _ -> Just CiFunction
-        OpNamespace _ -> Just CiFunction
-        EnumNamespace _ -> Just CiEnum
-        ModuleNamespace _ -> Just CiModule
-        TypeNamespace _ -> Nothing
+        prefixIsEnum :: Bool
+        prefixIsEnum = "#" `Text.isPrefixOf` prefix
+
+        searchTexts :: [Text]
+        searchTexts =
+          mMod & \case
+            Nothing -> [renderNameSpace ns]
+            Just modName ->
+              [ Text.toLower modName.unModuleName
+              , renderNameSpace ns
+              , Text.toLower modName.unModuleName <> "." <> renderNameSpace ns
+              ]
+
+        renderNameSpace :: Namespace -> Text
+        renderNameSpace = \case
+          FunNamespace ident -> Text.toLower ident.unIdent
+          OpNamespace ident -> Text.toLower ident.unIdent
+          EnumNamespace ident -> Text.toLower ident.unIdent
+          ModuleNamespace modName -> Text.toLower modName.unModuleName
+          TypeNamespace _ -> mempty
+
+-- | Context shared across all completion items in a single response.
+data CompletionCtx = CompletionCtx
+  { classes :: !(Set TypeClass)
+  , prefix :: !Text
+  }
+
+-- | Build a @CompletionItem@ from a prelude entry. Qualifies the label with
+-- the module name unless the completion prefix already includes it. Renders
+-- the type signature as detail and metadata docs as markdown documentation.
+mkCompletionItem ::
+  CompletionCtx ->
+  (Maybe ModuleName, Namespace) ->
+  TypeMetadata TCScheme ->
+  LSP.CompletionItem
+mkCompletionItem ctx (modNm, ns) meta =
+  LSP.CompletionItem
+    { _label = qualifiedLabel
+    , _kind = nsKind
     , _tags = Nothing
-    , _detail = Just $ renderDoc $ mkPrettyTy typeClasses mempty ty
-    , _documentation = CompletionDocMarkup . MarkupContent MkMarkdown <$> getTypeMetadataText tm
+    , _detail = Just . renderDoc $ mkPrettyTy ctx.classes mempty meta.ty
+    , _documentation =
+        LSP.CompletionDocMarkup . LSP.MarkupContent LSP.MkMarkdown
+          <$> metadataDocsText meta
     , _deprecated = Nothing
     , _preselect = Nothing
     , _sortText = Nothing
     , _filterText =
-        let ftxt = insertModNm $ renderPretty ns
-            ftxt' = (if "#" `Text.isPrefixOf` ftxt then Text.drop 1 else id) ftxt
-         in Just ftxt'
-    , _insertText = case ns of
-        EnumNamespace (Ident i) -> if "#" `Text.isPrefixOf` txt then Just i else Nothing
-        _ -> Nothing
+        -- First checks if we are in enum namespace, which is faster than _always_
+        -- doing a text scan for `#` (only enum idents can start with `#`)
+        Just $ bool qualifiedLabel (Text.drop 1 qualifiedLabel) isEnum
+    , _insertText =
+        ns & \case
+          EnumNamespace ident ->
+            bool Nothing (Just ident.unIdent) $ "#" `Text.isPrefixOf` ctx.prefix
+          _ -> Nothing
     , _insertTextMode = Nothing
     , _insertTextFormat = Nothing
     , _textEdit = Nothing
@@ -132,31 +152,51 @@ mkCompletionItem typeClasses txt (modNm, ns) tm@TypeMetadata{ty} =
     , _xdata = Nothing
     }
   where
-    insertModNm txt' = case modNm of
-      Nothing -> txt'
-      Just (ModuleName n) -> do
-        let moduleName = n <> "."
-        if moduleName `Text.isPrefixOf` txt
-          then txt'
-          else moduleName <> txt'
+    qualifiedLabel :: Text
+    qualifiedLabel =
+      modNm & \case
+        Nothing -> renderPretty ns
+        Just modName ->
+          bool (qual <> renderPretty ns) (renderPretty ns) $
+            qual `Text.isPrefixOf` ctx.prefix
+          where
+            qual :: Text
+            qual = modName.unModuleName <> "."
 
--- | Create completion for user provided identifier e.g. input0, etc
-identifierCompletionItems :: [Text] -> Text -> [CompletionItem]
+    isEnum :: Bool
+    isEnum = case ns of
+      EnumNamespace _ -> True
+      _ -> False
+
+    nsKind :: Maybe LSP.CompletionItemKind
+    nsKind =
+      ns & \case
+        FunNamespace _ -> Just LSP.CiFunction
+        OpNamespace _ -> Just LSP.CiFunction
+        EnumNamespace _ -> Just LSP.CiEnum
+        ModuleNamespace _ -> Just LSP.CiModule
+        TypeNamespace _ -> Nothing
+
+-- | Create completion items for user-provided identifiers (e.g. @input0@).
+-- Returns empty if the prefix ends with @.@ since identifiers have no module
+-- qualification.
+identifierCompletionItems :: [Text] -> Text -> [LSP.CompletionItem]
 identifierCompletionItems idents prefix
-  | "." `Text.isSuffixOf` prefix = [] -- For case like "Module.", returned empty because identifier has no namespace/module prefix
-  | otherwise = makeIdentifierCompletion <$> filter (\identifier -> prefix `Text.isPrefixOf` identifier) idents
+  | "." `Text.isSuffixOf` prefix = mempty
+  | otherwise = mkItem <$> filter (prefix `Text.isPrefixOf`) idents
   where
-    makeIdentifierCompletion identifier =
-      CompletionItem
-        { _label = identifier
-        , _kind = Just CiVariable
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem ident =
+      LSP.CompletionItem
+        { _label = ident
+        , _kind = Just LSP.CiVariable
         , _tags = Nothing
         , _detail = Nothing
         , _documentation = Nothing
         , _deprecated = Nothing
         , _preselect = Nothing
         , _sortText = Nothing
-        , _filterText = Just identifier
+        , _filterText = Just ident
         , _insertText = Nothing
         , _insertTextMode = Nothing
         , _insertTextFormat = Nothing
@@ -167,21 +207,22 @@ identifierCompletionItems idents prefix
         , _xdata = Nothing
         }
 
-rwsCompletionItems :: Text -> [CompletionItem]
+-- | Create completion items for reserved words. Excludes @Some@ and @None@
+-- which are provided via the enum namespace. Returns empty if the prefix
+-- ends with @.@ since keywords have no module qualification.
+rwsCompletionItems :: Text -> [LSP.CompletionItem]
 rwsCompletionItems prefix
-  | "." `Text.isSuffixOf` prefix = [] -- For case like "Module.", returned empty because identifier has no namespace/module prefix
-  | otherwise = map mkRwsCompletionItem $ filter (\rw -> prefix `Text.isPrefixOf` rw) filteredRws
+  | "." `Text.isSuffixOf` prefix = mempty
+  | otherwise = mkItem <$> filter (prefix `Text.isPrefixOf`) filteredRws
   where
-    -- `None` and `Some` are already included elsewhere
     filteredRws :: [Text]
-    filteredRws = delete "Some" $ delete "None" rws
+    filteredRws = filter (`notElem` ["Some", "None"]) rws
 
-    -- Create a CompletionItem for each reserved word
-    mkRwsCompletionItem :: Text -> CompletionItem
-    mkRwsCompletionItem rw =
-      CompletionItem
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem rw =
+      LSP.CompletionItem
         { _label = rw
-        , _kind = Just CiKeyword
+        , _kind = Just LSP.CiKeyword
         , _tags = Nothing
         , _detail = Nothing
         , _documentation = Nothing
@@ -199,14 +240,21 @@ rwsCompletionItems prefix
         , _xdata = Nothing
         }
 
-moduleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> [CompletionItem]
-moduleNameCompletionItems preludeNameToTypeMap = fmap mkModuleCompletionItem modules
+-- | Create completion items for module names found in the prelude map,
+-- filtered by @prefix@. Extracts distinct module names from the map keys.
+filterModuleNameCompletionItems ::
+  Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> Text -> [LSP.CompletionItem]
+filterModuleNameCompletionItems prelude prefix =
+  mkItem <$> filter (prefix `Text.isPrefixOf`) modules
   where
-    modules = nubOrd . fmap unModuleName . mapMaybe fst $ Map.keys preludeNameToTypeMap
-    mkModuleCompletionItem m =
-      CompletionItem
+    modules :: [Text]
+    modules = nubOrd . mapMaybe (fmap (.unModuleName) . fst) $ Map.keys prelude
+
+    mkItem :: Text -> LSP.CompletionItem
+    mkItem m =
+      LSP.CompletionItem
         { _label = m
-        , _kind = Just CiModule
+        , _kind = Just LSP.CiModule
         , _tags = Nothing
         , _detail = Nothing
         , _documentation = Nothing
@@ -224,5 +272,21 @@ moduleNameCompletionItems preludeNameToTypeMap = fmap mkModuleCompletionItem mod
         , _xdata = Nothing
         }
 
-filterModuleNameCompletionItems :: forall c. (Pretty c, Eq c) => Map.Map (Maybe ModuleName, Namespace) (TypeMetadata TCScheme) -> Text -> [CompletionItem]
-filterModuleNameCompletionItems preludeNameToTypeMap prefix = filter (\item -> prefix `Text.isPrefixOf` _label item) (moduleNameCompletionItems @c preludeNameToTypeMap)
+-- | Convert an LSP @Position@ (0-based line and column) to a 0-based
+-- character offset into @txt@. Clamps to @Text.length txt@ if the position
+-- lies beyond the end of the document.
+positionToOffset :: Text -> LSP.Position -> Int
+positionToOffset txt (LSP.Position line col) =
+  min (lineStart + fromIntegral col) $ Text.length txt
+  where
+    lineStart :: Int
+    lineStart =
+      starts & drop (fromIntegral line) & \case
+        (s : _) -> s
+        [] -> Text.length txt
+
+    starts :: [Int]
+    starts = scanl' addLine 0 $ Text.splitOn "\n" txt
+
+    addLine :: Int -> Text -> Int
+    addLine acc l = acc + Text.length l + 1

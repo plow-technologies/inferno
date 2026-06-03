@@ -47,7 +47,6 @@ import Data.Traversable (for)
 import Data.Tuple.Extra (dupe, fst3, snd3, thd3)
 import Data.Vector (Vector, (!?))
 import qualified Data.Vector as Vector
-import GHC.Records (HasField (getField))
 import Inferno.Infer.Env
   ( Env,
     Namespace (EnumNamespace, OpNamespace),
@@ -463,13 +462,6 @@ data OpenModuleBinding = OpenModuleBinding
   , inPos :: !SourcePos
   , body :: !(Expr (Pinned VCObjectHash) SourcePos)
   }
-
--- | Virtual record fields for @ImplType@
-instance HasField "impl" ImplType (Map ExtIdent InfernoType) where
-  getField (ImplType m _) = m
-
-instance HasField "body" ImplType InfernoType where
-  getField (ImplType _ t) = t
 
 -------------------------------------------------------------------------------
 -- Type Map and Environment Helpers
