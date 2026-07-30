@@ -45,7 +45,7 @@ library
     , exceptions
     , hashable
     , megaparsec
-    , memory
+    , ram
     , mtl
     , prettyprinter
     , recursion-schemes

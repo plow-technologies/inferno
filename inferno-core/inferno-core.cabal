@@ -69,7 +69,7 @@ library
     , inferno-types
     , inferno-vc
     , megaparsec
-    , memory
+    , ram
     , mtl
     , parser-combinators
     , prettyprinter
