@@ -51,7 +51,7 @@ library
     , byteunits
     , conduit
     , containers
-    , cryptonite
+    , crypton
     , deepseq
     , filepath
     , generic-lens

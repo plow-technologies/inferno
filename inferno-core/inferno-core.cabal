@@ -60,7 +60,7 @@ library
     , bimap
     , bytestring
     , containers
-    , cryptonite
+    , crypton
     , deepseq
     , dsp
     , exceptions

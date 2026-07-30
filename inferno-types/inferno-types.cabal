@@ -40,7 +40,7 @@ library
     , bytestring
     , cereal
     , containers
-    , cryptonite
+    , crypton
     , deepseq
     , exceptions
     , hashable

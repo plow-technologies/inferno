@@ -45,7 +45,7 @@ library
     , base64-bytestring
     , bytestring
     , containers
-    , cryptonite
+    , crypton
     , directory
     , exceptions
     , filepath
