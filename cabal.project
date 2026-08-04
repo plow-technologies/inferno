@@ -85,6 +85,56 @@ source-repository-package
     tag: fb16285c2fc303894575757786cf8f87d183b88f
     --sha256: sha256-eMjjn48rZ70Cedw45YB2LbexrXPToGxYsmtoYHHs7Jw=
 
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/kazu-yamamoto/crypton
+    tag: 571a63807c041aee238df8a273f82a0463e1bdd3
+    --sha256: sha256-ua5CfsPzsJqhHiSgU6zOXQGSVRCYd1qJVJwPq3BwYJs=
+
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/kazu-yamamoto/crypton-certificate
+    tag: 8913c6637880a0915211645964b48eb2eb67eded
+    --sha256: sha256-UQrl3VFYdMo+SBeMLsJe9Dk/lwiA7uC9kwfvMYRys5g=
+    subdir:
+      crypton-x509
+
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/mpilgrem/crypton-asn1
+    tag: e8a3ce0c12c5137e97e0aed664a73d46b6bdc671
+    --sha256: sha256-m349Vdl4JO8Mue8bJMRpOFEdA3LmD/dqfDm7NDNEhIY=
+    subdir:
+      encoding
+      parse
+      types
+
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/mpilgrem/time-hourglass
+    tag: time-hourglass-v0.3.0
+    --sha256: sha256-ezrUt+yzOlu70KP+s0JS7rT5kz0SBgwgW10zwr10StM=
+
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/mpilgrem/crypton-pem
+    tag: v0.3.0
+    --sha256: sha256-1aSKiS7AR+MLQhJVyTIT49/owMgZGkkX74K55tZeGo0=
+
+-- FIXME Remove this SRP once hackage.nix + index-state is updated
+source-repository-package
+    type: git
+    location: https://github.com/yesodweb/wai
+    tag: b5c0eed36bce1f23f20db7bbd822c8a37a4bd027
+    --sha256: sha256-SwRpH2zVatJjaE4QKXwAEqrRZj4euIVTGnFIyTh6t80=
+    subdir:
+      wai-app-static
+
 package libtorch-ffi
     ghc-options: -j +RTS -A128m -n2m -RTS
 
