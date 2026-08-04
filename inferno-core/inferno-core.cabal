@@ -69,13 +69,13 @@ library
     , inferno-types
     , inferno-vc
     , megaparsec
-    , ram
     , mtl
     , parser-combinators
     , prettyprinter
     , QuickCheck
     , quickcheck-arbitrary-adt
     , quickcheck-instances
+    , ram
     , random
     , raw-strings-qq
     , recursion-schemes
